@@ -395,6 +395,47 @@ A compiler that avoids `NOT` for kept values, never emits `DIVMOD` or
 `NATV`, keeps `SEL` tables sorted and within the 32767 span, and guards
 against division by zero produces code that behaves the same on both.
 
+### Cross-compiler optimizer: folded comparisons give 1, not `$FFFF`
+
+This one is not a VM difference. It's in the PLASMA cross-compiler
+(`xplasm`) itself, so it affects every VM.
+
+At run time, PLASMA's comparisons and `not` produce `$FFFF` for true
+(on the 6502 VMs; see `NOT` above for the C VM). But the cross-compiler's
+optimizer (`-O`), when it folds a comparison or `not` whose operands are
+all constants, produces **1**. This is in `crunch_seq()` in
+`src/toolsrc/codegen.c`:
+- `EQ`, `NE`, `GE`, `LT`, `GT` and `LE` fold to `? 1 : 0`;
+- `not` folds to `? 0 : 1`.
+
+So the same source gives different values depending on `-O`. Checked
+with `xplasm` and `plvm`:
+
+| Expression | `xplasm -AMS` | `xplasm -AMOS` |
+|------------|---------------|----------------|
+| `3 == 3` | -1 | **1** |
+| `3 < 4` | -1 | **1** |
+| `x == 3` with `x` = 3 (not constant, so not folded) | -1 | -1 |
+
+On a 6502 VM, `not 0` likewise gives -1 without `-O` and 1 with it.
+Under `plvm` both print 1, because of the C VM's own `NOT` difference.
+
+The self-hosted compiler doesn't have this problem. Its optimizer,
+`src/toolsrc/codeopt.pla`, folds with PLASMA's own operators and
+`TRUE`, which give `$FFFF`. So a program can also behave differently
+depending on **which** PLASMA compiler built it.
+
+Any test of a folded comparison against `TRUE` or `-1` is affected, as
+is any use of the value in arithmetic (e.g. `count = count - (a < b)`).
+A plain `if`/`while` test is not, because 1 and `$FFFF` are both
+non-zero.
+
+**For compiler writers:** when folding constants, produce the same
+value that the run-time opcode would. That means `$FFFF` for PLASMA
+semantics, or 1 for C semantics if the compiler normalizes comparison
+results itself. The fix for PLASMA would be to fold to `-1` in
+`codegen.c`, matching `codeopt.pla`.
+
 ### Current opcodes vs. the 2018 README table
 
 The opcode table that used to be in `README.md` (removed in commit

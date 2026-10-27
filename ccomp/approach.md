@@ -627,6 +627,246 @@ plus host-only conveniences (`realloc`, `strndup`, varargs `fatal`).
 It does not fit this approach and should be rewritten or treated as a
 throwaway prototype.
 
+### 16. Using ccish instead of PLASMA's language
+
+Goal from discussion: be able to use ccish *instead of* PLASMA's own
+language, exploiting the VM's features and optimizations.
+
+**Multiple return values** (decided). PLASMA functions can return
+several values (`def f()#2`). C can't directly, so ccish compiles a
+returned **small struct** as a multi-value return.
+
+- A struct of up to **4** scalar members is returned as that many
+  values on the evaluation stack, first member deepest. Larger structs
+  use a hidden pointer.
+- Pros:
+  - It's standard C, so gcc compiles the same source. New syntax such
+    as `return a, b;` would clash with the comma operator.
+  - It's cheaper than the usual hidden-pointer-and-copy for struct
+    returns. This takes "struct returns" off the 64K drop list.
+  - It gives interop both ways. Declare PLASMA's `divmod(a,b)#2` as
+    returning `struct qr { int q, r; }` and call it. PLASMA code can
+    call ccish code the same way.
+- Cons:
+  - Picking a non-top member out of a call result needs a spill (no
+    SWAP).
+  - Only `int`, `char` and pointer members.
+  - Needs `struct` (M6). Struct pass and return by value move into that
+    milestone instead of being dropped.
+
+**Other gaps to close**, in rough priority order:
+1. **Importing any PLASMA library.** Replace the hard-coded CMDSYS
+   table with C headers generated from PLASMA `.plh` files (a small
+   conversion tool for `predef name(args)#n`). Needs the preprocessor
+   (M8) and a way to name the module an import comes from (issue 11).
+2. **Building library modules.** Export non-`static` functions and
+   globals. Let a library stay resident (init returns `modkeep`),
+   through a hint or an init-function convention.
+3. **Code quality at least as good as PLASMA's compiler:**
+   - fused ops (`ADDLW`, `IDXLW`, `DLW`, …);
+   - FOR-loop opcodes, `SEL`, `BRAND`/`BROR`;
+   - dead-code removal.
+
+   Measure by compiling the same algorithms in both languages, e.g.
+   PLASMA's sample programs, and comparing size and speed.
+4. **Native code.** Something like PLASMA's `asm` functions, as a
+   non-standard escape that gcc ignores.
+5. **Costs that C semantics impose and PLASMA avoids:**
+   - comparisons used as values must be 0/1, not 0/`$FFFF` (free in
+     conditions);
+   - `!` can't use `NOT` (the C VM discrepancy);
+   - `signed char` needs sign extension;
+   - `unsigned` needs extra code.
+
+   Hints (issue 10) may recover some of this, e.g. "this flag is only
+   tested".
+
+**Dead code** (decided in discussion): the peephole stage drops
+everything after an unconditional exit (`LEAVE`, `RET`, `BRNCH`) up to
+the next label. That removes M1's unreachable implicit `CN 0`/`LEAVE`
+after a final `return`, without any reachability analysis in the
+parser.
+
+### 17. Matching PLASMA's code quality
+
+This section documents how ccish *could* match PLASMA's optimizer; none
+of it needs to be built yet.
+
+Sources:
+- `src/toolsrc/codegen.c`: `crunch_seq()`, `try_dupify()`,
+  `emit_enter()`/`emit_leave()`.
+- `src/toolsrc/parse.c`: FOR, WHEN, `AND`/`OR`, RETURN.
+- `src/toolsrc/codeopt.pla`, the self-hosted copy of the same peephole
+  rules.
+
+#### How PLASMA optimizes
+
+With `-O`, each statement's code is built as a list of ops, and lists
+are merged across statements until a label, a `CS` string, or the end
+of the function. `crunch_seq()` then rewrites the list in two passes,
+each repeated until nothing changes. Only the second pass converts
+repeated loads to `DUP`, because a `DUP` can block more valuable
+patterns.
+
+The optimizations:
+
+| # | Optimization | Example |
+|---|--------------|---------|
+| P1 | Constant folding: `+ - * / % << >> & \| ^`, comparisons, `-x`, `~x`, `!x` on constants | `CN 2 CN 3 ADD` → `CN 5` |
+| P2 | Immediate forms | `CB 5 ADD` → `ADDI 5`; also `SUBI`, `ANDI`, `ORI` (0–255) |
+| P3 | Increment/decrement | `CN 1 ADD` → `INCR`; `CN 1 SUB` → `DECR` |
+| P4 | Identities | `+0`, `-0`, `\|0`, `*1`, `/1` removed; `*0` → `DROP CN 0` |
+| P5 | Strength reduction | `*2` and `<<1` → `DUP ADD`; `*3` → `DUP IDXW`; `*2^k` → `SHL k`; `/2^k` → `SHR k` |
+| P6 | Direct local access | `LLA n LW` → `LLW n`; `LLA n SW` → `SLW n` (and byte forms) |
+| P7 | Direct global access | `LA g LW` → `LAW g`; `LA g SW` → `SAW g`; `LA f ICAL` → `CALL f` |
+| P8 | Constant address access | `CW $C000 LB` → `LAB $C000` (no relocation) |
+| P9 | Address + constant | `LLA n CN k ADD` → `LLA n+k`; `IDXW` → `n+2k`; the same for `LA g` |
+| P10 | Fused memory operand | `LLW n ADD` → `ADDLW n`; `LLW n IDXW` → `IDXLW n`; also `ADDLB`, `IDXLB`, `ADDAB`/`ADDAW`, `IDXAB`/`IDXAW` |
+| P11 | High-byte load | `LLW n CB 8 SHR` → `LLB n+1` (also `LAW` → `LAB`) |
+| P12 | Store then reload | `SLW n LLW n` → `DLW n` (also `DLB`, `DAB`, `DAW`) |
+| P13 | Compare and branch fused | `ISEQ BRFLS` → `BRNE`; `ISNE BRFLS` → `BREQ`; `NOT BRFLS` → `BRTRU` |
+| P14 | Constant conditions | `CN k BRFLS` → nothing or `BRNCH`; likewise `BRTRU`, `BRAND`, `BROR` |
+| P15 | Zero tests | `CN 0 ISNE` → nothing; `CN 0 ISEQ` → `NOT` |
+| P16 | Duplicate loads (pass 2) | `LLW n LLW n` → `LLW n DUP`. Not for addresses ≥ `$C000` (hardware). |
+| P17 | Short-circuit `AND`/`OR` | `BRAND`/`BROR`, which keep the left value when deciding |
+| P18 | FOR loops | Entry test `BRGT`/`BRLT`; loop with `INCBRLE`/`ADDBRLE`/`DECBRGE`/`SUBBRGE`; count kept on the stack and copied to the variable with `DLW` |
+| P19 | `WHEN` | `SEL` with a sorted case table |
+| P20 | Frames | No `ENTER` when there are no parameters and no locals; then `LEAVE` becomes `RET` |
+| P21 | Implicit return | Only added if the last statement isn't a `RETURN` |
+
+A side finding: the cross-compiler's P1 folds comparisons (and `not`)
+to **1**, but PLASMA's own run-time true is `$FFFF`. So `3 == 3` gives 1
+with `-O` and -1 without. The self-hosted compiler's `codeopt.pla`
+folds to `$FFFF`, so the two PLASMA compilers also disagree. This was
+verified and is recorded in `../doc/Bytecodes.md` ("Cross-compiler
+optimizer: folded comparisons give 1"). For ccish, 1 is the correct C
+result.
+
+#### Which are valid for C, and how ccish would get each
+
+Most of these are safe for C and need no hints. Each fits naturally
+into one of our pipeline stages:
+
+- **Stage 1 (parser).**
+  - P1, constant folding. C needs this anyway, for array sizes, `case`
+    labels and global initializers. Use C semantics: 16-bit wrap, and
+    an error for constant division by zero.
+  - P17–P19 and P21, the statement-level forms. Notes below.
+- **Stage 2 (lowering).** Chooses opcodes with knowledge of types:
+  - P2–P4;
+  - P5, but only `*`, `*2^k` and `<<` (see invalid list);
+  - P6–P10;
+  - P13 and P15, but only when the next op is a branch.
+- **Stage 3 (peephole).**
+  - P12, P14, P16.
+  - Dead-code removal after `LEAVE`/`RET`/`BRNCH` (issue 16).
+  - Any of P2–P10 that only become visible across op boundaries.
+
+  The window must persist across statements, as PLASMA's does, so that
+  `x = …; … x …` becomes `DLW`. Labels are the barriers.
+- **Stage 4 (assembler), at function end.** P20 (see below), plus
+  branch threading (`BRNCH` to a `BRNCH`), which PLASMA doesn't do.
+
+**PLASMA rules that are *wrong* for C, and must not be copied as is:**
+
+1. **`CN 0 ISEQ` → `NOT` (P15).** The C VM's `NOT` returns 1, not
+   `$FFFF` (see `../doc/Bytecodes.md`). It's fine when fused into a
+   branch (P13: `NOT BRFLS` → `BRTRU`), but never leave a `NOT` behind.
+2. **`/2^k` → `SHR k` (P5).** C division truncates toward zero, but an
+   arithmetic shift rounds toward minus infinity: `-3/2` is -1 in C,
+   while `-3 >> 1` is -2. It is valid only for `unsigned` operands
+   (with masking) or operands known to be non-negative. The same holds
+   for the common extra `%2^k` → `ANDI`.
+3. **`x >> 8` → high-byte load (P11).** The `>>` is sign-extending, but
+   `LLB` zero-extends, so they differ for negative values. It is valid
+   for `unsigned`, or for values known to be non-negative.
+
+   It is also valid **whenever only the low 8 bits of the result are
+   used**. On the little-endian 6502, `(x >> 8) & 0xFF` is exactly the
+   byte at `&x + 1`, whatever the sign. Stage 2 knows how a result is
+   consumed:
+   - masked with `& k` where `k <= 0xFF`;
+   - cast to `unsigned char`;
+   - stored into a `char` (a byte store keeps only the low byte).
+
+   In each case:
+   - local: `LLW n CB 8 SHR ANDI $FF` (4 ops, 7 bytes) → `LLB n+1`
+     (1 op, 2 bytes);
+   - global: → `LAB g+1`, relocated with an offset;
+   - through a pointer: `<addr> LW CB 8 SHR ANDI $FF` →
+     `<addr> INCR LB`, or the +1 folded into a constant offset.
+
+   The same reasoning turns `x & 0xFF` on a word variable into
+   `LLB n`/`LAB g`. This does not apply to `volatile` objects, because
+   reading 1 byte instead of 2 changes the memory access.
+4. **Duplicate loads (P16).** This is invalid for `volatile` objects.
+   Standard C already says exactly this, so honour `volatile`, and also
+   keep PLASMA's `>= $C000` hardware rule for constant addresses.
+5. **Comparison results as values.** C needs 0/1. PLASMA's 0/`$FFFF`
+   costs one extra op (`NEG`) in value context, and nothing in a
+   condition.
+
+**Statement-level forms in C:**
+
+- **`&&` / `||` (P17).** Use `BRAND`/`BROR` directly in conditions. In
+  value context, the result must then be normalized to 0/1.
+- **`for` loops (P18), automatically when the shape fits:**
+  `for (i = a; i <= b; i++)`, or `<`, `>=`, `>`, `--`, `+= k`, `-= k`,
+  with `i` a local or a global. C differs from PLASMA's FOR in two
+  ways: C re-evaluates the limit on every iteration, and the body may
+  change `i`. Neither is known until after the body has been streamed
+  out. A cheap repair keeps this automatic and correct:
+  - Decide on the FOR opcodes from the loop header alone.
+  - While parsing the body, note whether it assigns `i` or the limit
+    variable, or takes their address.
+  - If it did, emit a fix-up before the loop-back: `DROP LLW i`
+    refreshes the count, and `DROP2 <limit> LLW i` also refreshes the
+    limit.
+
+  Untouched loops, the vast majority, pay nothing.
+  - `return` inside the loop first drops the loop's two stack values,
+    as PLASMA does.
+  - `break` exits to code that drops them.
+  - `i < n` becomes "`<=` with limit `n-1`", computed once.
+
+  This also needs the `for` side buffer from 4(d).
+- **`switch` (P19).** Use `SEL` when the case values span at most
+  32767; the compiler sorts the table. Otherwise use a compare chain.
+  This is automatic.
+- **Implicit return (P21).** Handled by dead-code removal in stage 3.
+- **Frames (P20).** In C, locals can be declared at the start of any
+  block, so the frame size isn't known until the function ends.
+  Automatic fix at function end: if the frame size is 0, delete the
+  3-byte `ENTER` (everything after it shifts uniformly, so relative
+  branches stay valid; adjust fixup offsets by -3). Then turn each
+  `LEAVE 0` (2 bytes) into `RET` plus 1 unreachable pad byte, which
+  keeps every later offset the same.
+
+#### Where hints come in (issue 10)
+
+Hints are only needed where C's semantics block an optimization that
+PLASMA can do because it ignores those semantics:
+
+| Hint | Unlocks |
+|------|---------|
+| *non-negative* (a variable or parameter is never negative) | `/2^k` → `SHR`, `%2^k` → `ANDI`, `x >> 8` → high-byte load |
+| *flag* (a variable only ever holds a comparison result and is only tested) | Store PLASMA's 0/`$FFFF` and skip the 0/1 normalization |
+| *non-recursive* (a function) | Static locals: `LAW`/`SAW` instead of a frame, and no `ENTER`. Measure first; the gain may be small. |
+
+Using `unsigned` gets the first row's benefits without a hint, once
+`unsigned` exists (M11). The compiler can also emit the *reverse*
+hints, e.g. "`/` by 4 on a signed value: an `SHR` would be possible if
+non-negative", so that existing code can be tuned as approach.md's
+introduction intends.
+
+#### Measuring
+
+Compile the same algorithms in both languages and compare. PLASMA's
+`src/samplesrc` programs and `xplasm -AMO` listings give the baseline.
+Track bytecode size per function and, under `plvm -t`, opcode counts
+per run. A test can also assert specific listings (e.g. "this loop uses
+`INCBRLE`"), so optimizations don't silently regress.
+
 ## Decisions so far
 
 The first round of answers is recorded inline as "Answer:" under each
@@ -669,6 +909,10 @@ issue. In summary:
     - Address constants in the data segment need relocation (RLD)
       entries.
     - Local initializers compile as ordinary assignments.
+11. **Multiple returns:** a returned struct of up to 4 scalar members is
+    a PLASMA multi-value return (issue 16). Larger structs use a
+    hidden pointer. This lands with `struct` (M6).
+
 
 ## Milestones
 
