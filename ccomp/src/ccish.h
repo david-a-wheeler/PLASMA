@@ -9,7 +9,13 @@
  *   parse.c  stage 1: C source -> IR ops        (ir_put)
  *   lower.c  stage 2: IR ops -> machine ops     (peep_put)
  *   peep.c   stage 3: peephole optimization     (emit_put)
- *   emit.c   stage 4: encode bytes, write the REL module
+ *   emit.c   stage 4: encode bytes, one function at a time, and write
+ *            them to the stream files
+ *
+ * Then a separate final pass, link.c, reads only the stream files and
+ * writes the REL module (approach.md 18.1; formats in ../OBJECT.md).
+ * It uses none of the compiler's tables, so it can become a separate
+ * program (and a linker) later.
  *
  * Fixed-size tables are used on purpose: the compiler is meant to run
  * on a 64K machine eventually, so its limits should be visible.
@@ -26,11 +32,12 @@
 #define MAX_SYMS     256
 #define MAX_PARAMS   16
 #define MAX_LOCALS   128    /* parameters and locals visible at once */
-#define MAX_CODE     16384
-#define MAX_DATA     8192
-#define MAX_FIXUPS   1024
-#define MAX_IMPORTS  128
+#define MAX_FUNC_CODE 4096  /* bytecode in one function */
+#define MAX_FUNC_RELOCS 256 /* relocations in one function */
+#define MAX_RETURNS  128    /* frame-size bytes (ENTER, LEAVEs) in one function */
+#define MAX_RELOCS   2048   /* final pass: relocations in the module */
 #define MAX_NEST     32     /* nesting of parentheses and blocks */
+#define BLOCK        512    /* file I/O buffer size: one ProDOS block */
 
 /* ---------- Diagnostics (main.c) ---------- */
 
@@ -41,6 +48,25 @@ extern int opt_ir;          /* -i: print the IR stream */
 
 void error(const char *msg, const char *detail);
 void fatal(const char *msg, const char *detail);
+
+/* ---------- Block-buffered file I/O (bio.c) ---------- */
+
+typedef struct {
+    FILE *f;
+    int writing;
+    int pos, len;       /* next byte in buf; bytes in buf when reading */
+    int error;          /* a write failed */
+    unsigned char buf[BLOCK];
+} Bfile;
+
+int  bopen(Bfile *b, const char *path, int writing);
+int  bgetc(Bfile *b);
+void bungetc(Bfile *b, int c);
+int  bgetw(Bfile *b);
+void bputc(Bfile *b, int c);
+void bputw(Bfile *b, int v);
+void bwrite(Bfile *b, const unsigned char *p, int n);
+int  bclose(Bfile *b);
 
 /* ---------- Lexer (lex.c) ---------- */
 
@@ -64,7 +90,7 @@ extern int tok_val;                 /* T_NUM value */
 extern char tok_text[MAX_STR + 1];  /* T_ID / T_KEYWORD name, T_STR bytes */
 extern int tok_len;                 /* T_STR length, not counting a NUL */
 
-void lex_open(FILE *f);
+void lex_open(Bfile *f);
 void next(void);                    /* advance to the next token */
 const char *tok_desc(void);         /* the current token, for messages */
 
@@ -83,8 +109,7 @@ struct Sym {
     int nparams;        /* -1 until known from a declaration or first call */
     int declared;       /* has a prototype or definition */
     int defined;        /* has a body */
-    int code_off;       /* start of its bytecode in the code buffer */
-    int import_idx;     /* ESD index if imported, else -1 */
+    int code_off;       /* start of its bytecode in the code segment */
     int called;
 };
 
@@ -154,10 +179,27 @@ int  mop_const_value(Mop *m, int *v);   /* lower.c: does m push a constant? */
 void peep_put(Mop *m);
 void peep_flush(void);
 
-/* ---------- Stage 4: emitter and module writer (emit.c) ---------- */
+/* ---------- Stage 4: emitter (emit.c) ---------- */
 
+/* Stream file names: the output name plus these suffixes. */
+#define SUFFIX_DATA ".data"
+#define SUFFIX_CODE ".code"
+#define SUFFIX_SYMS ".syms"
+
+/* Stream record kinds and symbol flags (see ../OBJECT.md). */
+enum { REL_DATA = 1, REL_FUNC = 2 };
+enum { SYM_DEFINED = 1, SYM_CALLED = 2, SYM_RETURNS = 4 };
+
+void emit_open(const char *base);
 void emit_put(Mop *m);
 int  data_string(const char *s, int len);   /* returns offset of first char */
-void write_module(const char *path);
+void emit_finish(void);
+
+/* ---------- Final pass (link.c) ---------- */
+
+void link_module(const char *base, const char *path);
+
+/* Build "base" + suffix in a static buffer (main.c). */
+const char *stream_name(const char *base, const char *suffix);
 
 #endif

@@ -1229,6 +1229,36 @@ issue. In summary:
 
 ## Milestones
 
+**M3 step 2 (streamed output and a final pass, 18.1) is done.** The
+formats are in [OBJECT.md](OBJECT.md). Every module and listing the
+tests produce is byte-for-byte the same as before. Chosen while
+building it (open for review):
+- Stream files are the output name plus `.data`, `.code` and `.syms`.
+  There are exactly three per compilation unit (`.c` file), however
+  many functions it has; "one function at a time" is only about
+  memory. They are removed after success and after any error; `-k`
+  keeps them. (On ProDOS the suffixes leave 10 characters for the base
+  name.)
+- **Possible, not committed:** when object files are kept for linking
+  several `.c` files (issue 11), three files per unit would clutter
+  the disk, and each ProDOS file costs a directory entry and at least
+  one block. The final pass could then combine them into **one object
+  file per compilation unit** (the summary, then data, then code), so
+  the linker still reads each part in order without seeking.
+- On the host, both passes run in one process (`main.c`). The final
+  pass (`link.c`) uses none of the compiler's tables, only the
+  streams, so it can be split into its own program or module later.
+- The `.syms` summary also records each function's parameter count and
+  whether it returns a value, for a future linker to check calls
+  between files. It starts with a magic `CI` and a version byte.
+- The function buffer holds 4096 bytes and 256 relocations
+  (`MAX_FUNC_CODE`, `MAX_FUNC_RELOCS`). Beyond those, "function too
+  large" or "too many calls and data references".
+- The source file is read through the same 512-byte block buffers
+  (`bio.c`), not just the streams.
+- The final pass checks that the three files agree (sizes, offsets,
+  indexes) and reports a damaged stream file if not.
+
 **M3 step 1 (constant folding) is done.** Settled while building it:
 - A constant right operand of zero for `/`, `%`, `/=` or `%=` is a
   compile error, and so is a constant shift count outside 0–15. Both

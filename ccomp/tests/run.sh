@@ -10,6 +10,7 @@
 #                          // listing-count: N TEXT  exactly N lines do
 # tests/errors/NAME.c    must fail to compile; stderr must contain the
 #                        text after "// expect: " on the file's first line.
+# Afterward, no stream files may be left over, and -k must keep them.
 
 set -u
 CCISH=./ccish
@@ -99,6 +100,52 @@ for src in tests/errors/*.c; do
         fail=$((fail + 1))
     fi
 done
+
+# Generated tests of the per-function limits: main repeats statement
+# $2, $3 times; compiling must fail with message $4.
+limit_test() {
+    big=$OUT/$1.c
+    {
+        echo "int main() { int x;"
+        i=0
+        while [ $i -lt "$3" ]; do echo "$2"; i=$((i + 1)); done
+        echo "return 0; }"
+    } > "$big"
+    if "$CCISH" -o "$OUT/$1" "$big" 2>"$OUT/$1.err"; then
+        echo "FAIL $big: compiled, but should have failed"
+        fail=$((fail + 1))
+    elif grep -qF -- "$4" "$OUT/$1.err"; then
+        pass=$((pass + 1))
+    else
+        echo "FAIL $big: wrong message. Wanted: $4"
+        sed 's/^/    got: /' "$OUT/$1.err"
+        fail=$((fail + 1))
+    fi
+}
+# 900 x 5 bytes (CW, SLW) is over the 4096-byte function buffer.
+limit_test too_large "x = 1000;" 900 "function too large: main"
+# 300 calls is over the 256 relocations allowed in one function.
+limit_test too_many_relocs "puti(1);" 300 \
+    "too many calls and data references in main"
+
+# The stream files (.data, .code, .syms) must be gone after every
+# compile, successful or not, unless -k keeps them.
+left=$(find "$OUT" -name '*.data' -o -name '*.code' -o -name '*.syms')
+if [ -n "$left" ]; then
+    echo "FAIL stream files left behind:"
+    echo "$left" | sed 's/^/    /'
+    fail=$((fail + 1))
+else
+    pass=$((pass + 1))
+fi
+if "$CCISH" -k -o "$OUT/keep" tests/run/hello.c \
+   && [ -s "$OUT/keep" ] && [ -s "$OUT/keep.data" ] \
+   && [ -s "$OUT/keep.code" ] && [ -s "$OUT/keep.syms" ]; then
+    pass=$((pass + 1))
+else
+    echo "FAIL -k: module and stream files should all exist"
+    fail=$((fail + 1))
+fi
 
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

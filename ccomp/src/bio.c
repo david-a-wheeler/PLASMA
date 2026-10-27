@@ -1,0 +1,91 @@
+/*
+ * Block-buffered file I/O. Every file the compiler reads or writes goes
+ * through a 512-byte buffer, the size of a ProDOS block, so that on an
+ * Apple II each system call moves a whole block and not a byte
+ * (approach.md 18.1). On the host it sits on top of stdio.
+ */
+#include <string.h>
+#include "ccish.h"
+
+/* Open path for reading (writing = 0) or writing (writing = 1).
+ * Returns 0 if the file can't be opened. */
+int bopen(Bfile *b, const char *path, int writing)
+{
+    memset(b, 0, sizeof(*b));
+    b->f = fopen(path, writing ? "wb" : "rb");
+    b->writing = writing;
+    return b->f != NULL;
+}
+
+static void fill(Bfile *b)
+{
+    b->len = (int)fread(b->buf, 1, BLOCK, b->f);
+    b->pos = 0;
+}
+
+/* The next byte, or EOF at the end of the file. */
+int bgetc(Bfile *b)
+{
+    if (b->pos >= b->len) {
+        fill(b);
+        if (b->len == 0)
+            return EOF;
+    }
+    return b->buf[b->pos++];
+}
+
+/* Push back the byte just read by bgetc. Only one byte, and only right
+ * after a bgetc that didn't return EOF. */
+void bungetc(Bfile *b, int c)
+{
+    b->buf[--b->pos] = (unsigned char)c;
+}
+
+/* A little-endian word. Running out of data here means the file is
+ * damaged, which only the final pass can see. */
+int bgetw(Bfile *b)
+{
+    int lo = bgetc(b), hi = bgetc(b);
+    if (lo == EOF || hi == EOF)
+        fatal("unexpected end of a compiler stream file", NULL);
+    return lo | (hi << 8);
+}
+
+static void flush(Bfile *b)
+{
+    if (b->pos > 0 && fwrite(b->buf, 1, b->pos, b->f) != (size_t)b->pos)
+        b->error = 1;
+    b->pos = 0;
+}
+
+void bputc(Bfile *b, int c)
+{
+    if (b->pos >= BLOCK)
+        flush(b);
+    b->buf[b->pos++] = (unsigned char)c;
+}
+
+void bputw(Bfile *b, int v)
+{
+    bputc(b, v & 0xFF);
+    bputc(b, (v >> 8) & 0xFF);
+}
+
+void bwrite(Bfile *b, const unsigned char *p, int n)
+{
+    while (n-- > 0)
+        bputc(b, *p++);
+}
+
+/* Close the file, writing any buffered bytes. Returns 0 on success. */
+int bclose(Bfile *b)
+{
+    int bad;
+    if (!b->f)
+        return 0;
+    if (b->writing)
+        flush(b);
+    bad = fclose(b->f) != 0 || b->error;
+    b->f = NULL;
+    return bad ? -1 : 0;
+}

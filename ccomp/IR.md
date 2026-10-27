@@ -72,9 +72,10 @@ End the current function. *a* is the total bytes of parameters and
 locals (at most 255).
 
 - **Stack:** none (compile time only).
-- **Now:** a function-end marker. Stage 4 writes *a* into the
-  function's `ENTER` and every `LEAVE`, then flushes the peephole
-  window.
+- **Now:** a function-end marker. The peephole window is flushed, then
+  stage 4 writes *a* into the function's `ENTER` and every `LEAVE` in
+  its function buffer, and writes the function and its relocation
+  records to the code stream ([OBJECT.md](OBJECT.md)).
 - **Why it differs:** PLASMA has no equivalent. It exists because of
   reason 3.
 
@@ -112,9 +113,9 @@ is used for string literals: *a* is the first character for a C
 string, or the length byte for `pstr()`.
 
 - **Stack:** `( -- addr )`.
-- **Now:** `LA addr`, plus a data relocation. Stage 4 fills in the
-  address once the layout is known, and adds an RLD `$81` entry so the
-  loader can adjust it.
+- **Now:** `LA addr`, plus a data relocation record. The final pass
+  fills in the address once the layout is known, and adds an RLD `$81`
+  entry so the loader can adjust it.
 - **Why it differs from `LA`:** the target is a segment offset, not an
   address (reason 2).
 - **Later:** global variables use it too. A following load or store
@@ -240,7 +241,8 @@ to right.
 
 - **Stack:** `( a1 … an -- result )` for an `int` function,
   `( a1 … an -- )` for a `void` one.
-- **Now:** `CALL addr` plus a function relocation. Stage 4 resolves it
+- **Now:** `CALL addr` plus a function relocation record. The final
+  pass resolves it
   either to an internal function (RLD `$81`; the loader redirects it to
   the function's stub), or, if *sym* is never defined in this file, to
   an import (RLD `$91` plus an ESD entry).
@@ -293,9 +295,10 @@ opcode, its operands, and two kinds of deferred information:
 
 - **`FRAME_LATER`** as an `ENTER` or `LEAVE` frame-size operand: stage 4
   records where that byte is and patches it at function end.
-- **A relocation kind** (`FIX_DATA` or `FIX_FUNC`) for a word operand.
-  Stage 4 fills in the address once the layout is known, and writes the
-  matching RLD or ESD entries.
+- **A relocation** for an `LA` or `CALL` word operand. Stage 4 writes
+  the word as 0 plus a relocation record in the code stream. The final
+  pass (`src/link.c`) fills in the address once the layout is known,
+  and writes the matching RLD or ESD entries ([OBJECT.md](OBJECT.md)).
 
 Two pseudo-ops travel with them: `OP_FUNC_BEGIN` and `OP_FUNC_END`.
 They produce no bytes, and they are barriers for the peephole stage.

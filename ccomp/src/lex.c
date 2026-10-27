@@ -11,7 +11,7 @@ int tok_val;
 char tok_text[MAX_STR + 1];
 int tok_len;
 
-static FILE *in;
+static Bfile *in;
 static int ch;              /* current character, or EOF */
 static int at_line_start;   /* only blanks seen so far on this line */
 
@@ -24,16 +24,16 @@ static void getch(void)
         src_line++;
         at_line_start = 1;
     }
-    ch = getc(in);
+    ch = bgetc(in);
     if (ch == '\r') {
-        int c2 = getc(in);
+        int c2 = bgetc(in);
         if (c2 != '\n' && c2 != EOF)
-            ungetc(c2, in);
+            bungetc(in, c2);
         ch = '\n';
     }
 }
 
-void lex_open(FILE *f)
+void lex_open(Bfile *f)
 {
     in = f;
     src_line = 1;
@@ -68,7 +68,7 @@ static void skip_blank(void)
         if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\f' || ch == '\v') {
             getch();
         } else if (ch == '/') {
-            int c2 = getc(in);
+            int c2 = bgetc(in);
             if (c2 == '/') {
                 while (ch != '\n' && ch != EOF)
                     getch();
@@ -92,7 +92,7 @@ static void skip_blank(void)
                 }
             } else {
                 if (c2 != EOF)
-                    ungetc(c2, in);
+                    bungetc(in, c2);
                 return;
             }
         } else {

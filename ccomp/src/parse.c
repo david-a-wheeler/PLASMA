@@ -98,7 +98,6 @@ static Sym *add_func(const char *name)
     s->kind = S_FUNC;
     s->nparams = -1;
     s->returns_value = 1;   /* C89 implicit declarations return int */
-    s->import_idx = -1;
     return s;
 }
 
