@@ -1212,6 +1212,59 @@ of issue 10, and may become part of the user documentation.
   a 16-step loop. Dividing by a constant always uses `DIV` for signed
   values (issue 17 and the M4 step 2 notes).
 
+### 21. New VM opcodes for C (possible, not committed)
+
+Raised in discussion (2026-10-27): the VM might be changed after all
+(4(e) said to measure before considering SWAP again). Opcodes `$C6` to
+`$FE` are free: 29 slots (the 6502 VM's `OPTBL` ends at `JUMP`, `$C4`).
+
+**Cost of any new opcode:**
+- It must be added to every implementation: 7 VMs (`plvm01.s`,
+  `plvm02.s`, `plvm03.s`, `plvm802.s`, `plvmc64.s`, the C VM `plvm.c`,
+  and `plvmjit02.s`/`plvmjit03.s`) and the JIT compilers
+  (`jitcore.pla`, `jit16core.pla`, `cleanjit.pla`).
+- Modules that use it won't run on existing PLASMA installs, and an old
+  VM doesn't reject an unknown opcode: it dispatches through memory
+  past its table and crashes. So ccish should emit new opcodes only
+  when asked (a target option), and such a module could list a marker
+  module (say `CCVM`) as a dependency, so that an old system fails to
+  load it cleanly (`?CCVM`) instead of crashing.
+- Ideally the change is accepted upstream, so ccish programs run on
+  standard PLASMA.
+
+**Candidates, most useful first:**
+1. **Reversed stores, `SWR` and `SBR`: `( addr val -- )`.** C computes
+   a store's address before its value, and these take them in that
+   order. Every store through a computed address, including
+   `*d++ = *s++` and `a[i++] = x`, would need no temporary and no
+   SWAP: 0 extra bytes, against 4 for a spill and 1 for SWAP. That
+   also makes M10's block exchange unnecessary for stores. Two
+   opcodes.
+2. **Unsigned comparisons, `ISULT`, `ISUGT`, `ISULE` and `ISUGE`.**
+   They would replace the sign flips on pointer `< > <= >=` (8 bytes
+   and 4 ops per comparison, or 4 bytes with a constant side) and
+   serve M11's `unsigned int`. They would give `$FFFF` for true, like
+   PLASMA's own comparisons. Four opcodes. (CMDSYS's `isult` and
+   friends do this today, at the cost of a call.)
+3. **`SWAP`: `( a b -- b a )`.** General, 1 byte. With reversed
+   stores, its remaining uses are rarer (`i + p` scaling, compound
+   assignment through a computed address), so it is a cheap fallback
+   rather than the main fix. One opcode (it was `$2E` until 2015).
+4. **For M11's `unsigned`:** `UDIV` and `UMOD` (otherwise a runtime
+   routine), and a logical shift right `USHR` (otherwise `SHR` then a
+   mask, which needs a computed mask for a variable count). Three
+   opcodes.
+
+**Not worth an opcode, for now:** sign extension of a byte (avoid
+`signed char`, issue 20), fused compare-and-branch for `<` (saves 1
+byte), and loads at an offset for struct members (decide after M6, by
+measuring).
+
+**How to decide:** count spills and sign flips in real code, such as
+the compiler's own source at M12, compiled both ways. If VM changes are
+on the table anyway, fixing the C VM's `NOT` and `DIVMOD` discrepancies
+(`doc/Bytecodes.md`) would be worth doing at the same time.
+
 ## Decisions so far
 
 The first round of answers is recorded inline as "Answer:" under each
@@ -1323,6 +1376,18 @@ Defaults, also agreed:
   other store (`a[i] = e`, `*f() = e`, `*p += e`) saves the address in
   a temporary frame slot first, as 4(e) says. Block exchange still
   waits for M10.
+- **Pending array elements (decided in discussion, during step 2).**
+  Saving an address in a temporary is a hand-made SWAP (4 bytes, 2
+  ops and 2 frame bytes, against 1 byte for a real SWAP), and without
+  this, `a[i] = x`, the most common store after plain variables, would
+  need one every time. So in step 3, `a[i]` stays pending, like `*p`,
+  when the array is a local or global array or a pointer variable,
+  and the index is a variable or a constant. Nothing is emitted until
+  the parser sees whether it is assigned to, and `a[i] = x` becomes
+  `x LLA a LLW i IDXW SW` with no temporary (issue 4(a), option A).
+  Only more complex lvalues (`a[i + 1] = x`, `a[f()] = x`,
+  `*p++ = x`) still spill, until M10's block exchange or a VM change
+  (issue 21).
 - Pointer arithmetic scales by the element size (`IDXW` for 2-byte
   elements). `i + p`, with the pointer on the right, uses a temporary
   (4(b)). `p - q` divides by the element size.
@@ -1629,3 +1694,7 @@ M1 is built fresh around the pipeline.
     should M9's library follow POSIX names and behavior, and should a
     limited `long` (or `int32` helpers) come before M11? Is multitasking
     option A (switching when a process waits) the right first step?
+11. **New VM opcodes (issue 21, possible, not committed):** add
+    reversed stores (`SWR`, `SBR`), unsigned comparisons, and perhaps
+    `SWAP`? If so, when, behind which ccish option, and can they go
+    upstream?
