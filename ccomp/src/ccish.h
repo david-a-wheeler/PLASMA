@@ -8,8 +8,8 @@
  *
  *   parse.c  stage 1: C source -> IR ops        (ir_put)
  *   lower.c  stage 2: IR ops -> machine ops     (peep_put)
- *   peep.c   stage 3: peephole optimization     (asm_put)
- *   asm.c    stage 4: encode bytes, write the REL module
+ *   peep.c   stage 3: peephole optimization     (emit_put)
+ *   emit.c   stage 4: encode bytes, write the REL module
  *
  * Fixed-size tables are used on purpose: the compiler is meant to run
  * on a 64K machine eventually, so its limits should be visible.
@@ -91,7 +91,8 @@ extern int nsyms;
 
 void parse_program(void);
 
-/* ---------- Stage 1 -> 2: IR ops (lower.c) ---------- */
+/* ---------- Stage 1 -> 2: IR ops (lower.c) ----------
+ * Each op's meaning, and why it differs from PLASMA's, is in ../IR.md. */
 
 enum {
     IR_FUNC,        /* sym: start a function */
@@ -138,9 +139,9 @@ typedef struct {
 void peep_put(Mop *m);
 void peep_flush(void);
 
-/* ---------- Stage 4: assembler and module writer (asm.c) ---------- */
+/* ---------- Stage 4: emitter and module writer (emit.c) ---------- */
 
-void asm_put(Mop *m);
+void emit_put(Mop *m);
 int  data_string(const char *s, int len);   /* returns offset of first char */
 void write_module(const char *path);
 

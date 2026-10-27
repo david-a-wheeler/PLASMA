@@ -343,7 +343,7 @@ a stream of ops through a few small stages:
    It resolves the pseudo-ops and chooses real opcodes
    (`CN`/`CB`/`CW`, `DLW`, `SLW` vs. `SW`, `ADDLW`, …).
 3. **Peephole** over real ops, with a small window.
-4. **Assembler.** Turns labels into relative offsets and fixups into
+4. **Emitter** (`emit.c`). Turns labels into relative offsets and fixups into
    RLD entries, and writes the module.
 
 Precedents:
@@ -764,7 +764,7 @@ into one of our pipeline stages:
 
   The window must persist across statements, as PLASMA's does, so that
   `x = …; … x …` becomes `DLW`. Labels are the barriers.
-- **Stage 4 (assembler), at function end.** P20 (see below), plus
+- **Stage 4 (emitter), at function end.** P20 (see below), plus
   branch threading (`BRNCH` to a `BRNCH`), which PLASMA doesn't do.
 
 **PLASMA rules that are *wrong* for C, and must not be copied as is:**
@@ -944,7 +944,7 @@ a proposal.
     now);
   - an IR with a handful of ops;
   - a 1:1 lowering stage and a pass-through peephole stage;
-  - an assembler that writes a REL module, including fixups for data
+  - an emitter that writes a REL module, including fixups for data
     and calls and the RLD/ESD tables.
 - Calls to functions not defined in the file become imports from
   CMDSYS (uppercased), so the test can use `puts` and `puti`.

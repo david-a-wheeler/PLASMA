@@ -1,5 +1,5 @@
 /*
- * Stage 4: the assembler. Encodes machine ops into bytes, keeps the
+ * Stage 4: the emitter. Encodes machine ops into bytes, keeps the
  * data segment, records relocations, and writes the REL module.
  * The module format is described in ../../doc/Bytecodes.md.
  */
@@ -76,7 +76,7 @@ int data_string(const char *s, int len)
     return first;
 }
 
-void asm_put(Mop *m)
+void emit_put(Mop *m)
 {
     int i;
     switch (m->op) {
@@ -290,15 +290,15 @@ void write_module(const char *path)
         m.op = OP_CALL;
         m.fix = FIX_FUNC;
         m.sym = main_fn;
-        asm_put(&m);
+        emit_put(&m);
         if (main_fn->returns_value) {
             m.op = OP_DROP;
-            asm_put(&m);
+            emit_put(&m);
         }
         m.op = OP_CN;
-        asm_put(&m);
+        emit_put(&m);
         m.op = OP_RET;
-        asm_put(&m);
+        emit_put(&m);
     }
 
     for (i = 0; i < nsyms; i++) {
