@@ -25,6 +25,7 @@
 #define MAX_STR      512    /* bytes in one string literal */
 #define MAX_SYMS     256
 #define MAX_PARAMS   16
+#define MAX_LOCALS   128    /* parameters and locals visible at once */
 #define MAX_CODE     16384
 #define MAX_DATA     8192
 #define MAX_FIXUPS   1024
@@ -69,13 +70,14 @@ const char *tok_desc(void);         /* the current token, for messages */
 
 /* ---------- Symbols (parse.c) ---------- */
 
-enum { S_FUNC, S_PARAM };
+enum { S_FUNC, S_LOCAL };
 
 typedef struct Sym Sym;
 struct Sym {
     char name[MAX_NAME + 1];
     int kind;
-    int offset;         /* S_PARAM: frame offset */
+    int offset;         /* S_LOCAL: frame offset */
+    int depth;          /* S_LOCAL: block nesting depth (parameters: 1) */
     /* S_FUNC: */
     int returns_value;  /* 0 for void */
     int nparams;        /* -1 until known from a declaration or first call */
@@ -100,10 +102,17 @@ enum {
     IR_CONST,       /* a = value: push a constant */
     IR_DATAADDR,    /* a = data offset: push the address of data */
     IR_LOCAL,       /* a = frame offset: push a local word */
-    IR_ADD,         /* replace the top two values with their sum */
+    IR_SETLOCAL,    /* a = frame offset: store top value there, keep it */
     IR_CALL,        /* sym, a = argument count: call, push the result */
     IR_DROP,        /* discard the top value */
-    IR_RETURN       /* return the top value from the current function */
+    IR_DUP,         /* duplicate the top value */
+    IR_RETURN,      /* return the top value from the current function */
+    /* binary: ( x y -- x op y ) */
+    IR_ADD, IR_SUB, IR_MUL, IR_DIV, IR_MOD,
+    IR_AND, IR_OR, IR_XOR, IR_SHL, IR_SHR,
+    /* unary: ( x -- op x ) */
+    IR_NEG, IR_COMP,
+    IR_NOT          /* C's !: 1 if x is 0, else 0 (not PLASMA's NOT) */
 };
 
 void ir_put(int op, int a, Sym *s);
@@ -113,9 +122,13 @@ void ir_put(int op, int a, Sym *s);
 /* PLASMA opcodes used so far (see ../../doc/Bytecodes.md). */
 enum {
     OP_CN = 0x00, OP_MINUS1 = 0x20, OP_LA = 0x26, OP_CB = 0x2A,
-    OP_CW = 0x2C, OP_DROP = 0x30, OP_CALL = 0x54, OP_ENTER = 0x58,
-    OP_LEAVE = 0x5A, OP_RET = 0x5C, OP_CFFB = 0x5E, OP_LLW = 0x66,
-    OP_ADD = 0x82,
+    OP_CW = 0x2C, OP_DROP = 0x30, OP_DUP = 0x34, OP_ANDI = 0x3C,
+    OP_CALL = 0x54, OP_ENTER = 0x58, OP_LEAVE = 0x5A, OP_RET = 0x5C,
+    OP_CFFB = 0x5E, OP_LLW = 0x66, OP_DLW = 0x6E, OP_SLW = 0x76,
+    OP_NOT = 0x80, OP_ADD = 0x82, OP_SUB = 0x84, OP_MUL = 0x86, OP_DIV = 0x88,
+    OP_MOD = 0x8A, OP_INCR = 0x8C, OP_DECR = 0x8E, OP_NEG = 0x90,
+    OP_COMP = 0x92, OP_AND = 0x94, OP_IOR = 0x96, OP_XOR = 0x98,
+    OP_SHL = 0x9A, OP_SHR = 0x9C,
     /* Pseudo-ops: markers that travel through stages 2-4 in order with
      * the code, but emit no bytes themselves. */
     OP_FUNC_BEGIN = 0x100,  /* sym: a function starts here */
@@ -136,6 +149,8 @@ typedef struct {
     Sym *sym;       /* FIX_FUNC target */
 } Mop;
 
+void mop_const(Mop *m, int v);         /* lower.c: make m push v */
+int  mop_const_value(Mop *m, int *v);   /* lower.c: does m push a constant? */
 void peep_put(Mop *m);
 void peep_flush(void);
 

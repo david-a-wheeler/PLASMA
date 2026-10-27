@@ -3,20 +3,29 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Milestone 1 language:
+ * Language so far (milestones 1 and 2):
  *   - function definitions and prototypes returning int or void, with
  *     int parameters;
+ *   - int local variables, declared anywhere in a block, with optional
+ *     initializers, and block scope;
  *   - statements: return, expression statements, empty statements and
  *     nested blocks;
  *   - expressions: integer and character constants, string literals,
- *     parameters, function calls, binary +, parentheses, and the pstr()
- *     builtin.
+ *     variables, function calls, parentheses, the pstr() builtin,
+ *     unary - + ~ ! ++ --, postfix ++ --, binary * / % + - << >> & ^ |,
+ *     and = += -= *= /= %= &= |= ^= <<= >>=.
  * A function called but not defined in the file must be one of the
  * CMDSYS functions in cmdsys_funcs[] below; it is imported from CMDSYS.
  *
  * Like PLASMA, a function returns exactly as many values as it is
  * declared to: one for int, none for void. So a void call used as a
  * statement needs no DROP, and a void value can't be used.
+ *
+ * Streaming and assignment: a variable's load is not emitted as soon as
+ * the variable is parsed, because it may turn out to be the target of
+ * an assignment (x = ..., x += ..., x++). Instead the parser returns a
+ * *pending* operand, and emits the load only once it knows the value is
+ * needed (approach.md 4(a), option A).
  */
 #include <string.h>
 #include "ccish.h"
@@ -24,10 +33,13 @@
 Sym syms[MAX_SYMS];         /* functions */
 int nsyms;
 
-static Sym locals[MAX_PARAMS];
+static Sym locals[MAX_LOCALS];  /* parameters and locals in scope */
 static int nlocals;
+static int depth;           /* block depth; parameters are at depth 1 */
+static int frame_next;      /* next free frame offset */
+static int frame_max;       /* frame size needed so far */
 static Sym *cur_fn;
-static int nest;            /* current nesting depth */
+static int nest;            /* current nesting depth, to limit recursion */
 
 static const char *quote(const char *name)
 {
@@ -108,54 +120,148 @@ static int find_cmdsys(const char *name)
     return -1;
 }
 
+/* Innermost visible local with this name, or NULL. */
 static Sym *find_local(const char *name)
 {
     int i;
-    for (i = 0; i < nlocals; i++)
+    for (i = nlocals - 1; i >= 0; i--)
         if (!strcmp(locals[i].name, name))
             return &locals[i];
     return NULL;
 }
 
+/* Declare a local (or parameter) at the current depth and give it a
+ * frame slot. An unnamed prototype parameter has the name "". */
+static Sym *add_local(const char *name)
+{
+    Sym *s = find_local(name);
+    if (name[0] && s && s->depth == depth)
+        error("redeclaration of", quote(name));
+    if (nlocals >= MAX_LOCALS)
+        fatal("too many variables in scope", NULL);
+    if (frame_next + 2 > 255)
+        error("too many local variables in", quote(cur_fn->name));
+    s = &locals[nlocals++];
+    memset(s, 0, sizeof(*s));
+    strcpy(s->name, name);
+    s->kind = S_LOCAL;
+    s->depth = depth;
+    s->offset = frame_next;
+    frame_next += 2;
+    if (frame_next > frame_max)
+        frame_max = frame_next;
+    return s;
+}
+
 /* ---------- Expressions ---------- */
 
-static int parse_expr(int min_prec);
+/* An operand on its way through the expression parser. */
+enum {
+    K_VALUE,        /* its value is on the stack */
+    K_VOID,         /* a void call: nothing on the stack */
+    K_LOCAL         /* a local variable, not loaded yet (off = offset) */
+};
 
-/* Parse an expression that must produce a value. */
-static void parse_value(void)
+typedef struct {
+    int kind;
+    int off;
+} Operand;
+
+/* C precedence levels (higher binds tighter). */
+enum {
+    PREC_COMMA = 1, PREC_ASSIGN, PREC_COND, PREC_OROR, PREC_ANDAND,
+    PREC_OR, PREC_XOR, PREC_AND, PREC_EQUALITY, PREC_RELATIONAL,
+    PREC_SHIFT, PREC_ADD, PREC_MUL
+};
+
+static void parse_expr(int min_prec, Operand *o);
+static void parse_unary(Operand *o);
+
+/* Make sure the operand's value is on the stack. */
+static void rvalue(Operand *o)
 {
-    if (parse_expr(1))
+    if (o->kind == K_VOID)
         error("void value used in an expression", NULL);
+    if (o->kind == K_LOCAL)
+        ir_put(IR_LOCAL, o->off, NULL);
+    o->kind = K_VALUE;
+}
+
+/* Parse an expression that must produce a value, at precedence
+ * min_prec or above. */
+static void parse_value(int min_prec)
+{
+    Operand o;
+    parse_expr(min_prec, &o);
+    rvalue(&o);
 }
 
 /*
- * Binary operator precedence (higher binds tighter), or 0 if tok is not
- * a binary operator. Operators C has but we don't support yet return -1.
+ * Binary operators: precedence and IR op. Returns 0 if tok is not a
+ * binary operator. Sets *supported to 0 for C operators we don't
+ * support yet; they still get their real precedence, so that, say, a
+ * ',' ending a function argument isn't mistaken for an error.
  */
-static int binary_prec(void)
+static int binary_prec(int *ir_op, int *supported)
 {
+    *supported = 1;
     switch (tok) {
-    case '+':
-        return 12;
-    case '-': case '*': case '/': case '%': case T_SHL: case T_SHR:
-    case '<': case '>': case T_LE: case T_GE: case T_EQ: case T_NE:
-    case '&': case '^': case '|': case T_ANDAND: case T_OROR: case '?':
-    case '=': case T_ADDEQ: case T_SUBEQ: case T_MULEQ: case T_DIVEQ:
-    case T_MODEQ: case T_ANDEQ: case T_OREQ: case T_XOREQ: case T_SHLEQ:
-    case T_SHREQ:
-        return -1;
+    case '*':   *ir_op = IR_MUL; return PREC_MUL;
+    case '/':   *ir_op = IR_DIV; return PREC_MUL;
+    case '%':   *ir_op = IR_MOD; return PREC_MUL;
+    case '+':   *ir_op = IR_ADD; return PREC_ADD;
+    case '-':   *ir_op = IR_SUB; return PREC_ADD;
+    case T_SHL: *ir_op = IR_SHL; return PREC_SHIFT;
+    case T_SHR: *ir_op = IR_SHR; return PREC_SHIFT;
+    case '&':   *ir_op = IR_AND; return PREC_AND;
+    case '^':   *ir_op = IR_XOR; return PREC_XOR;
+    case '|':   *ir_op = IR_OR;  return PREC_OR;
+    }
+    *supported = 0;
+    switch (tok) {
+    case '<': case '>': case T_LE: case T_GE: return PREC_RELATIONAL;
+    case T_EQ: case T_NE:                     return PREC_EQUALITY;
+    case T_ANDAND:                            return PREC_ANDAND;
+    case T_OROR:                              return PREC_OROR;
+    case '?':                                 return PREC_COND;
+    case ',':                                 return PREC_COMMA;
     }
     return 0;
 }
 
-/* Returns 1 if the call produces no value. */
-static int parse_call(Sym *fn)
+/* Assignment operators: returns 1 if tok is one. *ir_op is the
+ * arithmetic for a compound assignment, or -1 for plain '='. */
+static int assign_op(int *ir_op)
+{
+    switch (tok) {
+    case '=':     *ir_op = -1;     return 1;
+    case T_ADDEQ: *ir_op = IR_ADD; return 1;
+    case T_SUBEQ: *ir_op = IR_SUB; return 1;
+    case T_MULEQ: *ir_op = IR_MUL; return 1;
+    case T_DIVEQ: *ir_op = IR_DIV; return 1;
+    case T_MODEQ: *ir_op = IR_MOD; return 1;
+    case T_ANDEQ: *ir_op = IR_AND; return 1;
+    case T_OREQ:  *ir_op = IR_OR;  return 1;
+    case T_XOREQ: *ir_op = IR_XOR; return 1;
+    case T_SHLEQ: *ir_op = IR_SHL; return 1;
+    case T_SHREQ: *ir_op = IR_SHR; return 1;
+    }
+    return 0;
+}
+
+static void need_variable(Operand *o, const char *what)
+{
+    if (o->kind != K_LOCAL)
+        error("lvalue required as", what);
+}
+
+static void parse_call(Sym *fn, Operand *o)
 {
     int nargs = 0;
     next();                         /* '(' */
     if (tok != ')') {
         for (;;) {
-            parse_value();
+            parse_value(PREC_ASSIGN);
             nargs++;
             if (tok != ',')
                 break;
@@ -170,7 +276,7 @@ static int parse_call(Sym *fn)
     }
     fn->called = 1;
     ir_put(IR_CALL, nargs, fn);
-    return !fn->returns_value;
+    o->kind = fn->returns_value ? K_VALUE : K_VOID;
 }
 
 /* pstr("literal"): the address of the literal's PLASMA (length-prefixed)
@@ -189,39 +295,39 @@ static void parse_pstr(void)
     ir_put(IR_DATAADDR, off - 1, NULL);
 }
 
-/* Returns 1 if the expression produces no value (a void call). */
-static int parse_primary(void)
+static void parse_primary(Operand *o)
 {
     char name[MAX_NAME + 1];
     Sym *s;
-    int is_void, c;
+    int c;
 
+    o->kind = K_VALUE;
     switch (tok) {
     case T_NUM:
         ir_put(IR_CONST, tok_val, NULL);
         next();
-        return 0;
+        return;
     case T_STR:
         ir_put(IR_DATAADDR, data_string(tok_text, tok_len), NULL);
         next();
-        return 0;
+        return;
     case '(':
+        /* The result may still be a pending variable: (x) = 1 is valid. */
         enter_nest();
         next();
-        is_void = parse_expr(1);
+        parse_expr(PREC_COMMA, o);
         expect(')', "expected ')', not");
         nest--;
-        return is_void;
+        return;
     case T_ID:
         strcpy(name, tok_text);
         next();
         if (tok == '(') {
             if (!strcmp(name, "pstr")) {
                 parse_pstr();
-                return 0;
+                return;
             }
-            s = find_local(name);
-            if (s)
+            if (find_local(name))
                 error("called object is not a function:", quote(name));
             s = find_func(name);
             if (!s) {
@@ -236,77 +342,177 @@ static int parse_primary(void)
                 /* Otherwise an implicit declaration: returns int, and
                  * this call fixes the parameter count. */
             }
-            return parse_call(s);
+            parse_call(s, o);
+            return;
         }
         s = find_local(name);
         if (s) {
-            ir_put(IR_LOCAL, s->offset, NULL);
-            return 0;
+            o->kind = K_LOCAL;      /* load it later, if needed */
+            o->off = s->offset;
+            return;
         }
         if (find_func(name))
             error("function pointers are not supported yet:", quote(name));
         error("undeclared identifier", quote(name));
-        return 0;
+        return;
     case T_KEYWORD:
         not_yet();
-        return 0;
+        return;
     }
     error("expected an expression, not", tok_desc());
-    return 0;
 }
 
-static int parse_unary(void)
+/* ++x / --x: x = x + 1, and the value is the new x. */
+static void pre_incdec(Operand *o, int ir_op)
 {
-    int is_void;
-    switch (tok) {
-    case '-': case '+': case '!': case '~': case '*': case '&':
+    need_variable(o, "operand of ++ or --");
+    ir_put(IR_LOCAL, o->off, NULL);
+    ir_put(IR_CONST, 1, NULL);
+    ir_put(ir_op, 0, NULL);
+    ir_put(IR_SETLOCAL, o->off, NULL);
+    o->kind = K_VALUE;
+}
+
+/* x++ / x--: the value is the old x. Keep a copy of it below the
+ * update; when the value is unused, the peephole stage removes the
+ * copy. */
+static void post_incdec(Operand *o, int ir_op)
+{
+    need_variable(o, "operand of ++ or --");
+    ir_put(IR_LOCAL, o->off, NULL);
+    ir_put(IR_DUP, 0, NULL);
+    ir_put(IR_CONST, 1, NULL);
+    ir_put(ir_op, 0, NULL);
+    ir_put(IR_SETLOCAL, o->off, NULL);
+    ir_put(IR_DROP, 0, NULL);
+    o->kind = K_VALUE;
+}
+
+static void parse_unary(Operand *o)
+{
+    int t = tok;
+    switch (t) {
+    case '-': case '+': case '~': case '!':
+        next();
+        parse_unary(o);
+        rvalue(o);
+        if (t == '-')
+            ir_put(IR_NEG, 0, NULL);
+        else if (t == '~')
+            ir_put(IR_COMP, 0, NULL);
+        else if (t == '!')
+            ir_put(IR_NOT, 0, NULL);
+        return;
     case T_INC: case T_DEC:
+        next();
+        parse_unary(o);
+        pre_incdec(o, t == T_INC ? IR_ADD : IR_SUB);
+        return;
+    case '*': case '&':
         not_yet();
     }
-    is_void = parse_primary();
-    switch (tok) {
-    case '[': case '.': case T_ARROW: case T_INC: case T_DEC:
-        not_yet();
+    parse_primary(o);
+    for (;;) {
+        switch (tok) {
+        case T_INC:
+        case T_DEC:
+            t = tok;
+            next();
+            post_incdec(o, t == T_INC ? IR_ADD : IR_SUB);
+            continue;
+        case '[': case '.': case T_ARROW: case '(':
+            not_yet();
+        }
+        return;
     }
-    return is_void;
 }
 
-/* Precedence climbing: parse operands and binary operators whose
- * precedence is at least min_prec. All supported operators are
- * left-associative. Returns 1 if the expression produces no value. */
-static int parse_expr(int min_prec)
+/*
+ * Precedence climbing: parse an expression whose operators all have
+ * precedence min_prec or higher. The result is left in *o, possibly
+ * still pending (a bare variable).
+ */
+static void parse_expr(int min_prec, Operand *o)
 {
-    int is_void;
+    int ir_op, supported, prec;
+
     enter_nest();
-    is_void = parse_unary();
+    parse_unary(o);
+
+    if (assign_op(&ir_op)) {
+        /* Assignment is right-associative and binds loosest of all but
+         * ','; it is only possible directly after a unary expression. */
+        if (min_prec > PREC_ASSIGN)
+            error("lvalue required as", "left operand of assignment");
+        need_variable(o, "left operand of assignment");
+        next();
+        if (ir_op >= 0)
+            ir_put(IR_LOCAL, o->off, NULL);
+        parse_value(PREC_ASSIGN);
+        if (ir_op >= 0)
+            ir_put(ir_op, 0, NULL);
+        ir_put(IR_SETLOCAL, o->off, NULL);
+        o->kind = K_VALUE;
+    }
+
     for (;;) {
-        int prec = binary_prec();
-        int op = tok;
-        if (prec < 0)
-            not_yet();
+        Operand r;
+        if (assign_op(&ir_op))
+            error("lvalue required as", "left operand of assignment");
+        prec = binary_prec(&ir_op, &supported);
         if (prec == 0 || prec < min_prec)
             break;
-        if (is_void)
-            error("void value used in an expression", NULL);
+        if (!supported)
+            not_yet();
+        rvalue(o);
         next();
-        if (parse_expr(prec + 1))
-            error("void value used in an expression", NULL);
-        if (op == '+')
-            ir_put(IR_ADD, 0, NULL);
+        parse_expr(prec + 1, &r);   /* all binary ops are left-assoc */
+        rvalue(&r);
+        ir_put(ir_op, 0, NULL);
     }
     nest--;
-    return is_void;
 }
 
 /* ---------- Statements ---------- */
 
-static void parse_block(void);
+static void parse_block(int new_scope);
+
+/* int a, b = 1, c; */
+static void parse_declaration(void)
+{
+    next();                         /* "int" */
+    for (;;) {
+        Sym *s;
+        if (tok == '*')
+            error("pointers are not supported yet", NULL);
+        if (tok != T_ID)
+            error("expected a variable name, not", tok_desc());
+        /* In C, the name is in scope in its own initializer. */
+        s = add_local(tok_text);
+        next();
+        if (tok == '[')
+            error("arrays are not supported yet", NULL);
+        if (tok == '(')
+            error("local function declarations are not supported", NULL);
+        if (tok == '=') {
+            next();
+            parse_value(PREC_ASSIGN);
+            ir_put(IR_SETLOCAL, s->offset, NULL);
+            ir_put(IR_DROP, 0, NULL);
+        }
+        if (tok != ',')
+            break;
+        next();
+    }
+    expect(';', "expected ';' after declaration, not");
+}
 
 static void parse_statement(void)
 {
+    Operand o;
     switch (tok) {
     case '{':
-        parse_block();
+        parse_block(1);
         return;
     case ';':
         next();
@@ -319,27 +525,36 @@ static void parse_statement(void)
         } else {
             if (!cur_fn->returns_value)
                 error("void function returns a value:", quote(cur_fn->name));
-            parse_value();
+            parse_value(PREC_COMMA);
         }
         expect(';', "expected ';' after return value, not");
         ir_put(IR_RETURN, 0, NULL);
         return;
     case T_INT:
+        parse_declaration();
+        return;
     case T_VOID:
-        error("local variables are not supported yet", NULL);
+        error("a variable can't have type void", NULL);
         return;
     case T_KEYWORD:
         not_yet();
         return;
     }
-    if (!parse_expr(1))
+    parse_expr(PREC_COMMA, &o);
+    /* A bare variable ("x;") has no effect, so nothing was emitted. */
+    if (o.kind == K_VALUE)
         ir_put(IR_DROP, 0, NULL);
     expect(';', "expected ';' after expression, not");
 }
 
-static void parse_block(void)
+/* A { } block. new_scope is 0 for a function body, whose outermost
+ * block shares the parameters' scope, as in C. */
+static void parse_block(int new_scope)
 {
+    int saved_nlocals = nlocals, saved_next = frame_next;
     enter_nest();
+    if (new_scope)
+        depth++;
     next();                         /* '{' */
     while (tok != '}') {
         if (tok == T_EOF)
@@ -347,6 +562,13 @@ static void parse_block(void)
         parse_statement();
     }
     next();
+    if (new_scope) {
+        /* The block's variables go out of scope, and their frame slots
+         * can be reused by later blocks. */
+        depth--;
+        nlocals = saved_nlocals;
+        frame_next = saved_next;
+    }
     nest--;
 }
 
@@ -354,11 +576,13 @@ static void parse_block(void)
 
 /* Parse a parameter list starting at '('. Returns the parameter count,
  * or -1 for "()" (unspecified in a prototype, none in a definition).
- * Names go into locals[]. */
+ * Names go into locals[]; unnamed parameters get an empty name. */
 static int parse_params(void)
 {
     int n = 0;
     nlocals = 0;
+    frame_next = frame_max = 0;
+    depth = 1;
     next();                         /* '(' */
     if (tok == ')') {
         next();
@@ -382,17 +606,15 @@ static int parse_params(void)
             error("pointer parameters are not supported yet", NULL);
         if (n >= MAX_PARAMS)
             fatal("too many parameters", NULL);
-        locals[n].name[0] = 0;
+        /* ENTER puts parameter n at offset 2n. Parameters are the
+         * first variables allocated, so add_local puts them there. */
         if (tok == T_ID) {
-            if (find_local(tok_text))
-                error("duplicate parameter", quote(tok_text));
-            strcpy(locals[n].name, tok_text);
+            add_local(tok_text);
             next();
+        } else {
+            add_local("");
         }
-        locals[n].kind = S_PARAM;
-        locals[n].offset = 2 * n;   /* where ENTER puts parameter n */
         n++;
-        nlocals = n;
         if (tok != ',')
             break;
         next();
@@ -429,10 +651,11 @@ static void parse_toplevel(void)
     if (tok != '(')
         error("global variables are not supported yet", NULL);
 
+    cur_fn = fn;                    /* for messages about its variables */
     nparams = parse_params();
     if (tok == ';') {
-        /* A prototype. "()" leaves the parameter count unspecified. */
-        /* A call before any declaration assumed int, and its code
+        /* A prototype. "()" leaves the parameter count unspecified.
+         * A call before any declaration assumed int, and its code
          * already depends on that. */
         if ((fn->declared || fn->called)
             && fn->returns_value != returns_value)
@@ -445,6 +668,7 @@ static void parse_toplevel(void)
         }
         fn->declared = 1;
         next();
+        cur_fn = NULL;
         return;
     }
     if (nparams < 0)
@@ -469,14 +693,15 @@ static void parse_toplevel(void)
     fn->declared = 1;
     fn->defined = 1;
 
-    cur_fn = fn;
     ir_put(IR_FUNC, nparams, fn);
-    parse_block();
-    /* Falling off the end of an int function returns 0. */
+    parse_block(0);
+    /* Falling off the end of an int function returns 0. If the last
+     * statement was a return, the peephole stage drops this as dead
+     * code. */
     if (returns_value)
         ir_put(IR_CONST, 0, NULL);
     ir_put(IR_RETURN, 0, NULL);
-    ir_put(IR_ENDFUNC, 2 * nparams, fn);
+    ir_put(IR_ENDFUNC, frame_max, fn);
     cur_fn = NULL;
     nlocals = 0;
 }

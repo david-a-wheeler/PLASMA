@@ -425,6 +425,12 @@ Answer: precedence climbing (option A) is fine.
 
 Answer: Agree, A.
 
+  Decided in discussion: **a variadic function must be declared with a
+  prototype ending in `...` before it is called**, for example in a
+  `.h` file. C89 already requires this (calling a variadic function
+  without a prototype is undefined behavior), and it's what tells the
+  caller to build the argument block.
+
   (Varargs is not in the first milestone, so early test programs and
   the runtime use fixed-argument output functions instead of
   `printf`.)
@@ -460,8 +466,9 @@ Answer: Agree, A.
     4(b).
   - `>>`: shift, then mask.
   - `/` and `%`: a runtime routine.
-- Avoid `NOT`, `DIVMOD` and `NATV` because of the differences between
-  the C and 6502 VMs (see `../doc/Bytecodes.md`).
+- Avoid `DIVMOD` and `NATV`, and never use a `NOT`'s raw value, because
+  of the differences between the C and 6502 VMs (see
+  `../doc/Bytecodes.md`). `NOT ANDI 1` is safe (issue 17).
 
 ### 8. Strings and calling PLASMA routines
 
@@ -770,8 +777,14 @@ into one of our pipeline stages:
 **PLASMA rules that are *wrong* for C, and must not be copied as is:**
 
 1. **`CN 0 ISEQ` → `NOT` (P15).** The C VM's `NOT` returns 1, not
-   `$FFFF` (see `../doc/Bytecodes.md`). It's fine when fused into a
-   branch (P13: `NOT BRFLS` → `BRTRU`), but never leave a `NOT` behind.
+   `$FFFF` (see `../doc/Bytecodes.md`). A `NOT` is still safe in two
+   cases:
+   - fused into a branch (P13: `NOT BRFLS` → `BRTRU`);
+   - masked to C's 0/1 with `ANDI 1`, which gives the same result on
+     every VM.
+
+   ccish's `!` uses `NOT ANDI 1`, as suggested in discussion. Never use
+   a `NOT`'s raw value.
 2. **`/2^k` → `SHR k` (P5).** C division truncates toward zero, but an
    arithmetic shift rounds toward minus infinity: `-3/2` is -1 in C,
    while `-3 >> 1` is -2. It is valid only for `unsigned` operands
@@ -916,6 +929,8 @@ issue. In summary:
 
 ## Milestones
 
+**M2 is done** (local variables, assignment, the integer operators,
+`++`/`--`, dead-code removal and the first peephole patterns).
 **M1 is done.** See `README.md`. Settled while building it:
 - `pstr()` is the builtin used to pass literals to CMDSYS.
 - `void` functions return nothing (issue 6).
@@ -967,8 +982,30 @@ a proposal.
 1. **M2:** local variables, assignment, and the remaining integer
    operators: `- * / %`, the bitwise operators, shifts, and the unary
    operators.
-2. **M3:** comparisons, `if`/`else`, `while`, `do`, `for`, `break`,
-   `continue`, and `&& || ! ?:`.
+2. **M3:** starts with **constant folding in the parser**, then
+   comparisons, `if`/`else`, `while`, `do`, `for`, `break`, `continue`,
+   and `&& || ?:`.
+
+   Constant folding (decided in discussion) uses *pending constants*,
+   which extend M2's pending variables:
+   - A constant isn't emitted when parsed; the parser keeps its value.
+   - Unary `- ~ !` on a pending constant, or a binary operator with
+     two pending constants, computes the result at compile time.
+   - `IR_CONST` is emitted only when the value is needed on the stack.
+
+   This needs no lookahead and no tree, and it handles `-5`, `2*3`,
+   `-(1<<4)`, `'a'+1` and so on. (The lexer can't do it: in C, `-5` is
+   unary minus applied to 5, and only the parser can tell that from
+   the binary minus in `a -5`.)
+
+   Folding must follow C's rules for a 16-bit `int`: wraparound, `/`
+   truncating toward zero, `%` taking the sign of the dividend, and
+   comparisons giving 1 or 0 (not PLASMA's `$FFFF`). Division by a
+   constant zero is a compile error. It also provides the constant
+   expressions that M4 (array sizes), M5 (global initializers) and M7
+   (`case` labels) need. The peephole rule that folds a constant
+   followed by `NEG`/`COMP` stays, as a backstop for constants that
+   only meet after lowering.
 3. **M4:** `char`, pointers, arrays, `&` and `*`, and globals.
    Stores through pointers, using spills (4(e)).
 4. **M5:** simple initializers, `sizeof`, `static` and `const`.

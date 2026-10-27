@@ -5,8 +5,8 @@ sends to the lowering stage (stage 2, `src/lower.c`) by calling
 `ir_put(op, a, sym)`. See [approach.md](approach.md), section 4A, for
 the pipeline as a whole. `ccish -i` prints the stream.
 
-This document describes the ops that exist now (milestone 1). It grows
-as milestones add ops.
+This document describes the ops that exist now (milestones 1 and 2).
+It grows as milestones add ops.
 
 ## Model
 
@@ -44,7 +44,7 @@ reasons:
    6502 VMs. Pointer arithmetic scales by element size. C-specific
    meanings stay in the IR, so the parser never has to work around VM
    quirks. Lowering maps them safely (approach.md, issues 7 and 17).
-   M1 has no such ops yet; they arrive with M2 and M3.
+   `IR_NOT` is the first such op.
 5. **Reordering.** Later IR will include pseudo-ops (`MARK`, `SWAP2`,
    …) that tell lowering to reorder code. PLASMA has no SWAP, so this
    is how stores through pointers get their operands in the right order
@@ -115,8 +115,9 @@ string, or the length byte for `pstr()`.
 
 ### `IR_LOCAL` *a* = frame offset
 
-Push the word at frame offset *a*. In M1 that's a parameter: the
-first parameter is at 0, the next at 2, and so on.
+Push the word at frame offset *a*: a parameter or a local variable.
+Parameters come first (the first at 0, the next at 2, and so on), then
+locals. Sibling blocks reuse the same frame space.
 
 - **Stack:** `( -- value )`.
 - **Now:** `LLW a`.
@@ -128,19 +129,95 @@ first parameter is at 0, the next at 2, and so on.
   - `DLW` after a store to the same local;
   - `LLB n+1` for `(x >> 8) & 0xFF` (17, P10–P12).
 
-### `IR_ADD`
+### `IR_SETLOCAL` *a* = frame offset
 
-Add the top two values.
+Store the top value into the local at frame offset *a*, and **keep it**
+on the stack. This is C's assignment, whose value can be used, as in
+`a = b = 0` or `f(x = 1)`.
 
-- **Stack:** `( x y -- x+y )`.
-- **Now:** `ADD`.
-- **Why it differs:** not yet. Starting in M4 it will carry operand
-  types (reason 4). Then `pointer + int` scales the integer by the
-  element size (`IDXW` for word elements, a multiply for structs). If
-  the pointer is the right operand, the left one needs scaling, using a
-  spill or the reordering pseudo-ops.
-- **Later:** `ADDI`, `INCR`, `ADDLW`/`ADDAW`, `IDXW`, and constant
-  folding (17, P2, P3, P10).
+- **Stack:** `( x -- x )`.
+- **Now:** `DLW a`. When the value isn't used, the parser follows it
+  with `IR_DROP`, and the peephole stage turns `DLW a DROP` into
+  `SLW a`. So the parser never needs to know whether an assignment's
+  value will be used.
+- **Why it differs from `SLW`/`DLW`:** it always keeps the value, which
+  matches C's semantics. The choice of encoding is left to later stages
+  (reason 1).
+- **Later:** `SLB`/`DLB` for `char` locals. `SLW n LLW n` (store, then
+  reload) already becomes `DLW n` in the peephole stage.
+
+**How assignment is parsed:** a variable isn't loaded as soon as it's
+parsed, because it may turn out to be the target of `=`, `+=` or
+`++` (approach.md 4(a), option A). The parser keeps it pending and
+emits `IR_LOCAL` only when the value is needed. For example:
+- `x = e` is `e SETLOCAL x`;
+- `x += e` is `LOCAL x e ADD SETLOCAL x`;
+- `++x` is `LOCAL x CONST 1 ADD SETLOCAL x`.
+
+### `IR_DUP`
+
+Duplicate the top value.
+
+- **Stack:** `( x -- x x )`.
+- **Now:** `DUP`.
+- **Why it differs:** it doesn't.
+- **Used for:** postfix `x++`, which must yield the old value:
+  `LOCAL x DUP CONST 1 ADD SETLOCAL x DROP` leaves the old value. When
+  that value is unused, the peephole stage removes the copy, so the
+  statement `x++;` is just `LLW x INCR SLW x`.
+
+### Binary arithmetic: `IR_ADD`, `IR_SUB`, `IR_MUL`, `IR_DIV`, `IR_MOD`, `IR_AND`, `IR_OR`, `IR_XOR`, `IR_SHL`, `IR_SHR`
+
+Replace the top two values with `x op y`. All are 16-bit, signed where
+that matters.
+
+- **Stack:** `( x y -- x op y )`.
+- **Now:** one PLASMA op each: `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, `AND`,
+  `IOR`, `XOR`, `SHL`, `SHR`. Their VM semantics match C's for `int`:
+  - `DIV` truncates toward zero;
+  - `MOD` takes the sign of the dividend;
+  - `SHR` is arithmetic, which is what gcc does for signed `>>`.
+- **Why they differ:** not yet. They will carry operand types (reason 4)
+  starting in M4. Then:
+  - `pointer + int` scales the integer by the element size (`IDXW` for
+    word elements, a multiply for structs). If the pointer is the right
+    operand, the left one needs scaling, using a spill or the
+    reordering pseudo-ops.
+  - `unsigned` operands (M11) need different `/`, `%`, `>>` and
+    comparisons.
+- **Now in the peephole stage:** `CN 1 ADD` → `INCR`, `CN 1 SUB` →
+  `DECR`.
+- **Later:**
+  - `ADDI`/`SUBI`/`ANDI`/`ORI`;
+  - fused forms (`ADDLW`, `IDXW`, …);
+  - strength reduction and constant folding;
+  - `(x >> 8) & 0xFF` → a high-byte load.
+
+  These are 17, P1–P5, P10 and P11. Division by zero is not checked:
+  the 6502 VMs give garbage, and the C VM crashes.
+
+### Unary arithmetic: `IR_NEG`, `IR_COMP`
+
+Negate, or complement the bits of, the top value.
+
+- **Stack:** `( x -- -x )` and `( x -- ~x )`.
+- **Now:** `NEG` and `COMP`. The peephole stage folds them into a
+  preceding constant, so `-5` is a single `CFFB 251`.
+- **Why they differ:** they don't.
+
+### `IR_NOT`
+
+C's logical not: 1 if the top value is 0, otherwise 0.
+
+- **Stack:** `( x -- !x )`.
+- **Now:** `NOT` then `ANDI 1`. PLASMA's `NOT` gives `$FFFF` for true on
+  the 6502 VMs but 1 on the C VM. Masking with 1 gives C's 1 on every
+  VM, in two ops.
+- **Why it differs from `NOT`:** C's result is 1, not `$FFFF`, and the
+  VMs disagree (reason 4).
+- **Later:** when the result only feeds a branch (M3), no mask is
+  needed. `NOT BRFLS` becomes `BRTRU`, which is safe because the VMs
+  agree on which values are zero.
 
 ### `IR_CALL` *sym*, *a* = argument count
 
@@ -165,11 +242,14 @@ to right.
 
 Discard the top value. The parser emits it after an expression
 statement whose value is unused. It never follows a `void` call,
-because that leaves nothing on the stack.
+because that leaves nothing on the stack. A statement that is just a
+variable (`x;`) emits nothing at all.
 
 - **Stack:** `( x -- )`.
 - **Now:** `DROP`.
 - **Why it differs:** it doesn't.
+- **Now in the peephole stage:** `DLW n DROP` → `SLW n`, and
+  `DUP op SLW n DROP` → `op SLW n`.
 - **Later:** `DROP DROP` → `DROP2`. And when the dropped value has no
   side effects, the peephole stage can remove both the value's code
   and the `DROP`.
@@ -209,10 +289,8 @@ They produce no bytes, and they are barriers for the peephole stage.
 ## Adding ops
 
 New IR ops arrive with the milestones that need them. Expected next:
-- labels and branches (M3);
-- typed loads and stores, and addresses of variables (M2 and M4);
-- the remaining arithmetic and comparison ops, with C semantics (M2
-  and M3);
+- labels, branches and comparisons with C semantics (M3);
+- typed loads and stores, and addresses of variables (M4);
 - the reordering pseudo-ops (M10).
 
 Each new op gets an entry here with the same headings: stack effect,

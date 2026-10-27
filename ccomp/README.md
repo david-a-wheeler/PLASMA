@@ -1,7 +1,7 @@
 # ccish: a C-ish compiler for the PLASMA VM
 
-`ccish` compiles a growing subset of C into PLASMA REL modules. It is
-at **milestone 1**: a tiny compiler that works end to end. The design
+`ccish` compiles a growing subset of C into PLASMA REL modules. It is at
+**milestone 2**: a small compiler that works end to end. The design
 and the plan for growing it are in [approach.md](approach.md). The
 target format is described in [../doc/Bytecodes.md](../doc/Bytecodes.md).
 
@@ -35,19 +35,31 @@ $ ./ccish hello.c && ../src/plvm hello
 Hello5
 ```
 
-## The milestone 1 language
+## The language so far
 
 * Function definitions and prototypes returning `int` or `void`, with
   `int` parameters. `main` takes no parameters. Its return value is
   ignored.
+* `int` local variables, declared anywhere in a block, with optional
+  initializers (`int a, b = 1;`). They have block scope, and an inner
+  block may shadow an outer name.
 * Statements: `return`, expression statements, empty statements and
   nested blocks.
-* Expressions: integer and character constants, string literals,
-  parameters, function calls, binary `+` and parentheses.
+* Expressions, with C's precedence and associativity:
+  - integer and character constants, string literals, variables,
+    function calls and parentheses;
+  - unary `- + ~ !`, and prefix and postfix `++ --`;
+  - binary `* / % + - << >> & ^ |`;
+  - assignment `= += -= *= /= %= &= |= ^= <<= >>=`.
+
+  `int` is 16 bits, and arithmetic wraps. `/` truncates toward zero, and
+  `>>` of a negative value is arithmetic. Division by zero is not
+  checked.
 * Digraphs `<% %> <: :>`, `/* */` and `//` comments, and LF, CR or CRLF
   line endings.
 
-Anything else gives a "not supported yet" error.
+Anything else, such as comparisons, `if` or loops (milestone 3), gives
+a "not supported yet" error.
 
 ### Strings and `pstr()`
 
@@ -79,9 +91,9 @@ returns exactly one.
 | `src/lex.c` | Lexer |
 | `src/parse.c` | Stage 1: parser, producing IR ops |
 | `src/lower.c` | Stage 2: IR ops to PLASMA machine ops (see [IR.md](IR.md)) |
-| `src/peep.c` | Stage 3: peephole optimizer (no patterns yet) |
+| `src/peep.c` | Stage 3: peephole optimizer |
 | `src/emit.c` | Stage 4: encoding, module writer, listing |
-| `tests/run/` | Programs, each with its expected output (`.expected`) |
+| `tests/run/` | Programs, each with its expected output (`.expected`); comment lines can also check the generated code |
 | `tests/errors/` | Programs that must fail; the first line gives the expected message |
 
 ## Known limits
@@ -89,7 +101,9 @@ returns exactly one.
 * Output has only been tested on the C VM (`plvm`), not yet on a 6502
   VM.
 * Compilation stops at the first error.
-* No optimization yet. For example, an `int` function always ends with
-  a `CN 0` / `LEAVE`, even right after a `return`.
+* Only a few peephole optimizations so far (see `src/peep.c`): removal
+  of dead code after a return, plain stores for assignments whose
+  value is unused, folded negative constants, `INCR`/`DECR`, and `DLW`
+  for a store followed by a load of the same variable.
 * Nothing checks evaluation stack depth. Deeply nested calls can
   overflow the VM's 32-entry stack.
