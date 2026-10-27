@@ -36,6 +36,7 @@ static int simple_op(int op)
     return -1;
 }
 
+/* Print one IR op, for -i. */
 static void dump_ir(int op, int a, Sym *s)
 {
     printf("IR %-8s", ir_names[op]);
@@ -89,6 +90,7 @@ int mop_const_value(Mop *m, int *v)
     return 0;
 }
 
+/* Pass an operand-free machine op to the peephole stage. */
 static void put_simple(int op)
 {
     Mop m;
@@ -97,6 +99,8 @@ static void put_simple(int op)
     peep_put(&m);
 }
 
+/* Stage 2's entry: lower one IR op to machine ops and pass them to the
+ * peephole stage. */
 void ir_put(int op, int a, Sym *s)
 {
     Mop m;

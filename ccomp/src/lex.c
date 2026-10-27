@@ -33,6 +33,7 @@ static void getch(void)
     }
 }
 
+/* Start reading source from f, and read the first token. */
 void lex_open(Bfile *f)
 {
     in = f;
@@ -43,15 +44,20 @@ void lex_open(Bfile *f)
     next();
 }
 
+/* Is c a decimal digit? */
 static int is_digit(int c) { return c >= '0' && c <= '9'; }
+
+/* Can c start an identifier (a letter or '_')? */
 static int is_alpha(int c)
 {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
+/* Is c a hexadecimal digit? */
 static int is_hex(int c)
 {
     return is_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
+/* The value (0-15) of hexadecimal digit c. */
 static int hex_val(int c)
 {
     if (is_digit(c))
@@ -146,6 +152,8 @@ static int literal_char(void)
     return 0;
 }
 
+/* Read a decimal, octal (leading 0) or hex (0x) integer constant into
+ * tok_val. It must fit in 16 bits. */
 static void lex_number(void)
 {
     long v = 0;
@@ -181,6 +189,8 @@ static void lex_number(void)
     tok_val = (int)v;
 }
 
+/* Read a string literal, and any that follow it, into tok_text and
+ * tok_len, with escapes decoded. */
 static void lex_string(void)
 {
     tok_len = 0;
@@ -211,6 +221,8 @@ static const char *const keywords[] = {
     NULL
 };
 
+/* Read an identifier or keyword into tok_text, and set tok to say
+ * which it is. */
 static void lex_word(void)
 {
     int n = 0, i;
@@ -238,6 +250,8 @@ static int accept(int c)
     return 0;
 }
 
+/* Read the next token into tok (and tok_val, tok_text, tok_len),
+ * skipping blanks and comments. */
 void next(void)
 {
     int c;
@@ -333,6 +347,8 @@ void next(void)
     error("unexpected character in source", NULL);
 }
 
+/* Describe the current token for an error message, e.g. "'while'" or
+ * "a number". The result is in a static buffer. */
 const char *tok_desc(void)
 {
     static char buf[MAX_NAME + 16];

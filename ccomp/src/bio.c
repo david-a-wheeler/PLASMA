@@ -17,6 +17,8 @@ int bopen(Bfile *b, const char *path, int writing)
     return b->f != NULL;
 }
 
+/* Refill the read buffer with the file's next block (len = 0 at the
+ * end of the file). */
 static void fill(Bfile *b)
 {
     b->len = (int)fread(b->buf, 1, BLOCK, b->f);
@@ -51,6 +53,8 @@ int bgetw(Bfile *b)
     return lo | (hi << 8);
 }
 
+/* Write out the buffered bytes, remembering any write error for
+ * bclose to report. */
 static void flush(Bfile *b)
 {
     if (b->pos > 0 && fwrite(b->buf, 1, b->pos, b->f) != (size_t)b->pos)
@@ -58,6 +62,7 @@ static void flush(Bfile *b)
     b->pos = 0;
 }
 
+/* Write one byte. */
 void bputc(Bfile *b, int c)
 {
     if (b->pos >= BLOCK)
@@ -65,12 +70,14 @@ void bputc(Bfile *b, int c)
     b->buf[b->pos++] = (unsigned char)c;
 }
 
+/* Write a 16-bit word, low byte first. */
 void bputw(Bfile *b, int v)
 {
     bputc(b, v & 0xFF);
     bputc(b, (v >> 8) & 0xFF);
 }
 
+/* Write n bytes starting at p. */
 void bwrite(Bfile *b, const unsigned char *p, int n)
 {
     while (n-- > 0)

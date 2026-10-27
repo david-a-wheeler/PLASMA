@@ -47,6 +47,8 @@ static int nfuncs;
 
 static unsigned char fbuf[MAX_FUNC_CODE];
 
+/* Stop with an error: stream file what is cut short or disagrees with
+ * the others. */
 static void damaged(const char *what)
 {
     fatal("compiler stream file is damaged:", what);
@@ -54,6 +56,8 @@ static void damaged(const char *what)
 
 /* ---------- Step 1: the symbol summary ---------- */
 
+/* Step 1: read the symbol summary into lsyms[], with the data and
+ * code sizes. */
 static void read_summary(const char *base)
 {
     Bfile in;
@@ -228,6 +232,8 @@ static void out_dci(const char *name)
     }
 }
 
+/* Keep a relocation, at a code-segment offset, for the RLD and the
+ * listing. */
 static void add_reloc(int kind, int at, int target)
 {
     if (nrelocs >= MAX_RELOCS)
@@ -310,11 +316,15 @@ static int init_code(int main_idx, int init_off, int subseg)
     return n;
 }
 
+/* Bytes in the init function that init_code builds, or 0 if there is
+ * no main. */
 static int init_size(int main_idx)
 {
     return main_idx < 0 ? 0 : 6 - !(lsyms[main_idx].flags & SYM_RETURNS);
 }
 
+/* Run the final pass: read the stream files for output name base, and
+ * write the REL module to path. */
 void link_module(const char *base, const char *path)
 {
     static const char dep[] = "CMDSYS";

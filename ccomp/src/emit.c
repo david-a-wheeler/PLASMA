@@ -39,6 +39,7 @@ static int nrelocs;
 static int frame_at[MAX_RETURNS];
 static int nframe;
 
+/* Create the data and code stream files for output name base. */
 void emit_open(const char *base)
 {
     base_name = base;
@@ -48,6 +49,7 @@ void emit_open(const char *base)
         fatal("cannot create", stream_name(base, SUFFIX_CODE));
 }
 
+/* Append one byte to the function buffer. */
 static void code_byte(int v)
 {
     if (nfbuf >= MAX_FUNC_CODE)
@@ -55,6 +57,7 @@ static void code_byte(int v)
     fbuf[nfbuf++] = (unsigned char)v;
 }
 
+/* Append a 16-bit word, low byte first, to the function buffer. */
 static void code_word(int v)
 {
     code_byte(v & 0xFF);
@@ -72,6 +75,8 @@ static void add_reloc(int kind, int target)
     nrelocs++;
 }
 
+/* Append an ENTER or LEAVE frame-size byte. If it's FRAME_LATER, note
+ * where it is, so the function's end can fill it in. */
 static void frame_byte(int v)
 {
     if (v == FRAME_LATER) {
@@ -83,6 +88,8 @@ static void frame_byte(int v)
     code_byte(v);
 }
 
+/* Write a string literal of len bytes to the data stream. Returns the
+ * data offset of its first character. */
 int data_string(const char *s, int len)
 {
     int first, i;
@@ -126,6 +133,8 @@ static void end_function(int frame_size)
     fn = NULL;
 }
 
+/* Stage 4's entry: encode one machine op into the function buffer. The
+ * pseudo-ops start a function, or end it and write it out. */
 void emit_put(Mop *m)
 {
     switch (m->op) {

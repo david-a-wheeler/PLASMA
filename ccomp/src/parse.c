@@ -51,6 +51,8 @@ static int frame_max;       /* frame size needed so far */
 static Sym *cur_fn;
 static int nest;            /* current nesting depth, to limit recursion */
 
+/* Return name in single quotes, for error messages. The result is in a
+ * static buffer. */
 static const char *quote(const char *name)
 {
     static char buf[MAX_NAME + 3];
@@ -60,11 +62,15 @@ static const char *quote(const char *name)
     return buf;
 }
 
+/* Report that the current token starts a C feature that isn't
+ * supported yet. */
 static void not_yet(void)
 {
     error("not supported yet:", tok_desc());
 }
 
+/* Skip the current token, which must be t; otherwise report what was
+ * expected and what was found. */
 static void expect(int t, const char *what)
 {
     if (tok != t)
@@ -72,12 +78,15 @@ static void expect(int t, const char *what)
     next();
 }
 
+/* Count one more level of nesting, so the parser's recursion depth
+ * stays bounded. The caller decrements nest when done. */
 static void enter_nest(void)
 {
     if (++nest > MAX_NEST)
         fatal("nesting too deep", NULL);
 }
 
+/* The function symbol named name, or NULL. */
 static Sym *find_func(const char *name)
 {
     int i;
@@ -87,6 +96,8 @@ static Sym *find_func(const char *name)
     return NULL;
 }
 
+/* Add a function symbol, not yet declared or defined, with an unknown
+ * parameter count. */
 static Sym *add_func(const char *name)
 {
     Sym *s;
@@ -120,6 +131,7 @@ cmdsys_funcs[] = {
     {NULL, 0, 0}
 };
 
+/* The index of name in cmdsys_funcs[], or -1 if it isn't there. */
 static int find_cmdsys(const char *name)
 {
     int i;
@@ -189,6 +201,7 @@ static int wrap16(unsigned u)
     return (int)u;
 }
 
+/* The absolute value of v, as unsigned so that -32768 works too. */
 static unsigned magnitude(int v)
 {
     return v < 0 ? 0u - (unsigned)v : (unsigned)v;
@@ -234,6 +247,7 @@ static int fold(int op, int a, int b)
     return 0;
 }
 
+/* Does binary IR op give the same result with its operands swapped? */
 static int commutative(int op)
 {
     return op == IR_ADD || op == IR_MUL || op == IR_AND || op == IR_OR
@@ -340,12 +354,16 @@ static int assign_op(int *ir_op)
     return 0;
 }
 
+/* Report an error unless o is a variable that can be assigned to; what
+ * says how it was used. */
 static void need_variable(Operand *o, const char *what)
 {
     if (o->kind != K_LOCAL)
         error("lvalue required as", what);
 }
 
+/* Parse a call to fn, starting at '(': emit the arguments, check their
+ * count, then emit the call. */
 static void parse_call(Sym *fn, Operand *o)
 {
     int nargs = 0;
@@ -386,6 +404,8 @@ static void parse_pstr(void)
     put(IR_DATAADDR, off - 1, NULL);
 }
 
+/* Parse a primary expression: a constant, string, variable, call, or
+ * expression in parentheses. Constants and variables stay pending. */
 static void parse_primary(Operand *o)
 {
     char name[MAX_NAME + 1];
@@ -480,6 +500,8 @@ static void post_incdec(Operand *o, int ir_op)
     o->kind = K_VALUE;
 }
 
+/* Parse a unary expression: prefix operators, then a primary
+ * expression, then postfix ++ and --. */
 static void parse_unary(Operand *o)
 {
     int t = tok;
@@ -644,6 +666,7 @@ static void parse_declaration(void)
     expect(';', "expected ';' after declaration, not");
 }
 
+/* Parse one statement (or declaration) and emit its code. */
 static void parse_statement(void)
 {
     Operand o;
@@ -760,6 +783,8 @@ static int parse_params(void)
     return n;
 }
 
+/* Parse one top-level item: a function prototype or a function
+ * definition. */
 static void parse_toplevel(void)
 {
     int returns_value, nparams, i;
@@ -843,6 +868,8 @@ static void parse_toplevel(void)
     nlocals = 0;
 }
 
+/* Stage 1's entry: parse the whole source file, then check that every
+ * function called but not defined is a CMDSYS function. */
 void parse_program(void)
 {
     int i, c;

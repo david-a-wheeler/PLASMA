@@ -27,6 +27,7 @@ static Mop win[WINDOW];
 static int nwin;
 static int dead;            /* code is unreachable until the next barrier */
 
+/* Send the oldest op in the window on to stage 4. */
 static void pass_oldest(void)
 {
     int i;
@@ -36,17 +37,21 @@ static void pass_oldest(void)
     nwin--;
 }
 
+/* Send every op in the window on to stage 4, oldest first. */
 void peep_flush(void)
 {
     while (nwin > 0)
         pass_oldest();
 }
 
+/* Does op always leave the function, so that what follows can't run? */
 static int is_unconditional_exit(int op)
 {
     return op == OP_LEAVE || op == OP_RET;
 }
 
+/* Is op a one-operand op that can sit between DUP and SLW in the x++
+ * pattern below? */
 static int is_unary(int op)
 {
     return op == OP_INCR || op == OP_DECR || op == OP_NEG || op == OP_COMP;
@@ -64,27 +69,37 @@ static int rewrite(void)
     a = &win[nwin - 2];
     b = &win[nwin - 1];
 
+    /* DLW n DROP -> SLW n: an assignment whose value is unused just
+     * stores, without keeping a copy to throw away. */
     if (a->op == OP_DLW && b->op == OP_DROP) {
         a->op = OP_SLW;
         nwin--;
         return 1;
     }
+    /* SLW n LLW n -> DLW n: storing a local and then loading it again
+     * becomes a store that keeps the value. */
     if (a->op == OP_SLW && b->op == OP_LLW && a->a == b->a) {
         a->op = OP_DLW;
         nwin--;
         return 1;
     }
+    /* const NEG / COMP -> const: negate or complement the constant at
+     * compile time (a backstop for the parser's folding). */
     if ((b->op == OP_NEG || b->op == OP_COMP) && mop_const_value(a, &v)) {
         mop_const(a, b->op == OP_NEG ? -v : ~v);
         nwin--;
         return 1;
     }
+    /* CN 1 ADD / SUB -> INCR / DECR: adding or subtracting 1 is a
+     * single one-byte op. */
     if ((b->op == OP_ADD || b->op == OP_SUB)
         && mop_const_value(a, &v) && v == 1) {
         a->op = b->op == OP_ADD ? OP_INCR : OP_DECR;
         nwin--;
         return 1;
     }
+    /* DUP op SLW n DROP -> op SLW n: x++ (or a similar update) whose
+     * old value is unused needs no copy of it. */
     if (nwin >= 4 && b->op == OP_DROP && a->op == OP_SLW
         && win[nwin - 4].op == OP_DUP && is_unary(win[nwin - 3].op)) {
         win[nwin - 4] = win[nwin - 3];
@@ -95,6 +110,8 @@ static int rewrite(void)
     return 0;
 }
 
+/* Stage 3's entry: add an op to the window and apply the patterns.
+ * Barriers flush the window, and ops in dead code are dropped. */
 void peep_put(Mop *m)
 {
     if (m->op >= OP_FUNC_BEGIN) {

@@ -28,6 +28,8 @@ static int opt_keep;
 static const char *base_name;
 static const char *module_name;
 
+/* Return base followed by suffix, in a static buffer that the next
+ * call reuses. */
 const char *stream_name(const char *base, const char *suffix)
 {
     static char buf[300];
@@ -38,6 +40,7 @@ const char *stream_name(const char *base, const char *suffix)
     return buf;
 }
 
+/* Remove the three stream files, unless -k asked to keep them. */
 static void remove_streams(void)
 {
     if (base_name && !opt_keep) {
@@ -56,6 +59,8 @@ static void clean_up(void)
         remove(module_name);
 }
 
+/* Print a diagnostic to stderr, with the source file and line when
+ * there is one. */
 static void report(const char *kind, const char *msg, const char *detail)
 {
     fflush(stdout);
@@ -68,7 +73,8 @@ static void report(const char *kind, const char *msg, const char *detail)
     fprintf(stderr, "\n");
 }
 
-/* Compilation stops at the first error. */
+/* Report an error in the program being compiled, remove partial
+ * output, and exit. Compilation stops at the first error. */
 void error(const char *msg, const char *detail)
 {
     report("error", msg, detail);
@@ -76,6 +82,8 @@ void error(const char *msg, const char *detail)
     exit(1);
 }
 
+/* Report a problem that isn't the program's fault (a compiler limit or
+ * a file error), remove partial output, and exit. */
 void fatal(const char *msg, const char *detail)
 {
     report("fatal", msg, detail);
@@ -83,12 +91,15 @@ void fatal(const char *msg, const char *detail)
     exit(1);
 }
 
+/* Print the command-line syntax and exit. */
 static void usage(void)
 {
     fprintf(stderr, "usage: ccish [-l] [-i] [-k] [-o output] input.c\n");
     exit(2);
 }
 
+/* Compile one .c file: parse it into the stream files, then run the
+ * final pass to write the module. */
 int main(int argc, char **argv)
 {
     static char outbuf[256];
