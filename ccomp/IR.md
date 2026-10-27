@@ -92,9 +92,18 @@ Push the constant *a* (taken as 16 bits).
 
   This is the same rule as PLASMA's compiler.
 - **Why it differs:** one op instead of five (reason 1).
+- **Constant folding happens before the IR.** The parser keeps a
+  constant *pending* until its value is needed, like a variable.
+  Unary `- ~ !` on a pending constant, or a binary operator with two of
+  them, is computed at compile time, so `2 * 3` reaches the IR as one
+  `IR_CONST 6`. The left operand of a binary operator is held on a
+  small stack in the parser, and any later IR op writes it out first,
+  so the evaluation order is kept. For `c op x` with a commutative op
+  and a plain variable `x`, the parser emits `x c op` instead, so that
+  `1 + x` can become `INCR`.
 - **Later:** merged with the following op where possible: `CB 5 ADD` →
-  `ADDI 5`, `CN 1 ADD` → `INCR`, constant folding, `CW $C000 LB` →
-  `LAB $C000` (approach.md, 17, P1–P5 and P8).
+  `ADDI 5`, `CN 1 ADD` → `INCR` (done), `CW $C000 LB` → `LAB $C000`
+  (approach.md, 17, P1–P5 and P8).
 
 ### `IR_DATAADDR` *a* = data offset
 
@@ -190,19 +199,24 @@ that matters.
 - **Later:**
   - `ADDI`/`SUBI`/`ANDI`/`ORI`;
   - fused forms (`ADDLW`, `IDXW`, …);
-  - strength reduction and constant folding;
+  - strength reduction;
   - `(x >> 8) & 0xFF` → a high-byte load.
 
-  These are 17, P1–P5, P10 and P11. Division by zero is not checked:
-  the 6502 VMs give garbage, and the C VM crashes.
+  These are 17, P1–P5, P10 and P11. The parser rejects a constant zero
+  divisor and a constant shift count outside 0–15, because the VMs
+  disagree there (the C VM crashes on division by zero; the 6502 VMs
+  give garbage and use only the count's low byte). A divisor that is
+  zero only at run time is not checked.
 
 ### Unary arithmetic: `IR_NEG`, `IR_COMP`
 
 Negate, or complement the bits of, the top value.
 
 - **Stack:** `( x -- -x )` and `( x -- ~x )`.
-- **Now:** `NEG` and `COMP`. The peephole stage folds them into a
-  preceding constant, so `-5` is a single `CFFB 251`.
+- **Now:** `NEG` and `COMP`. The parser folds them on constants, so
+  `-5` is a single `CFFB 251`. The peephole stage also folds them into
+  a preceding constant, as a backstop for constants that only meet
+  after lowering.
 - **Why they differ:** they don't.
 
 ### `IR_NOT`

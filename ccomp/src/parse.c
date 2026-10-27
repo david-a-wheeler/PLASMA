@@ -26,6 +26,16 @@
  * an assignment (x = ..., x += ..., x++). Instead the parser returns a
  * *pending* operand, and emits the load only once it knows the value is
  * needed (approach.md 4(a), option A).
+ *
+ * Constant folding works the same way. A constant is a *pending
+ * constant* until its value is needed on the stack, so unary operators
+ * on it, and binary operators with two of them, are computed at compile
+ * time with C's 16-bit int rules. The left operand of a binary operator
+ * can't wait inside its Operand, because the right operand's code must
+ * come after it. So it is held on a small stack (held[]), and put()
+ * writes out every held constant before any other op. If the right
+ * operand emits nothing and is itself a constant, the held left one is
+ * still there and the two are folded.
  */
 #include <string.h>
 #include "ccish.h"
@@ -153,18 +163,98 @@ static Sym *add_local(const char *name)
     return s;
 }
 
+/* ---------- Constants ---------- */
+
+/* Left operands held back for folding; see the comment at the top. */
+static int held[MAX_NEST + 1];
+static int nheld;
+
+/* Emit an IR op, after any held constants. All of the parser's IR goes
+ * through here. */
+static void put(int op, int a, Sym *s)
+{
+    int i;
+    for (i = 0; i < nheld; i++)
+        ir_put(IR_CONST, held[i], NULL);
+    nheld = 0;
+    ir_put(op, a, s);
+}
+
+/* The low 16 bits of u, as a signed 16-bit int. Unsigned arithmetic is
+ * used so that this works whether the host's int has 16 or 32 bits. */
+static int wrap16(unsigned u)
+{
+    u &= 0xFFFF;
+    if (u & 0x8000)
+        return -(int)(0xFFFF - u) - 1;
+    return (int)u;
+}
+
+static unsigned magnitude(int v)
+{
+    return v < 0 ? 0u - (unsigned)v : (unsigned)v;
+}
+
+/* Reject a constant right operand that would make op undefined in C.
+ * The VMs disagree on these cases too (division by zero crashes plvm;
+ * shift counts use only the low byte on the 6502). */
+static void check_right_const(int op, int v)
+{
+    if ((op == IR_DIV || op == IR_MOD) && v == 0)
+        error("division by zero", NULL);
+    if ((op == IR_SHL || op == IR_SHR) && (v < 0 || v > 15))
+        error("shift count out of range (0 to 15):",
+              v < 0 ? "negative" : "too big");
+}
+
+/* a op b, as the VM computes it: C's rules for a 16-bit int. / truncates
+ * toward zero, % has the dividend's sign, >> is arithmetic. b has
+ * already passed check_right_const(). */
+static int fold(int op, int a, int b)
+{
+    unsigned ua = (unsigned)a, ub = (unsigned)b, q;
+    switch (op) {
+    case IR_ADD: return wrap16(ua + ub);
+    case IR_SUB: return wrap16(ua - ub);
+    case IR_MUL: return wrap16(ua * ub);
+    case IR_DIV:
+        q = magnitude(a) / magnitude(b);
+        return wrap16((a < 0) != (b < 0) ? 0u - q : q);
+    case IR_MOD:
+        q = magnitude(a) % magnitude(b);
+        return wrap16(a < 0 ? 0u - q : q);
+    case IR_AND: return wrap16(ua & ub);
+    case IR_OR:  return wrap16(ua | ub);
+    case IR_XOR: return wrap16(ua ^ ub);
+    case IR_SHL: return wrap16(ua << b);
+    case IR_SHR:
+        /* >> of a negative int is implementation-defined in C, so
+         * shift the non-negative ~a instead. */
+        return a < 0 ? ~(~a >> b) : a >> b;
+    }
+    return 0;
+}
+
+static int commutative(int op)
+{
+    return op == IR_ADD || op == IR_MUL || op == IR_AND || op == IR_OR
+        || op == IR_XOR;
+}
+
 /* ---------- Expressions ---------- */
 
 /* An operand on its way through the expression parser. */
 enum {
     K_VALUE,        /* its value is on the stack */
     K_VOID,         /* a void call: nothing on the stack */
-    K_LOCAL         /* a local variable, not loaded yet (off = offset) */
+    K_LOCAL,        /* a local variable, not loaded yet (off = offset) */
+    K_CONST         /* a constant, not emitted yet (val = value) */
 };
 
 typedef struct {
     int kind;
     int off;
+    int val;
 } Operand;
 
 /* C precedence levels (higher binds tighter). */
@@ -183,7 +273,9 @@ static void rvalue(Operand *o)
     if (o->kind == K_VOID)
         error("void value used in an expression", NULL);
     if (o->kind == K_LOCAL)
-        ir_put(IR_LOCAL, o->off, NULL);
+        put(IR_LOCAL, o->off, NULL);
+    else if (o->kind == K_CONST)
+        put(IR_CONST, o->val, NULL);
     o->kind = K_VALUE;
 }
 
@@ -275,7 +367,7 @@ static void parse_call(Sym *fn, Operand *o)
         error("wrong number of arguments in call to", quote(fn->name));
     }
     fn->called = 1;
-    ir_put(IR_CALL, nargs, fn);
+    put(IR_CALL, nargs, fn);
     o->kind = fn->returns_value ? K_VALUE : K_VOID;
 }
 
@@ -292,7 +384,7 @@ static void parse_pstr(void)
     off = data_string(tok_text, tok_len);
     next();
     expect(')', "expected ')' after pstr argument, not");
-    ir_put(IR_DATAADDR, off - 1, NULL);
+    put(IR_DATAADDR, off - 1, NULL);
 }
 
 static void parse_primary(Operand *o)
@@ -304,11 +396,12 @@ static void parse_primary(Operand *o)
     o->kind = K_VALUE;
     switch (tok) {
     case T_NUM:
-        ir_put(IR_CONST, tok_val, NULL);
+        o->kind = K_CONST;          /* emit it later, if needed */
+        o->val = wrap16((unsigned)tok_val);
         next();
         return;
     case T_STR:
-        ir_put(IR_DATAADDR, data_string(tok_text, tok_len), NULL);
+        put(IR_DATAADDR, data_string(tok_text, tok_len), NULL);
         next();
         return;
     case '(':
@@ -366,10 +459,10 @@ static void parse_primary(Operand *o)
 static void pre_incdec(Operand *o, int ir_op)
 {
     need_variable(o, "operand of ++ or --");
-    ir_put(IR_LOCAL, o->off, NULL);
-    ir_put(IR_CONST, 1, NULL);
-    ir_put(ir_op, 0, NULL);
-    ir_put(IR_SETLOCAL, o->off, NULL);
+    put(IR_LOCAL, o->off, NULL);
+    put(IR_CONST, 1, NULL);
+    put(ir_op, 0, NULL);
+    put(IR_SETLOCAL, o->off, NULL);
     o->kind = K_VALUE;
 }
 
@@ -379,12 +472,12 @@ static void pre_incdec(Operand *o, int ir_op)
 static void post_incdec(Operand *o, int ir_op)
 {
     need_variable(o, "operand of ++ or --");
-    ir_put(IR_LOCAL, o->off, NULL);
-    ir_put(IR_DUP, 0, NULL);
-    ir_put(IR_CONST, 1, NULL);
-    ir_put(ir_op, 0, NULL);
-    ir_put(IR_SETLOCAL, o->off, NULL);
-    ir_put(IR_DROP, 0, NULL);
+    put(IR_LOCAL, o->off, NULL);
+    put(IR_DUP, 0, NULL);
+    put(IR_CONST, 1, NULL);
+    put(ir_op, 0, NULL);
+    put(IR_SETLOCAL, o->off, NULL);
+    put(IR_DROP, 0, NULL);
     o->kind = K_VALUE;
 }
 
@@ -395,13 +488,22 @@ static void parse_unary(Operand *o)
     case '-': case '+': case '~': case '!':
         next();
         parse_unary(o);
+        if (o->kind == K_CONST) {
+            if (t == '-')
+                o->val = wrap16(0u - (unsigned)o->val);
+            else if (t == '~')
+                o->val = wrap16(~(unsigned)o->val);
+            else if (t == '!')
+                o->val = !o->val;
+            return;
+        }
         rvalue(o);
         if (t == '-')
-            ir_put(IR_NEG, 0, NULL);
+            put(IR_NEG, 0, NULL);
         else if (t == '~')
-            ir_put(IR_COMP, 0, NULL);
+            put(IR_COMP, 0, NULL);
         else if (t == '!')
-            ir_put(IR_NOT, 0, NULL);
+            put(IR_NOT, 0, NULL);
         return;
     case T_INC: case T_DEC:
         next();
@@ -435,6 +537,7 @@ static void parse_unary(Operand *o)
 static void parse_expr(int min_prec, Operand *o)
 {
     int ir_op, supported, prec;
+    Operand r;
 
     enter_nest();
     parse_unary(o);
@@ -447,16 +550,19 @@ static void parse_expr(int min_prec, Operand *o)
         need_variable(o, "left operand of assignment");
         next();
         if (ir_op >= 0)
-            ir_put(IR_LOCAL, o->off, NULL);
-        parse_value(PREC_ASSIGN);
+            put(IR_LOCAL, o->off, NULL);
+        parse_expr(PREC_ASSIGN, &r);
+        if (ir_op >= 0 && r.kind == K_CONST)
+            check_right_const(ir_op, r.val);
+        rvalue(&r);
         if (ir_op >= 0)
-            ir_put(ir_op, 0, NULL);
-        ir_put(IR_SETLOCAL, o->off, NULL);
+            put(ir_op, 0, NULL);
+        put(IR_SETLOCAL, o->off, NULL);
         o->kind = K_VALUE;
     }
 
     for (;;) {
-        Operand r;
+        int mark = -1;
         if (assign_op(&ir_op))
             error("lvalue required as", "left operand of assignment");
         prec = binary_prec(&ir_op, &supported);
@@ -464,11 +570,43 @@ static void parse_expr(int min_prec, Operand *o)
             break;
         if (!supported)
             not_yet();
-        rvalue(o);
+        if (o->kind == K_CONST) {
+            /* Hold it back: it may fold with the right operand. */
+            if (nheld > MAX_NEST)
+                fatal("nesting too deep", NULL);
+            mark = nheld;
+            held[nheld++] = o->val;
+        } else {
+            rvalue(o);
+        }
         next();
         parse_expr(prec + 1, &r);   /* all binary ops are left-assoc */
+        if (r.kind == K_CONST)
+            check_right_const(ir_op, r.val);
+        if (mark >= 0 && nheld > mark) {
+            /* The right operand emitted nothing, so the left constant
+             * is still held. */
+            if (r.kind == K_CONST) {
+                nheld--;
+                o->val = fold(ir_op, o->val, r.val);
+                continue;
+            }
+            if (r.kind == K_LOCAL && commutative(ir_op)) {
+                /* c op x: emit x c op, so that the peephole stage
+                 * sees the constant right before the op (1+x: INCR). */
+                nheld--;
+                rvalue(&r);
+                put(IR_CONST, o->val, NULL);
+                put(ir_op, 0, NULL);
+                o->kind = K_VALUE;
+                continue;
+            }
+        }
+        /* Otherwise the left value is (or, via put(), will be) on the
+         * stack below the right one. */
+        o->kind = K_VALUE;
         rvalue(&r);
-        ir_put(ir_op, 0, NULL);
+        put(ir_op, 0, NULL);
     }
     nest--;
 }
@@ -497,8 +635,8 @@ static void parse_declaration(void)
         if (tok == '=') {
             next();
             parse_value(PREC_ASSIGN);
-            ir_put(IR_SETLOCAL, s->offset, NULL);
-            ir_put(IR_DROP, 0, NULL);
+            put(IR_SETLOCAL, s->offset, NULL);
+            put(IR_DROP, 0, NULL);
         }
         if (tok != ',')
             break;
@@ -521,14 +659,14 @@ static void parse_statement(void)
         next();
         if (tok == ';') {
             if (cur_fn->returns_value)
-                ir_put(IR_CONST, 0, NULL);  /* C89 allows this */
+                put(IR_CONST, 0, NULL);  /* C89 allows this */
         } else {
             if (!cur_fn->returns_value)
                 error("void function returns a value:", quote(cur_fn->name));
             parse_value(PREC_COMMA);
         }
         expect(';', "expected ';' after return value, not");
-        ir_put(IR_RETURN, 0, NULL);
+        put(IR_RETURN, 0, NULL);
         return;
     case T_INT:
         parse_declaration();
@@ -543,7 +681,7 @@ static void parse_statement(void)
     parse_expr(PREC_COMMA, &o);
     /* A bare variable ("x;") has no effect, so nothing was emitted. */
     if (o.kind == K_VALUE)
-        ir_put(IR_DROP, 0, NULL);
+        put(IR_DROP, 0, NULL);
     expect(';', "expected ';' after expression, not");
 }
 
@@ -693,15 +831,15 @@ static void parse_toplevel(void)
     fn->declared = 1;
     fn->defined = 1;
 
-    ir_put(IR_FUNC, nparams, fn);
+    put(IR_FUNC, nparams, fn);
     parse_block(0);
     /* Falling off the end of an int function returns 0. If the last
      * statement was a return, the peephole stage drops this as dead
      * code. */
     if (returns_value)
-        ir_put(IR_CONST, 0, NULL);
-    ir_put(IR_RETURN, 0, NULL);
-    ir_put(IR_ENDFUNC, frame_max, fn);
+        put(IR_CONST, 0, NULL);
+    put(IR_RETURN, 0, NULL);
+    put(IR_ENDFUNC, frame_max, fn);
     cur_fn = NULL;
     nlocals = 0;
 }

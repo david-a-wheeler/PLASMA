@@ -1,7 +1,8 @@
 # ccish: a C-ish compiler for the PLASMA VM
 
 `ccish` compiles a growing subset of C into PLASMA REL modules. It is at
-**milestone 2**: a small compiler that works end to end. The design
+**milestone 2**, plus constant folding from milestone 3: a small
+compiler that works end to end. The design
 and the plan for growing it are in [approach.md](approach.md). The
 target format is described in [../doc/Bytecodes.md](../doc/Bytecodes.md).
 
@@ -53,8 +54,12 @@ Hello5
   - assignment `= += -= *= /= %= &= |= ^= <<= >>=`.
 
   `int` is 16 bits, and arithmetic wraps. `/` truncates toward zero, and
-  `>>` of a negative value is arithmetic. Division by zero is not
-  checked.
+  `>>` of a negative value is arithmetic. Operations on constants are
+  computed at compile time with these same rules, so `-(1 << 4)` and
+  `2 * x + 3 * 4` need no run-time work for the constant parts. A
+  constant right operand of zero for `/` or `%`, or a constant shift
+  count outside 0–15, is a compile error. Division by a zero that is
+  only known at run time is not checked.
 * Digraphs `<% %> <: :>`, `/* */` and `//` comments, and LF, CR or CRLF
   line endings.
 

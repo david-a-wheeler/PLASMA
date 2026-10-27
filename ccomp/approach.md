@@ -1229,6 +1229,18 @@ issue. In summary:
 
 ## Milestones
 
+**M3 step 1 (constant folding) is done.** Settled while building it:
+- A constant right operand of zero for `/`, `%`, `/=` or `%=` is a
+  compile error, and so is a constant shift count outside 0–15. Both
+  are undefined in C, and the VMs disagree on them. (When `?:` arrives,
+  this may need to become a warning for code in a branch that can't be
+  taken, such as `0 ? 1/0 : 2`.)
+- The left constant of a binary operator is held on a small stack
+  until the right operand is parsed; any IR op written meanwhile
+  writes it out first. For a commutative op with a plain variable on
+  the right, `c op x` is emitted as `x c op`, so `1 + x` becomes
+  `INCR`.
+
 **M2 is done** (local variables, assignment, the integer operators,
 `++`/`--`, dead-code removal and the first peephole patterns).
 **M1 is done.** See `README.md`. Settled while building it:
