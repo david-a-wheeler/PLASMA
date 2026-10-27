@@ -1174,6 +1174,44 @@ a stretch goal (possible, not committed).
 - **A small shell**: command lookup, redirection, pipes, background
   jobs, simple variables and scripts.
 
+### 20. Writing fast C-ish
+
+Guidance for programmers (from discussion, 2026-10-27), based on the
+6502 VM's code (`src/vmsrc/apple/plvm02.s`). It belongs with the hints
+of issue 10, and may become part of the user documentation.
+
+- **Prefer unsigned `char` and signed `int`.** Byte loads (`LB`,
+  `LLB`, `LAB`) zero-extend, so an unsigned `char` costs nothing, and a
+  signed `char` would need sign extension on every load (a call to
+  CMDSYS `sext`, or inline code). That is why plain `char` is unsigned
+  (issue 7). PLASMA's ordering comparisons, `DIV`, `MOD` and `SHR` are
+  signed, so a signed `int` is free, and `unsigned int` (M11) will cost
+  extra only for `< > <= >=`, `/`, `%` and `>>`. `+ - *`, `==` and `!=`
+  work the same for both.
+- **Test pointers with `==` and `!=`, not `< > <= >=`.** Ordering
+  comparisons of pointers are unsigned, so each side gets `CW $8000
+  XOR` (4 bytes and 2 ops per side; a constant side is folded).
+  Equality costs nothing extra. So write `while (p != end)`, not
+  `while (p < end)`.
+- **A `char` index is a little faster than an `int` index.** Reading a
+  byte local skips the high byte: `LLB` is about 5 cycles faster than
+  `LLW`, and the fused `ADDLB` about 12 faster than `ADDLW`, against
+  roughly 15–20 cycles of dispatch per op. (ccish emits `ADDLB`,
+  `IDXLB` and the other fused ops only from M10, issue 17.) But a
+  `char` index limits an array to 256 elements and wraps: `for (char
+  i = 0; i < 256; i++)` never ends.
+- **For a simple scan, walk a pointer; otherwise, consider an index.**
+  Reading through a pointer is `*p` = `LLW p LB` (2 ops), while
+  `buf[i]` is `LA buf ADDLB i LB` (3 ops, with M10's fused op), and
+  `p++` and `i++` are both 3 ops. An index wins when the loop counter
+  is needed anyway (one variable instead of two), when several arrays
+  share it, when the loop test can be `i < n` (a plain signed compare)
+  instead of `p < end`, and for random access.
+- **Multiplying by a constant** is cheap for 0, 1, 2, 3 and powers of
+  two (`DUP ADD`, `DUP IDXW`, `CN n SHL`); other constants use `MUL`,
+  a 16-step loop. Dividing by a constant always uses `DIV` for signed
+  values (issue 17 and the M4 step 2 notes).
+
 ## Decisions so far
 
 The first round of answers is recorded inline as "Answer:" under each
