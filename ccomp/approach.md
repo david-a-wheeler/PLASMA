@@ -1090,6 +1090,88 @@ library (M9).
   about 10 `int`s. Intern names in a string pool, and shrink records to
   the fields actually needed.
 
+### 19. Target application: a small Unix-like command set (possible, not committed)
+
+Once the compiler works well, use it to build a small toybox-style
+set of commands, giving a simple Unix-like interface on a 6502. This is
+a goal, not a commitment, and it doesn't change the current milestones.
+It does suggest which way to lean on a few choices.
+
+**Why it fits:**
+- **One module per command.** PLASMA already loads modules by name,
+  so `cat`, `ls`, `cp` and the rest can each be a small module loaded
+  from disk when run. A shared C-ish runtime module stays resident
+  between commands. On 64K this beats one large BusyBox-style binary.
+- **ProDOS has a hierarchical file system.** `ls`, `cd`, `pwd`,
+  `mkdir`, `rm`, `mv`, `cp`, `cat`, `head`, `tail`, `wc`, `grep`, `od`,
+  `echo` and `more` map onto it cleanly.
+- **Text tools are mostly disk-bound**, so bytecode speed matters less.
+- **It's a realistic test corpus** for the compiler: real programs
+  will find bugs and show where the code is too big.
+
+**Multitasking is feasible.** An earlier draft of this issue said
+there would be no multitasking; that was wrong. The first Unix ran on
+a PDP-7 with 8K 18-bit words, and First Edition on a PDP-11/20 with
+about 24K bytes. Both had processes and `fork`, and neither had memory
+protection. Multitasking 6502 systems exist too: LUnix and GeckOS on
+the C64, and Contiki's cooperative tasks. PLASMA itself already
+provides cooperative threads in `../src/libsrc/fiber.pla`. Its
+`fbrSwap` saves and restores the VM's zero-page evaluation stack,
+frame pointer and 6502 hardware stack. Because all our programs are
+bytecode, a task switch only has to save that small amount of VM
+state. Options:
+
+- **A. Several processes in memory, switching only when one waits.**
+  A switch happens when a process blocks: a pipe is empty or full, it
+  reads the keyboard, or it calls `wait`. This gives real pipes
+  (`ls | grep x`) and background jobs.
+  - Pros: builds directly on the fiber design. No timer is needed.
+  - Cons: a process in a compute loop never gives up the CPU unless
+    the runtime adds yields. Memory limits how many processes fit,
+    probably 2 to 4 small ones on 64K.
+- **B. First Edition-style swapping.** Only one process is in memory;
+  the others are swapped out.
+  - Pros: each process gets nearly all of memory, and `fork` is easy
+    (write out a copy of the image).
+  - Cons: far too slow on a floppy. Reasonable only with a RAM disk,
+    128K auxiliary memory or a RamWorks card.
+- **C. Preemptive time slicing.**
+  - Pros: true time sharing.
+  - Cons: a stock Apple II has no timer interrupt; it needs a mouse
+    card, a clock card or the IIc vertical-blank interrupt. The VM
+    could check a flag between bytecodes, so switches happen only at
+    safe points. ProDOS can't be re-entered, so file calls must also
+    be serialized.
+
+Suggest A first, B as an option for machines with extra RAM, and C as
+a stretch goal (possible, not committed).
+
+**Limits (it's Unix-like, not Unix):**
+- No memory protection: a buggy program can crash everything, as on
+  early Unix. No users or permissions.
+- ProDOS limits show through: names of up to 15 characters, case
+  insensitivity, ProDOS file types, and at most 8 open files.
+- Toybox's own source likely won't compile unchanged. It uses a heavy
+  preprocessor (generated option tables, macro tricks), 32-bit sizes,
+  `mmap` and much of POSIX. The realistic path is to write small
+  C-ish versions of the commands, borrowing toybox's design and simpler
+  code where useful (toybox is 0BSD-licensed, so that is allowed).
+
+**What it would need from ccish:**
+- **M9 runtime library shaped like POSIX**, rather than like PLASMA:
+  `open`, `read`, `write`, `close`, `lseek`, `opendir`/`readdir`,
+  `malloc`, and `argc`/`argv` from the command line, over ProDOS.
+- **From M11:** `unsigned`, varargs `printf`, and function pointers
+  (for option tables and dispatch).
+- **Some 32-bit support.** ProDOS files can exceed 64K, so `ls -l` and
+  `wc` need it. Options: a `long` subset, or calls into PLASMA's
+  `int32` library. This may argue for moving limited `long` support
+  earlier than "stretch goal".
+- **A small kernel layer** in the runtime: a process table, pipe
+  buffers, and blocking `read`/`write` that switch tasks.
+- **A small shell**: command lookup, redirection, pipes, background
+  jobs, simple variables and scripts.
+
 ## Decisions so far
 
 The first round of answers is recorded inline as "Answer:" under each
@@ -1283,3 +1365,7 @@ M1 is built fresh around the pipeline.
 8. **Hints (issue 10):** defer until after M10?
 9. **Name:** the doc says "C-ish". Should the program be called
    `ccish`, and should the predefined macro be `__CCISH__`?
+10. **Unix-like command set (issue 19, possible, not committed):**
+    should M9's library follow POSIX names and behavior, and should a
+    limited `long` (or `int32` helpers) come before M11? Is multitasking
+    option A (switching when a process waits) the right first step?
