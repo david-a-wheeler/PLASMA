@@ -209,7 +209,7 @@ void emit_put(Mop *m)
     code_byte(m->op);
     switch (m->op) {
     case OP_CB: case OP_CFFB: case OP_ANDI:
-    case OP_LLB: case OP_LLW: case OP_DLB: case OP_DLW:
+    case OP_LLA: case OP_LLB: case OP_LLW: case OP_DLB: case OP_DLW:
     case OP_SLB: case OP_SLW:
         code_byte(m->a);
         break;

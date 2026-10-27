@@ -1,7 +1,9 @@
 /* Constant folding in the parser, with C's 16-bit int rules.
  * Every operation on constants alone is computed at compile time, so
- * only the operations that involve x appear in the code. */
-// listing-count: 2 MUL
+ * only the operations that involve x appear in the code. (The two
+ * 2 * x become DUP ADD in the peephole stage.) */
+// listing-lacks: MUL
+// listing-count: 2 DUP
 // listing-count: 2 DIV
 // listing-count: 1 SHL
 // listing-lacks: MOD

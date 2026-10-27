@@ -22,9 +22,15 @@
  *   NOT ANDI 1  BRFLS/BRTRU  -> BRTRU / BRFLS    branch on !x
  *   ISEQ / ISNE  BRFLS/BRTRU -> BREQ / BRNE
  *   CN 0  BREQ / BRNE        -> BRFLS / BRTRU    x == 0 is a test of x
- *   DUP  op  SLW n  DROP     -> op  SLW n  x++ whose old value is unused
- *                                          (also with SLB)
- *                                          (op is INCR, DECR, NEG or COMP)
+ *   CN 2  MUL                -> DUP ADD    (faster than CN 1 SHL; see rewrite)
+ *   CN 3  MUL                -> DUP IDXW
+ *   CN 0  MUL                -> DROP CN 0
+ *   CN 1  MUL                -> (nothing)
+ *   const MUL, const = 2^n   -> CN n SHL   for n from 2 to 15
+ *   DUP  ADD  ADD            -> IDXW       p + 2*i
+ *   DUP  update  store  DROP -> update  store   x++ whose old value is
+ *        unused. update is INCR, DECR, NEG, COMP, or a constant then ADD
+ *        or SUB; store is SLW n, SLB n, or LLW n then SW or SB.
  * All are valid for C: they don't change any value the program sees.
  */
 #include "ccish.h"
@@ -76,6 +82,49 @@ static int invert_branch(int op)
 static int is_unary(int op)
 {
     return op == OP_INCR || op == OP_DECR || op == OP_NEG || op == OP_COMP;
+}
+
+/* The number of ops (1 or 2) in the store that ends just before window
+ * index end: SLW / SLB n, or LLW n then SW / SB. 0 if there isn't one. */
+static int store_len(int end)
+{
+    int op = end >= 1 ? win[end - 1].op : -1;
+    if (op == OP_SLW || op == OP_SLB)
+        return 1;
+    if ((op == OP_SW || op == OP_SB) && end >= 2 && win[end - 2].op == OP_LLW)
+        return 2;
+    return 0;
+}
+
+/* The number of ops (1 or 2) in the update that ends just before window
+ * index end: a unary op, or a constant then ADD / SUB. 0 if none. */
+static int update_len(int end)
+{
+    int v;
+    if (end >= 1 && is_unary(win[end - 1].op))
+        return 1;
+    if (end >= 2 && (win[end - 1].op == OP_ADD || win[end - 1].op == OP_SUB)
+        && mop_const_value(&win[end - 2], &v))
+        return 2;
+    return 0;
+}
+
+/* With DROP at the end of the window, match DUP update store DROP (an
+ * x++ whose old value is unused) and remove the DUP and the DROP.
+ * Returns 1 if it did. */
+static int drop_dup(void)
+{
+    int s = store_len(nwin - 1), u, d, i;
+    if (s == 0)
+        return 0;
+    u = update_len(nwin - 1 - s);
+    d = nwin - 2 - s - u;           /* where the DUP must be */
+    if (u == 0 || d < 0 || win[d].op != OP_DUP)
+        return 0;
+    for (i = d; i < nwin - 2; i++)
+        win[i] = win[i + 1];
+    nwin -= 2;
+    return 1;
 }
 
 /* Try one pattern at the end of the window. Returns 1 if it changed
@@ -165,15 +214,67 @@ static int rewrite(void)
         nwin--;
         return 1;
     }
-    /* DUP op SLW / SLB n DROP -> op SLW / SLB n: x++ (or a similar
-     * update) whose old value is unused needs no copy of it. */
-    if (nwin >= 4 && b->op == OP_DROP && (a->op == OP_SLW || a->op == OP_SLB)
-        && win[nwin - 4].op == OP_DUP && is_unary(win[nwin - 3].op)) {
-        win[nwin - 4] = win[nwin - 3];
-        win[nwin - 3] = *a;
+    /* const MUL -> cheaper ops for some constants, as PLASMA's own
+     * optimizer does (src/toolsrc/codeopt.pla). MUL is a 16-step
+     * shift-and-add loop on the 6502 VMs, so it is the slowest choice. */
+    if (b->op == OP_MUL && mop_const_value(a, &v)) {
+        /* x * 2 -> DUP ADD, not CN 1 SHL. Both are 2 bytes, but on the
+         * 6502 VM DUP ADD takes about 52 cycles and CN 1 SHL about 59:
+         * SHL is a general shifter that saves Y, checks for counts of 8
+         * or more, and loops. (codeopt.pla even turns CN 1 SHL into
+         * DUP ADD.) It also lets p + i fuse into IDXW, below. */
+        if (v == 2) {
+            a->op = OP_DUP;
+            a->a = 0;
+            b->op = OP_ADD;
+            return 1;
+        }
+        /* x * 3 -> DUP IDXW: x + 2x, in 2 bytes. */
+        if (v == 3) {
+            a->op = OP_DUP;
+            a->a = 0;
+            b->op = OP_IDXW;
+            return 1;
+        }
+        /* x * 0 -> DROP CN 0: x is still computed, for its side
+         * effects (such as a call), then replaced by 0. */
+        if (v == 0) {
+            a->op = OP_DROP;
+            mop_const(b, 0);
+            return 1;
+        }
+        /* x * 1 -> x: nothing to do. */
+        if (v == 1) {
+            nwin -= 2;
+            return 1;
+        }
+        /* x * 2^n, n from 2 to 15 -> CN n SHL: the same size as the
+         * MUL, and much faster. (Not for x / 2^n: SHR rounds toward
+         * minus infinity, but C's / truncates toward zero.) */
+        if ((v & (v - 1)) == 0) {
+            unsigned u = (unsigned)v;
+            int n = 0;
+            while (u > 1) {
+                u >>= 1;
+                n++;
+            }
+            mop_const(a, n);
+            b->op = OP_SHL;
+            return 1;
+        }
+    }
+    /* DUP ADD ADD -> IDXW: adding twice x is PLASMA's word index op
+     * (p + i for a pointer to 2-byte elements). */
+    if (nwin >= 3 && win[nwin - 3].op == OP_DUP && a->op == OP_ADD
+        && b->op == OP_ADD) {
+        win[nwin - 3].op = OP_IDXW;
         nwin -= 2;
         return 1;
     }
+    /* DUP update store DROP -> update store: x++ (or a similar update)
+     * whose old value is unused needs no copy of it. */
+    if (b->op == OP_DROP && drop_dup())
+        return 1;
     return 0;
 }
 

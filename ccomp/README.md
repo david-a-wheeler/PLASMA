@@ -3,7 +3,7 @@
 `ccish` compiles a growing subset of C into PLASMA REL modules. It has
 finished **milestone 3** (integer expressions, local variables and
 control flow, compiled end to end) and is partway through milestone 4
-(so far, `char` and casts). The design
+(so far, `char`, casts and pointers). The design
 and the plan for growing it are in [approach.md](approach.md). The
 target format is described in [../doc/Bytecodes.md](../doc/Bytecodes.md).
 
@@ -43,12 +43,14 @@ Hello5
 
 ## The language so far
 
-* Function definitions and prototypes returning `int`, `char` or
-  `void`, with `int` and `char` parameters. A prototype and a
-  definition must agree on the return and parameter types. `main`
-  takes no parameters. Its return value is ignored.
-* `int` and `char` local variables, declared anywhere in a block, with
-  optional initializers (`int a, b = 1;`). They have block scope, and
+* Types `int`, `char`, `void`, and pointers to them (`int *`,
+  `char **`, `void *`, ...).
+* Function definitions and prototypes returning any of these, with
+  parameters of any type but `void`. A prototype and a definition must
+  agree on the return and parameter types. `main` takes no parameters.
+  Its return value is ignored.
+* Local variables, declared anywhere in a block, with optional
+  initializers (`int a, b = 1, *p = &a;`). They have block scope, and
   an inner block may shadow an outer name. As in C99, the first clause
   of `for` may declare variables, which are in scope only in the loop.
 * `char` is one byte and unsigned (0–255). A value is converted to
@@ -56,20 +58,32 @@ Hello5
   passed as a `char` parameter, returned from a `char` function, or
   cast to `char`. In expressions, a `char` is promoted to `int`, as in
   C.
-* Casts to `int`, `char` and `void`. `(void)` discards a value.
+* Pointers are 16 bits. `&` takes the address of a variable or of
+  `*p`, and `*` reaches what a pointer points to, for reading or
+  storing. Pointer arithmetic (`p + i`, `i + p`, `p - i`, `p - q`,
+  `++`, `--`, `+=`, `-=`) counts in elements, as in C, and arithmetic
+  on a `void *` is an error. Pointers compare unsigned, since
+  addresses at or above `$8000` are normal.
+* Types are checked as strictly as C requires (GCC 14 does the same by
+  default): mixing integers and pointers needs a cast, except for the
+  constant 0, and pointer types must match unless one is `void *`.
+  This applies to assignments, initializers, arguments, return values,
+  comparisons and `?:`.
+* Casts between any of these types. `(void)` discards a value.
 * Statements: `return`, `if`/`else`, `while`, `do`, `for`, `break`,
   `continue`, expression statements, empty statements and nested
   blocks.
 * Expressions, with C's precedence and associativity:
   - integer and character constants, string literals, variables,
     function calls and parentheses;
-  - unary `- + ~ !`, and prefix and postfix `++ --`;
+  - unary `- + ~ ! * &`, and prefix and postfix `++ --`;
   - binary `* / % + - << >> & ^ |`;
   - comparisons `< > <= >= == !=`, and `&& || ?:`;
   - assignment `= += -= *= /= %= &= |= ^= <<= >>=`.
 
   `int` is 16 bits, and arithmetic wraps. `/` truncates toward zero, and
-  `>>` of a negative value is arithmetic. Comparisons are signed, and
+  `>>` of a negative value is arithmetic. Integer comparisons are
+  signed, and
   comparisons, `!`, `&&` and `||` give 1 or 0, as in C (PLASMA's own
   give `$FFFF` for true). `&&`, `||` and `?:` evaluate only the
   operands C says they do.
@@ -85,18 +99,18 @@ Hello5
 * Digraphs `<% %> <: :>`, `/* */` and `//` comments, and LF, CR or CRLF
   line endings.
 
-Anything else, such as pointers, arrays, globals, `switch`, `goto`, the
-comma operator, or the types `signed`, `unsigned`, `short` and `long`,
-gives a "not supported yet" error.
+Anything else, such as arrays, globals, function pointers, `switch`,
+`goto`, the comma operator, or the types `signed`, `unsigned`, `short`
+and `long`, gives a "not supported yet" error.
 
 ### Strings and `pstr()`
 
 A string literal is stored as a length byte, the characters, then a
-NUL. Its value in C is the address of the first character, as usual.
-`pstr("text")` gives the address of the length byte instead. That is
-the PLASMA (length-prefixed) form, which CMDSYS routines such as `puts`
-expect. `pstr()` only accepts a string literal of at most 255
-characters.
+NUL. Its value in C is the address of the first character, as usual,
+with type `char *`. `pstr("text")` gives the address of the length
+byte instead. That is the PLASMA (length-prefixed) form, which CMDSYS
+routines such as `puts` expect. `pstr()` only accepts a string literal
+of at most 255 characters, and its type is `char *` too.
 
 ### Calling CMDSYS
 
@@ -105,11 +119,12 @@ the CMDSYS functions in `cmdsys_funcs[]` in `src/parse.c`, such as
 `putc`, `puts`, `puti`, `putln` or `heapalloc`. It is imported from
 CMDSYS. These are PLASMA's functions with PLASMA's meanings, not C's.
 For example, `puts` takes a PLASMA string and adds no newline. The
-compiler checks the argument count against the table, so a mistake is
-caught at compile time and not at load time.
+table gives each one C types, such as `void puts(char *)` and
+`void *heapalloc(int)`, and the compiler checks calls against them, so
+a mistake is caught at compile time and not at load time.
 
-As in PLASMA, a `void` function returns no value, and an `int` function
-returns exactly one.
+As in PLASMA, a `void` function returns no value, and any other
+function returns exactly one.
 
 ## Layout
 
@@ -138,9 +153,14 @@ returns exactly one.
   uses one to four labels.
 * Only a few peephole optimizations so far (see `src/peep.c`): removal
   of unreachable code, plain stores for assignments whose value is
-  unused, folded negative constants, `INCR`/`DECR`, `ANDI`, `DLW` for a store
-  followed by a load of the same variable, and single branch ops for
-  tests such as `x == 0`, `x != y` and `!x`.
+  unused, folded negative constants, `INCR`/`DECR`, `ANDI`, `IDXW`,
+  multiplication by 0, 1, 3 or a power of two without `MUL`,
+  `DLW` for a store followed by a load of the same variable, and single
+  branch ops for tests such as `x == 0`, `x != y` and `!x`.
+* A store through a pointer that isn't a plain variable, such as
+  `*p++ = x` or `*f() = x`, first saves the address in a hidden local
+  (2 bytes of the 255-byte frame, for that statement only), because
+  PLASMA has no SWAP. So does `i + p` with an `int *` `p`.
 * A `for` loop with a step clause jumps around the step's code, which
   costs two extra branches per loop (approach.md, issue 17, plans a
   fix).

@@ -1296,6 +1296,64 @@ Defaults, also agreed:
   that suggests making it global; open question 4 stays open.
 - String literals and `pstr()` have type `char *`.
 
+**M4 step 2 (pointers) is done.** Chosen while building it (open for
+review):
+- **Stores through pointers.** `*e` is pending, like a variable, until
+  the parser sees whether it is assigned to. If `e` is a plain local
+  `p`, nothing has been emitted, and `*p = v` is `v LLW p SW`, with no
+  temporary. Otherwise `e`'s value is on the stack when `=` is seen;
+  it is saved in a temporary frame word (`SLW t`), and the store is
+  `v LLW t SW`. Temporaries are freed at the end of each full
+  expression (a statement's expression, a condition, an initializer,
+  a `return` value, a `for` clause), so they cost frame space only
+  while they're in use.
+- **An assignment through a pointer doesn't keep its value.** PLASMA's
+  `SW` doesn't, and keeping it would need a `DUP` before the address.
+  Instead the value is read back from the object (`LLW p LW`) only if
+  it's used, as in `x = *p = 0`. So `*p = v;` as a statement costs
+  nothing extra. This is C's value (the object's value after the
+  store), including the low byte for a `char`.
+- **Loads through pointers are never dropped**, even when the value is
+  unused (`*p;`, `(void)*p;`), since reading an Apple II soft switch
+  such as `$C010` has an effect and ccish has no `volatile`.
+- **Pointer arithmetic is done in the parser** with plain IR ops (no
+  typed IR): `p + i` is `p i CONST 2 MUL ADD`, which the peephole stage
+  turns into `p i IDXW` (`CN 2 MUL` → `DUP ADD`, then `DUP ADD ADD` →
+  `IDXW`). `p - q` on 2-byte elements divides with `CN 1 SHR`.
+  `c + p` with a constant `c` emits `p` first, with `c` scaled at
+  compile time; `i + p` with a variable `i` saves `p` in a temporary
+  (4(b)).
+- **Comparisons:** `==` and `!=` accept the same pointer type, a
+  `void *` on either side, or a null pointer constant. `< > <= >=`
+  need the same pointer type on both sides. Each side's sign bit is
+  flipped as decided (the right side's at compile time when it's a
+  constant).
+- **Multiplying by a constant** uses PLASMA's own optimizer's rules
+  (`codeopt.pla`), discussed and added in this step: `* 2` → `DUP ADD`,
+  `* 3` → `DUP IDXW`, `* 0` → `DROP CN 0`, `* 2^n` → `CN n SHL`, and
+  also `* 1` → nothing. `x * 2` is `DUP ADD`, not `CN 1 SHL`: both are
+  2 bytes, but on the 6502 VM `DUP ADD` takes about 52 cycles and
+  `CN 1 SHL` about 59, since `SHL` is a general shifter that saves Y,
+  checks for counts of 8 or more and loops (`plvm02.s`). `MUL` is a
+  16-step loop, slowest of all. PLASMA's other rule, division by a
+  power of two as `SHR`, is wrong for C's signed `/` (it rounds toward
+  minus infinity, not zero), so it waits for `unsigned` (M11).
+- **The peephole rule for an unused `x++`** now covers stores through
+  a pointer (`LLW p SW`) and updates by a constant (`CN 2 ADD`, a
+  pointer's `++`), not just `INCR`/`DECR` and local stores.
+- **CMDSYS types**, from `cmdsys.plh` and what each routine does (a
+  judgment call, since PLASMA is untyped): `putc(char)`, `puts(char *)`,
+  `gets(char)` returning `char *` (the PLASMA string it read),
+  `getc()` returning `int`, `heapalloc(int)` and `heapmark()` returning
+  `void *`, `heaprelease(void *)`, `heapallocalign(int, int, void *)`,
+  `memset(void *, int, int)`, `memcpy(void *, void *, int)`,
+  `strcpy` and `strcat` taking and returning `char *` (PLASMA strings),
+  `syscall(int, void *)`, and `int` for the rest.
+- `*(char *)0xC000` works, but as `CW $C000 LB`; turning a constant
+  address into `LAB`/`SAB` is 17, P8 (M10).
+- Function pointers, and `void` parameters other than `(void)`, are
+  still errors.
+
 **M4 step 1 (types, `char` and casts) is done.** Chosen while building
 it (open for review):
 - The type table (`src/type.c`) has only the basic types so far:

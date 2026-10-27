@@ -103,12 +103,12 @@ const char *tok_desc(void);         /* the current token, for messages */
  * types are the same exactly when their indexes are (approach.md, "M4
  * design"). The basic types have fixed indexes. */
 
-enum { TK_VOID, TK_CHAR, TK_INT };      /* Type.kind */
-enum { TY_VOID, TY_CHAR, TY_INT };      /* indexes of the basic types */
+enum { TK_VOID, TK_CHAR, TK_INT, TK_PTR };  /* Type.kind */
+enum { TY_VOID, TY_CHAR, TY_INT };          /* indexes of the basic types */
 
 typedef struct {
     int kind;           /* TK_* */
-    int sub;            /* element type, for pointers and arrays (later) */
+    int sub;            /* TK_PTR: the type pointed to (arrays later) */
     int count;          /* element count, for arrays (later) */
 } Type;
 
@@ -116,6 +116,8 @@ extern Type types[MAX_TYPES];
 extern int ntypes;
 
 int type_size(int t);
+int is_pointer(int t);
+int pointer_to(int t);
 
 /* ---------- Symbols (parse.c) ---------- */
 
@@ -156,6 +158,11 @@ enum {
     IR_LOCALB,      /* a = frame offset: push a local byte (a char) */
     IR_SETLOCALB,   /* a = frame offset: store the top value's low byte
                      * there, and keep that byte as the value */
+    IR_LOCALADDR,   /* a = frame offset: push the address of a local */
+    IR_LOAD,        /* ( addr -- word ) load a word */
+    IR_LOADB,       /* ( addr -- byte ) load a byte (a char) */
+    IR_STORE,       /* ( val addr -- ) store a word */
+    IR_STOREB,      /* ( val addr -- ) store val's low byte */
     IR_CALL,        /* sym, a = argument count: call, push the result */
     IR_DROP,        /* discard the top value */
     IR_DUP,         /* duplicate the top value */
@@ -184,18 +191,20 @@ void ir_put(int op, int a, Sym *s);
 /* PLASMA opcodes used so far (see ../../doc/Bytecodes.md). */
 enum {
     OP_CN = 0x00, OP_MINUS1 = 0x20, OP_BREQ = 0x22, OP_BRNE = 0x24,
-    OP_LA = 0x26, OP_CB = 0x2A,
+    OP_LA = 0x26, OP_LLA = 0x28, OP_CB = 0x2A,
     OP_CW = 0x2C, OP_DROP = 0x30, OP_DUP = 0x34, OP_ANDI = 0x3C,
     OP_ISEQ = 0x40, OP_ISNE = 0x42, OP_ISGT = 0x44, OP_ISLT = 0x46,
     OP_ISGE = 0x48, OP_ISLE = 0x4A, OP_BRFLS = 0x4C, OP_BRTRU = 0x4E,
     OP_BRNCH = 0x50,
     OP_CALL = 0x54, OP_ENTER = 0x58, OP_LEAVE = 0x5A, OP_RET = 0x5C,
-    OP_CFFB = 0x5E, OP_LLB = 0x64, OP_LLW = 0x66, OP_DLB = 0x6C,
-    OP_DLW = 0x6E, OP_SLB = 0x74, OP_SLW = 0x76,
+    OP_CFFB = 0x5E, OP_LB = 0x60, OP_LW = 0x62, OP_LLB = 0x64,
+    OP_LLW = 0x66, OP_DLB = 0x6C, OP_DLW = 0x6E, OP_SB = 0x70, OP_SW = 0x72,
+    OP_SLB = 0x74, OP_SLW = 0x76,
     OP_NOT = 0x80, OP_ADD = 0x82, OP_SUB = 0x84, OP_MUL = 0x86, OP_DIV = 0x88,
     OP_MOD = 0x8A, OP_INCR = 0x8C, OP_DECR = 0x8E, OP_NEG = 0x90,
     OP_COMP = 0x92, OP_AND = 0x94, OP_IOR = 0x96, OP_XOR = 0x98,
-    OP_SHL = 0x9A, OP_SHR = 0x9C, OP_BRAND = 0xAC, OP_BROR = 0xAE,
+    OP_SHL = 0x9A, OP_SHR = 0x9C, OP_IDXW = 0x9E, OP_BRAND = 0xAC,
+    OP_BROR = 0xAE,
     /* Pseudo-ops: markers that travel through stages 2-4 in order with
      * the code, but emit no bytes themselves. */
     OP_FUNC_BEGIN = 0x100,  /* sym: a function starts here */

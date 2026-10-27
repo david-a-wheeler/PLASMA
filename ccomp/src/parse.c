@@ -3,19 +3,22 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 3, and M4 step 1):
- *   - function definitions and prototypes returning int, char or void,
- *     with int and char parameters;
- *   - int and char local variables, declared anywhere in a block (or in
- *     a for statement's first clause), with optional initializers, and
- *     block scope;
- *   - casts to int, char and void;
+ * Language so far (milestones 1 to 3, and M4 steps 1 and 2):
+ *   - types int, char, void, and pointers to them (int *, char **, ...);
+ *   - function definitions and prototypes returning any of these, with
+ *     parameters of any of them but void;
+ *   - local variables, declared anywhere in a block (or in a for
+ *     statement's first clause), with optional initializers, and block
+ *     scope;
+ *   - casts;
  *   - statements: return, if/else, while, do, for, break, continue,
  *     expression statements, empty statements and nested blocks;
  *   - expressions: integer and character constants, string literals,
  *     variables, function calls, parentheses, the pstr() builtin,
- *     unary - + ~ ! ++ --, postfix ++ --, binary * / % + - << >> & ^ |,
+ *     unary - + ~ ! * & ++ --, postfix ++ --, binary * / % + - << >> & ^ |,
  *     comparisons, && || ?:, and = += -= *= /= %= &= |= ^= <<= >>=.
+ *     Pointer arithmetic scales by the element size, pointers compare
+ *     unsigned, and pointer types are checked as strictly as C says.
  * A function called but not defined in the file must be one of the
  * CMDSYS functions in cmdsys_funcs[] below; it is imported from CMDSYS.
  *
@@ -27,7 +30,8 @@
  * the variable is parsed, because it may turn out to be the target of
  * an assignment (x = ..., x += ..., x++). Instead the parser returns a
  * *pending* operand, and emits the load only once it knows the value is
- * needed (approach.md 4(a), option A).
+ * needed (approach.md 4(a), option A). An object reached through a
+ * pointer is pending the same way; see the Operand kinds below.
  *
  * Constant folding works the same way. A constant is a *pending
  * constant* until its value is needed on the stack, so unary operators
@@ -130,24 +134,22 @@ static Sym *add_func(const char *name)
 
 /*
  * The CMDSYS functions a program may call, from src/inc/cmdsys.plh,
- * with their parameter counts and return types (void or int). Their
- * names and meanings are PLASMA's, not C's: puts() takes a PLASMA
- * string and adds no newline. divmod() returns two values and is left
- * out.
+ * with their types as a signature: the return type, then each
+ * parameter's type, as v (void), i (int), c (char), s (char *) or
+ * p (void *). Their names and meanings are PLASMA's, not C's: puts()
+ * takes a PLASMA (length-prefixed) string and adds no newline, and
+ * strcpy() copies PLASMA strings. divmod() returns two values and is
+ * left out.
  */
-static const struct { const char *name; int nparams, type; }
-cmdsys_funcs[] = {
-    {"putc", 1, TY_VOID}, {"putln", 0, TY_VOID}, {"puts", 1, TY_VOID},
-    {"puti", 1, TY_VOID}, {"putb", 1, TY_VOID}, {"puth", 1, TY_VOID},
-    {"getc", 0, TY_INT}, {"gets", 1, TY_INT}, {"call", 5, TY_INT},
-    {"syscall", 2, TY_INT}, {"heapmark", 0, TY_INT},
-    {"heapallocalign", 3, TY_INT}, {"heapalloc", 1, TY_INT},
-    {"heaprelease", 1, TY_INT}, {"heapavail", 0, TY_INT},
-    {"memset", 3, TY_VOID}, {"memcpy", 3, TY_VOID}, {"strcpy", 2, TY_INT},
-    {"strcat", 2, TY_INT}, {"toupper", 1, TY_INT}, {"sext", 1, TY_INT},
-    {"isugt", 2, TY_INT}, {"isuge", 2, TY_INT}, {"isult", 2, TY_INT},
-    {"isule", 2, TY_INT},
-    {NULL, 0, 0}
+static const struct { const char *name, *sig; } cmdsys_funcs[] = {
+    {"putc", "vc"}, {"putln", "v"}, {"puts", "vs"}, {"puti", "vi"},
+    {"putb", "vi"}, {"puth", "vi"}, {"getc", "i"}, {"gets", "sc"},
+    {"call", "iiiiii"}, {"syscall", "iip"}, {"heapmark", "p"},
+    {"heapallocalign", "piip"}, {"heapalloc", "pi"}, {"heaprelease", "ip"},
+    {"heapavail", "i"}, {"memset", "vpii"}, {"memcpy", "vppi"},
+    {"strcpy", "sss"}, {"strcat", "sss"}, {"toupper", "ii"}, {"sext", "ii"},
+    {"isugt", "iii"}, {"isuge", "iii"}, {"isult", "iii"}, {"isule", "iii"},
+    {NULL, NULL}
 };
 
 /* The index of name in cmdsys_funcs[], or -1 if it isn't there. */
@@ -237,6 +239,59 @@ static int parse_base_type(void)
         error("expected a type, not", tok_desc());
     next();
     return t;
+}
+
+/* Parse any '*'s after a base type t: each makes a pointer to the type
+ * before it, so "char **" is a pointer to a pointer to char. */
+static int parse_pointers(int t)
+{
+    while (tok == '*') {
+        next();
+        t = pointer_to(t);
+    }
+    return t;
+}
+
+/* The type a letter stands for in a cmdsys_funcs[] signature. */
+static int sig_type(char c)
+{
+    switch (c) {
+    case 'v': return TY_VOID;
+    case 'c': return TY_CHAR;
+    case 's': return pointer_to(TY_CHAR);
+    case 'p': return pointer_to(TY_VOID);
+    }
+    return TY_INT;
+}
+
+/* Declare fn as CMDSYS function c of cmdsys_funcs[], with its types. */
+static void declare_cmdsys(Sym *fn, int c)
+{
+    const char *sig = cmdsys_funcs[c].sig;
+    int i, n = (int)strlen(sig) - 1;
+    if (nparam_types + n > MAX_PARAM_TYPES)
+        fatal("too many function parameters in all", NULL);
+    fn->type = sig_type(sig[0]);
+    fn->nparams = n;
+    fn->ptypes = nparam_types;
+    for (i = 0; i < n; i++)
+        param_types[nparam_types++] = sig_type(sig[i + 1]);
+    fn->declared = 1;
+}
+
+/* Does fn's declaration match CMDSYS function c's types? Parameter
+ * types that were never declared (an implicit declaration) match. */
+static int matches_cmdsys(Sym *fn, int c)
+{
+    const char *sig = cmdsys_funcs[c].sig;
+    int i, n = (int)strlen(sig) - 1;
+    if (fn->type != sig_type(sig[0]) || fn->nparams != n)
+        return 0;
+    if (fn->ptypes >= 0)
+        for (i = 0; i < n; i++)
+            if (param_types[fn->ptypes + i] != sig_type(sig[i + 1]))
+                return 0;
+    return 1;
 }
 
 /* ---------- Constants ---------- */
@@ -390,12 +445,23 @@ static void place_forward(int n)
 
 /* ---------- Expressions ---------- */
 
-/* An operand on its way through the expression parser. */
+/*
+ * An operand on its way through the expression parser. The last three
+ * kinds are lvalues: what to load or store isn't decided until the
+ * parser sees what follows. An object reached through a pointer (*e)
+ * is K_DEREF when e's value is on the stack. Storing into it needs the
+ * value first and the address on top, and there is no SWAP, so before
+ * a store the address is saved in a temporary local (spill()), and it
+ * becomes K_DEREF_LOCAL. *p, with p a local variable, is K_DEREF_LOCAL
+ * from the start, and needs no temporary (approach.md 4(a) and 4(e)).
+ */
 enum {
     K_VALUE,        /* its value is on the stack */
     K_VOID,         /* a void call: nothing on the stack */
+    K_CONST,        /* a constant, not emitted yet (val = value) */
     K_LOCAL,        /* a local variable, not loaded yet (off = offset) */
-    K_CONST         /* a constant, not emitted yet (val = value) */
+    K_DEREF,        /* the object at the address on the stack */
+    K_DEREF_LOCAL   /* the object at the address in the local word off */
 };
 
 typedef struct {
@@ -405,6 +471,9 @@ typedef struct {
     int off;
     int val;
     int is_bool;    /* K_VALUE: known to be 1 or 0 (a comparison, !, &&) */
+    int assigned;   /* K_DEREF_LOCAL: the result of an assignment to the
+                     * object, so not an lvalue. Its value, if needed,
+                     * is read back from the object. */
 } Operand;
 
 /* C precedence levels (higher binds tighter). */
@@ -430,19 +499,165 @@ static void store_local(Operand *o)
     put(o->type == TY_CHAR ? IR_SETLOCALB : IR_SETLOCAL, o->off, NULL);
 }
 
+/* The IR op that loads a value of type t from an address (a char is a
+ * byte). */
+static int load_op(int t)
+{
+    return t == TY_CHAR ? IR_LOADB : IR_LOAD;
+}
+
+/* The IR op that stores a value of type t at an address. */
+static int store_op(int t)
+{
+    return t == TY_CHAR ? IR_STOREB : IR_STORE;
+}
+
 /* Make sure the operand's value is on the stack. */
 static void rvalue(Operand *o)
 {
-    if (o->kind == K_VOID)
+    switch (o->kind) {
+    case K_VOID:
         error("void value used in an expression", NULL);
-    if (o->kind == K_LOCAL) {
-        load_local(o);
-        o->is_bool = 0;
-    } else if (o->kind == K_CONST) {
+        break;
+    case K_CONST:
         put(IR_CONST, o->val, NULL);
         o->is_bool = o->val == 0 || o->val == 1;
+        break;
+    case K_LOCAL:
+        load_local(o);
+        o->is_bool = 0;
+        break;
+    case K_DEREF_LOCAL:
+        put(IR_LOCAL, o->off, NULL);
+        /* fall through */
+    case K_DEREF:
+        put(load_op(o->type), 0, NULL);
+        o->is_bool = 0;
+        break;
     }
     o->kind = K_VALUE;
+}
+
+/* Allocate a temporary frame word. Temporaries are freed at the end of
+ * each full expression (see end_expr()). */
+static int new_temp(void)
+{
+    int off = frame_next;
+    if (frame_next + 2 > 255)
+        error("too many local variables in", quote(cur_fn->name));
+    frame_next += 2;
+    if (frame_next > frame_max)
+        frame_max = frame_next;
+    return off;
+}
+
+/* Frame offset where the current full expression's temporaries start. */
+static int temp_mark;
+
+/* Start a full expression (one not inside another, such as an
+ * expression statement or a condition). */
+static void begin_expr(void)
+{
+    temp_mark = frame_next;
+}
+
+/* End a full expression: its temporaries' frame space is free again. */
+static void end_expr(void)
+{
+    frame_next = temp_mark;
+}
+
+/* If o is K_DEREF, save its address (on the stack) in a temporary, so
+ * that it can be pushed again after a value: o becomes K_DEREF_LOCAL. */
+static void spill(Operand *o)
+{
+    if (o->kind != K_DEREF)
+        return;
+    o->off = new_temp();
+    put(IR_SETLOCAL, o->off, NULL);
+    put(IR_DROP, 0, NULL);
+    o->kind = K_DEREF_LOCAL;
+}
+
+/* Report an error unless o is an lvalue (something that can be
+ * assigned to); what says how it was used. */
+static void need_lvalue(Operand *o, const char *what)
+{
+    if (o->kind != K_LOCAL && o->kind != K_DEREF
+        && !(o->kind == K_DEREF_LOCAL && !o->assigned))
+        error("lvalue required as", what);
+}
+
+/* Store the value on the stack into lvalue o, which is K_LOCAL or
+ * K_DEREF_LOCAL (spill() first). o becomes the assignment's result: for
+ * a local, its value is kept on the stack (DLW); for an object reached
+ * through a pointer, it is read back from the object only if needed. */
+static void assign_to(Operand *o)
+{
+    if (o->kind == K_LOCAL) {
+        store_local(o);
+        o->kind = K_VALUE;
+        return;
+    }
+    put(IR_LOCAL, o->off, NULL);
+    put(store_op(o->type), 0, NULL);
+    o->assigned = 1;
+}
+
+/* Discard the value of an expression used as a statement. A pending
+ * variable or constant ("x;") emits nothing, nor does the result of an
+ * assignment through a pointer. A load through a pointer is still
+ * done, since it may read I/O (such as the Apple II's $C010). */
+static void discard(Operand *o)
+{
+    if (o->kind == K_DEREF || (o->kind == K_DEREF_LOCAL && !o->assigned))
+        rvalue(o);
+    if (o->kind == K_VALUE)
+        put(IR_DROP, 0, NULL);
+}
+
+/* Is o a null pointer constant: an integer constant 0? */
+static int is_null(Operand *o)
+{
+    return o->kind == K_CONST && o->val == 0 && !is_pointer(o->type);
+}
+
+/* The size of what pointer type t points to. Arithmetic on a void *
+ * is an error, since void has no size. */
+static int elem_size(int t)
+{
+    int n = type_size(types[t].sub);
+    if (n == 0)
+        error("pointer arithmetic on a 'void *'", NULL);
+    return n;
+}
+
+/* Can pointer types a and b be mixed (in ==, != or ?:)? They can if
+ * they are the same, or if either is void *. */
+static int compatible(int a, int b)
+{
+    return a == b || types[a].sub == TY_VOID || types[b].sub == TY_VOID;
+}
+
+/* Check that o can be assigned (or passed, or returned) to type to, as
+ * C requires: integers and pointers don't mix without a cast, except
+ * the constant 0, and pointer types must be compatible. where says
+ * where, for the message. */
+static void check_assign(int to, Operand *o, const char *where)
+{
+    int from = o->type;
+    if (o->kind == K_VOID)
+        error("void value used in an expression", NULL);
+    if (is_pointer(to)) {
+        if (!is_pointer(from)) {
+            if (!is_null(o))
+                error("pointer from integer without a cast in", where);
+        } else if (!compatible(from, to)) {
+            error("incompatible pointer types in", where);
+        }
+    } else if (is_pointer(from)) {
+        error("integer from pointer without a cast in", where);
+    }
 }
 
 /* Make o's value C's truth value: 1 if it is nonzero, else 0. A
@@ -481,12 +696,12 @@ static void to_char(Operand *o)
 }
 
 /* Apply the cast (type) to o. A cast's result is never an lvalue. To
- * void, the value is discarded. */
+ * void, the value is discarded. Between integers and pointers, the
+ * value is unchanged (both are 16 bits). */
 static void cast(Operand *o, int type)
 {
     if (type == TY_VOID) {
-        if (o->kind == K_VALUE)
-            put(IR_DROP, 0, NULL);
+        discard(o);
         o->kind = K_VOID;
     } else if (type == TY_CHAR) {
         to_char(o);
@@ -505,15 +720,6 @@ static void parse_skipped(int min_prec, Operand *o)
     parse_expr(min_prec, o);
     suppress--;
     nheld = saved;      /* drop anything held inside it */
-}
-
-/* Parse an expression that must produce a value, at precedence
- * min_prec or above. */
-static void parse_value(int min_prec)
-{
-    Operand o;
-    parse_expr(min_prec, &o);
-    rvalue(&o);
 }
 
 /*
@@ -573,23 +779,24 @@ static int assign_op(int *ir_op)
     return 0;
 }
 
-/* Report an error unless o is a variable that can be assigned to; what
- * says how it was used. */
-static void need_variable(Operand *o, const char *what)
-{
-    if (o->kind != K_LOCAL)
-        error("lvalue required as", what);
-}
-
 /* Parse a call to fn, starting at '(': emit the arguments, check their
- * count, then emit the call. */
+ * count (and their types, if fn's parameter types are known), then
+ * emit the call. */
 static void parse_call(Sym *fn, Operand *o)
 {
+    char where[MAX_NAME + 32];
+    Operand a;
     int nargs = 0;
     next();                         /* '(' */
     if (tok != ')') {
         for (;;) {
-            parse_value(PREC_ASSIGN);
+            parse_expr(PREC_ASSIGN, &a);
+            if (fn->ptypes >= 0 && nargs < fn->nparams) {
+                sprintf(where, "argument %d of %s", nargs + 1,
+                        quote(fn->name));
+                check_assign(param_types[fn->ptypes + nargs], &a, where);
+            }
+            rvalue(&a);
             nargs++;
             if (tok != ',')
                 break;
@@ -636,6 +843,7 @@ static void parse_primary(Operand *o)
     o->kind = K_VALUE;
     o->type = TY_INT;
     o->is_bool = 0;
+    o->assigned = 0;
     switch (tok) {
     case T_NUM:
         o->kind = K_CONST;          /* emit it later, if needed */
@@ -644,6 +852,7 @@ static void parse_primary(Operand *o)
         return;
     case T_STR:
         put(IR_DATAADDR, data_string(tok_text, tok_len), NULL);
+        o->type = pointer_to(TY_CHAR);
         next();
         return;
     case '(':
@@ -651,9 +860,7 @@ static void parse_primary(Operand *o)
         next();
         if (is_type_start(tok)) {
             /* A cast: (type) unary-expression. */
-            c = parse_base_type();
-            if (tok == '*')
-                error("pointers are not supported yet", NULL);
+            c = parse_pointers(parse_base_type());
             expect(')', "expected ')' after the type in a cast, not");
             parse_unary(o);
             cast(o, c);
@@ -671,6 +878,7 @@ static void parse_primary(Operand *o)
         if (tok == '(') {
             if (!strcmp(name, "pstr")) {
                 parse_pstr();
+                o->type = pointer_to(TY_CHAR);
                 return;
             }
             if (find_local(name))
@@ -679,12 +887,8 @@ static void parse_primary(Operand *o)
             if (!s) {
                 s = add_func(name);
                 c = find_cmdsys(name);
-                if (c >= 0) {
-                    /* Declared by the CMDSYS table. */
-                    s->nparams = cmdsys_funcs[c].nparams;
-                    s->type = cmdsys_funcs[c].type;
-                    s->declared = 1;
-                }
+                if (c >= 0)
+                    declare_cmdsys(s, c);   /* by the CMDSYS table */
                 /* Otherwise an implicit declaration: returns int, and
                  * this call fixes the parameter count. */
             }
@@ -709,15 +913,25 @@ static void parse_primary(Operand *o)
     error("expected an expression, not", tok_desc());
 }
 
+/* Check that lvalue o can be the operand of ++ or --, and get it ready:
+ * push its value, leaving o itself ready to be stored into. Returns
+ * the amount to add: the element size for a pointer, else 1. */
+static int start_incdec(Operand *o)
+{
+    Operand v;
+    need_lvalue(o, "operand of ++ or --");
+    spill(o);
+    v = *o;
+    rvalue(&v);
+    return is_pointer(o->type) ? elem_size(o->type) : 1;
+}
+
 /* ++x / --x: x = x + 1, and the value is the new x. */
 static void pre_incdec(Operand *o, int ir_op)
 {
-    need_variable(o, "operand of ++ or --");
-    load_local(o);
-    put(IR_CONST, 1, NULL);
+    put(IR_CONST, start_incdec(o), NULL);
     put(ir_op, 0, NULL);
-    store_local(o);
-    o->kind = K_VALUE;
+    assign_to(o);
     o->is_bool = 0;
 }
 
@@ -726,14 +940,49 @@ static void pre_incdec(Operand *o, int ir_op)
  * copy. */
 static void post_incdec(Operand *o, int ir_op)
 {
-    need_variable(o, "operand of ++ or --");
-    load_local(o);
+    int step = start_incdec(o);
     put(IR_DUP, 0, NULL);
-    put(IR_CONST, 1, NULL);
+    put(IR_CONST, step, NULL);
     put(ir_op, 0, NULL);
-    store_local(o);
-    put(IR_DROP, 0, NULL);
+    assign_to(o);
+    discard(o);                     /* the new value */
     o->kind = K_VALUE;
+    o->is_bool = 0;
+    o->assigned = 0;
+}
+
+/* Apply unary * to o: the result is the object o points to. */
+static void deref(Operand *o)
+{
+    int t = o->type;
+    if (o->kind == K_VOID)
+        error("void value used in an expression", NULL);
+    if (!is_pointer(t))
+        error("unary '*' needs a pointer operand", NULL);
+    if (types[t].sub == TY_VOID)
+        error("dereferencing a 'void *'", NULL);
+    if (o->kind == K_LOCAL) {
+        o->kind = K_DEREF_LOCAL;    /* *p: the address is in p */
+    } else {
+        rvalue(o);
+        o->kind = K_DEREF;
+    }
+    o->type = types[t].sub;
+    o->is_bool = 0;
+    o->assigned = 0;
+}
+
+/* Apply unary & to o: the result is its address. */
+static void address_of(Operand *o)
+{
+    if (o->kind == K_LOCAL)
+        put(IR_LOCALADDR, o->off, NULL);
+    else if (o->kind == K_DEREF_LOCAL && !o->assigned)
+        put(IR_LOCAL, o->off, NULL);    /* &*p is p */
+    else if (o->kind != K_DEREF)        /* K_DEREF: already on the stack */
+        error("lvalue required as", "unary '&' operand");
+    o->kind = K_VALUE;
+    o->type = pointer_to(o->type);
     o->is_bool = 0;
 }
 
@@ -746,6 +995,9 @@ static void parse_unary(Operand *o)
     case '-': case '+': case '~': case '!':
         next();
         parse_unary(o);
+        if (t != '!' && is_pointer(o->type))
+            error("pointer operand to unary", t == '-' ? "'-'"
+                  : t == '+' ? "'+'" : "'~'");
         if (o->kind == K_CONST) {
             if (t == '-')
                 o->val = wrap16(0u - (unsigned)o->val);
@@ -773,7 +1025,13 @@ static void parse_unary(Operand *o)
         pre_incdec(o, t == T_INC ? IR_ADD : IR_SUB);
         return;
     case '*': case '&':
-        not_yet();
+        next();
+        parse_unary(o);
+        if (t == '*')
+            deref(o);
+        else
+            address_of(o);
+        return;
     }
     parse_primary(o);
     for (;;) {
@@ -839,11 +1097,33 @@ static int is_void(Operand *o)
     return o->kind == K_VOID;
 }
 
-/* The type of b ? b : c: their common type, or int if they differ
- * (char and int; C promotes both to int). */
-static int cond_type(Operand *b, Operand *c)
+/* The type of x ? b : c, given whether b and c are null pointer
+ * constants. Integers give their common type, or int if they differ
+ * (char and int: C promotes both). A pointer may meet the same type,
+ * a void * (giving void *), or a null pointer constant. */
+static int cond_type(Operand *b, int b_null, Operand *c, int c_null)
 {
-    return b->type == c->type ? b->type : TY_INT;
+    int bt = b->type, ct = c->type;
+    if (!is_pointer(bt) && !is_pointer(ct))
+        return bt == ct ? bt : TY_INT;
+    if (bt == ct)
+        return bt;
+    if (is_pointer(bt) && is_pointer(ct) && compatible(bt, ct))
+        return types[bt].sub == TY_VOID ? bt : ct;
+    if (is_pointer(bt) && c_null)
+        return bt;
+    if (is_pointer(ct) && b_null)
+        return ct;
+    error("type mismatch in conditional expression", NULL);
+    return TY_INT;
+}
+
+/* Is o an lvalue kind (a variable, or an object reached through a
+ * pointer), whose value hasn't been loaded? */
+static int is_place(Operand *o)
+{
+    return o->kind == K_LOCAL || o->kind == K_DEREF
+           || o->kind == K_DEREF_LOCAL;
 }
 
 /*
@@ -855,7 +1135,7 @@ static int cond_type(Operand *b, Operand *c)
 static void parse_conditional(Operand *o)
 {
     Operand b, c;
-    int else_l, end_l;
+    int else_l, end_l, b_null, type;
 
     next();                         /* '?' */
     if (o->kind == K_CONST) {
@@ -871,10 +1151,11 @@ static void parse_conditional(Operand *o)
             parse_expr(PREC_COND, &c);
         if (is_void(&b) != is_void(&c))
             error("only one side of '?:' is void", NULL);
+        type = cond_type(&b, is_null(&b), &c, is_null(&c));
         *o = take_b ? b : c;
-        if (o->kind == K_LOCAL)
+        if (is_place(o))
             rvalue(o);              /* the result is not an lvalue */
-        o->type = cond_type(&b, &c);
+        o->type = type;
         return;
     }
     rvalue(o);
@@ -882,20 +1163,149 @@ static void parse_conditional(Operand *o)
     end_l = new_label();
     branch(IR_BRFALSE, else_l);
     parse_expr(PREC_COMMA, &b);
+    b_null = is_null(&b);
     if (!is_void(&b))
         rvalue(&b);
     branch(IR_JUMP, end_l);
     expect(':', "expected ':' in conditional expression, not");
     place_forward(else_l);
     parse_expr(PREC_COND, &c);
+    type = cond_type(&b, b_null, &c, is_null(&c));
     if (!is_void(&c))
         rvalue(&c);
     if (is_void(&b) != is_void(&c))
         error("only one side of '?:' is void", NULL);
     place_forward(end_l);
     o->kind = b.kind;
-    o->type = cond_type(&b, &c);
+    o->type = type;
     o->is_bool = b.is_bool && c.is_bool;
+}
+
+/* Is IR op one of < > <= >=? */
+static int is_relational(int op)
+{
+    return op == IR_LT || op == IR_GT || op == IR_LE || op == IR_GE;
+}
+
+/* The C spelling of arithmetic IR op, for messages. */
+static const char *op_name(int op)
+{
+    static const char *const names[] = {
+        "'+'", "'-'", "'*'", "'/'", "'%'", "'&'", "'|'", "'^'", "'<<'",
+        "'>>'"
+    };
+    return op >= IR_ADD && op <= IR_SHR ? names[op - IR_ADD] : "operator";
+}
+
+/* Flip the top value's sign bit (XOR $8000). Pointers are compared
+ * unsigned, as signed values with both sign bits flipped, since PLASMA
+ * only has signed comparisons (approach.md, "M4 design"). */
+static void flip_sign(void)
+{
+    put(IR_CONST, -32768, NULL);
+    put(IR_XOR, 0, NULL);
+}
+
+/* Push integer operand i scaled by the size of what pointer type p
+ * points to, for p + i or p - i. */
+static void push_scaled(Operand *i, int p)
+{
+    int n = elem_size(p);
+    if (i->kind == K_CONST) {
+        i->val = wrap16((unsigned)i->val * (unsigned)n);
+        rvalue(i);
+        return;
+    }
+    rvalue(i);
+    if (n != 1) {
+        put(IR_CONST, n, NULL);
+        put(IR_MUL, 0, NULL);
+    }
+}
+
+/* A comparison with a pointer operand: check the types (equality allows
+ * a null pointer constant or a void *; < > <= >= need the same type),
+ * then push r. For < > <= >=, the left side's sign was already flipped,
+ * so flip r's too. */
+static void compare_pointers(Operand *o, Operand *r, int op)
+{
+    int lt = o->type, rt = r->type;
+    if (!is_pointer(lt) || !is_pointer(rt)) {
+        if (is_relational(op) || !(is_null(o) || is_null(r)))
+            error("comparison between pointer and integer", NULL);
+    } else if (is_relational(op) ? lt != rt : !compatible(lt, rt)) {
+        error("comparison of incompatible pointer types", NULL);
+    }
+    if (is_relational(op) && r->kind == K_CONST) {
+        r->val = wrap16((unsigned)r->val ^ 0x8000u);
+        rvalue(r);
+    } else {
+        rvalue(r);
+        if (is_relational(op))
+            flip_sign();
+    }
+}
+
+/*
+ * Finish binary op: o's value is on the stack (or held, if a
+ * constant), and r has been parsed. Check the operand types, scale
+ * pointer arithmetic by the element size, and emit the op. The result
+ * replaces *o. Pointer arithmetic is p + i, i + p, p - i and p - q.
+ */
+static void binary(Operand *o, Operand *r, int op)
+{
+    int lt = o->type, rt = r->type, n, t;
+    int result = TY_INT;
+
+    if (r->kind == K_VOID)
+        rvalue(r);                  /* an error */
+    if (is_compare(op) && (is_pointer(lt) || is_pointer(rt))) {
+        compare_pointers(o, r, op);
+    } else if (!is_pointer(lt) && !is_pointer(rt)) {
+        rvalue(r);
+    } else if (is_pointer(lt) && !is_pointer(rt)
+               && (op == IR_ADD || op == IR_SUB)) {
+        push_scaled(r, lt);         /* p + i, p - i */
+        result = lt;
+    } else if (!is_pointer(lt) && op == IR_ADD) {
+        /* i + p: i is already below p, so it is scaled with p saved in
+         * a temporary (approach.md 4(b)). */
+        n = elem_size(rt);
+        rvalue(r);
+        if (n != 1) {
+            t = new_temp();
+            put(IR_SETLOCAL, t, NULL);
+            put(IR_DROP, 0, NULL);
+            put(IR_CONST, n, NULL);
+            put(IR_MUL, 0, NULL);
+            put(IR_LOCAL, t, NULL);
+        }
+        result = rt;
+    } else if (is_pointer(lt) && is_pointer(rt) && op == IR_SUB) {
+        /* p - q: the difference in elements. */
+        if (lt != rt)
+            error("incompatible pointer types in", "subtraction");
+        n = elem_size(lt);
+        rvalue(r);
+        put(IR_SUB, 0, NULL);
+        if (n == 2) {
+            put(IR_CONST, 1, NULL);
+            put(IR_SHR, 0, NULL);
+        } else if (n != 1) {
+            put(IR_CONST, n, NULL);
+            put(IR_DIV, 0, NULL);
+        }
+        o->kind = K_VALUE;
+        o->type = TY_INT;
+        o->is_bool = 0;
+        return;
+    } else {
+        error("invalid operands to binary", op_name(op));
+    }
+    put(op, 0, NULL);
+    o->kind = K_VALUE;
+    o->type = result;
+    o->is_bool = is_compare(op);
 }
 
 /*
@@ -916,19 +1326,25 @@ static void parse_expr(int min_prec, Operand *o)
          * ','; it is only possible directly after a unary expression. */
         if (min_prec > PREC_ASSIGN)
             error("lvalue required as", "left operand of assignment");
-        need_variable(o, "left operand of assignment");
+        need_lvalue(o, "left operand of assignment");
         next();
-        if (ir_op >= 0)
-            load_local(o);
-        parse_expr(PREC_ASSIGN, &r);
-        if (ir_op >= 0 && r.kind == K_CONST && !suppress)
-            check_right_const(ir_op, r.val);
+        spill(o);
+        if (ir_op >= 0) {
+            /* x op= e: compute x op e, then store it as for x = e. */
+            Operand x = *o;
+            rvalue(&x);
+            parse_expr(PREC_ASSIGN, &r);
+            if (r.kind == K_CONST && !suppress)
+                check_right_const(ir_op, r.val);
+            binary(&x, &r, ir_op);
+            r = x;
+        } else {
+            parse_expr(PREC_ASSIGN, &r);
+        }
+        check_assign(o->type, &r, "assignment");
         rvalue(&r);
-        if (ir_op >= 0)
-            put(ir_op, 0, NULL);
-        store_local(o);
-        o->kind = K_VALUE;
-        o->is_bool = ir_op < 0 && r.is_bool;
+        assign_to(o);
+        o->is_bool = ir_op < 0 && r.is_bool && o->kind == K_VALUE;
     }
 
     for (;;) {
@@ -948,7 +1364,7 @@ static void parse_expr(int min_prec, Operand *o)
             parse_conditional(o);
             continue;
         }
-        if (o->kind == K_CONST) {
+        if (o->kind == K_CONST && !is_pointer(o->type)) {
             /* Hold it back: it may fold with the right operand. */
             if (nheld > MAX_NEST)
                 fatal("nesting too deep", NULL);
@@ -956,6 +1372,8 @@ static void parse_expr(int min_prec, Operand *o)
             held[nheld++] = o->val;
         } else {
             rvalue(o);
+            if (is_pointer(o->type) && is_relational(ir_op))
+                flip_sign();        /* see compare_pointers() */
         }
         next();
         parse_expr(prec + 1, &r);   /* all binary ops are left-assoc */
@@ -964,13 +1382,23 @@ static void parse_expr(int min_prec, Operand *o)
         if (mark >= 0 && nheld > mark) {
             /* The right operand emitted nothing, so the left constant
              * is still held. */
-            if (r.kind == K_CONST) {
+            if (is_pointer(r.type)) {
+                if (ir_op == IR_ADD && r.kind != K_VOID) {
+                    /* c + p: emit p, then c scaled. */
+                    Operand c = *o;
+                    nheld--;
+                    rvalue(&r);
+                    push_scaled(&c, r.type);
+                    put(IR_ADD, 0, NULL);
+                    *o = r;
+                    continue;
+                }
+            } else if (r.kind == K_CONST) {
                 nheld--;
                 o->val = fold(ir_op, o->val, r.val);
                 o->type = TY_INT;
                 continue;
-            }
-            if (r.kind == K_LOCAL && swapped_op(ir_op) >= 0) {
+            } else if (r.kind == K_LOCAL && swapped_op(ir_op) >= 0) {
                 /* c op x: emit x c op' (op' is op with its operands
                  * swapped), so that the peephole stage sees the
                  * constant right before the op (1+x: INCR). */
@@ -986,11 +1414,7 @@ static void parse_expr(int min_prec, Operand *o)
         }
         /* Otherwise the left value is (or, via put(), will be) on the
          * stack below the right one. */
-        o->kind = K_VALUE;
-        o->type = TY_INT;
-        rvalue(&r);
-        put(ir_op, 0, NULL);
-        o->is_bool = is_compare(ir_op);
+        binary(o, &r, ir_op);
     }
     nest--;
 }
@@ -999,17 +1423,17 @@ static void parse_expr(int min_prec, Operand *o)
 
 static void parse_block(int new_scope);
 
-/* int a, b = 1, c;  or  char c = 'x'; */
+/* A declaration: a base type, then declarators, each a name with any
+ * '*'s before it and an optional initializer: int a = 1, *p = &a; */
 static void parse_declaration(void)
 {
-    int type = parse_base_type();
-    if (type == TY_VOID)
-        error("a variable can't have type void", NULL);
+    int base = parse_base_type();
     for (;;) {
-        Operand v;
+        Operand v, e;
         Sym *s;
-        if (tok == '*')
-            error("pointers are not supported yet", NULL);
+        int type = parse_pointers(base);
+        if (type == TY_VOID)
+            error("a variable can't have type void", NULL);
         if (tok != T_ID)
             error("expected a variable name, not", tok_desc());
         /* In C, the name is in scope in its own initializer. */
@@ -1021,12 +1445,16 @@ static void parse_declaration(void)
             error("local function declarations are not supported", NULL);
         if (tok == '=') {
             next();
-            parse_value(PREC_ASSIGN);
+            begin_expr();
+            parse_expr(PREC_ASSIGN, &e);
+            check_assign(type, &e, "initialization");
+            rvalue(&e);
             v.kind = K_LOCAL;
             v.type = type;
             v.off = s->offset;
             store_local(&v);
             put(IR_DROP, 0, NULL);
+            end_expr();
         }
         if (tok != ',')
             break;
@@ -1035,12 +1463,15 @@ static void parse_declaration(void)
     expect(';', "expected ';' after declaration, not");
 }
 
-/* Discard the value of an expression used as a statement. A bare
- * variable or constant ("x;") emitted nothing, so needs nothing. */
-static void discard(Operand *o)
+/* Parse a full expression used as a statement (or a for clause), and
+ * discard its value. */
+static void parse_expr_statement(void)
 {
-    if (o->kind == K_VALUE)
-        put(IR_DROP, 0, NULL);
+    Operand o;
+    begin_expr();
+    parse_expr(PREC_COMMA, &o);
+    discard(&o);
+    end_expr();
 }
 
 /* Branch to label n if the condition *o is false (or, if on_true, if it
@@ -1056,14 +1487,23 @@ static void cond_branch(Operand *o, int n, int on_true)
     branch(on_true ? IR_BRTRUE : IR_BRFALSE, n);
 }
 
+/* Parse a full expression as a condition, and branch to label n as
+ * cond_branch does. */
+static void parse_cond(int n, int on_true)
+{
+    Operand o;
+    begin_expr();
+    parse_expr(PREC_COMMA, &o);
+    cond_branch(&o, n, on_true);
+    end_expr();
+}
+
 /* Parse "( condition )" and branch to label n as cond_branch does. */
 static void parse_paren_cond(int n, int on_true)
 {
-    Operand o;
     expect('(', "expected '(' before condition, not");
-    parse_expr(PREC_COMMA, &o);
+    parse_cond(n, on_true);
     expect(')', "expected ')' after condition, not");
-    cond_branch(&o, n, on_true);
 }
 
 /* The innermost loops' labels, for break and continue. */
@@ -1144,7 +1584,6 @@ static void parse_for(void)
 {
     int saved_nlocals = nlocals, saved_next = frame_next;
     int top, brk, cont, body;
-    Operand o;
 
     next();                         /* "for" */
     expect('(', "expected '(' after 'for', not");
@@ -1152,19 +1591,15 @@ static void parse_for(void)
     if (is_type_start(tok)) {
         parse_declaration();        /* includes the ';' */
     } else {
-        if (tok != ';') {
-            parse_expr(PREC_COMMA, &o);
-            discard(&o);
-        }
+        if (tok != ';')
+            parse_expr_statement();
         expect(';', "expected ';' after 'for' initialization, not");
     }
     top = new_label();
     brk = new_label();
     place_label(top);
-    if (tok != ';') {
-        parse_expr(PREC_COMMA, &o);
-        cond_branch(&o, brk, 0);
-    }
+    if (tok != ';')
+        parse_cond(brk, 0);
     expect(';', "expected ';' after 'for' condition, not");
     cont = top;
     if (tok != ')') {
@@ -1172,8 +1607,7 @@ static void parse_for(void)
         cont = new_label();
         branch(IR_JUMP, body);
         place_label(cont);
-        parse_expr(PREC_COMMA, &o);
-        discard(&o);
+        parse_expr_statement();
         branch(IR_JUMP, top);
         place_forward(body);
     }
@@ -1238,10 +1672,13 @@ static void parse_statement(void)
         } else {
             if (cur_fn->type == TY_VOID)
                 error("void function returns a value:", quote(cur_fn->name));
+            begin_expr();
             parse_expr(PREC_COMMA, &o);
+            check_assign(cur_fn->type, &o, "return");
             if (cur_fn->type == TY_CHAR)
                 to_char(&o);        /* a char function returns 0 to 255 */
             rvalue(&o);
+            end_expr();
         }
         expect(';', "expected ';' after return value, not");
         put(IR_RETURN, 0, NULL);
@@ -1255,8 +1692,7 @@ static void parse_statement(void)
         not_yet();
         return;
     }
-    parse_expr(PREC_COMMA, &o);
-    discard(&o);
+    parse_expr_statement();
     expect(';', "expected ';' after expression, not");
 }
 
@@ -1301,14 +1737,6 @@ static int parse_params(void)
         next();
         return -1;
     }
-    if (tok == T_VOID) {
-        next();
-        if (tok == ')') {
-            next();
-            return 0;
-        }
-        error("a parameter can't have type void", NULL);
-    }
     for (;;) {
         int type;
         if (tok == T_ELLIPSIS)
@@ -1317,11 +1745,16 @@ static int parse_params(void)
             not_yet();
         if (!is_type_start(tok))
             error("expected a parameter type, not", tok_desc());
-        type = parse_base_type();
-        if (type == TY_VOID)
+        type = parse_pointers(parse_base_type());
+        if (type == TY_VOID) {
+            if (n == 0 && tok == ')') {
+                next();
+                return 0;           /* (void): no parameters */
+            }
             error("a parameter can't have type void", NULL);
-        if (tok == '*' || tok == '[')
-            error("pointer parameters are not supported yet", NULL);
+        }
+        if (tok == '[')
+            error("array parameters are not supported yet", NULL);
         if (n >= MAX_PARAMS)
             fatal("too many parameters", NULL);
         /* ENTER puts parameter n at offset 2n, as a word even for a
@@ -1353,9 +1786,7 @@ static void parse_toplevel(void)
         not_yet();
     if (!is_type_start(tok))
         error("expected a function definition, not", tok_desc());
-    type = parse_base_type();
-    if (tok == '*')
-        error("pointer return types are not supported yet", NULL);
+    type = parse_pointers(parse_base_type());
     if (tok != T_ID)
         error("expected a function name, not", tok_desc());
     fn = find_func(tok_text);
@@ -1440,8 +1871,7 @@ void parse_program(void)
         c = find_cmdsys(s->name);
         if (c < 0)
             error("call to undefined function", quote(s->name));
-        if (s->nparams != cmdsys_funcs[c].nparams
-            || s->type != cmdsys_funcs[c].type)
+        if (!matches_cmdsys(s, c))
             error("declaration doesn't match the CMDSYS function",
                   quote(s->name));
     }

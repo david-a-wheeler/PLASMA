@@ -46,10 +46,12 @@ reasons:
    meanings stay in the IR, so the parser never has to work around VM
    quirks. Lowering maps them safely (approach.md, issues 7 and 17).
    `IR_NOT` is the first such op.
-5. **Reordering.** Later IR will include pseudo-ops (`MARK`, `SWAP2`,
-   …) that tell lowering to reorder code. PLASMA has no SWAP, so this
-   is how stores through pointers get their operands in the right order
-   (approach.md, 4(d) and 4(e)).
+5. **Reordering.** PLASMA has no SWAP, so a store through a pointer,
+   which needs the value below the address, is arranged by the parser:
+   it saves an address in a temporary local when it must (see
+   `IR_STORE`). Later IR may include pseudo-ops (`MARK`, `SWAP2`, …)
+   that tell lowering to reorder code instead (approach.md, 4(d) and
+   4(e)).
 
 ## Ops
 
@@ -178,6 +180,58 @@ the stack is always 0–255, so the parser converts a value to `char`
 (with `CONST 255 AND`, which becomes `ANDI 255`) only for a cast or a
 `char` function's return value, and not when it is already a `char`.
 
+### `IR_LOCALADDR` *a* = frame offset
+
+Push the address of the local at frame offset *a*: C's `&x`.
+
+- **Stack:** `( -- addr )`.
+- **Now:** `LLA a`.
+- **Why it differs:** it doesn't.
+
+### `IR_LOAD` and `IR_LOADB`
+
+Replace an address with the word (or, for a `char`, the zero-extended
+byte) stored there: C's `*p` used as a value.
+
+- **Stack:** `( addr -- value )`.
+- **Now:** `LW` and `LB`.
+- **Why they differ:** they don't.
+- **Later:** fused with what pushes the address: `LLW p LW` could
+  become a single op if PLASMA had one (it doesn't); `LA g LW` becomes
+  `LAW g` for globals (17, P8).
+
+### `IR_STORE` and `IR_STOREB`
+
+Store a word (or a value's low byte) at an address. The address is on
+top, as in PLASMA, and nothing is left on the stack.
+
+- **Stack:** `( value addr -- )`.
+- **Now:** `SW` and `SB`.
+- **Why they differ from `IR_SETLOCAL`:** they don't keep the value,
+  because PLASMA's `SW` and `SB` don't, and there is no SWAP to arrange
+  a copy cheaply.
+
+**How stores through pointers are parsed.** `*e` is an lvalue whose
+address is computed by `e`. A streaming parser has already emitted `e`
+when it sees `=`, but the store needs the value first:
+- If `e` is a plain local pointer `p`, nothing has been emitted yet,
+  and `*p = v` is just `v LOCAL p STORE`.
+- Otherwise the address is on the stack. It is saved in a temporary
+  local (`SETLOCAL t DROP`, which becomes `SLW t`), and `*e = v` is
+  `e SETLOCAL t DROP v LOCAL t STORE` (approach.md 4(e)). Temporaries
+  are freed at the end of each full expression.
+
+An assignment's value is the object's new value. For a local it is
+kept on the stack (`DLW`). For an object reached through a pointer, it
+is read back (`LOCAL p LOAD`) only if the value is used, so `*p = v;`
+as a statement costs nothing extra. Compound assignment and `++`/`--`
+load through the same address before the store, as in
+`LOCAL p LOAD CONST 1 ADD LOCAL p STORE` for `++*p`.
+
+A load through a pointer whose value is unused (`*p;` or `(void)*p;`)
+is still done, since on an Apple II reading some addresses (such as
+`$C010`) has an effect.
+
 **How assignment is parsed:** a variable isn't loaded as soon as it's
 parsed, because it may turn out to be the target of `=`, `+=` or
 `++` (approach.md 4(a), option A). The parser keeps it pending and
@@ -209,21 +263,39 @@ that matters.
   - `DIV` truncates toward zero;
   - `MOD` takes the sign of the dividend;
   - `SHR` is arithmetic, which is what gcc does for signed `>>`.
-- **Why they differ:** not yet. They will carry operand types (reason 4)
-  starting in M4. Then:
-  - `pointer + int` scales the integer by the element size (`IDXW` for
-    word elements, a multiply for structs). If the pointer is the right
-    operand, the left one needs scaling, using a spill or the
-    reordering pseudo-ops.
-  - `unsigned` operands (M11) need different `/`, `%`, `>>` and
+- **Why they differ:** they don't. Pointer arithmetic is done by the
+  parser with plain ops, since it knows the operand types:
+  - `p + i` and `p - i` multiply `i` by the element size first
+    (`CONST n MUL`; for a constant `i`, at compile time). For `i + p`,
+    `i` is already below `p`, so `p` is saved in a temporary local
+    while `i` is scaled (approach.md 4(b)).
+  - `p - q` subtracts, then divides by the element size (`CONST 1
+    SHR` for 2-byte elements).
+  - `unsigned` operands (M11) will need different `/`, `%`, `>>` and
     comparisons.
 - **Now in the peephole stage:** `CN 1 ADD` → `INCR`, `CN 1 SUB` →
-  `DECR`, and a constant from 0 to 255 then `AND` → `ANDI` (which is
-  also how a conversion to `char` is done).
+  `DECR`, a constant from 0 to 255 then `AND` → `ANDI` (which is also
+  how a conversion to `char` is done), and `DUP ADD ADD` → `IDXW` (so
+  `p + i` for an `int *` is `p i IDXW`). A multiply by a constant
+  becomes cheaper ops, as in PLASMA's own optimizer (`codeopt.pla`),
+  since `MUL` is a 16-step loop on the 6502 VMs:
+  - `* 2` → `DUP ADD`. It is the same size as `CN 1 SHL` (2 bytes) but
+    faster on the 6502 VM, about 52 cycles to 59, because `SHL` is a
+    general shifter (it saves Y, checks for counts of 8 or more, and
+    loops). It also fuses into `IDXW`. PLASMA's optimizer even turns
+    `CN 1 SHL` into `DUP ADD`.
+  - `* 3` → `DUP IDXW`; `* 1` → nothing; `* 0` → `DROP CN 0` (the
+    operand is still computed, for its side effects);
+  - `* 2^n` for n from 2 to 15 → `CN n SHL`.
+
+  Division by a power of two is **not** turned into `SHR`, as PLASMA's
+  optimizer does: `SHR` rounds toward minus infinity, but C's `/`
+  truncates toward zero (`-3 / 2` is -1, `-3 >> 1` is -2). That is
+  only valid for `unsigned` (M11).
 - **Later:**
   - `ADDI`/`SUBI`/`ORI`;
-  - fused forms (`ADDLW`, `IDXW`, …);
-  - strength reduction;
+  - fused forms (`ADDLW`, `IDXLW`, …);
+  - other strength reduction;
   - `(x >> 8) & 0xFF` → a high-byte load.
 
   These are 17, P1–P5, P10 and P11. The parser rejects a constant zero
@@ -273,8 +345,11 @@ false.
   comparison with 0 becomes a plain test: `CN 0 BRNE` → `BRTRU`.
 - **In the parser:** constants fold to 1 or 0, and `c < x` with a
   constant `c` is emitted as `x > c`, like other swappable operators.
-- **Later:** `unsigned` comparisons (M11), with PLASMA's `isult` and
-  friends or a sign-flip trick.
+  Pointers are compared **unsigned**, since addresses at or above
+  `$8000` are normal: for `< > <= >=`, the parser flips the sign bit of
+  each side (`CONST $8000 XOR`, folded into a constant right side)
+  before the signed comparison. `==` and `!=` need no change.
+- **Later:** `unsigned` integers (M11) can use the same sign flip.
 
 ### Labels and branches: `IR_LABEL`, `IR_JUMP`, `IR_BRFALSE`, `IR_BRTRUE`, `IR_BRAND`, `IR_BROR` (*a* = label)
 

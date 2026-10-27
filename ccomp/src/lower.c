@@ -9,7 +9,7 @@
 
 static const char *const ir_names[] = {
     "FUNC", "ENDFUNC", "CONST", "DATAADDR", "LOCAL", "SETLOCAL", "LOCALB",
-    "SETLOCALB", "CALL",
+    "SETLOCALB", "LOCALADDR", "LOAD", "LOADB", "STORE", "STOREB", "CALL",
     "DROP", "DUP", "RETURN",
     "ADD", "SUB", "MUL", "DIV", "MOD", "AND", "OR", "XOR", "SHL", "SHR",
     "EQ", "NE", "LT", "GT", "LE", "GE",
@@ -50,6 +50,10 @@ static int simple_op(int op)
     switch (op) {
     case IR_DROP: return OP_DROP;
     case IR_DUP:  return OP_DUP;
+    case IR_LOAD:   return OP_LW;
+    case IR_LOADB:  return OP_LB;
+    case IR_STORE:  return OP_SW;
+    case IR_STOREB: return OP_SB;
     case IR_ADD:  return OP_ADD;
     case IR_SUB:  return OP_SUB;
     case IR_MUL:  return OP_MUL;
@@ -76,7 +80,7 @@ static void dump_ir(int op, int a, Sym *s)
     case IR_CONST:    printf(" %d", a); break;
     case IR_DATAADDR: printf(" data+%d", a); break;
     case IR_LOCAL: case IR_SETLOCAL:
-    case IR_LOCALB: case IR_SETLOCALB:
+    case IR_LOCALB: case IR_SETLOCALB: case IR_LOCALADDR:
                       printf(" [%d]", a); break;
     case IR_CALL:     printf(" %s nargs=%d", s->name, a); break;
     case IR_LABEL: case IR_JUMP: case IR_BRFALSE: case IR_BRTRUE:
@@ -202,6 +206,10 @@ void ir_put(int op, int a, Sym *s)
         /* DLB keeps the stored byte, which is the value C gives an
          * assignment to a char. */
         m.op = OP_DLB;
+        m.a = a;
+        break;
+    case IR_LOCALADDR:
+        m.op = OP_LLA;
         m.a = a;
         break;
     case IR_CALL:
