@@ -122,9 +122,10 @@ its own.
     exists.
   - Cons: an extra temporary file and an extra pass over the source on
     the Apple II.
-- **C. Phases as PLASMA modules loaded and unloaded in turn.** PLASMA
-  can do this. It is a middle ground between A and B, but only helps if
-  the phases don't need each other's data.
+- **C. Phases as PLASMA modules run in turn.** PLASMA's
+  `cmdsys:modexec()` loads a module, runs it, and frees it when it
+  returns (see 18.4). It is a middle ground between A and B, but only
+  helps if the phases don't need each other's data.
 
 Suggest B: an integrated preprocessor would compete with the compiler
 for exactly the memory that is scarcest.
@@ -561,6 +562,19 @@ depends on by name. The C source doesn't say which file defines an
   - Pros: the classic model.
   - Cons: another program to write.
 
+  *Update (issue 18.1):* the planned final pass already combines a
+  compiled file's streams (data, code with relocations, symbol summary)
+  into a REL module. Given the streams of **several** compiled files,
+  the same pass is that linker. It would:
+  - concatenate the data streams and the code streams;
+  - offset each file's relocations;
+  - resolve calls between the files internally, so only real imports
+    remain.
+
+  So option C costs little extra once 18.1 exists, and the stream
+  format becomes our object file format. Cross-file references to
+  globals would come with globals (M4).
+
 Also:
 - PLASMA symbols are case-insensitive (stored uppercase), but C is
   case-sensitive, so `foo` and `Foo` would collide. Exported names also
@@ -880,6 +894,202 @@ Track bytecode size per function and, under `plvm -t`, opcode counts
 per run. A test can also assert specific listings (e.g. "this loop uses
 `INCBRLE`"), so optimizations don't silently regress.
 
+### 18. Classic low-memory techniques we weren't using
+
+Raised in discussion: most of the design so far is conventional
+one-pass, low-memory compilation (like Small-C or Turbo Pascal). These
+are the classic techniques it was missing. Items 1 and 2 are
+**adopted**.
+
+#### 18.1 Streamed output and a separate final pass (adopted; implement early in M3)
+
+The M1/M2 emitter keeps the whole module in memory until the end: all
+the bytecode, the data segment, and a fixup table. That can't work for
+self-hosting on 64K, where the compiler's own bytecode (20K or more)
+can't sit in RAM next to the compiler producing it. Instead, the
+compiler streams its output to disk, and a **separate final pass**
+turns those streams into the REL module. Memory use during compilation
+then no longer depends on program size.
+
+The obstacle is the REL format: data comes before code, and every code
+address depends on the data size, which isn't known until the end.
+Streams solve that, because the final pass knows all the sizes before
+it writes anything.
+
+**During compilation** (the compiler proper):
+
+- **One function at a time in memory.** Each function's bytecode is
+  built in a function buffer, so frame sizes and branch targets can be
+  patched there (see 18.2). Very large functions fail with "function
+  too large". The buffer size is a tuning knob.
+- **Two streams** (decided in discussion; a middle ground, see below):
+  - **Data stream:** the data segment's bytes in order (string
+    literals now; initialized globals later). No tags are needed. Its
+    size is the data segment's size.
+  - **Code stream:** for each function, its bytecode, followed by that
+    function's *relocation records*. They are produced together and
+    consumed together. A record gives a code position, a kind, and a
+    target, for every address that needs fixing up or an RLD entry:
+    - addresses of functions, both defined and not yet defined. They
+      are written as 0 or a code-relative offset, because where code
+      starts depends on the final data size;
+    - imports;
+    - data references.
+- **Symbol summary**, written when compilation ends: the functions
+  (name, code offset, defined or imported, exported), the
+  dependencies, and whether there is a `main`. It is small.
+
+Together, these three files are effectively our **object file
+format**. They should be defined and kept stable, because the final
+pass doubles as a linker (issue 11).
+
+**The final pass** (the writer, or linker) runs after the compiler has
+exited or freed its tables, so it has nearly all of memory:
+
+1. Read the symbol summary, so all addresses can be computed.
+2. Write the header and dependencies, then copy the data stream.
+3. Copy the code stream. As each function's code passes through, apply
+   its relocation records (add final addresses) and keep the records
+   in memory for the RLD. Generate the init function (`CALL main`,
+   …) last.
+4. Write the RLD (function entries from the symbol summary, then the
+   kept relocation records) and the ESD.
+
+Each stream is read once, sequentially, with no seeking. The listing
+(`-l`) is produced here too, since only this pass knows final
+addresses.
+
+**Buffering for speed** (decided in discussion). All file I/O goes
+through 512-byte block buffers, matching ProDOS blocks, so each ProDOS
+call moves a block and not a byte. ProDOS also requires a 1K I/O buffer
+per open file. During compilation, three files are open (source, data
+stream, code stream), costing about 4.5K. In the final pass, memory is
+not tight.
+
+**Why two streams and not one or three** (discussed): one tagged
+temporary file uses the least memory during compilation (about 3K),
+but the final pass must then read it three times. Three separate
+streams (data, code, relocations) are simplest to read, but cost about
+6K during compilation. Two streams read each file once at about 4.5K.
+Splitting relocations into their own stream can be revisited after
+measuring, as long as the formats keep that easy.
+
+**On the host**, the two passes can run in one process, with the
+streams in files or memory. On the Apple II, the final pass is a
+separate module or program, loaded after the compiler finishes (the
+`cmdsys:modexec` "load, run, free" pattern, 18.4). That costs some disk time, and the stream files must
+be cleaned up, including after a compile error. File names must fit
+ProDOS's 15-character limit, e.g. a base name plus a short suffix.
+
+#### 18.2 Fixup chains (adopted; implement with labels in M3)
+
+Classic one-pass technique (Wirth's PL/0 and Oberon compilers, many
+assemblers). A forward reference doesn't get a table entry. Instead,
+its operand temporarily holds a link to the previous unresolved
+reference to the same target, forming a chain through the code. When
+the target becomes known, walk the chain and patch each one. A label
+then costs one word (the chain head, or its address once placed), no
+matter how many branches use it.
+
+- This applies to references **within the function buffer**: forward
+  branches to labels (`if`, loops, `break`, `continue`, `&&`, `||`,
+  `?:`, and later `switch` and `goto`).
+- References that leave the buffer use 18.1's relocation records,
+  because code already on disk can't be patched cheaply.
+- PLASMA branch offsets are 2 bytes, so they can hold a link (an
+  offset within the function buffer).
+- Frame-size bytes (`ENTER`/`LEAVE`) are 1 byte, too small for a
+  link. They keep a small per-function list, as now, or are found at
+  function end by decoding the function's code.
+
+#### 18.3 Precompiled interfaces instead of parsing headers (with M8/M9)
+
+Turbo Pascal's units: each interface is compiled once into a compact
+binary file, and the compiler reads entries only when a name is used.
+On 64K, the declarations in real headers (`stdio.h` etc.) could
+otherwise fill memory. The CMDSYS table in `parse.c` is a tiny version
+of this. Generalize it: generate interface files from PLASMA `.plh`
+headers (issue 16) and from our own `.h` files, and look names up on
+demand. Decide the details with the preprocessor (M8) and the runtime
+library (M9).
+
+#### 18.4 Smaller items (with the 64K fitting work, M12)
+
+- **Overlays: what PLASMA actually supports.** Not classic overlays
+  (swapping code in and out of a fixed region while the program
+  runs). What it has is `cmdsys:modexec("NAME")` (`execmod` in
+  `src/vmsrc/apple/cmd.pla`). It loads a module and its dependencies,
+  runs its init, and frees it when init returns, restoring the heap
+  and the global symbol table, unless init returns `modkeep`. A
+  resident module can't be unloaded later: the heap works like a
+  stack, and only `execmod` restores the symbol table. Two patterns
+  fit:
+  - **Load, run, free.** A tiny driver module `modexec`s the compiler
+    and then the final pass (18.1). Each gets nearly all of memory and
+    is freed on return. This is how the final pass should run on the
+    Apple II.
+  - **Resident plug-in.** PLASMA's own compiler does this:
+    `plasm.pla` runs `cmdsys:modexec("CODEOPT")` for `-O`. The
+    optimizer stores the address of its `crunch_seq` into a variable
+    the compiler exports, and returns `modkeep`. This suits optional
+    features (e.g. the preprocessor, or a bigger optimizer), loaded
+    only when wanted. They never give memory back, though.
+
+  Classic p-code systems (e.g. UCSD's segment procedures) swapped
+  code in automatically; PLASMA has nothing built in like that.
+
+  **Possible overlay approaches (not committed).** Only pursue these if
+  measurements in M12 show the self-hosted compiler doesn't fit. In
+  rough order of effort:
+
+  1. **Plug-in overlays, with no change to PLASMA.** Combine the
+     resident plug-in pattern with the exported `heapmark()` and
+     `heaprelease()`:
+     - The compiler exports a table of function pointers.
+     - To load overlay A: `mark = heapmark()`, then
+       `cmdsys:modexec("OVLA")`. A's init stores its entry points in the
+       table and returns `modkeep`.
+     - The compiler calls A through the table (`ICAL`) as often as
+       needed.
+     - To swap: `heaprelease(mark)` frees A; then load B the same way.
+
+     Conditions:
+     - The overlay must be the topmost thing on the heap, since anything
+       allocated after it is freed with it. ccish's fixed-size static
+       tables (module data, not heap) make this hold naturally.
+     - Overlays must export nothing, because `heaprelease` does not
+       shrink the global symbol table, so exported names would be left
+       pointing at freed memory.
+     - Each load still adds the overlay's module name to the symbol
+       table. That's a small leak, which only matters after many
+       swaps.
+
+     Unverified: whether this frees the bytecode on the 128K VM, which
+     moves bytecode into auxiliary memory. On a 64K machine the bytecode
+     is on the main heap. This relies on loader behavior that isn't
+     documented, so it must be tested on 6502 VMs, not just `plvm`.
+  2. **A small CMDSYS addition.** Export a "module mark" and a "module
+     release" that save and restore both the heap and the symbol-table
+     end, which `execmod` already does internally. That makes option 1
+     clean and leak-free, perhaps 20 lines in `cmd.pla` per platform.
+     The cost: it changes PLASMA, so modules that use it need a PLASMA
+     version that has it. It might be offered upstream.
+  3. **Our own overlay format**, the closest to p-code segments. The
+     final pass (18.1) writes each overlay as bytecode prebuilt for a
+     fixed overlay-region address, starting with a jump table. It also
+     builds its own 5-byte entry stubs (format in
+     `../doc/Bytecodes.md`). The compiler loads overlays into a region
+     reserved at startup, with no loader or symbol table involved. This
+     is fully under our control, but it's the most work, and the stubs'
+     entry address differs per VM.
+- **Native code for hot paths.** The self-hosted compiler runs
+  interpreted at 1 MHz, so it will need native 6502 helpers for the
+  inner loops: reading characters, scanning identifiers, symbol lookup.
+  Use hashing instead of linear search there.
+- **Compact symbol tables.** Today each symbol holds a 32-byte name and
+  about 10 `int`s. Intern names in a string pool, and shrink records to
+  the fields actually needed.
+
 ## Decisions so far
 
 The first round of answers is recorded inline as "Answer:" under each
@@ -925,6 +1135,14 @@ issue. In summary:
 11. **Multiple returns:** a returned struct of up to 4 scalar members is
     a PLASMA multi-value return (issue 16). Larger structs use a
     hidden pointer. This lands with `struct` (M6).
+12. **Streamed output, a separate final pass, and fixup chains**
+    (issue 18.1 and 18.2):
+    - The compiler writes a data stream, a code stream (each function's
+      code followed by its relocation records), and a symbol summary.
+    - A separate final pass, which doubles as a linker, writes the REL
+      module.
+    - Forward branches use fixup chains within a function buffer.
+    - All file I/O uses 512-byte block buffers.
 
 
 ## Milestones
@@ -982,9 +1200,13 @@ a proposal.
 1. **M2:** local variables, assignment, and the remaining integer
    operators: `- * / %`, the bitwise operators, shifts, and the unary
    operators.
-2. **M3:** starts with **constant folding in the parser**, then
-   comparisons, `if`/`else`, `while`, `do`, `for`, `break`, `continue`,
-   and `&& || ?:`.
+2. **M3:** in this order:
+   1. **constant folding in the parser**;
+   2. **restructuring the emitter into streamed output plus a
+      separate final pass** (issue 18.1), before labels exist;
+   3. comparisons, `if`/`else`, `while`, `do`, `for`, `break`,
+      `continue`, and `&& || ?:`, with labels resolved by **fixup
+      chains** (issue 18.2).
 
    Constant folding (decided in discussion) uses *pending constants*,
    which extend M2's pending variables:
