@@ -5,7 +5,8 @@ sends to the lowering stage (stage 2, `src/lower.c`) by calling
 `ir_put(op, a, sym)`. See [approach.md](approach.md), section 4A, for
 the pipeline as a whole. `ccish -i` prints the stream.
 
-This document describes the ops that exist now (milestones 1 to 3).
+This document describes the ops that exist now (milestones 1 to 3,
+and M4 so far).
 It grows as milestones add ops.
 
 ## Model
@@ -130,10 +131,9 @@ Parameters come first (the first at 0, the next at 2, and so on), then
 locals. Sibling blocks reuse the same frame space.
 
 - **Stack:** `( -- value )`.
-- **Now:** `LLW a`.
-- **Why it differs from `LLW`:** hardly at all yet. It's named for what
-  it means, a local variable, so that later it can carry the variable's
-  type. Then a `char` local becomes `LLB`.
+- **Now:** `LLW a`. A `char` local uses `IR_LOCALB` instead.
+- **Why it differs from `LLW`:** hardly at all. It's named for what it
+  means, a local variable; the encoding is left to lowering.
 - **Later:**
   - fused forms chosen by lowering: `ADDLW`, `IDXLW`;
   - `DLW` after a store to the same local;
@@ -153,8 +153,30 @@ on the stack. This is C's assignment, whose value can be used, as in
 - **Why it differs from `SLW`/`DLW`:** it always keeps the value, which
   matches C's semantics. The choice of encoding is left to later stages
   (reason 1).
-- **Later:** `SLB`/`DLB` for `char` locals. `SLW n LLW n` (store, then
-  reload) already becomes `DLW n` in the peephole stage.
+- **Also in the peephole stage:** `SLW n LLW n` (store, then reload)
+  becomes `DLW n`.
+
+### `IR_LOCALB` and `IR_SETLOCALB` *a* = frame offset
+
+The same as `IR_LOCAL` and `IR_SETLOCAL`, for a `char` local: one byte
+at frame offset *a*. `IR_LOCALB` pushes the byte, zero-extended (plain
+`char` is unsigned, approach.md issue 7). `IR_SETLOCALB` stores the low
+byte of the top value and keeps **that byte** as the value, which is
+C's value for an assignment to a `char` (`c = 300` gives 44).
+
+- **Stack:** `( -- byte )` and `( x -- x & $FF )`.
+- **Now:** `LLB a` and `DLB a`. The peephole patterns for words apply
+  to bytes too: `DLB a DROP` → `SLB a`, and `SLB a LLB a` → `DLB a`.
+- **Why they differ from the word ops:** the parser chooses them from
+  the variable's type, so they are separate ops rather than a type on
+  `IR_LOCAL`; the IR has one integer operand per op.
+
+A `char` local takes one frame byte. A `char` parameter still takes a
+word, because `ENTER` pops words; it is read with `LLB` (its low byte),
+which converts the argument to `char` as C requires. A `char` value on
+the stack is always 0–255, so the parser converts a value to `char`
+(with `CONST 255 AND`, which becomes `ANDI 255`) only for a cast or a
+`char` function's return value, and not when it is already a `char`.
 
 **How assignment is parsed:** a variable isn't loaded as soon as it's
 parsed, because it may turn out to be the target of `=`, `+=` or
@@ -196,9 +218,10 @@ that matters.
   - `unsigned` operands (M11) need different `/`, `%`, `>>` and
     comparisons.
 - **Now in the peephole stage:** `CN 1 ADD` → `INCR`, `CN 1 SUB` →
-  `DECR`.
+  `DECR`, and a constant from 0 to 255 then `AND` → `ANDI` (which is
+  also how a conversion to `char` is done).
 - **Later:**
-  - `ADDI`/`SUBI`/`ANDI`/`ORI`;
+  - `ADDI`/`SUBI`/`ORI`;
   - fused forms (`ADDLW`, `IDXW`, …);
   - strength reduction;
   - `(x >> 8) & 0xFF` → a high-byte load.

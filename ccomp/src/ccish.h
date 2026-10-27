@@ -38,6 +38,8 @@
 #define MAX_RELOCS   2048   /* final pass: relocations in the module */
 #define MAX_NEST     32     /* nesting of parentheses and blocks */
 #define MAX_LABELS   256    /* branch targets in one function */
+#define MAX_TYPES    128    /* distinct types */
+#define MAX_PARAM_TYPES 512 /* parameter types of all declared functions */
 #define BLOCK        512    /* file I/O buffer size: one ProDOS block */
 
 /* ---------- Diagnostics (main.c) ---------- */
@@ -77,7 +79,7 @@ enum {
     T_ID = 256, T_NUM, T_STR,
     /* keywords supported now, in the order of keywords[] in lex.c */
     T_INT, T_VOID, T_RETURN, T_IF, T_ELSE, T_WHILE, T_DO, T_FOR, T_BREAK,
-    T_CONTINUE,
+    T_CONTINUE, T_CHAR,
     /* any other C keyword: reported as "not supported yet" */
     T_KEYWORD,
     /* multi-character operators (not all are supported by the parser yet) */
@@ -96,6 +98,25 @@ void lex_open(Bfile *f);
 void next(void);                    /* advance to the next token */
 const char *tok_desc(void);         /* the current token, for messages */
 
+/* ---------- Types (type.c) ----------
+ * A type is an index into types[]. Equal types share one entry, so two
+ * types are the same exactly when their indexes are (approach.md, "M4
+ * design"). The basic types have fixed indexes. */
+
+enum { TK_VOID, TK_CHAR, TK_INT };      /* Type.kind */
+enum { TY_VOID, TY_CHAR, TY_INT };      /* indexes of the basic types */
+
+typedef struct {
+    int kind;           /* TK_* */
+    int sub;            /* element type, for pointers and arrays (later) */
+    int count;          /* element count, for arrays (later) */
+} Type;
+
+extern Type types[MAX_TYPES];
+extern int ntypes;
+
+int type_size(int t);
+
 /* ---------- Symbols (parse.c) ---------- */
 
 enum { S_FUNC, S_LOCAL };
@@ -104,10 +125,12 @@ typedef struct Sym Sym;
 struct Sym {
     char name[MAX_NAME + 1];
     int kind;
+    int type;           /* S_LOCAL: its type; S_FUNC: the return type */
     int offset;         /* S_LOCAL: frame offset */
     int depth;          /* S_LOCAL: block nesting depth (parameters: 1) */
     /* S_FUNC: */
-    int returns_value;  /* 0 for void */
+    int ptypes;         /* index of the parameter types in param_types[]
+                         * (parse.c), or -1 until a declaration gives them */
     int nparams;        /* -1 until known from a declaration or first call */
     int declared;       /* has a prototype or definition */
     int defined;        /* has a body */
@@ -130,6 +153,9 @@ enum {
     IR_DATAADDR,    /* a = data offset: push the address of data */
     IR_LOCAL,       /* a = frame offset: push a local word */
     IR_SETLOCAL,    /* a = frame offset: store top value there, keep it */
+    IR_LOCALB,      /* a = frame offset: push a local byte (a char) */
+    IR_SETLOCALB,   /* a = frame offset: store the top value's low byte
+                     * there, and keep that byte as the value */
     IR_CALL,        /* sym, a = argument count: call, push the result */
     IR_DROP,        /* discard the top value */
     IR_DUP,         /* duplicate the top value */
@@ -164,7 +190,8 @@ enum {
     OP_ISGE = 0x48, OP_ISLE = 0x4A, OP_BRFLS = 0x4C, OP_BRTRU = 0x4E,
     OP_BRNCH = 0x50,
     OP_CALL = 0x54, OP_ENTER = 0x58, OP_LEAVE = 0x5A, OP_RET = 0x5C,
-    OP_CFFB = 0x5E, OP_LLW = 0x66, OP_DLW = 0x6E, OP_SLW = 0x76,
+    OP_CFFB = 0x5E, OP_LLB = 0x64, OP_LLW = 0x66, OP_DLB = 0x6C,
+    OP_DLW = 0x6E, OP_SLB = 0x74, OP_SLW = 0x76,
     OP_NOT = 0x80, OP_ADD = 0x82, OP_SUB = 0x84, OP_MUL = 0x86, OP_DIV = 0x88,
     OP_MOD = 0x8A, OP_INCR = 0x8C, OP_DECR = 0x8E, OP_NEG = 0x90,
     OP_COMP = 0x92, OP_AND = 0x94, OP_IOR = 0x96, OP_XOR = 0x98,

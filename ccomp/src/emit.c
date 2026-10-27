@@ -209,7 +209,8 @@ void emit_put(Mop *m)
     code_byte(m->op);
     switch (m->op) {
     case OP_CB: case OP_CFFB: case OP_ANDI:
-    case OP_LLW: case OP_DLW: case OP_SLW:
+    case OP_LLB: case OP_LLW: case OP_DLB: case OP_DLW:
+    case OP_SLB: case OP_SLW:
         code_byte(m->a);
         break;
     case OP_CW: case OP_LA: case OP_CALL:
@@ -260,7 +261,7 @@ void emit_finish(void)
         Sym *s = &syms[i];
         bputc(&out, (s->defined ? SYM_DEFINED : 0)
                     | (s->called ? SYM_CALLED : 0)
-                    | (s->returns_value ? SYM_RETURNS : 0));
+                    | (s->type != TY_VOID ? SYM_RETURNS : 0));
         bputc(&out, s->nparams < 0 ? 255 : s->nparams);
         bputw(&out, s->defined ? s->code_off : 0);
         n = (int)strlen(s->name);

@@ -583,7 +583,9 @@ Also:
   affects names exported or imported across modules; names private to
   one module never reach the symbol table.
 - The REL format has no BSS segment. Large uninitialized arrays bloat
-  the file unless the init function allocates them.
+  the file unless the init function allocates them. (Decided for M4:
+  zero bytes in the data segment for now; see "M4 design" under
+  Milestones.)
 
 Suggest A first, then B.
 
@@ -1225,9 +1227,101 @@ issue. In summary:
       module.
     - Forward branches use fixup chains within a function buffer.
     - All file I/O uses 512-byte block buffers.
+13. **M4 types** (see "M4 design" under Milestones): a table of type
+    entries; strict pointer type checking, with casts; unsigned
+    pointer comparisons; zeroed global arrays in the data segment for
+    now.
 
 
 ## Milestones
+
+**M4 design (decided in discussion, 2026-10-27).** M4 is built in four
+steps, each ending with all tests passing:
+1. a type representation, `char`, and casts;
+2. pointers: `*`, `&`, pointer arithmetic and comparisons, stores
+   through pointers, and `void *`;
+3. arrays: local arrays, indexing, multi-dimensional arrays, and array
+   parameters;
+4. globals: scalars and arrays, zero at load.
+
+Decided:
+- **Types are entries in a table** (kind, element type, count), and a
+  type is a small index into it. Equal types share one entry. It costs
+  about 5 bytes per entry, and it handles multi-dimensional arrays and
+  pointers to arrays now, and structs (M6) and function pointers (M11)
+  later, without a rework. (The alternative was Small-C's base type
+  plus pointer depth, with one-dimensional arrays only.)
+- **Pointer types are checked strictly, as C requires.** Converting
+  between an int and a pointer needs a cast, except for the constant
+  0, and pointer types must match unless one side is `void *`. ccish
+  has no warnings and stops at the first error, so these are errors
+  (GCC 14 also makes them errors by default). So casts come in M4, and
+  the CMDSYS table gets types (`heapalloc` returns `void *`, `puts`
+  takes `char *`, ...).
+- **Pointer `< > <= >=` are unsigned.** Addresses at or above $8000
+  are normal (the heap reaches them on a 64K Apple II), and PLASMA's
+  comparisons are signed. So each side gets `CW $8000 XOR` (4 bytes),
+  then a signed comparison. No temporary is needed: the left side's
+  type is known before the right side is parsed. M11's `unsigned`
+  can reuse this. (Calling CMDSYS `isult` would be smaller but needs
+  a call each time.)
+- **Uninitialized global arrays are zero bytes in the data segment**
+  (issue 11: REL has no BSS segment), so `char buf[4096]` adds 4K to
+  the module file. **Possible, not committed (for M12):** the module's
+  init allocates large arrays from the heap, and the global holds a
+  pointer. Indexed access costs the same (`LAW` in place of `LA`), but
+  constant-index access and `&buf` cost more, and it must work with
+  how the heap is released when a program exits, and with resident
+  libraries.
+
+Defaults, also agreed:
+- Plain `char` is unsigned (issue 7). `signed`, `unsigned`, `short`
+  and `long` stay "not supported yet". A `char` local takes one frame
+  byte. A `char` parameter is still passed as a word (`ENTER` pops
+  words) and read with `LLB`.
+- A store to a place known at compile time needs no temporary: locals,
+  globals, array elements at constant indexes, and `*p` where `p` is a
+  plain variable (`e LLW p SW`). This is issue 4(a), option A. Every
+  other store (`a[i] = e`, `*f() = e`, `*p += e`) saves the address in
+  a temporary frame slot first, as 4(e) says. Block exchange still
+  waits for M10.
+- Pointer arithmetic scales by the element size (`IDXW` for 2-byte
+  elements). `i + p`, with the pointer on the right, uses a temporary
+  (4(b)). `p - q` divides by the element size.
+- Globals are private to the module: not exported, and no `extern`
+  yet (issue 11).
+- No initializers on globals and no `sizeof` until M5. (Local
+  initializers already work.)
+- Local arrays must fit the 255-byte frame. A bigger one is an error
+  that suggests making it global; open question 4 stays open.
+- String literals and `pstr()` have type `char *`.
+
+**M4 step 1 (types, `char` and casts) is done.** Chosen while building
+it (open for review):
+- The type table (`src/type.c`) has only the basic types so far:
+  `void`, `char` and `int`, at fixed indexes. Pointers and arrays are
+  added in steps 2 and 3.
+- A `char` value on the stack is always 0–255: loads use `LLB`, and
+  stores into a `char` (`DLB`/`SLB`) keep only the low byte. So a
+  value is converted (`ANDI 255`) only for a cast or a `char`
+  function's return value. A `char` argument is converted by the
+  callee, which reads the parameter's word with `LLB`; the caller
+  passes the value unchanged.
+- `char` locals use separate IR ops (`IR_LOCALB`, `IR_SETLOCALB`), not
+  a type on `IR_LOCAL`, since an IR op has one integer operand.
+- A new peephole rule turns a constant 0–255 followed by `AND` into
+  `ANDI`.
+- Function parameter types are kept in one pool (`param_types[]`, 512
+  entries in all), and a prototype and a definition must agree on
+  them. Argument types aren't checked against them yet; with only
+  `int` and `char` every argument converts. That comes with pointers
+  in step 2.
+- A cast is parsed with the primary expressions, since it starts with
+  `(`; its operand is a unary expression, as in C. Its result is never
+  an lvalue, and `(void)` discards the value.
+- The type of `b ? x : y` is their common type, or `int` if one is
+  `char` and the other `int`. Arithmetic and comparison results are
+  `int`.
 
 **M3 is done.** Step 3 (comparisons, `if`/`else`, `while`, `do`,
 `for`, `break`, `continue`, `&& || ?:`, and fixup chains) was the

@@ -3,12 +3,13 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 3):
- *   - function definitions and prototypes returning int or void, with
- *     int parameters;
- *   - int local variables, declared anywhere in a block (or in a for
- *     statement's first clause), with optional initializers, and block
- *     scope;
+ * Language so far (milestones 1 to 3, and M4 step 1):
+ *   - function definitions and prototypes returning int, char or void,
+ *     with int and char parameters;
+ *   - int and char local variables, declared anywhere in a block (or in
+ *     a for statement's first clause), with optional initializers, and
+ *     block scope;
+ *   - casts to int, char and void;
  *   - statements: return, if/else, while, do, for, break, continue,
  *     expression statements, empty statements and nested blocks;
  *   - expressions: integer and character constants, string literals,
@@ -37,6 +38,11 @@
  * writes out every held constant before any other op. If the right
  * operand emits nothing and is itself a constant, the held left one is
  * still there and the two are folded.
+ *
+ * Each operand carries its C type (see type.c). char is unsigned, and a
+ * char value on the stack is always 0 to 255: loads use LLB, and stores
+ * into a char keep only the low byte. So a value needs converting to
+ * char (ANDI 255) only for a cast or a char function's return value.
  *
  * Control flow uses labels, numbered per function; stage 4 resolves
  * them with fixup chains. Code that a constant makes impossible to
@@ -116,27 +122,31 @@ static Sym *add_func(const char *name)
     memset(s, 0, sizeof(*s));
     strcpy(s->name, name);
     s->kind = S_FUNC;
+    s->type = TY_INT;       /* C89 implicit declarations return int */
+    s->ptypes = -1;
     s->nparams = -1;
-    s->returns_value = 1;   /* C89 implicit declarations return int */
     return s;
 }
 
 /*
  * The CMDSYS functions a program may call, from src/inc/cmdsys.plh,
- * with their parameter counts and whether they return a value. Their
+ * with their parameter counts and return types (void or int). Their
  * names and meanings are PLASMA's, not C's: puts() takes a PLASMA
  * string and adds no newline. divmod() returns two values and is left
  * out.
  */
-static const struct { const char *name; int nparams, returns_value; }
+static const struct { const char *name; int nparams, type; }
 cmdsys_funcs[] = {
-    {"putc", 1, 0}, {"putln", 0, 0}, {"puts", 1, 0}, {"puti", 1, 0},
-    {"putb", 1, 0}, {"puth", 1, 0}, {"getc", 0, 1}, {"gets", 1, 1},
-    {"call", 5, 1}, {"syscall", 2, 1}, {"heapmark", 0, 1},
-    {"heapallocalign", 3, 1}, {"heapalloc", 1, 1}, {"heaprelease", 1, 1},
-    {"heapavail", 0, 1}, {"memset", 3, 0}, {"memcpy", 3, 0},
-    {"strcpy", 2, 1}, {"strcat", 2, 1}, {"toupper", 1, 1}, {"sext", 1, 1},
-    {"isugt", 2, 1}, {"isuge", 2, 1}, {"isult", 2, 1}, {"isule", 2, 1},
+    {"putc", 1, TY_VOID}, {"putln", 0, TY_VOID}, {"puts", 1, TY_VOID},
+    {"puti", 1, TY_VOID}, {"putb", 1, TY_VOID}, {"puth", 1, TY_VOID},
+    {"getc", 0, TY_INT}, {"gets", 1, TY_INT}, {"call", 5, TY_INT},
+    {"syscall", 2, TY_INT}, {"heapmark", 0, TY_INT},
+    {"heapallocalign", 3, TY_INT}, {"heapalloc", 1, TY_INT},
+    {"heaprelease", 1, TY_INT}, {"heapavail", 0, TY_INT},
+    {"memset", 3, TY_VOID}, {"memcpy", 3, TY_VOID}, {"strcpy", 2, TY_INT},
+    {"strcat", 2, TY_INT}, {"toupper", 1, TY_INT}, {"sext", 1, TY_INT},
+    {"isugt", 2, TY_INT}, {"isuge", 2, TY_INT}, {"isult", 2, TY_INT},
+    {"isule", 2, TY_INT},
     {NULL, 0, 0}
 };
 
@@ -160,27 +170,73 @@ static Sym *find_local(const char *name)
     return NULL;
 }
 
-/* Declare a local (or parameter) at the current depth and give it a
- * frame slot. An unnamed prototype parameter has the name "". */
-static Sym *add_local(const char *name)
+/* Declare a local (or parameter) of the given type at the current
+ * depth, and give it a frame slot of size bytes. An unnamed prototype
+ * parameter has the name "". */
+static Sym *add_local(const char *name, int type, int size)
 {
     Sym *s = find_local(name);
     if (name[0] && s && s->depth == depth)
         error("redeclaration of", quote(name));
     if (nlocals >= MAX_LOCALS)
         fatal("too many variables in scope", NULL);
-    if (frame_next + 2 > 255)
+    if (frame_next + size > 255)
         error("too many local variables in", quote(cur_fn->name));
     s = &locals[nlocals++];
     memset(s, 0, sizeof(*s));
     strcpy(s->name, name);
     s->kind = S_LOCAL;
+    s->type = type;
     s->depth = depth;
     s->offset = frame_next;
-    frame_next += 2;
+    frame_next += size;
     if (frame_next > frame_max)
         frame_max = frame_next;
     return s;
+}
+
+/* Parameter types of declared functions, n at a time; Sym.ptypes says
+ * where a function's start. */
+static int param_types[MAX_PARAM_TYPES];
+static int nparam_types;
+
+/* Record that fn's n parameters have the types of locals[0..n-1] (the
+ * parameters just parsed), or check them against the types an earlier
+ * declaration gave. The caller has already checked the count. */
+static void set_param_types(Sym *fn, int n)
+{
+    int i;
+    if (fn->ptypes >= 0) {
+        for (i = 0; i < n; i++)
+            if (param_types[fn->ptypes + i] != locals[i].type)
+                error("conflicting parameter types for", quote(fn->name));
+        return;
+    }
+    if (nparam_types + n > MAX_PARAM_TYPES)
+        fatal("too many function parameters in all", NULL);
+    fn->ptypes = nparam_types;
+    for (i = 0; i < n; i++)
+        param_types[nparam_types++] = locals[i].type;
+}
+
+/* Is t a token that starts a type name? */
+static int is_type_start(int t)
+{
+    return t == T_INT || t == T_CHAR || t == T_VOID;
+}
+
+/* Parse a basic type name (int, char or void) and return its type. */
+static int parse_base_type(void)
+{
+    int t = TY_INT;
+    if (tok == T_CHAR)
+        t = TY_CHAR;
+    else if (tok == T_VOID)
+        t = TY_VOID;
+    else if (tok != T_INT)
+        error("expected a type, not", tok_desc());
+    next();
+    return t;
 }
 
 /* ---------- Constants ---------- */
@@ -344,6 +400,8 @@ enum {
 
 typedef struct {
     int kind;
+    int type;       /* its C type. A char value on the stack is always
+                     * 0 to 255, so it needs no conversion to char. */
     int off;
     int val;
     int is_bool;    /* K_VALUE: known to be 1 or 0 (a comparison, !, &&) */
@@ -359,13 +417,26 @@ enum {
 static void parse_expr(int min_prec, Operand *o);
 static void parse_unary(Operand *o);
 
+/* Push the value of the local variable o (a char is one byte). */
+static void load_local(Operand *o)
+{
+    put(o->type == TY_CHAR ? IR_LOCALB : IR_LOCAL, o->off, NULL);
+}
+
+/* Store the top value into the local variable o, keeping the stored
+ * value (for a char, its low byte) on the stack. */
+static void store_local(Operand *o)
+{
+    put(o->type == TY_CHAR ? IR_SETLOCALB : IR_SETLOCAL, o->off, NULL);
+}
+
 /* Make sure the operand's value is on the stack. */
 static void rvalue(Operand *o)
 {
     if (o->kind == K_VOID)
         error("void value used in an expression", NULL);
     if (o->kind == K_LOCAL) {
-        put(IR_LOCAL, o->off, NULL);
+        load_local(o);
         o->is_bool = 0;
     } else if (o->kind == K_CONST) {
         put(IR_CONST, o->val, NULL);
@@ -380,6 +451,7 @@ static void to_bool(Operand *o)
 {
     if (o->kind == K_CONST) {
         o->val = o->val != 0;
+        o->type = TY_INT;
         return;
     }
     rvalue(o);
@@ -388,6 +460,40 @@ static void to_bool(Operand *o)
         put(IR_NE, 0, NULL);
         o->is_bool = 1;
     }
+    o->type = TY_INT;
+}
+
+/* Convert o to char, as C does for a cast or a char function's return
+ * value: keep the low byte. A constant stays pending; anything else
+ * ends up on the stack. A char, or a 1 or 0, needs no code. */
+static void to_char(Operand *o)
+{
+    if (o->kind == K_CONST) {
+        o->val &= 0xFF;
+    } else {
+        rvalue(o);
+        if (o->type != TY_CHAR && !o->is_bool) {
+            put(IR_CONST, 0xFF, NULL);
+            put(IR_AND, 0, NULL);
+        }
+    }
+    o->type = TY_CHAR;
+}
+
+/* Apply the cast (type) to o. A cast's result is never an lvalue. To
+ * void, the value is discarded. */
+static void cast(Operand *o, int type)
+{
+    if (type == TY_VOID) {
+        if (o->kind == K_VALUE)
+            put(IR_DROP, 0, NULL);
+        o->kind = K_VOID;
+    } else if (type == TY_CHAR) {
+        to_char(o);
+    } else if (o->kind != K_CONST) {
+        rvalue(o);
+    }
+    o->type = type;
 }
 
 /* Parse an expression whose code can never run (such as the x in
@@ -498,7 +604,8 @@ static void parse_call(Sym *fn, Operand *o)
     }
     fn->called = 1;
     put(IR_CALL, nargs, fn);
-    o->kind = fn->returns_value ? K_VALUE : K_VOID;
+    o->kind = fn->type != TY_VOID ? K_VALUE : K_VOID;
+    o->type = fn->type;
 }
 
 /* pstr("literal"): the address of the literal's PLASMA (length-prefixed)
@@ -518,7 +625,8 @@ static void parse_pstr(void)
 }
 
 /* Parse a primary expression: a constant, string, variable, call, or
- * expression in parentheses. Constants and variables stay pending. */
+ * expression in parentheses. Constants and variables stay pending. A
+ * cast is parsed here too, since it also starts with '('. */
 static void parse_primary(Operand *o)
 {
     char name[MAX_NAME + 1];
@@ -526,6 +634,7 @@ static void parse_primary(Operand *o)
     int c;
 
     o->kind = K_VALUE;
+    o->type = TY_INT;
     o->is_bool = 0;
     switch (tok) {
     case T_NUM:
@@ -538,9 +647,20 @@ static void parse_primary(Operand *o)
         next();
         return;
     case '(':
-        /* The result may still be a pending variable: (x) = 1 is valid. */
         enter_nest();
         next();
+        if (is_type_start(tok)) {
+            /* A cast: (type) unary-expression. */
+            c = parse_base_type();
+            if (tok == '*')
+                error("pointers are not supported yet", NULL);
+            expect(')', "expected ')' after the type in a cast, not");
+            parse_unary(o);
+            cast(o, c);
+            nest--;
+            return;
+        }
+        /* The result may still be a pending variable: (x) = 1 is valid. */
         parse_expr(PREC_COMMA, o);
         expect(')', "expected ')', not");
         nest--;
@@ -562,7 +682,7 @@ static void parse_primary(Operand *o)
                 if (c >= 0) {
                     /* Declared by the CMDSYS table. */
                     s->nparams = cmdsys_funcs[c].nparams;
-                    s->returns_value = cmdsys_funcs[c].returns_value;
+                    s->type = cmdsys_funcs[c].type;
                     s->declared = 1;
                 }
                 /* Otherwise an implicit declaration: returns int, and
@@ -574,6 +694,7 @@ static void parse_primary(Operand *o)
         s = find_local(name);
         if (s) {
             o->kind = K_LOCAL;      /* load it later, if needed */
+            o->type = s->type;
             o->off = s->offset;
             return;
         }
@@ -592,10 +713,10 @@ static void parse_primary(Operand *o)
 static void pre_incdec(Operand *o, int ir_op)
 {
     need_variable(o, "operand of ++ or --");
-    put(IR_LOCAL, o->off, NULL);
+    load_local(o);
     put(IR_CONST, 1, NULL);
     put(ir_op, 0, NULL);
-    put(IR_SETLOCAL, o->off, NULL);
+    store_local(o);
     o->kind = K_VALUE;
     o->is_bool = 0;
 }
@@ -606,11 +727,11 @@ static void pre_incdec(Operand *o, int ir_op)
 static void post_incdec(Operand *o, int ir_op)
 {
     need_variable(o, "operand of ++ or --");
-    put(IR_LOCAL, o->off, NULL);
+    load_local(o);
     put(IR_DUP, 0, NULL);
     put(IR_CONST, 1, NULL);
     put(ir_op, 0, NULL);
-    put(IR_SETLOCAL, o->off, NULL);
+    store_local(o);
     put(IR_DROP, 0, NULL);
     o->kind = K_VALUE;
     o->is_bool = 0;
@@ -632,9 +753,11 @@ static void parse_unary(Operand *o)
                 o->val = wrap16(~(unsigned)o->val);
             else if (t == '!')
                 o->val = !o->val;
+            o->type = TY_INT;
             return;
         }
         rvalue(o);
+        o->type = TY_INT;           /* a char operand is promoted */
         if (t == '-')
             put(IR_NEG, 0, NULL);
         else if (t == '~')
@@ -686,6 +809,7 @@ static void parse_logical(Operand *o, int prec)
             /* 0 && x is 0, and 1 || x is 1: x never runs. */
             parse_skipped(prec + 1, &r);
             o->val = !is_and;
+            o->type = TY_INT;
             return;
         }
         /* 1 && x and 0 || x are x, as 1 or 0. */
@@ -705,6 +829,7 @@ static void parse_logical(Operand *o, int prec)
     rvalue(&r);
     place_forward(end);
     o->kind = K_VALUE;
+    o->type = TY_INT;
     o->is_bool = 1;
 }
 
@@ -712,6 +837,13 @@ static void parse_logical(Operand *o, int prec)
 static int is_void(Operand *o)
 {
     return o->kind == K_VOID;
+}
+
+/* The type of b ? b : c: their common type, or int if they differ
+ * (char and int; C promotes both to int). */
+static int cond_type(Operand *b, Operand *c)
+{
+    return b->type == c->type ? b->type : TY_INT;
 }
 
 /*
@@ -742,6 +874,7 @@ static void parse_conditional(Operand *o)
         *o = take_b ? b : c;
         if (o->kind == K_LOCAL)
             rvalue(o);              /* the result is not an lvalue */
+        o->type = cond_type(&b, &c);
         return;
     }
     rvalue(o);
@@ -761,6 +894,7 @@ static void parse_conditional(Operand *o)
         error("only one side of '?:' is void", NULL);
     place_forward(end_l);
     o->kind = b.kind;
+    o->type = cond_type(&b, &c);
     o->is_bool = b.is_bool && c.is_bool;
 }
 
@@ -785,14 +919,14 @@ static void parse_expr(int min_prec, Operand *o)
         need_variable(o, "left operand of assignment");
         next();
         if (ir_op >= 0)
-            put(IR_LOCAL, o->off, NULL);
+            load_local(o);
         parse_expr(PREC_ASSIGN, &r);
         if (ir_op >= 0 && r.kind == K_CONST && !suppress)
             check_right_const(ir_op, r.val);
         rvalue(&r);
         if (ir_op >= 0)
             put(ir_op, 0, NULL);
-        put(IR_SETLOCAL, o->off, NULL);
+        store_local(o);
         o->kind = K_VALUE;
         o->is_bool = ir_op < 0 && r.is_bool;
     }
@@ -833,6 +967,7 @@ static void parse_expr(int min_prec, Operand *o)
             if (r.kind == K_CONST) {
                 nheld--;
                 o->val = fold(ir_op, o->val, r.val);
+                o->type = TY_INT;
                 continue;
             }
             if (r.kind == K_LOCAL && swapped_op(ir_op) >= 0) {
@@ -844,6 +979,7 @@ static void parse_expr(int min_prec, Operand *o)
                 put(IR_CONST, o->val, NULL);
                 put(swapped_op(ir_op), 0, NULL);
                 o->kind = K_VALUE;
+                o->type = TY_INT;
                 o->is_bool = is_compare(ir_op);
                 continue;
             }
@@ -851,6 +987,7 @@ static void parse_expr(int min_prec, Operand *o)
         /* Otherwise the left value is (or, via put(), will be) on the
          * stack below the right one. */
         o->kind = K_VALUE;
+        o->type = TY_INT;
         rvalue(&r);
         put(ir_op, 0, NULL);
         o->is_bool = is_compare(ir_op);
@@ -862,18 +999,21 @@ static void parse_expr(int min_prec, Operand *o)
 
 static void parse_block(int new_scope);
 
-/* int a, b = 1, c; */
+/* int a, b = 1, c;  or  char c = 'x'; */
 static void parse_declaration(void)
 {
-    next();                         /* "int" */
+    int type = parse_base_type();
+    if (type == TY_VOID)
+        error("a variable can't have type void", NULL);
     for (;;) {
+        Operand v;
         Sym *s;
         if (tok == '*')
             error("pointers are not supported yet", NULL);
         if (tok != T_ID)
             error("expected a variable name, not", tok_desc());
         /* In C, the name is in scope in its own initializer. */
-        s = add_local(tok_text);
+        s = add_local(tok_text, type, type_size(type));
         next();
         if (tok == '[')
             error("arrays are not supported yet", NULL);
@@ -882,7 +1022,10 @@ static void parse_declaration(void)
         if (tok == '=') {
             next();
             parse_value(PREC_ASSIGN);
-            put(IR_SETLOCAL, s->offset, NULL);
+            v.kind = K_LOCAL;
+            v.type = type;
+            v.off = s->offset;
+            store_local(&v);
             put(IR_DROP, 0, NULL);
         }
         if (tok != ',')
@@ -1006,7 +1149,7 @@ static void parse_for(void)
     next();                         /* "for" */
     expect('(', "expected '(' after 'for', not");
     depth++;
-    if (tok == T_INT) {
+    if (is_type_start(tok)) {
         parse_declaration();        /* includes the ';' */
     } else {
         if (tok != ';') {
@@ -1090,21 +1233,23 @@ static void parse_statement(void)
     case T_RETURN:
         next();
         if (tok == ';') {
-            if (cur_fn->returns_value)
+            if (cur_fn->type != TY_VOID)
                 put(IR_CONST, 0, NULL);  /* C89 allows this */
         } else {
-            if (!cur_fn->returns_value)
+            if (cur_fn->type == TY_VOID)
                 error("void function returns a value:", quote(cur_fn->name));
-            parse_value(PREC_COMMA);
+            parse_expr(PREC_COMMA, &o);
+            if (cur_fn->type == TY_CHAR)
+                to_char(&o);        /* a char function returns 0 to 255 */
+            rvalue(&o);
         }
         expect(';', "expected ';' after return value, not");
         put(IR_RETURN, 0, NULL);
         return;
     case T_INT:
-        parse_declaration();
-        return;
+    case T_CHAR:
     case T_VOID:
-        error("a variable can't have type void", NULL);
+        parse_declaration();
         return;
     case T_KEYWORD:
         not_yet();
@@ -1165,22 +1310,28 @@ static int parse_params(void)
         error("a parameter can't have type void", NULL);
     }
     for (;;) {
+        int type;
         if (tok == T_ELLIPSIS)
             error("variable argument lists are not supported yet", NULL);
         if (tok == T_KEYWORD)
             not_yet();
-        expect(T_INT, "expected a parameter type, not");
+        if (!is_type_start(tok))
+            error("expected a parameter type, not", tok_desc());
+        type = parse_base_type();
+        if (type == TY_VOID)
+            error("a parameter can't have type void", NULL);
         if (tok == '*' || tok == '[')
             error("pointer parameters are not supported yet", NULL);
         if (n >= MAX_PARAMS)
             fatal("too many parameters", NULL);
-        /* ENTER puts parameter n at offset 2n. Parameters are the
+        /* ENTER puts parameter n at offset 2n, as a word even for a
+         * char (which is then read as its low byte). Parameters are the
          * first variables allocated, so add_local puts them there. */
         if (tok == T_ID) {
-            add_local(tok_text);
+            add_local(tok_text, type, 2);
             next();
         } else {
-            add_local("");
+            add_local("", type, 2);
         }
         n++;
         if (tok != ',')
@@ -1195,21 +1346,14 @@ static int parse_params(void)
  * definition. */
 static void parse_toplevel(void)
 {
-    int returns_value, nparams, i;
+    int type, nparams, i;
     Sym *fn;
 
-    if (tok == T_INT)
-        returns_value = 1;
-    else if (tok == T_VOID)
-        returns_value = 0;
-    else if (tok == T_KEYWORD) {
+    if (tok == T_KEYWORD)
         not_yet();
-        return;
-    } else {
+    if (!is_type_start(tok))
         error("expected a function definition, not", tok_desc());
-        return;
-    }
-    next();
+    type = parse_base_type();
     if (tok == '*')
         error("pointer return types are not supported yet", NULL);
     if (tok != T_ID)
@@ -1227,14 +1371,14 @@ static void parse_toplevel(void)
         /* A prototype. "()" leaves the parameter count unspecified.
          * A call before any declaration assumed int, and its code
          * already depends on that. */
-        if ((fn->declared || fn->called)
-            && fn->returns_value != returns_value)
+        if ((fn->declared || fn->called) && fn->type != type)
             error("conflicting declaration of", quote(fn->name));
-        fn->returns_value = returns_value;
+        fn->type = type;
         if (nparams >= 0) {
             if (fn->nparams >= 0 && fn->nparams != nparams)
                 error("conflicting parameter count for", quote(fn->name));
             fn->nparams = nparams;
+            set_param_types(fn, nparams);
         }
         fn->declared = 1;
         next();
@@ -1251,14 +1395,15 @@ static void parse_toplevel(void)
                   quote(fn->name));
     if (fn->defined)
         error("redefinition of", quote(fn->name));
-    if ((fn->declared || fn->called) && fn->returns_value != returns_value)
+    if ((fn->declared || fn->called) && fn->type != type)
         error("conflicting declaration of", quote(fn->name));
     if (fn->nparams >= 0 && fn->nparams != nparams)
         error("parameter count differs from earlier use of",
               quote(fn->name));
     if (!strcmp(fn->name, "main") && nparams != 0)
         error("main with parameters is not supported yet", NULL);
-    fn->returns_value = returns_value;
+    set_param_types(fn, nparams);
+    fn->type = type;
     fn->nparams = nparams;
     fn->declared = 1;
     fn->defined = 1;
@@ -1266,10 +1411,10 @@ static void parse_toplevel(void)
     nlabels = 0;
     put(IR_FUNC, nparams, fn);
     parse_block(0);
-    /* Falling off the end of an int function returns 0. If the last
-     * statement was a return, the peephole stage drops this as dead
-     * code. */
-    if (returns_value)
+    /* Falling off the end of an int or char function returns 0. If the
+     * last statement was a return, the peephole stage drops this as
+     * dead code. */
+    if (type != TY_VOID)
         put(IR_CONST, 0, NULL);
     put(IR_RETURN, 0, NULL);
     put(IR_ENDFUNC, frame_max, fn);
@@ -1296,7 +1441,7 @@ void parse_program(void)
         if (c < 0)
             error("call to undefined function", quote(s->name));
         if (s->nparams != cmdsys_funcs[c].nparams
-            || s->returns_value != cmdsys_funcs[c].returns_value)
+            || s->type != cmdsys_funcs[c].type)
             error("declaration doesn't match the CMDSYS function",
                   quote(s->name));
     }

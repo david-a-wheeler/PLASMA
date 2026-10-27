@@ -8,7 +8,8 @@
 #include "ccish.h"
 
 static const char *const ir_names[] = {
-    "FUNC", "ENDFUNC", "CONST", "DATAADDR", "LOCAL", "SETLOCAL", "CALL",
+    "FUNC", "ENDFUNC", "CONST", "DATAADDR", "LOCAL", "SETLOCAL", "LOCALB",
+    "SETLOCALB", "CALL",
     "DROP", "DUP", "RETURN",
     "ADD", "SUB", "MUL", "DIV", "MOD", "AND", "OR", "XOR", "SHL", "SHR",
     "EQ", "NE", "LT", "GT", "LE", "GE",
@@ -74,8 +75,9 @@ static void dump_ir(int op, int a, Sym *s)
     case IR_ENDFUNC:  printf(" frame=%d", a); break;
     case IR_CONST:    printf(" %d", a); break;
     case IR_DATAADDR: printf(" data+%d", a); break;
-    case IR_LOCAL:
-    case IR_SETLOCAL: printf(" [%d]", a); break;
+    case IR_LOCAL: case IR_SETLOCAL:
+    case IR_LOCALB: case IR_SETLOCALB:
+                      printf(" [%d]", a); break;
     case IR_CALL:     printf(" %s nargs=%d", s->name, a); break;
     case IR_LABEL: case IR_JUMP: case IR_BRFALSE: case IR_BRTRUE:
     case IR_BRAND: case IR_BROR:
@@ -190,6 +192,16 @@ void ir_put(int op, int a, Sym *s)
          * When it isn't, the following DROP lets the peephole stage
          * turn DLW + DROP into SLW. */
         m.op = OP_DLW;
+        m.a = a;
+        break;
+    case IR_LOCALB:
+        m.op = OP_LLB;
+        m.a = a;
+        break;
+    case IR_SETLOCALB:
+        /* DLB keeps the stored byte, which is the value C gives an
+         * assignment to a char. */
+        m.op = OP_DLB;
         m.a = a;
         break;
     case IR_CALL:

@@ -14,6 +14,8 @@
  * Patterns (each checked at the end of the window after every op):
  *   DLW n  DROP              -> SLW n      assignment whose value is unused
  *   SLW n  LLW n             -> DLW n      store, then load the same local
+ *                                          (these two also for DLB, SLB, LLB)
+ *   const  AND               -> ANDI const for a constant from 0 to 255
  *   const  NEG / COMP        -> const      e.g. -5 is one constant
  *   CN 1   ADD / SUB         -> INCR / DECR
  *   NEG  BRFLS / BRTRU       -> BRFLS / BRTRU    comparison used as a test
@@ -21,6 +23,7 @@
  *   ISEQ / ISNE  BRFLS/BRTRU -> BREQ / BRNE
  *   CN 0  BREQ / BRNE        -> BRFLS / BRTRU    x == 0 is a test of x
  *   DUP  op  SLW n  DROP     -> op  SLW n  x++ whose old value is unused
+ *                                          (also with SLB)
  *                                          (op is INCR, DECR, NEG or COMP)
  * All are valid for C: they don't change any value the program sees.
  */
@@ -87,17 +90,27 @@ static int rewrite(void)
     a = &win[nwin - 2];
     b = &win[nwin - 1];
 
-    /* DLW n DROP -> SLW n: an assignment whose value is unused just
-     * stores, without keeping a copy to throw away. */
-    if (a->op == OP_DLW && b->op == OP_DROP) {
-        a->op = OP_SLW;
+    /* DLW / DLB n DROP -> SLW / SLB n: an assignment whose value is
+     * unused just stores, without keeping a copy to throw away. */
+    if ((a->op == OP_DLW || a->op == OP_DLB) && b->op == OP_DROP) {
+        a->op = a->op == OP_DLW ? OP_SLW : OP_SLB;
         nwin--;
         return 1;
     }
-    /* SLW n LLW n -> DLW n: storing a local and then loading it again
-     * becomes a store that keeps the value. */
-    if (a->op == OP_SLW && b->op == OP_LLW && a->a == b->a) {
-        a->op = OP_DLW;
+    /* SLW n LLW n -> DLW n (and the same for bytes): storing a local and
+     * then loading it again becomes a store that keeps the value. DLB
+     * keeps the stored byte, which is what LLB would load. */
+    if (((a->op == OP_SLW && b->op == OP_LLW)
+         || (a->op == OP_SLB && b->op == OP_LLB)) && a->a == b->a) {
+        a->op = a->op == OP_SLW ? OP_DLW : OP_DLB;
+        nwin--;
+        return 1;
+    }
+    /* const AND -> ANDI const, for a constant from 0 to 255: one
+     * two-byte op (it clears the high byte, as the AND would). */
+    if (b->op == OP_AND && mop_const_value(a, &v) && v <= 0xFF) {
+        a->op = OP_ANDI;
+        a->a = v;
         nwin--;
         return 1;
     }
@@ -152,9 +165,9 @@ static int rewrite(void)
         nwin--;
         return 1;
     }
-    /* DUP op SLW n DROP -> op SLW n: x++ (or a similar update) whose
-     * old value is unused needs no copy of it. */
-    if (nwin >= 4 && b->op == OP_DROP && a->op == OP_SLW
+    /* DUP op SLW / SLB n DROP -> op SLW / SLB n: x++ (or a similar
+     * update) whose old value is unused needs no copy of it. */
+    if (nwin >= 4 && b->op == OP_DROP && (a->op == OP_SLW || a->op == OP_SLB)
         && win[nwin - 4].op == OP_DUP && is_unary(win[nwin - 3].op)) {
         win[nwin - 4] = win[nwin - 3];
         win[nwin - 3] = *a;

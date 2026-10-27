@@ -1,8 +1,9 @@
 # ccish: a C-ish compiler for the PLASMA VM
 
-`ccish` compiles a growing subset of C into PLASMA REL modules. It is at
-**milestone 3**: integer expressions, local variables and control
-flow, compiled end to end. The design
+`ccish` compiles a growing subset of C into PLASMA REL modules. It has
+finished **milestone 3** (integer expressions, local variables and
+control flow, compiled end to end) and is partway through milestone 4
+(so far, `char` and casts). The design
 and the plan for growing it are in [approach.md](approach.md). The
 target format is described in [../doc/Bytecodes.md](../doc/Bytecodes.md).
 
@@ -42,13 +43,20 @@ Hello5
 
 ## The language so far
 
-* Function definitions and prototypes returning `int` or `void`, with
-  `int` parameters. `main` takes no parameters. Its return value is
-  ignored.
-* `int` local variables, declared anywhere in a block, with optional
-  initializers (`int a, b = 1;`). They have block scope, and an inner
-  block may shadow an outer name. As in C99, the first clause of `for`
-  may declare variables, which are in scope only in the loop.
+* Function definitions and prototypes returning `int`, `char` or
+  `void`, with `int` and `char` parameters. A prototype and a
+  definition must agree on the return and parameter types. `main`
+  takes no parameters. Its return value is ignored.
+* `int` and `char` local variables, declared anywhere in a block, with
+  optional initializers (`int a, b = 1;`). They have block scope, and
+  an inner block may shadow an outer name. As in C99, the first clause
+  of `for` may declare variables, which are in scope only in the loop.
+* `char` is one byte and unsigned (0–255). A value is converted to
+  `char` by keeping its low byte when it is stored into a `char`,
+  passed as a `char` parameter, returned from a `char` function, or
+  cast to `char`. In expressions, a `char` is promoted to `int`, as in
+  C.
+* Casts to `int`, `char` and `void`. `(void)` discards a value.
 * Statements: `return`, `if`/`else`, `while`, `do`, `for`, `break`,
   `continue`, expression statements, empty statements and nested
   blocks.
@@ -77,8 +85,9 @@ Hello5
 * Digraphs `<% %> <: :>`, `/* */` and `//` comments, and LF, CR or CRLF
   line endings.
 
-Anything else, such as pointers, arrays, `char`, globals, `switch`,
-`goto` or the comma operator, gives a "not supported yet" error.
+Anything else, such as pointers, arrays, globals, `switch`, `goto`, the
+comma operator, or the types `signed`, `unsigned`, `short` and `long`,
+gives a "not supported yet" error.
 
 ### Strings and `pstr()`
 
@@ -109,6 +118,7 @@ returns exactly one.
 | `src/main.c` | Command line, error messages, running the two passes |
 | `src/bio.c` | File I/O through 512-byte block buffers |
 | `src/lex.c` | Lexer |
+| `src/type.c` | The table of types |
 | `src/parse.c` | Stage 1: parser, producing IR ops |
 | `src/lower.c` | Stage 2: IR ops to PLASMA machine ops (see [IR.md](IR.md)) |
 | `src/peep.c` | Stage 3: peephole optimizer |
@@ -128,7 +138,7 @@ returns exactly one.
   uses one to four labels.
 * Only a few peephole optimizations so far (see `src/peep.c`): removal
   of unreachable code, plain stores for assignments whose value is
-  unused, folded negative constants, `INCR`/`DECR`, `DLW` for a store
+  unused, folded negative constants, `INCR`/`DECR`, `ANDI`, `DLW` for a store
   followed by a load of the same variable, and single branch ops for
   tests such as `x == 0`, `x != y` and `!x`.
 * A `for` loop with a step clause jumps around the step's code, which

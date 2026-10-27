@@ -6,8 +6,8 @@
 CC ?= cc
 CFLAGS ?= -std=c89 -pedantic -Wall -Wextra -O2
 
-SRCS = src/main.c src/bio.c src/lex.c src/parse.c src/lower.c src/peep.c \
-       src/emit.c src/link.c
+SRCS = src/main.c src/bio.c src/lex.c src/type.c src/parse.c src/lower.c \
+       src/peep.c src/emit.c src/link.c
 PLVM = ../src/plvm
 
 ccish: $(SRCS) src/ccish.h
