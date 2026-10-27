@@ -3,17 +3,18 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 and 2):
+ * Language so far (milestones 1 to 3):
  *   - function definitions and prototypes returning int or void, with
  *     int parameters;
- *   - int local variables, declared anywhere in a block, with optional
- *     initializers, and block scope;
- *   - statements: return, expression statements, empty statements and
- *     nested blocks;
+ *   - int local variables, declared anywhere in a block (or in a for
+ *     statement's first clause), with optional initializers, and block
+ *     scope;
+ *   - statements: return, if/else, while, do, for, break, continue,
+ *     expression statements, empty statements and nested blocks;
  *   - expressions: integer and character constants, string literals,
  *     variables, function calls, parentheses, the pstr() builtin,
  *     unary - + ~ ! ++ --, postfix ++ --, binary * / % + - << >> & ^ |,
- *     and = += -= *= /= %= &= |= ^= <<= >>=.
+ *     comparisons, && || ?:, and = += -= *= /= %= &= |= ^= <<= >>=.
  * A function called but not defined in the file must be one of the
  * CMDSYS functions in cmdsys_funcs[] below; it is imported from CMDSYS.
  *
@@ -36,6 +37,14 @@
  * writes out every held constant before any other op. If the right
  * operand emits nothing and is itself a constant, the held left one is
  * still there and the two are folded.
+ *
+ * Control flow uses labels, numbered per function; stage 4 resolves
+ * them with fixup chains. Code that a constant makes impossible to
+ * reach inside an expression (the x in 0 && x, or the unchosen side of
+ * 1 ? a : b) is parsed with put() switched off (suppress), so it is
+ * checked but emits nothing. In statements, such as if (0) or
+ * while (0), the parser emits a jump around the code, and the peephole
+ * stage drops the unreachable code after it.
  */
 #include <string.h>
 #include "ccish.h"
@@ -180,11 +189,17 @@ static Sym *add_local(const char *name)
 static int held[MAX_NEST + 1];
 static int nheld;
 
+/* Above 0 while parsing code that can never run, such as the right side
+ * of 0 && x: it is checked, but put() emits nothing. */
+static int suppress;
+
 /* Emit an IR op, after any held constants. All of the parser's IR goes
  * through here. */
 static void put(int op, int a, Sym *s)
 {
     int i;
+    if (suppress)
+        return;
     for (i = 0; i < nheld; i++)
         ir_put(IR_CONST, held[i], NULL);
     nheld = 0;
@@ -220,12 +235,22 @@ static void check_right_const(int op, int v)
 }
 
 /* a op b, as the VM computes it: C's rules for a 16-bit int. / truncates
- * toward zero, % has the dividend's sign, >> is arithmetic. b has
- * already passed check_right_const(). */
+ * toward zero, % has the dividend's sign, >> is arithmetic, and
+ * comparisons give 1 or 0. Cases check_right_const() rejects give 0
+ * (they only get here in code that can never run). */
 static int fold(int op, int a, int b)
 {
     unsigned ua = (unsigned)a, ub = (unsigned)b, q;
+    if (((op == IR_DIV || op == IR_MOD) && b == 0)
+        || ((op == IR_SHL || op == IR_SHR) && (b < 0 || b > 15)))
+        return 0;
     switch (op) {
+    case IR_EQ:  return a == b;
+    case IR_NE:  return a != b;
+    case IR_LT:  return a < b;
+    case IR_GT:  return a > b;
+    case IR_LE:  return a <= b;
+    case IR_GE:  return a >= b;
     case IR_ADD: return wrap16(ua + ub);
     case IR_SUB: return wrap16(ua - ub);
     case IR_MUL: return wrap16(ua * ub);
@@ -247,11 +272,64 @@ static int fold(int op, int a, int b)
     return 0;
 }
 
-/* Does binary IR op give the same result with its operands swapped? */
-static int commutative(int op)
+/* The op that gives the same result as binary IR op with its operands
+ * swapped (op itself if it is commutative, > for <, ...), or -1. */
+static int swapped_op(int op)
 {
-    return op == IR_ADD || op == IR_MUL || op == IR_AND || op == IR_OR
-        || op == IR_XOR;
+    switch (op) {
+    case IR_ADD: case IR_MUL: case IR_AND: case IR_OR: case IR_XOR:
+    case IR_EQ: case IR_NE:
+        return op;
+    case IR_LT: return IR_GT;
+    case IR_GT: return IR_LT;
+    case IR_LE: return IR_GE;
+    case IR_GE: return IR_LE;
+    }
+    return -1;
+}
+
+/* Is IR op a comparison (its result is always 1 or 0)? */
+static int is_compare(int op)
+{
+    return op >= IR_EQ && op <= IR_GE;
+}
+
+/* ---------- Labels ---------- */
+
+/* Labels are numbered per function. Stage 4 resolves them. */
+static int nlabels;
+static int label_uses[MAX_LABELS];  /* branches to each label so far */
+
+/* Allocate a new label in the current function. */
+static int new_label(void)
+{
+    if (nlabels >= MAX_LABELS)
+        error("too many branches in", quote(cur_fn->name));
+    label_uses[nlabels] = 0;
+    return nlabels++;
+}
+
+/* Emit branch op (IR_JUMP, IR_BRFALSE, ...) to label n. */
+static void branch(int op, int n)
+{
+    if (!suppress)
+        label_uses[n]++;
+    put(op, n, NULL);
+}
+
+/* Place label n, which backward branches will use (a loop's top). */
+static void place_label(int n)
+{
+    put(IR_LABEL, n, NULL);
+}
+
+/* Place label n, whose branches all came before it. If there were none,
+ * it is left out: then nothing can reach the code after it from here,
+ * and the peephole stage can drop that code if it is unreachable. */
+static void place_forward(int n)
+{
+    if (label_uses[n] > 0)
+        place_label(n);
 }
 
 /* ---------- Expressions ---------- */
@@ -268,6 +346,7 @@ typedef struct {
     int kind;
     int off;
     int val;
+    int is_bool;    /* K_VALUE: known to be 1 or 0 (a comparison, !, &&) */
 } Operand;
 
 /* C precedence levels (higher binds tighter). */
@@ -285,11 +364,41 @@ static void rvalue(Operand *o)
 {
     if (o->kind == K_VOID)
         error("void value used in an expression", NULL);
-    if (o->kind == K_LOCAL)
+    if (o->kind == K_LOCAL) {
         put(IR_LOCAL, o->off, NULL);
-    else if (o->kind == K_CONST)
+        o->is_bool = 0;
+    } else if (o->kind == K_CONST) {
         put(IR_CONST, o->val, NULL);
+        o->is_bool = o->val == 0 || o->val == 1;
+    }
     o->kind = K_VALUE;
+}
+
+/* Make o's value C's truth value: 1 if it is nonzero, else 0. A
+ * constant stays pending; anything else ends up on the stack. */
+static void to_bool(Operand *o)
+{
+    if (o->kind == K_CONST) {
+        o->val = o->val != 0;
+        return;
+    }
+    rvalue(o);
+    if (!o->is_bool) {
+        put(IR_CONST, 0, NULL);
+        put(IR_NE, 0, NULL);
+        o->is_bool = 1;
+    }
+}
+
+/* Parse an expression whose code can never run (such as the x in
+ * 0 && x): check it, but emit nothing. */
+static void parse_skipped(int min_prec, Operand *o)
+{
+    int saved = nheld;
+    suppress++;
+    parse_expr(min_prec, o);
+    suppress--;
+    nheld = saved;      /* drop anything held inside it */
 }
 
 /* Parse an expression that must produce a value, at precedence
@@ -321,16 +430,20 @@ static int binary_prec(int *ir_op, int *supported)
     case '&':   *ir_op = IR_AND; return PREC_AND;
     case '^':   *ir_op = IR_XOR; return PREC_XOR;
     case '|':   *ir_op = IR_OR;  return PREC_OR;
+    case '<':   *ir_op = IR_LT;  return PREC_RELATIONAL;
+    case '>':   *ir_op = IR_GT;  return PREC_RELATIONAL;
+    case T_LE:  *ir_op = IR_LE;  return PREC_RELATIONAL;
+    case T_GE:  *ir_op = IR_GE;  return PREC_RELATIONAL;
+    case T_EQ:  *ir_op = IR_EQ;  return PREC_EQUALITY;
+    case T_NE:  *ir_op = IR_NE;  return PREC_EQUALITY;
+    /* These three are parsed specially, not with an IR op. */
+    case T_ANDAND: *ir_op = -1;  return PREC_ANDAND;
+    case T_OROR:   *ir_op = -1;  return PREC_OROR;
+    case '?':      *ir_op = -1;  return PREC_COND;
     }
     *supported = 0;
-    switch (tok) {
-    case '<': case '>': case T_LE: case T_GE: return PREC_RELATIONAL;
-    case T_EQ: case T_NE:                     return PREC_EQUALITY;
-    case T_ANDAND:                            return PREC_ANDAND;
-    case T_OROR:                              return PREC_OROR;
-    case '?':                                 return PREC_COND;
-    case ',':                                 return PREC_COMMA;
-    }
+    if (tok == ',')
+        return PREC_COMMA;
     return 0;
 }
 
@@ -413,6 +526,7 @@ static void parse_primary(Operand *o)
     int c;
 
     o->kind = K_VALUE;
+    o->is_bool = 0;
     switch (tok) {
     case T_NUM:
         o->kind = K_CONST;          /* emit it later, if needed */
@@ -483,6 +597,7 @@ static void pre_incdec(Operand *o, int ir_op)
     put(ir_op, 0, NULL);
     put(IR_SETLOCAL, o->off, NULL);
     o->kind = K_VALUE;
+    o->is_bool = 0;
 }
 
 /* x++ / x--: the value is the old x. Keep a copy of it below the
@@ -498,6 +613,7 @@ static void post_incdec(Operand *o, int ir_op)
     put(IR_SETLOCAL, o->off, NULL);
     put(IR_DROP, 0, NULL);
     o->kind = K_VALUE;
+    o->is_bool = 0;
 }
 
 /* Parse a unary expression: prefix operators, then a primary
@@ -525,6 +641,8 @@ static void parse_unary(Operand *o)
             put(IR_COMP, 0, NULL);
         else if (t == '!')
             put(IR_NOT, 0, NULL);
+        if (t != '+')
+            o->is_bool = t == '!';
         return;
     case T_INC: case T_DEC:
         next();
@@ -551,6 +669,102 @@ static void parse_unary(Operand *o)
 }
 
 /*
+ * Parse the right side of && or || (the current token), with *o as the
+ * left side, which binds at precedence prec. The result is C's 1 or 0.
+ * Code: "a BRAND L b' L:" for &&, where b' is b as 1 or 0. If a is 0,
+ * BRAND leaves it as the result. For ||, a must be made 1 or 0 too,
+ * since BROR leaves it when it is nonzero. A constant left side folds.
+ */
+static void parse_logical(Operand *o, int prec)
+{
+    int is_and = tok == T_ANDAND, end;
+    Operand r;
+
+    next();
+    if (o->kind == K_CONST) {
+        if ((o->val != 0) != is_and) {
+            /* 0 && x is 0, and 1 || x is 1: x never runs. */
+            parse_skipped(prec + 1, &r);
+            o->val = !is_and;
+            return;
+        }
+        /* 1 && x and 0 || x are x, as 1 or 0. */
+        parse_expr(prec + 1, &r);
+        to_bool(&r);
+        *o = r;
+        return;
+    }
+    if (is_and)
+        rvalue(o);
+    else
+        to_bool(o);
+    end = new_label();
+    branch(is_and ? IR_BRAND : IR_BROR, end);
+    parse_expr(prec + 1, &r);
+    to_bool(&r);
+    rvalue(&r);
+    place_forward(end);
+    o->kind = K_VALUE;
+    o->is_bool = 1;
+}
+
+/* Is o a void call (no value)? */
+static int is_void(Operand *o)
+{
+    return o->kind == K_VOID;
+}
+
+/*
+ * Parse "? b : c" with *o as the condition. Code: "cond BRFLS Lelse b
+ * BRNCH Lend Lelse: c Lend:". A constant condition picks b or c at
+ * compile time, and the other is parsed but emits no code. Both sides
+ * may be void calls, as in C, but not just one.
+ */
+static void parse_conditional(Operand *o)
+{
+    Operand b, c;
+    int else_l, end_l;
+
+    next();                         /* '?' */
+    if (o->kind == K_CONST) {
+        int take_b = o->val != 0;
+        if (take_b)
+            parse_expr(PREC_COMMA, &b);
+        else
+            parse_skipped(PREC_COMMA, &b);
+        expect(':', "expected ':' in conditional expression, not");
+        if (take_b)
+            parse_skipped(PREC_COND, &c);
+        else
+            parse_expr(PREC_COND, &c);
+        if (is_void(&b) != is_void(&c))
+            error("only one side of '?:' is void", NULL);
+        *o = take_b ? b : c;
+        if (o->kind == K_LOCAL)
+            rvalue(o);              /* the result is not an lvalue */
+        return;
+    }
+    rvalue(o);
+    else_l = new_label();
+    end_l = new_label();
+    branch(IR_BRFALSE, else_l);
+    parse_expr(PREC_COMMA, &b);
+    if (!is_void(&b))
+        rvalue(&b);
+    branch(IR_JUMP, end_l);
+    expect(':', "expected ':' in conditional expression, not");
+    place_forward(else_l);
+    parse_expr(PREC_COND, &c);
+    if (!is_void(&c))
+        rvalue(&c);
+    if (is_void(&b) != is_void(&c))
+        error("only one side of '?:' is void", NULL);
+    place_forward(end_l);
+    o->kind = b.kind;
+    o->is_bool = b.is_bool && c.is_bool;
+}
+
+/*
  * Precedence climbing: parse an expression whose operators all have
  * precedence min_prec or higher. The result is left in *o, possibly
  * still pending (a bare variable).
@@ -573,13 +787,14 @@ static void parse_expr(int min_prec, Operand *o)
         if (ir_op >= 0)
             put(IR_LOCAL, o->off, NULL);
         parse_expr(PREC_ASSIGN, &r);
-        if (ir_op >= 0 && r.kind == K_CONST)
+        if (ir_op >= 0 && r.kind == K_CONST && !suppress)
             check_right_const(ir_op, r.val);
         rvalue(&r);
         if (ir_op >= 0)
             put(ir_op, 0, NULL);
         put(IR_SETLOCAL, o->off, NULL);
         o->kind = K_VALUE;
+        o->is_bool = ir_op < 0 && r.is_bool;
     }
 
     for (;;) {
@@ -591,6 +806,14 @@ static void parse_expr(int min_prec, Operand *o)
             break;
         if (!supported)
             not_yet();
+        if (tok == T_ANDAND || tok == T_OROR) {
+            parse_logical(o, prec);
+            continue;
+        }
+        if (tok == '?') {
+            parse_conditional(o);
+            continue;
+        }
         if (o->kind == K_CONST) {
             /* Hold it back: it may fold with the right operand. */
             if (nheld > MAX_NEST)
@@ -602,7 +825,7 @@ static void parse_expr(int min_prec, Operand *o)
         }
         next();
         parse_expr(prec + 1, &r);   /* all binary ops are left-assoc */
-        if (r.kind == K_CONST)
+        if (r.kind == K_CONST && !suppress)
             check_right_const(ir_op, r.val);
         if (mark >= 0 && nheld > mark) {
             /* The right operand emitted nothing, so the left constant
@@ -612,14 +835,16 @@ static void parse_expr(int min_prec, Operand *o)
                 o->val = fold(ir_op, o->val, r.val);
                 continue;
             }
-            if (r.kind == K_LOCAL && commutative(ir_op)) {
-                /* c op x: emit x c op, so that the peephole stage
-                 * sees the constant right before the op (1+x: INCR). */
+            if (r.kind == K_LOCAL && swapped_op(ir_op) >= 0) {
+                /* c op x: emit x c op' (op' is op with its operands
+                 * swapped), so that the peephole stage sees the
+                 * constant right before the op (1+x: INCR). */
                 nheld--;
                 rvalue(&r);
                 put(IR_CONST, o->val, NULL);
-                put(ir_op, 0, NULL);
+                put(swapped_op(ir_op), 0, NULL);
                 o->kind = K_VALUE;
+                o->is_bool = is_compare(ir_op);
                 continue;
             }
         }
@@ -628,6 +853,7 @@ static void parse_expr(int min_prec, Operand *o)
         o->kind = K_VALUE;
         rvalue(&r);
         put(ir_op, 0, NULL);
+        o->is_bool = is_compare(ir_op);
     }
     nest--;
 }
@@ -666,11 +892,195 @@ static void parse_declaration(void)
     expect(';', "expected ';' after declaration, not");
 }
 
+/* Discard the value of an expression used as a statement. A bare
+ * variable or constant ("x;") emitted nothing, so needs nothing. */
+static void discard(Operand *o)
+{
+    if (o->kind == K_VALUE)
+        put(IR_DROP, 0, NULL);
+}
+
+/* Branch to label n if the condition *o is false (or, if on_true, if it
+ * is true). A constant condition gives a jump or nothing. */
+static void cond_branch(Operand *o, int n, int on_true)
+{
+    if (o->kind == K_CONST) {
+        if ((o->val != 0) == on_true)
+            branch(IR_JUMP, n);
+        return;
+    }
+    rvalue(o);
+    branch(on_true ? IR_BRTRUE : IR_BRFALSE, n);
+}
+
+/* Parse "( condition )" and branch to label n as cond_branch does. */
+static void parse_paren_cond(int n, int on_true)
+{
+    Operand o;
+    expect('(', "expected '(' before condition, not");
+    parse_expr(PREC_COMMA, &o);
+    expect(')', "expected ')' after condition, not");
+    cond_branch(&o, n, on_true);
+}
+
+/* The innermost loops' labels, for break and continue. */
+static int brk_label[MAX_NEST], cont_label[MAX_NEST];
+static int nloops;
+
+static void parse_statement(void);
+
+/* Parse a loop body, with break going to label brk and continue to
+ * label cont. */
+static void loop_body(int brk, int cont)
+{
+    if (nloops >= MAX_NEST)
+        fatal("loops nested too deeply", NULL);
+    brk_label[nloops] = brk;
+    cont_label[nloops] = cont;
+    nloops++;
+    parse_statement();
+    nloops--;
+}
+
+/* if (c) s1 [else s2]:  c BRFLS Lelse  s1  [BRNCH Lend]  Lelse: [s2  Lend:] */
+static void parse_if(void)
+{
+    int else_l = new_label(), end_l;
+    next();                         /* "if" */
+    parse_paren_cond(else_l, 0);
+    parse_statement();
+    if (tok == T_ELSE) {
+        next();
+        end_l = new_label();
+        branch(IR_JUMP, end_l);
+        place_forward(else_l);
+        parse_statement();
+        place_forward(end_l);
+    } else {
+        place_forward(else_l);
+    }
+}
+
+/* while (c) s:  Ltop: c BRFLS Lbrk  s  BRNCH Ltop  Lbrk: */
+static void parse_while(void)
+{
+    int top = new_label(), brk = new_label();
+    next();                         /* "while" */
+    place_label(top);
+    parse_paren_cond(brk, 0);
+    loop_body(brk, top);
+    branch(IR_JUMP, top);
+    place_forward(brk);
+}
+
+/* do s while (c);  Ltop: s  Lcont: c BRTRU Ltop  Lbrk: */
+static void parse_do(void)
+{
+    int top = new_label(), cont = new_label(), brk = new_label();
+    next();                         /* "do" */
+    place_label(top);
+    loop_body(brk, cont);
+    expect(T_WHILE, "expected 'while' after the body of 'do', not");
+    place_forward(cont);
+    parse_paren_cond(top, 1);
+    expect(';', "expected ';' after 'do ... while (...)', not");
+    place_forward(brk);
+}
+
+/*
+ * for (init; c; step) s. The step's code comes before the body's, but
+ * runs after it, so it is jumped around (approach.md 17 plans a side
+ * buffer to avoid these jumps):
+ *   init  Ltop: c BRFLS Lbrk  BRNCH Lbody
+ *   Lcont: step  BRNCH Ltop
+ *   Lbody: s  BRNCH Lcont  Lbrk:
+ * With no step, continue goes straight to Ltop. The init may declare
+ * variables (as in C99); they are in scope only in the loop.
+ */
+static void parse_for(void)
+{
+    int saved_nlocals = nlocals, saved_next = frame_next;
+    int top, brk, cont, body;
+    Operand o;
+
+    next();                         /* "for" */
+    expect('(', "expected '(' after 'for', not");
+    depth++;
+    if (tok == T_INT) {
+        parse_declaration();        /* includes the ';' */
+    } else {
+        if (tok != ';') {
+            parse_expr(PREC_COMMA, &o);
+            discard(&o);
+        }
+        expect(';', "expected ';' after 'for' initialization, not");
+    }
+    top = new_label();
+    brk = new_label();
+    place_label(top);
+    if (tok != ';') {
+        parse_expr(PREC_COMMA, &o);
+        cond_branch(&o, brk, 0);
+    }
+    expect(';', "expected ';' after 'for' condition, not");
+    cont = top;
+    if (tok != ')') {
+        body = new_label();
+        cont = new_label();
+        branch(IR_JUMP, body);
+        place_label(cont);
+        parse_expr(PREC_COMMA, &o);
+        discard(&o);
+        branch(IR_JUMP, top);
+        place_forward(body);
+    }
+    expect(')', "expected ')' after 'for' clauses, not");
+    loop_body(brk, cont);
+    branch(IR_JUMP, cont);
+    place_forward(brk);
+    depth--;
+    nlocals = saved_nlocals;
+    frame_next = saved_next;
+}
+
+/* break; and continue;: jump to the innermost loop's labels. */
+static void parse_break_continue(void)
+{
+    int is_break = tok == T_BREAK;
+    next();
+    if (nloops == 0)
+        error(is_break ? "'break' is not inside a loop"
+                       : "'continue' is not inside a loop", NULL);
+    branch(IR_JUMP, is_break ? brk_label[nloops - 1]
+                             : cont_label[nloops - 1]);
+    expect(';', is_break ? "expected ';' after 'break', not"
+                         : "expected ';' after 'continue', not");
+}
+
 /* Parse one statement (or declaration) and emit its code. */
 static void parse_statement(void)
 {
     Operand o;
     switch (tok) {
+    case T_IF:
+        parse_if();
+        return;
+    case T_WHILE:
+        parse_while();
+        return;
+    case T_DO:
+        parse_do();
+        return;
+    case T_FOR:
+        parse_for();
+        return;
+    case T_BREAK:
+    case T_CONTINUE:
+        parse_break_continue();
+        return;
+    case T_ELSE:
+        error("'else' without a matching 'if'", NULL);
+        return;
     case '{':
         parse_block(1);
         return;
@@ -701,9 +1111,7 @@ static void parse_statement(void)
         return;
     }
     parse_expr(PREC_COMMA, &o);
-    /* A bare variable ("x;") has no effect, so nothing was emitted. */
-    if (o.kind == K_VALUE)
-        put(IR_DROP, 0, NULL);
+    discard(&o);
     expect(';', "expected ';' after expression, not");
 }
 
@@ -855,6 +1263,7 @@ static void parse_toplevel(void)
     fn->declared = 1;
     fn->defined = 1;
 
+    nlabels = 0;
     put(IR_FUNC, nparams, fn);
     parse_block(0);
     /* Falling off the end of an int function returns 0. If the last

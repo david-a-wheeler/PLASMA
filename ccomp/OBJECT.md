@@ -51,9 +51,9 @@ import, which the loader fills in.
 
 The function's code offset in the code segment is the sum of the
 lengths of the records before it. The frame sizes in `ENTER` and
-`LEAVE` are already filled in. (From M3 step 3, branches within a
-function are resolved in the compiler's function buffer, so they need
-no records here.)
+`LEAVE` are already filled in, and so are branch offsets: branches
+stay within a function, are relative, and are resolved in the
+compiler's function buffer, so they need no records here.
 
 ## `NAME.syms`: the symbol summary
 

@@ -1,9 +1,8 @@
 # ccish: a C-ish compiler for the PLASMA VM
 
 `ccish` compiles a growing subset of C into PLASMA REL modules. It is at
-**milestone 2**, plus the first two steps of milestone 3 (constant
-folding, and streamed output with a final pass): a small compiler that
-works end to end. The design
+**milestone 3**: integer expressions, local variables and control
+flow, compiled end to end. The design
 and the plan for growing it are in [approach.md](approach.md). The
 target format is described in [../doc/Bytecodes.md](../doc/Bytecodes.md).
 
@@ -48,28 +47,38 @@ Hello5
   ignored.
 * `int` local variables, declared anywhere in a block, with optional
   initializers (`int a, b = 1;`). They have block scope, and an inner
-  block may shadow an outer name.
-* Statements: `return`, expression statements, empty statements and
-  nested blocks.
+  block may shadow an outer name. As in C99, the first clause of `for`
+  may declare variables, which are in scope only in the loop.
+* Statements: `return`, `if`/`else`, `while`, `do`, `for`, `break`,
+  `continue`, expression statements, empty statements and nested
+  blocks.
 * Expressions, with C's precedence and associativity:
   - integer and character constants, string literals, variables,
     function calls and parentheses;
   - unary `- + ~ !`, and prefix and postfix `++ --`;
   - binary `* / % + - << >> & ^ |`;
+  - comparisons `< > <= >= == !=`, and `&& || ?:`;
   - assignment `= += -= *= /= %= &= |= ^= <<= >>=`.
 
   `int` is 16 bits, and arithmetic wraps. `/` truncates toward zero, and
-  `>>` of a negative value is arithmetic. Operations on constants are
-  computed at compile time with these same rules, so `-(1 << 4)` and
-  `2 * x + 3 * 4` need no run-time work for the constant parts. A
-  constant right operand of zero for `/` or `%`, or a constant shift
-  count outside 0–15, is a compile error. Division by a zero that is
-  only known at run time is not checked.
+  `>>` of a negative value is arithmetic. Comparisons are signed, and
+  comparisons, `!`, `&&` and `||` give 1 or 0, as in C (PLASMA's own
+  give `$FFFF` for true). `&&`, `||` and `?:` evaluate only the
+  operands C says they do.
+
+  Operations on constants are computed at compile time with these same
+  rules, so `-(1 << 4)` and `2 * x + 3 * 4` need no run-time work for
+  the constant parts. Code that a constant makes unreachable, such as
+  the right side of `0 && f()` or the body of `if (0)` or `while (0)`,
+  is not compiled at all. A constant right operand of zero for `/` or
+  `%`, or a constant shift count outside 0–15, is a compile error,
+  except in such unreachable code. Division by a zero that is only
+  known at run time is not checked.
 * Digraphs `<% %> <: :>`, `/* */` and `//` comments, and LF, CR or CRLF
   line endings.
 
-Anything else, such as comparisons, `if` or loops (milestone 3), gives
-a "not supported yet" error.
+Anything else, such as pointers, arrays, `char`, globals, `switch`,
+`goto` or the comma operator, gives a "not supported yet" error.
 
 ### Strings and `pstr()`
 
@@ -113,12 +122,19 @@ returns exactly one.
 * Output has only been tested on the C VM (`plvm`), not yet on a 6502
   VM.
 * Compilation stops at the first error.
-* One function may have at most 4096 bytes of bytecode and 256 calls
-  and data references (`MAX_FUNC_CODE`, `MAX_FUNC_RELOCS` in
-  `src/ccish.h`).
+* One function may have at most 4096 bytes of bytecode, 256 calls and
+  data references, and 256 labels (`MAX_FUNC_CODE`, `MAX_FUNC_RELOCS`,
+  `MAX_LABELS` in `src/ccish.h`). Each `if`, loop, `&&`, `||` and `?:`
+  uses one to four labels.
 * Only a few peephole optimizations so far (see `src/peep.c`): removal
-  of dead code after a return, plain stores for assignments whose
-  value is unused, folded negative constants, `INCR`/`DECR`, and `DLW`
-  for a store followed by a load of the same variable.
+  of unreachable code, plain stores for assignments whose value is
+  unused, folded negative constants, `INCR`/`DECR`, `DLW` for a store
+  followed by a load of the same variable, and single branch ops for
+  tests such as `x == 0`, `x != y` and `!x`.
+* A `for` loop with a step clause jumps around the step's code, which
+  costs two extra branches per loop (approach.md, issue 17, plans a
+  fix).
+* String literals in code that is never compiled (such as `0 && f("x")`)
+  still take space in the data segment.
 * Nothing checks evaluation stack depth. Deeply nested calls can
   overflow the VM's 32-entry stack.

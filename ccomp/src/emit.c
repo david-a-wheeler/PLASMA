@@ -8,8 +8,8 @@
  *   .syms  the symbol summary, written when compilation ends
  *
  * Only one function's bytecode is in memory at a time, in a function
- * buffer, so that its frame size (and, later, its branch targets) can be
- * patched before it is written. Memory use doesn't depend on the size of
+ * buffer, so that its frame size and its branch offsets can be patched
+ * before it is written. Memory use doesn't depend on the size of
  * the program. The final pass (link.c) turns the streams into a module.
  */
 #include <string.h>
@@ -38,6 +38,18 @@ static int nrelocs;
 /* Frame-size bytes of the current function, filled in at its end. */
 static int frame_at[MAX_RETURNS];
 static int nframe;
+
+/*
+ * Labels of the current function, resolved with fixup chains
+ * (approach.md 18.2). Until label n is placed, label_word[n] is the
+ * head of a chain of the branches waiting for it: the fbuf offset of
+ * the latest one's operand word, whose own value is the offset of the
+ * one before it, ending in NO_LINK. Once placed, label_word[n] is the
+ * label's fbuf offset.
+ */
+#define NO_LINK 0xFFFF
+static int label_word[MAX_LABELS];
+static char label_placed[MAX_LABELS];
 
 /* Create the data and code stream files for output name base. */
 void emit_open(const char *base)
@@ -88,6 +100,42 @@ static void frame_byte(int v)
     code_byte(v);
 }
 
+/* Put the 16-bit word v at fbuf offset at, low byte first. */
+static void patch_word(int at, int v)
+{
+    fbuf[at] = (unsigned char)v;
+    fbuf[at + 1] = (unsigned char)(v >> 8);
+}
+
+/* Append a branch's offset word for label n. A placed label gives the
+ * offset now; otherwise the word joins the label's fixup chain. */
+static void branch_word(int n)
+{
+    if (label_placed[n]) {
+        code_word(label_word[n] - nfbuf);
+    } else {
+        int at = nfbuf;
+        code_word(label_word[n]);
+        label_word[n] = at;
+    }
+}
+
+/* Place label n here: walk its fixup chain, giving each waiting branch
+ * its offset (relative to its own operand word). */
+static void place_label(int n)
+{
+    int at = label_word[n];
+    if (label_placed[n])
+        fatal("internal error: label placed twice in", fn->name);
+    while (at != NO_LINK) {
+        int link = fbuf[at] | (fbuf[at + 1] << 8);
+        patch_word(at, nfbuf - at);
+        at = link;
+    }
+    label_word[n] = nfbuf;
+    label_placed[n] = 1;
+}
+
 /* Write a string literal of len bytes to the data stream. Returns the
  * data offset of its first character. */
 int data_string(const char *s, int len)
@@ -117,6 +165,10 @@ static void end_function(int frame_size)
         error("too many parameters and locals in", fn->name);
     for (i = 0; i < nframe; i++)
         fbuf[frame_at[i]] = (unsigned char)frame_size;
+    for (i = 0; i < MAX_LABELS; i++)
+        if (!label_placed[i] && label_word[i] != NO_LINK)
+            fatal("internal error: branch to a label never placed in",
+                  fn->name);
     if (ncode > 0x7FFF - nfbuf)
         fatal("too much code", NULL);
     fn->code_off = ncode;
@@ -137,13 +189,21 @@ static void end_function(int frame_size)
  * pseudo-ops start a function, or end it and write it out. */
 void emit_put(Mop *m)
 {
+    int i;
     switch (m->op) {
     case OP_FUNC_BEGIN:
         fn = m->sym;
         nfbuf = nrelocs = nframe = 0;
+        for (i = 0; i < MAX_LABELS; i++) {
+            label_word[i] = NO_LINK;
+            label_placed[i] = 0;
+        }
         return;
     case OP_FUNC_END:
         end_function(m->a);
+        return;
+    case OP_LABEL:
+        place_label(m->a);
         return;
     }
     code_byte(m->op);
@@ -159,6 +219,10 @@ void emit_put(Mop *m)
         else if (m->fix == FIX_FUNC)
             add_reloc(REL_FUNC, (int)(m->sym - syms));
         code_word(m->fix == FIX_NONE ? m->a : 0);
+        break;
+    case OP_BRNCH: case OP_BRFLS: case OP_BRTRU: case OP_BREQ:
+    case OP_BRNE: case OP_BRAND: case OP_BROR:
+        branch_word(m->a);
         break;
     case OP_ENTER:
         frame_byte(m->a);

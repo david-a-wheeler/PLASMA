@@ -1229,6 +1229,34 @@ issue. In summary:
 
 ## Milestones
 
+**M3 is done.** Step 3 (comparisons, `if`/`else`, `while`, `do`,
+`for`, `break`, `continue`, `&& || ?:`, and fixup chains) was the
+last. Chosen while building it (open for review):
+- A comparison's value is `ISxx NEG`: PLASMA gives `$FFFF` for true on
+  every VM, and `NEG` makes it C's 1 in one byte. When the result only
+  feeds a branch, the peephole stage drops the `NEG`, fuses `ISEQ`/
+  `ISNE` with the branch into `BRNE`/`BREQ`, and turns a comparison
+  with 0 into `BRTRU`/`BRFLS`.
+- `&&` and `||` use PLASMA's `BRAND`/`BROR`. An operand is made 1 or 0
+  (with `CONST 0 NE`) only where C requires it, and not when it is
+  already 1 or 0, such as a comparison. The parser tracks that.
+- Code that a constant makes unreachable inside an expression (`0 &&
+  x`, the unchosen side of `1 ? a : b`) is parsed with code output
+  switched off. It is still checked, but a constant division by zero
+  there is no longer an error, as step 1 anticipated for `?:`. In
+  statements (`if (0)`, `while (0)`), the parser emits a jump, and the
+  peephole stage drops the unreachable code after it. To make that
+  work, the parser leaves out a forward label that nothing branches
+  to.
+- `for` uses jumps around the step clause for now (two extra branches
+  per loop); the side buffer of issue 17 can remove them in M10.
+- `for (int i = ...)` declarations are accepted (C99), scoped to the
+  loop, since declarations are already allowed anywhere in a block.
+- Each label is one table entry per function in stage 4 (256 labels,
+  `MAX_LABELS`), holding the chain head until the label is placed and
+  its offset after.
+- The comma operator, `switch` and `goto` are still unsupported.
+
 **M3 step 2 (streamed output and a final pass, 18.1) is done.** The
 formats are in [OBJECT.md](OBJECT.md). Every module and listing the
 tests produce is byte-for-byte the same as before. Chosen while

@@ -37,6 +37,7 @@
 #define MAX_RETURNS  128    /* frame-size bytes (ENTER, LEAVEs) in one function */
 #define MAX_RELOCS   2048   /* final pass: relocations in the module */
 #define MAX_NEST     32     /* nesting of parentheses and blocks */
+#define MAX_LABELS   256    /* branch targets in one function */
 #define BLOCK        512    /* file I/O buffer size: one ProDOS block */
 
 /* ---------- Diagnostics (main.c) ---------- */
@@ -74,8 +75,9 @@ int  bclose(Bfile *b);
 enum {
     T_EOF = 0,
     T_ID = 256, T_NUM, T_STR,
-    /* keywords supported now */
-    T_INT, T_VOID, T_RETURN,
+    /* keywords supported now, in the order of keywords[] in lex.c */
+    T_INT, T_VOID, T_RETURN, T_IF, T_ELSE, T_WHILE, T_DO, T_FOR, T_BREAK,
+    T_CONTINUE,
     /* any other C keyword: reported as "not supported yet" */
     T_KEYWORD,
     /* multi-character operators (not all are supported by the parser yet) */
@@ -135,9 +137,18 @@ enum {
     /* binary: ( x y -- x op y ) */
     IR_ADD, IR_SUB, IR_MUL, IR_DIV, IR_MOD,
     IR_AND, IR_OR, IR_XOR, IR_SHL, IR_SHR,
+    /* comparisons, binary, giving C's 1 or 0 (not PLASMA's $FFFF) */
+    IR_EQ, IR_NE, IR_LT, IR_GT, IR_LE, IR_GE,
     /* unary: ( x -- op x ) */
     IR_NEG, IR_COMP,
-    IR_NOT          /* C's !: 1 if x is 0, else 0 (not PLASMA's NOT) */
+    IR_NOT,         /* C's !: 1 if x is 0, else 0 (not PLASMA's NOT) */
+    /* control flow; a = label number, local to the function */
+    IR_LABEL,       /* a branch target */
+    IR_JUMP,        /* always branch */
+    IR_BRFALSE,     /* ( x -- ) branch if x is 0 */
+    IR_BRTRUE,      /* ( x -- ) branch if x is not 0 */
+    IR_BRAND,       /* ( x -- x ) branch if 0, keeping it; else ( x -- ) */
+    IR_BROR         /* ( x -- x ) branch if not 0, keeping it; else ( x -- ) */
 };
 
 void ir_put(int op, int a, Sym *s);
@@ -146,19 +157,27 @@ void ir_put(int op, int a, Sym *s);
 
 /* PLASMA opcodes used so far (see ../../doc/Bytecodes.md). */
 enum {
-    OP_CN = 0x00, OP_MINUS1 = 0x20, OP_LA = 0x26, OP_CB = 0x2A,
+    OP_CN = 0x00, OP_MINUS1 = 0x20, OP_BREQ = 0x22, OP_BRNE = 0x24,
+    OP_LA = 0x26, OP_CB = 0x2A,
     OP_CW = 0x2C, OP_DROP = 0x30, OP_DUP = 0x34, OP_ANDI = 0x3C,
+    OP_ISEQ = 0x40, OP_ISNE = 0x42, OP_ISGT = 0x44, OP_ISLT = 0x46,
+    OP_ISGE = 0x48, OP_ISLE = 0x4A, OP_BRFLS = 0x4C, OP_BRTRU = 0x4E,
+    OP_BRNCH = 0x50,
     OP_CALL = 0x54, OP_ENTER = 0x58, OP_LEAVE = 0x5A, OP_RET = 0x5C,
     OP_CFFB = 0x5E, OP_LLW = 0x66, OP_DLW = 0x6E, OP_SLW = 0x76,
     OP_NOT = 0x80, OP_ADD = 0x82, OP_SUB = 0x84, OP_MUL = 0x86, OP_DIV = 0x88,
     OP_MOD = 0x8A, OP_INCR = 0x8C, OP_DECR = 0x8E, OP_NEG = 0x90,
     OP_COMP = 0x92, OP_AND = 0x94, OP_IOR = 0x96, OP_XOR = 0x98,
-    OP_SHL = 0x9A, OP_SHR = 0x9C,
+    OP_SHL = 0x9A, OP_SHR = 0x9C, OP_BRAND = 0xAC, OP_BROR = 0xAE,
     /* Pseudo-ops: markers that travel through stages 2-4 in order with
      * the code, but emit no bytes themselves. */
     OP_FUNC_BEGIN = 0x100,  /* sym: a function starts here */
-    OP_FUNC_END = 0x101     /* a = frame size: the function ends here */
+    OP_FUNC_END = 0x101,    /* a = frame size: the function ends here */
+    OP_LABEL = 0x102        /* a = label number: a branch target is here */
 };
+
+/* For a branch op (BRNCH, BRFLS, ...), Mop.a is the label number; stage
+ * 4 turns it into a relative offset. */
 
 /* What an operand word refers to, if it needs relocation. */
 enum { FIX_NONE, FIX_DATA, FIX_FUNC };

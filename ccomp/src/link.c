@@ -198,9 +198,12 @@ static void list_code(const char *label, int len, int start, int subseg,
             printf(" $%04X%s", fbuf[pc + 1] | (fbuf[pc + 2] << 8),
                    reloc_note(start + pc + 1, first_reloc));
             break;
-        case F_REL:
-            printf(" %+d", (short)(fbuf[pc + 1] | (fbuf[pc + 2] << 8)));
+        case F_REL: {
+            /* The offset is relative to the offset word itself. */
+            int off = (short)(fbuf[pc + 1] | (fbuf[pc + 2] << 8));
+            printf(" %+d  ; to %04X", off, subseg + start + pc + 1 + off);
             break;
+        }
         case F_ENTER:
             printf(" %d,%d", fbuf[pc + 1], fbuf[pc + 2]);
             break;

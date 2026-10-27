@@ -211,13 +211,14 @@ static void lex_string(void)
 }
 
 static const char *const keywords[] = {
-    /* supported */
-    "int", "void", "return",
+    /* supported: in the order of T_INT ... T_CONTINUE */
+    "int", "void", "return", "if", "else", "while", "do", "for", "break",
+    "continue",
     /* the rest of C89's keywords: recognized so the error is clear */
-    "auto", "break", "case", "char", "const", "continue", "default", "do",
-    "double", "else", "enum", "extern", "float", "for", "goto", "if",
-    "long", "register", "short", "signed", "sizeof", "static", "struct",
-    "switch", "typedef", "union", "unsigned", "volatile", "while",
+    "auto", "case", "char", "const", "default", "double", "enum", "extern",
+    "float", "goto", "long", "register", "short", "signed", "sizeof",
+    "static", "struct", "switch", "typedef", "union", "unsigned",
+    "volatile",
     NULL
 };
 
@@ -235,7 +236,7 @@ static void lex_word(void)
     tok = T_ID;
     for (i = 0; keywords[i]; i++)
         if (!strcmp(keywords[i], tok_text)) {
-            tok = i < 3 ? T_INT + i : T_KEYWORD;
+            tok = i < T_KEYWORD - T_INT ? T_INT + i : T_KEYWORD;
             break;
         }
 }
@@ -361,8 +362,8 @@ const char *tok_desc(void)
     case T_EOF: return "end of file";
     case T_NUM: return "a number";
     case T_STR: return "a string";
-    case T_ID:
-    case T_INT: case T_VOID: case T_RETURN: case T_KEYWORD:
+    }
+    if (tok == T_ID || (tok >= T_INT && tok <= T_KEYWORD)) {
         strcpy(buf, "'");
         strcat(buf, tok_text);
         strcat(buf, "'");

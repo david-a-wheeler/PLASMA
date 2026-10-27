@@ -11,8 +11,37 @@ static const char *const ir_names[] = {
     "FUNC", "ENDFUNC", "CONST", "DATAADDR", "LOCAL", "SETLOCAL", "CALL",
     "DROP", "DUP", "RETURN",
     "ADD", "SUB", "MUL", "DIV", "MOD", "AND", "OR", "XOR", "SHL", "SHR",
-    "NEG", "COMP", "NOT"
+    "EQ", "NE", "LT", "GT", "LE", "GE",
+    "NEG", "COMP", "NOT",
+    "LABEL", "JUMP", "BRFALSE", "BRTRUE", "BRAND", "BROR"
 };
+
+/* PLASMA's comparison op for each IR comparison, or -1. */
+static int compare_op(int op)
+{
+    switch (op) {
+    case IR_EQ: return OP_ISEQ;
+    case IR_NE: return OP_ISNE;
+    case IR_LT: return OP_ISLT;
+    case IR_GT: return OP_ISGT;
+    case IR_LE: return OP_ISLE;
+    case IR_GE: return OP_ISGE;
+    }
+    return -1;
+}
+
+/* PLASMA's branch op for each IR branch, or -1. */
+static int branch_op(int op)
+{
+    switch (op) {
+    case IR_JUMP:    return OP_BRNCH;
+    case IR_BRFALSE: return OP_BRFLS;
+    case IR_BRTRUE:  return OP_BRTRU;
+    case IR_BRAND:   return OP_BRAND;
+    case IR_BROR:    return OP_BROR;
+    }
+    return -1;
+}
 
 /* PLASMA opcode for each IR op that maps to a single operand-free op. */
 static int simple_op(int op)
@@ -48,6 +77,9 @@ static void dump_ir(int op, int a, Sym *s)
     case IR_LOCAL:
     case IR_SETLOCAL: printf(" [%d]", a); break;
     case IR_CALL:     printf(" %s nargs=%d", s->name, a); break;
+    case IR_LABEL: case IR_JUMP: case IR_BRFALSE: case IR_BRTRUE:
+    case IR_BRAND: case IR_BROR:
+                      printf(" L%d", a); break;
     }
     printf("\n");
 }
@@ -111,7 +143,21 @@ void ir_put(int op, int a, Sym *s)
         put_simple(simple_op(op));
         return;
     }
+    if (compare_op(op) >= 0) {
+        /* PLASMA's comparisons give $FFFF for true, on every VM; NEG
+         * makes that C's 1. When the result only feeds a branch, the
+         * peephole stage removes the NEG. */
+        put_simple(compare_op(op));
+        put_simple(OP_NEG);
+        return;
+    }
     memset(&m, 0, sizeof(m));
+    if (branch_op(op) >= 0) {
+        m.op = branch_op(op);
+        m.a = a;
+        peep_put(&m);
+        return;
+    }
     switch (op) {
     case IR_FUNC:
         m.op = OP_FUNC_BEGIN;
@@ -150,6 +196,10 @@ void ir_put(int op, int a, Sym *s)
         m.op = OP_CALL;
         m.fix = FIX_FUNC;
         m.sym = s;
+        break;
+    case IR_LABEL:
+        m.op = OP_LABEL;
+        m.a = a;
         break;
     case IR_RETURN:
         m.op = OP_LEAVE;

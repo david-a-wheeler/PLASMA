@@ -3,18 +3,23 @@
  * rewrites patterns at the end of the window, and passes ops on to the
  * emitter.
  *
- * Dead code: after an unconditional exit (LEAVE, RET), nothing can run
- * until the next barrier, so ops are discarded until then. Barriers
- * are the pseudo-ops (function start and end) and, from M3, labels:
- * a label is where a jump can land, which makes code reachable again.
- * This is also what removes the implicit "return 0" the parser adds
- * after a final return statement.
+ * Dead code: after an unconditional exit (LEAVE, RET, BRNCH), nothing
+ * can run until the next barrier, so ops are discarded until then.
+ * Barriers are the pseudo-ops: function start and end, and labels (a
+ * label is where a branch can land, which makes code reachable again).
+ * This removes the implicit "return 0" the parser adds after a final
+ * return statement, the jump after an if-part that ends in return, and
+ * the bodies of if (0) and while (0).
  *
  * Patterns (each checked at the end of the window after every op):
  *   DLW n  DROP              -> SLW n      assignment whose value is unused
  *   SLW n  LLW n             -> DLW n      store, then load the same local
  *   const  NEG / COMP        -> const      e.g. -5 is one constant
  *   CN 1   ADD / SUB         -> INCR / DECR
+ *   NEG  BRFLS / BRTRU       -> BRFLS / BRTRU    comparison used as a test
+ *   NOT ANDI 1  BRFLS/BRTRU  -> BRTRU / BRFLS    branch on !x
+ *   ISEQ / ISNE  BRFLS/BRTRU -> BREQ / BRNE
+ *   CN 0  BREQ / BRNE        -> BRFLS / BRTRU    x == 0 is a test of x
  *   DUP  op  SLW n  DROP     -> op  SLW n  x++ whose old value is unused
  *                                          (op is INCR, DECR, NEG or COMP)
  * All are valid for C: they don't change any value the program sees.
@@ -44,10 +49,23 @@ void peep_flush(void)
         pass_oldest();
 }
 
-/* Does op always leave the function, so that what follows can't run? */
+/* Does op always transfer control (a return or a jump), so that what
+ * follows can't run until the next label? */
 static int is_unconditional_exit(int op)
 {
-    return op == OP_LEAVE || op == OP_RET;
+    return op == OP_LEAVE || op == OP_RET || op == OP_BRNCH;
+}
+
+/* Is op a branch that pops a value and tests it for zero? */
+static int is_test_branch(int op)
+{
+    return op == OP_BRFLS || op == OP_BRTRU;
+}
+
+/* The branch with the opposite test: BRFLS for BRTRU, and so on. */
+static int invert_branch(int op)
+{
+    return op == OP_BRFLS ? OP_BRTRU : OP_BRFLS;
 }
 
 /* Is op a one-operand op that can sit between DUP and SLW in the x++
@@ -95,6 +113,42 @@ static int rewrite(void)
     if ((b->op == OP_ADD || b->op == OP_SUB)
         && mop_const_value(a, &v) && v == 1) {
         a->op = b->op == OP_ADD ? OP_INCR : OP_DECR;
+        nwin--;
+        return 1;
+    }
+    /* NEG BRFLS / BRTRU -> BRFLS / BRTRU: negating doesn't change
+     * whether a value is 0, so a comparison's NEG (which makes C's 1)
+     * isn't needed when the result only feeds a branch. */
+    if (a->op == OP_NEG && is_test_branch(b->op)) {
+        *a = *b;
+        nwin--;
+        return 1;
+    }
+    /* NOT ANDI 1 BRFLS / BRTRU -> BRTRU / BRFLS: branch on !x by
+     * testing x with the opposite branch. */
+    if (nwin >= 3 && win[nwin - 3].op == OP_NOT && a->op == OP_ANDI
+        && a->a == 1 && is_test_branch(b->op)) {
+        win[nwin - 3] = *b;
+        win[nwin - 3].op = invert_branch(b->op);
+        nwin -= 2;
+        return 1;
+    }
+    /* ISEQ / ISNE then BRFLS / BRTRU -> BREQ / BRNE: compare and branch
+     * in one op. */
+    if ((a->op == OP_ISEQ || a->op == OP_ISNE) && is_test_branch(b->op)) {
+        int on_true = b->op == OP_BRTRU;
+        int on_equal = (a->op == OP_ISEQ) == on_true;
+        *a = *b;
+        a->op = on_equal ? OP_BREQ : OP_BRNE;
+        nwin--;
+        return 1;
+    }
+    /* CN 0 BREQ / BRNE -> BRFLS / BRTRU: comparing with 0 is just a
+     * test of the value. */
+    if ((b->op == OP_BREQ || b->op == OP_BRNE)
+        && mop_const_value(a, &v) && v == 0) {
+        *a = *b;
+        a->op = b->op == OP_BREQ ? OP_BRFLS : OP_BRTRU;
         nwin--;
         return 1;
     }

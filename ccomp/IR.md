@@ -5,7 +5,7 @@ sends to the lowering stage (stage 2, `src/lower.c`) by calling
 `ir_put(op, a, sym)`. See [approach.md](approach.md), section 4A, for
 the pipeline as a whole. `ccish -i` prints the stream.
 
-This document describes the ops that exist now (milestones 1 and 2).
+This document describes the ops that exist now (milestones 1 to 3).
 It grows as milestones add ops.
 
 ## Model
@@ -230,9 +230,63 @@ C's logical not: 1 if the top value is 0, otherwise 0.
   VM, in two ops.
 - **Why it differs from `NOT`:** C's result is 1, not `$FFFF`, and the
   VMs disagree (reason 4).
-- **Later:** when the result only feeds a branch (M3), no mask is
-  needed. `NOT BRFLS` becomes `BRTRU`, which is safe because the VMs
-  agree on which values are zero.
+- **Now in the peephole stage:** when the result only feeds a branch,
+  no mask is needed: `NOT ANDI 1 BRFLS` becomes `BRTRU`. That is safe
+  because the VMs agree on which values are zero.
+
+### Comparisons: `IR_EQ`, `IR_NE`, `IR_LT`, `IR_GT`, `IR_LE`, `IR_GE`
+
+Compare the top two values, signed, giving C's 1 for true or 0 for
+false.
+
+- **Stack:** `( x y -- x op y )`.
+- **Now:** `ISEQ`, `ISNE`, `ISLT`, `ISGT`, `ISLE` or `ISGE`, then `NEG`.
+  PLASMA's comparisons give `$FFFF` for true (on every VM), and `NEG`
+  turns that into 1 in one byte.
+- **Why they differ:** C's true is 1 (reason 4).
+- **Now in the peephole stage:** when the result only feeds a branch,
+  the `NEG` goes (`NEG BRFLS` → `BRFLS`), and an equality test fuses
+  with the branch: `ISEQ BRFLS` → `BRNE`, `ISNE BRFLS` → `BREQ`. A
+  comparison with 0 becomes a plain test: `CN 0 BRNE` → `BRTRU`.
+- **In the parser:** constants fold to 1 or 0, and `c < x` with a
+  constant `c` is emitted as `x > c`, like other swappable operators.
+- **Later:** `unsigned` comparisons (M11), with PLASMA's `isult` and
+  friends or a sign-flip trick.
+
+### Labels and branches: `IR_LABEL`, `IR_JUMP`, `IR_BRFALSE`, `IR_BRTRUE`, `IR_BRAND`, `IR_BROR` (*a* = label)
+
+Control flow within a function. Labels are numbered per function by
+the parser. `IR_LABEL` marks where a label is; the others branch to
+one.
+
+- **Stack:**
+  - `IR_LABEL`, `IR_JUMP`: none;
+  - `IR_BRFALSE`, `IR_BRTRUE`: `( x -- )`, branching if `x` is 0 (or,
+    for `IR_BRTRUE`, not 0);
+  - `IR_BRAND`: if `x` is 0, branch and keep it, `( x -- x )`;
+    otherwise `( x -- )`. `IR_BROR` is the same with "not 0". These are
+    for `&&` and `||`.
+- **Now:** `IR_LABEL` becomes the pseudo-op `OP_LABEL`, which emits no
+  bytes. The branches become `BRNCH`, `BRFLS`, `BRTRU`, `BRAND` and
+  `BROR`, whose operand is still the label number. Stage 4 turns it into
+  a relative offset: right away for a label already placed (a loop's
+  top), or through the label's fixup chain (approach.md 18.2) when the
+  label is placed later.
+- **Why they differ:** PLASMA branches need an offset, and a forward
+  target's offset isn't known yet (reason 3).
+- **How the parser uses them:**
+  - `if`, `while`, `do`, `for`, `?:`: see the comments on `parse_if`
+    and the other functions in `src/parse.c` for the exact layouts;
+  - `a && b`: `a BRAND L b' L:`, where `b'` is `b` made 1 or 0 (by
+    `CONST 0 NE`) unless it already is, such as a comparison. `a || b`
+    is the same with `BROR`, and `a` made 1 or 0 too;
+  - a label that nothing has branched to is not emitted, so that it
+    doesn't stop the peephole stage from dropping unreachable code.
+- **Peephole:** a `BRNCH` makes the following code unreachable until
+  the next label, and labels are barriers.
+- **Later:** a `BRNCH` to the very next label can be removed, and
+  branches to branches shortened. `for` loops may use a side buffer
+  for the step, and PLASMA's FOR opcodes (17, P18).
 
 ### `IR_CALL` *sym*, *a* = argument count
 
@@ -300,13 +354,14 @@ opcode, its operands, and two kinds of deferred information:
   pass (`src/link.c`) fills in the address once the layout is known,
   and writes the matching RLD or ESD entries ([OBJECT.md](OBJECT.md)).
 
-Two pseudo-ops travel with them: `OP_FUNC_BEGIN` and `OP_FUNC_END`.
-They produce no bytes, and they are barriers for the peephole stage.
+Three pseudo-ops travel with them: `OP_FUNC_BEGIN`, `OP_FUNC_END` and
+`OP_LABEL`. They produce no bytes, and they are barriers for the
+peephole stage. A branch machine op's operand is a label number until
+stage 4 replaces it with an offset.
 
 ## Adding ops
 
 New IR ops arrive with the milestones that need them. Expected next:
-- labels, branches and comparisons with C semantics (M3);
 - typed loads and stores, and addresses of variables (M4);
 - the reordering pseudo-ops (M10).
 
