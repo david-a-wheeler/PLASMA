@@ -1424,6 +1424,38 @@ Decided:
 - **Not in M5:** nested brace lists, `volatile`, exporting globals,
   and `extern` (wanted later).
 
+**M5 step 3 (local array initializers) is done.** Chosen while
+building it (open for review):
+- **One parser for both.** Step 2's array-initializer code now serves
+  locals too (`parse_array_init()`); only the three element actions
+  differ: a scalar element, a byte, and a run of zeros, written to the
+  data stream for a global, or stored into the frame for a local. A
+  local's elements may be any expressions, as C99 allows.
+- **Stores, as decided.** `int t[5] = {1, 2, 3};` is
+  `CN 1 SLW t  CN 2 SLW t+2  CN 3 SLW t+4  CN 0 DLW t+6 SLW t+8`.
+  - Two neighboring `char` constants (a string's characters, or
+    `'a', 'b'` in a list) are one word store: `CW $6261 SLW s`, 5
+    bytes, not 8.
+  - The zeros after the last initializer (including a string's NUL
+    just before them) are `CN 0` then a chain of `DLW`s ending in
+    `SLW` for up to 3 words (1 + 2 bytes per word), and
+    `LLA CN 0 CB n CALL memset` (7 or 8 bytes) for more.
+  - CMDSYS `memset` fills with a 16-bit pattern (it writes `val`'s low
+    and high bytes alternately), which is the same as C's only for 0.
+    The compiler uses it only with 0. The README now warns programs
+    that call it.
+  - If the program defines or declares its own `memset` (one that
+    doesn't match CMDSYS's), the compiler stores the zeros instead.
+- **Sizes from the initializer** work for locals too. Such an array
+  grows in the frame as its elements are parsed (`reserve()`), so that
+  any temporaries an element needs come after it; the frame-size error
+  still applies.
+- **A scalar local may have braces** (`int y = {8};`), as globals may.
+- **Cost of a long initializer:** each element is a store, about 3–5
+  bytes per element. Copying an image from the data segment with
+  `memcpy` (9 bytes plus the data) would win from about 5 constant
+  elements; that stays a possible M10 optimization, as decided.
+
 **M5 step 2 (global initializers) is done.** Chosen while building it
 (open for review):
 - **Object format version 2.** Two new streams: `.strs`, the string

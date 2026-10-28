@@ -3,15 +3,15 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 4, and M5 steps 1 and 2):
+ * Language so far (milestones 1 to 4, and M5 steps 1 to 3):
  *   - types int, char, void, pointers to them (int *, char **, ...), and
  *     arrays of int, char, pointers and arrays (int m[3][4]);
  *   - function definitions and prototypes returning int, char, void or
  *     a pointer, with parameters of any of these but void; an array
  *     parameter (int a[], int m[][4]) is a pointer, as in C;
  *   - local variables, declared anywhere in a block (or in a for
- *     statement's first clause), with optional initializers (not for
- *     arrays yet), and block scope;
+ *     statement's first clause), with optional initializers (an array's
+ *     are stores into the frame), and block scope;
  *   - global variables, private to the module, declared anywhere
  *     between functions, with optional initializers, computed at compile
  *     time (see "Global initializers" below);
@@ -573,6 +573,7 @@ static void parse_unary(Operand *o);
 static void parse_postfix(Operand *o);
 static void parse_sizeof(Operand *o);
 static int parse_dims(int t, int may_omit);
+static int parse_local_array_init(int type, const char *name, int base);
 static void binary(Operand *o, Operand *r, int op);
 
 /* Push the variable at off, a data offset if global, else a frame
@@ -1815,18 +1816,26 @@ static void parse_declaration(void)
         Operand v, e;
         Sym *s;
         char name[MAX_NAME + 1];
-        int type = parse_var_type(parse_declarator(base, name), 0);
+        int type = parse_var_type(parse_declarator(base, name), 1), braced;
         if (tok == '(')
             error("local function declarations are not supported", NULL);
+        if (is_array(type) && types[type].count == 0 && tok != '=')
+            error("array size missing", NULL);
         if (is_array(type) && frame_next + type_size(type) > 255)
             error("local array doesn't fit in the 255-byte frame"
                   " (make it global):", quote(name));
-        /* In C, the name is in scope in its own initializer. */
+        /* In C, the name is in scope in its own initializer. (An array
+         * whose size comes from its initializer grows as it is parsed:
+         * see reserve().) */
         s = add_local(name, type, type_size(type));
-        if (tok == '=') {
-            if (is_array(type))
-                error("array initializers are not supported yet", NULL);
+        if (tok == '=' && is_array(type)) {
             next();
+            s->type = parse_local_array_init(type, name, s->offset);
+        } else if (tok == '=') {
+            next();
+            braced = tok == '{';        /* int x = {5}; is valid C */
+            if (braced)
+                next();
             begin_expr();
             parse_expr(PREC_ASSIGN, &e);
             check_assign(type, &e, "initialization");
@@ -1838,6 +1847,11 @@ static void parse_declaration(void)
             store_var(&v);
             put(IR_DROP, 0, NULL);
             end_expr();
+            if (braced) {
+                if (tok == ',')
+                    next();
+                expect('}', "expected '}' after the initializer, not");
+            }
         }
         if (tok != ',')
             break;
@@ -2324,47 +2338,185 @@ static void parse_scalar_init(int type)
         data_word(a.val);
 }
 
-/* Write the string literal (the current token) to the data stream as
- * the elements of a char array with room for max chars, or for any
- * number if max is 0. Its NUL is written if there is room, as in C.
- * Returns the number of bytes written. name is for the message. */
-static int parse_string_init(int max, const char *name)
+/*
+ * An array's initializer is parsed the same way for a global and a
+ * local; only where its elements go differs. A global's are written to
+ * the data stream, in order. A local array's are stores into the frame
+ * (approach.md, "M5 design"), at frame offset init_base plus each
+ * element's offset: CN 1 SLW t. Two neighboring char constants are
+ * stored as one word (CW SLW, 5 bytes, not 8), and the zeros after the
+ * last initializer are stored with a chain of DLWs, or by memset when
+ * that is shorter.
+ */
+static int init_local;          /* initializing a local array */
+static int init_base;           /* its frame offset */
+static const char *init_name;   /* its name, for messages */
+static int held_char = -1;      /* a char constant to be stored with the
+                                 * next one, at frame offset held_at */
+static int held_at;
+
+/* Make sure the frame reaches offset end, for a local array whose size
+ * comes from its initializer, so that it grows as elements are added
+ * (and temporaries come after it). */
+static void reserve(int end)
+{
+    if (end <= frame_next)
+        return;
+    if (end > 255)
+        error("local array doesn't fit in the 255-byte frame"
+              " (make it global):", quote(init_name));
+    frame_next = end;
+    if (frame_next > frame_max)
+        frame_max = frame_next;
+}
+
+/* Store the held char constant, if any, by itself. */
+static void flush_char(void)
+{
+    if (held_char < 0)
+        return;
+    put(IR_CONST, held_char, NULL);
+    put(IR_SETLOCALB, held_at, NULL);
+    put(IR_DROP, 0, NULL);
+    held_char = -1;
+}
+
+/* Initialize the byte at offset off of the array to v: write it to the
+ * data stream, or, for a local, store it (with the byte before it, if
+ * that is a held constant). */
+static void init_byte(int off, int v)
+{
+    int at = init_base + off;
+    if (!init_local) {
+        data_byte(v);
+        return;
+    }
+    reserve(at + 1);
+    v &= 0xFF;
+    if (held_char >= 0 && held_at == at - 1) {
+        put(IR_CONST, held_char | (v << 8), NULL);
+        put(IR_SETLOCAL, held_at, NULL);
+        put(IR_DROP, 0, NULL);
+        held_char = -1;
+        return;
+    }
+    flush_char();
+    held_char = v;
+    held_at = at;
+}
+
+/* The CMDSYS function memset, declared from the CMDSYS table if the
+ * program hasn't used it yet; or NULL if the program has its own. */
+static Sym *cmdsys_memset(void)
+{
+    Sym *s = find_func("memset");
+    int c = find_cmdsys("memset");
+    if (!s) {
+        s = add_func("memset");
+        declare_cmdsys(s, c);
+    } else if (s->defined || !matches_cmdsys(s, c)) {
+        return NULL;
+    }
+    return s;
+}
+
+/* Initialize n bytes at offset off of the array to 0: write them to the
+ * data stream, or, for a local, store them. Up to 3 words take
+ * CN 0 DLW ... SLW (1 + 2 bytes per word); more take
+ * LLA CN 0 CB n CALL memset (7 or 8 bytes). */
+static void init_zero(int n, int off)
+{
+    int at = init_base + off, words = n / 2, i;
+    Sym *s;
+    if (!init_local) {
+        data_zero(n);
+        return;
+    }
+    if (n <= 0)
+        return;
+    reserve(at + n);
+    if (held_char == 0 && held_at == at - 1) {
+        /* A held 0 just before (a string's NUL) joins the zeros. */
+        held_char = -1;
+        at--;
+        n++;
+        words = n / 2;
+    }
+    if (words + n % 2 > 3 && (s = cmdsys_memset()) != NULL) {
+        put(IR_LOCALADDR, at, NULL);
+        put(IR_CONST, 0, NULL);
+        put(IR_CONST, n, NULL);
+        s->called = 1;
+        put(IR_CALL, 3, s);
+        return;
+    }
+    put(IR_CONST, 0, NULL);
+    for (i = 0; i < words; i++)
+        put(IR_SETLOCAL, at + 2 * i, NULL);
+    if (n % 2)
+        put(IR_SETLOCALB, at + n - 1, NULL);
+    put(IR_DROP, 0, NULL);
+}
+
+/* Parse the initializer of one scalar element of type type, at offset
+ * off of the array. A global's must be constant (parse_scalar_init); a
+ * local's may be any expression, as C99 allows. */
+static void init_elem(int type, int off)
+{
+    Operand e, v;
+    int at = init_base + off;
+    if (!init_local) {
+        parse_scalar_init(type);
+        return;
+    }
+    reserve(at + type_size(type));
+    begin_expr();
+    parse_expr(PREC_ASSIGN, &e);
+    check_assign(type, &e, "initialization");
+    if (type == TY_CHAR && e.kind == K_CONST) {
+        init_byte(off, e.val);
+    } else {
+        rvalue(&e);
+        v.kind = K_VAR;
+        v.type = type;
+        v.off = at;
+        v.global = 0;
+        store_var(&v);
+        put(IR_DROP, 0, NULL);
+    }
+    end_expr();
+}
+
+/* Initialize the array, from offset off, with the string literal (the
+ * current token): a char array with room for max chars, or for any
+ * number if max is 0. Its NUL is included if there is room, as in C.
+ * Returns the number of bytes initialized. */
+static int init_string(int max, int off)
 {
     int i, n = tok_len;
     if (max && n > max)
-        error("initializer string is too long for", quote(name));
+        error("initializer string is too long for", quote(init_name));
     for (i = 0; i < n; i++)
-        data_byte(tok_text[i]);
+        init_byte(off + i, tok_text[i]);
     if (!max || n < max) {
-        data_byte(0);
+        init_byte(off + n, 0);
         n++;
     }
     next();
     return n;
 }
 
-/* Parse the initializer of a global of type type, named name, and
- * write its bytes to the data stream. Returns the type, with an array
- * size that was left out filled in from the initializer. An array's
- * brace list is one level, over its scalar elements, as C allows (a
- * two-dimensional array takes a flat list); the rows of a char array of
- * arrays may also be string literals. */
-static int parse_global_init(int type, const char *name)
+/* Parse the initializer of an array of type type, named name, for a
+ * global or a local (init_local). Returns the type, with an array size
+ * that was left out filled in from the initializer. The brace list is
+ * one level, over the scalar elements, as C allows (a two-dimensional
+ * array takes a flat list); the rows of a char array of arrays may also
+ * be string literals. */
+static int parse_array_init(int type, const char *name)
 {
-    int elem, esize, n = 0, max, per, row;
+    int elem, esize, n = 0, max, per, row, i;
 
-    if (!is_array(type)) {
-        if (tok == '{') {               /* int x = {5}; is valid C */
-            next();
-            parse_scalar_init(type);
-            if (tok == ',')
-                next();
-            expect('}', "expected '}' after the initializer, not");
-        } else {
-            parse_scalar_init(type);
-        }
-        return type;
-    }
+    init_name = name;
     for (elem = type; is_array(elem); elem = types[elem].sub)
         ;
     esize = type_size(elem);
@@ -2373,7 +2525,7 @@ static int parse_global_init(int type, const char *name)
     row = is_array(types[type].sub) && types[types[type].sub].sub == TY_CHAR
           ? type_size(types[type].sub) : 0;
     if (tok == T_STR && types[type].sub == TY_CHAR) {
-        n = parse_string_init(max, name);
+        n = init_string(max, 0);
     } else {
         expect('{', "expected '{' to start an array initializer, not");
         while (tok != '}') {
@@ -2384,10 +2536,11 @@ static int parse_global_init(int type, const char *name)
                 error("too many initializers for", quote(name));
             if (tok == T_STR && row && n % row == 0) {
                 /* A row of a char array of arrays: "abc" fills one. */
-                data_zero(row - parse_string_init(row, name));
+                i = init_string(row, n);
+                init_zero(row - i, n + i);
                 n += row;
             } else {
-                parse_scalar_init(elem);
+                init_elem(elem, n * esize);
                 n++;
             }
             if (tok != ',')
@@ -2403,7 +2556,44 @@ static int parse_global_init(int type, const char *name)
         type = array_of(types[type].sub, (n + per - 1) / per);
         max = type_size(type) / esize;
     }
-    data_zero((max - n) * esize);       /* the rest of the elements are 0 */
+    init_zero((max - n) * esize, n * esize);    /* the rest are 0 */
+    return type;
+}
+
+/* Parse the initializer of a global of type type, named name, and
+ * write its bytes to the data stream. Returns the type, with an array
+ * size that was left out filled in. */
+static int parse_global_init(int type, const char *name)
+{
+    if (is_array(type)) {
+        init_local = 0;
+        init_base = 0;
+        return parse_array_init(type, name);
+    }
+    if (tok == '{') {                   /* int x = {5}; is valid C */
+        next();
+        parse_scalar_init(type);
+        if (tok == ',')
+            next();
+        expect('}', "expected '}' after the initializer, not");
+    } else {
+        parse_scalar_init(type);
+    }
+    return type;
+}
+
+/* Parse the initializer of a local array of type type, named name, at
+ * frame offset base, as stores into the frame. Returns the type, with
+ * an array size that was left out filled in. */
+static int parse_local_array_init(int type, const char *name, int base)
+{
+    init_local = 1;
+    init_base = base;
+    held_char = -1;
+    type = parse_array_init(type, name);
+    flush_char();
+    init_local = 0;
+    reserve(base + type_size(type));
     return type;
 }
 

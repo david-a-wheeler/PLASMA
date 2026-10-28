@@ -53,7 +53,12 @@ Hello5
   agree on the return and parameter types. `main` takes no parameters.
   Its return value is ignored.
 * Local variables, declared anywhere in a block, with optional
-  initializers (`int a, b = 1, *p = &a;`), but not yet for arrays.
+  initializers (`int a, b = 1, *p = &a;`). A local array's initializer
+  takes the same forms as a global's (below), but its elements may be
+  any expressions (`int v[2] = {x, f(x)};`), and it runs each time the
+  declaration is reached. It compiles to stores into the frame; two
+  neighboring `char` constants are stored as one word, and trailing
+  zeros use CMDSYS `memset` when that is shorter.
   Array sizes are constant expressions. They have block scope, and
   an inner block may shadow an outer name. As in C99, the first clause
   of `for` may declare variables, which are in scope only in the loop.
@@ -136,7 +141,7 @@ Hello5
 * Digraphs `<% %> <: :>`, `/* */` and `//` comments, and LF, CR or CRLF
   line endings.
 
-Anything else, such as initializers on local arrays, `static`,
+Anything else, such as `static`,
 `const`, `extern`,
 function pointers, declarators in parentheses (`int (*p)[4]`), `switch`,
 `goto`, the comma operator, or the types `signed`, `unsigned`, `short`
@@ -157,7 +162,10 @@ A function that is called but not defined in the file must be one of
 the CMDSYS functions in `cmdsys_funcs[]` in `src/parse.c`, such as
 `putc`, `puts`, `puti`, `putln` or `heapalloc`. It is imported from
 CMDSYS. These are PLASMA's functions with PLASMA's meanings, not C's.
-For example, `puts` takes a PLASMA string and adds no newline. The
+For example, `puts` takes a PLASMA string and adds no newline, and
+`memset` fills with a 16-bit pattern, so `memset(p, 'a', 4)` gives
+`a`, NUL, `a`, NUL (with 0, as ccish uses it, that makes no
+difference). The
 table gives each one C types, such as `void puts(char *)` and
 `void *heapalloc(int)`, and the compiler checks calls against them, so
 a mistake is caught at compile time and not at load time.
