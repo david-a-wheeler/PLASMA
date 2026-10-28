@@ -57,6 +57,12 @@ Hello5
   Array sizes are constant expressions. They have block scope, and
   an inner block may shadow an outer name. As in C99, the first clause
   of `for` may declare variables, which are in scope only in the loop.
+* Global variables of any of these types, declared outside functions
+  (`int count, *p, buf[1000];`), anywhere before their first use. They
+  are zero when the module loads, and can't have initializers yet. They
+  are private to the module (not exported). A local or parameter may
+  hide a global of the same name, but a global can't share a name with
+  a function or another global.
 * `char` is one byte and unsigned (0–255). A value is converted to
   `char` by keeping its low byte when it is stored into a `char`,
   passed as a `char` parameter, returned from a `char` function, or
@@ -71,7 +77,7 @@ Hello5
 * Arrays: `a[i]` is `*(a + i)`, as in C (so `i[a]` works too), and an
   array used as a value is a pointer to its first element. An array
   can't be assigned to. A local array must fit in the function's
-  255-byte frame, with the other locals.
+  255-byte frame, with the other locals; a bigger one can be global.
 * Types are checked as strictly as C requires (GCC 14 does the same by
   default): mixing integers and pointers needs a cast, except for the
   constant 0, and pointer types must match unless one is `void *`.
@@ -108,7 +114,8 @@ Hello5
 * Digraphs `<% %> <: :>`, `/* */` and `//` comments, and LF, CR or CRLF
   line endings.
 
-Anything else, such as globals, array initializers, `sizeof`,
+Anything else, such as initializers on globals and arrays, `sizeof`,
+`static`, `extern`,
 function pointers, declarators in parentheses (`int (*p)[4]`), `switch`,
 `goto`, the comma operator, or the types `signed`, `unsigned`, `short`
 and `long`, gives a "not supported yet" error.
@@ -172,8 +179,9 @@ function returns exactly one.
   `*p++ = x` or `*f() = x`, first saves the address in a hidden local
   (2 bytes of the 255-byte frame, for that statement only), because
   PLASMA has no SWAP. So does `i + p` with an `int *` `p`. A store
-  into an array element doesn't, when the array is a local array or a
-  local pointer and the index is a variable or a constant (`a[i] = x`,
+  into an array element doesn't, when the array is an array or pointer
+  variable (local or global) and the index is a variable or a constant
+  (`a[i] = x`,
   `p[3] = x`, `m[1][j] = x`). A more complex index (`a[i + 1] = x`,
   `a[f()] = x`) or two variable indexes (`m[i][j] = x`) do. So does a
   compound assignment to an element with a variable index
@@ -184,5 +192,11 @@ function returns exactly one.
   fix).
 * String literals in code that is never compiled (such as `0 && f("x")`)
   still take space in the data segment.
+* Globals are zero bytes in the module file, since PLASMA modules have
+  no uninitialized-data segment, so `char buf[4096];` adds 4K to the
+  file. Globals and string literals together are limited to 32767
+  bytes, and a file to 128 globals (`MAX_GLOBALS`).
+* The listing shows a global by its data offset (`; data+4`), not its
+  name.
 * Nothing checks evaluation stack depth. Deeply nested calls can
   overflow the VM's 32-entry stack.

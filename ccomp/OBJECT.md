@@ -21,8 +21,10 @@ once, in order, with no seeking, through 512-byte block buffers
 The data segment's bytes, in order, with no header or tags. Its length
 is the data size. Data offsets elsewhere count from its first byte.
 
-So far it holds only string literals, each as `[length][chars][NUL]`
-(issue 8). Initialized globals will follow.
+It holds string literals, each as `[length][chars][NUL]` (issue 8),
+and global variables, each as zero bytes of its size, in the order
+they appear in the source. Initialized globals (M5) will hold their
+initial values instead.
 
 ## `NAME.code`: functions and their relocations
 

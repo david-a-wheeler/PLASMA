@@ -3,7 +3,7 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 3, and M4 steps 1 to 3):
+ * Language so far (milestones 1 to 4):
  *   - types int, char, void, pointers to them (int *, char **, ...), and
  *     arrays of int, char, pointers and arrays (int m[3][4]);
  *   - function definitions and prototypes returning int, char, void or
@@ -12,6 +12,8 @@
  *   - local variables, declared anywhere in a block (or in a for
  *     statement's first clause), with optional initializers (not for
  *     arrays yet), and block scope;
+ *   - global variables, private to the module and zero when it loads
+ *     (no initializers yet), declared anywhere between functions;
  *   - casts;
  *   - statements: return, if/else, while, do, for, break, continue,
  *     expression statements, empty statements and nested blocks;
@@ -175,6 +177,45 @@ static Sym *find_local(const char *name)
         if (!strcmp(locals[i].name, name))
             return &locals[i];
     return NULL;
+}
+
+/* Global variables, in declaration order. */
+static Sym globals[MAX_GLOBALS];
+static int nglobals;
+
+/* The global variable with this name, or NULL. */
+static Sym *find_global(const char *name)
+{
+    int i;
+    for (i = 0; i < nglobals; i++)
+        if (!strcmp(globals[i].name, name))
+            return &globals[i];
+    return NULL;
+}
+
+/* The variable a name refers to here: the innermost local, else a
+ * global, else NULL. */
+static Sym *find_var(const char *name)
+{
+    Sym *s = find_local(name);
+    return s ? s : find_global(name);
+}
+
+/* Declare a global variable of the given type, with zero bytes for it
+ * in the data segment. */
+static void add_global(const char *name, int type)
+{
+    Sym *s;
+    if (find_global(name) || find_func(name))
+        error("redeclaration of", quote(name));
+    if (nglobals >= MAX_GLOBALS)
+        fatal("too many global variables", NULL);
+    s = &globals[nglobals++];
+    memset(s, 0, sizeof(*s));
+    strcpy(s->name, name);
+    s->kind = S_GLOBAL;
+    s->type = type;
+    s->offset = data_zero(type_size(type));
 }
 
 /* Declare a local (or parameter) of the given type at the current
@@ -455,15 +496,18 @@ static void place_forward(int n)
  * kinds are places (lvalues, or arrays): what to load or store isn't
  * decided until the parser sees what follows.
  *
+ * K_VAR is a variable, local or global; locals are in the frame, and
+ * globals are in the data segment (LAW / SAW, with relocated addresses).
+ *
  * K_ELEM is an object whose address can be computed at any time from
- * locals and constants, without a temporary: base + index * scale +
- * disp. The base is the pointer in the local word off (*p, p[i]) or
- * the address of the local array at off (a[i]), and the index is a
- * local variable, or there is none. So nothing is emitted until the
- * parser sees whether the object is assigned to, and a[i] = x is
- * "x LLA a LLW i IDXW SW" (approach.md 4(a), and "Pending array
- * elements" under Milestones). A constant index on a local array needs
- * no address at all: a[2] is K_LOCAL, at a fixed frame offset.
+ * variables and constants, without a temporary: base + index * scale +
+ * disp. The base is the pointer in the variable at off (*p, p[i]) or
+ * the address of the array at off (a[i]), and the index is a variable,
+ * or there is none. So nothing is emitted until the parser sees whether
+ * the object is assigned to, and a[i] = x is "x LLA a LLW i IDXW SW"
+ * (approach.md 4(a), and "Pending array elements" under Milestones). A
+ * constant index on an array variable needs no address at all: a[2] is
+ * a K_VAR at a fixed offset.
  *
  * An object reached through any other address (*f(), a[i + 1]) is
  * K_DEREF, with the address on the stack. Storing into it needs the
@@ -483,7 +527,7 @@ enum {
     K_VALUE,        /* its value is on the stack */
     K_VOID,         /* a void call: nothing on the stack */
     K_CONST,        /* a constant, not emitted yet (val = value) */
-    K_LOCAL,        /* a local variable, not loaded yet (off = offset) */
+    K_VAR,          /* a variable, not loaded yet (off, global) */
     K_DEREF,        /* the object at the address on the stack */
     K_ELEM          /* the object at base + index * scale + disp */
 };
@@ -492,16 +536,19 @@ typedef struct {
     int kind;
     int type;       /* its C type. A char value on the stack is always
                      * 0 to 255, so it needs no conversion to char. */
-    int off;        /* K_LOCAL: frame offset; K_ELEM: the base's offset */
+    int off;        /* K_VAR: its offset; K_ELEM: the base's offset */
+    int global;     /* K_VAR, K_ELEM: off is a data offset (a global),
+                     * not a frame offset */
     int val;        /* K_CONST: the value */
     int is_bool;    /* K_VALUE: known to be 1 or 0 (a comparison, !, &&) */
     int assigned;   /* K_ELEM: the result of an assignment to the
                      * object, so not an lvalue. Its value, if needed,
                      * is read back from the object. */
     /* K_ELEM only: */
-    int base_arr;   /* the base is the address of the local array at off,
-                     * not the pointer in the local word off */
-    int idx;        /* frame offset of the index variable, or -1 */
+    int base_arr;   /* the base is the address of the array at off, not
+                     * the pointer in the variable at off */
+    int idx;        /* offset of the index variable, or -1 */
+    int idx_global; /* the index variable is a global */
     int idx_char;   /* the index variable is a char */
     int scale;      /* bytes per step of the index */
     int disp;       /* a constant number of bytes added */
@@ -518,17 +565,38 @@ static void parse_expr(int min_prec, Operand *o);
 static void parse_unary(Operand *o);
 static void binary(Operand *o, Operand *r, int op);
 
-/* Push the value of the local variable o (a char is one byte). */
-static void load_local(Operand *o)
+/* Push the variable at off, a data offset if global, else a frame
+ * offset: a word, or a byte if is_char. */
+static void load_var(int off, int global, int is_char)
 {
-    put(o->type == TY_CHAR ? IR_LOCALB : IR_LOCAL, o->off, NULL);
+    if (global)
+        put(is_char ? IR_GLOBALB : IR_GLOBAL, off, NULL);
+    else
+        put(is_char ? IR_LOCALB : IR_LOCAL, off, NULL);
 }
 
-/* Store the top value into the local variable o, keeping the stored
- * value (for a char, its low byte) on the stack. */
-static void store_local(Operand *o)
+/* Push the address of the variable at off (a global's or a local's). */
+static void push_var_addr(int off, int global)
 {
-    put(o->type == TY_CHAR ? IR_SETLOCALB : IR_SETLOCAL, o->off, NULL);
+    put(global ? IR_DATAADDR : IR_LOCALADDR, off, NULL);
+}
+
+/* Store the top value into the variable o (a K_VAR), keeping the stored
+ * value (for a char, its low byte) on the stack. */
+static void store_var(Operand *o)
+{
+    int c = o->type == TY_CHAR;
+    if (o->global)
+        put(c ? IR_SETGLOBALB : IR_SETGLOBAL, o->off, NULL);
+    else
+        put(c ? IR_SETLOCALB : IR_SETLOCAL, o->off, NULL);
+}
+
+/* The highest offset a variable can have: 255 in the frame, and 32767
+ * in the data segment. */
+static int max_offset(int global)
+{
+    return global ? 0x7FFF : 255;
 }
 
 /* The IR op that loads a value of type t from an address (a char is a
@@ -548,7 +616,7 @@ static int store_op(int t)
  * whose value hasn't been loaded? */
 static int is_place(Operand *o)
 {
-    return o->kind == K_LOCAL || o->kind == K_DEREF || o->kind == K_ELEM;
+    return o->kind == K_VAR || o->kind == K_DEREF || o->kind == K_ELEM;
 }
 
 /* The type of a value of type t: an array's value is a pointer to its
@@ -558,14 +626,17 @@ static int value_type(int t)
     return is_array(t) ? pointer_to(types[t].sub) : t;
 }
 
-/* Make o the K_ELEM at the address in the local word off (base_arr 0),
- * or at the local array at off (base_arr 1), with no index yet. */
-static void make_elem(Operand *o, int off, int base_arr)
+/* Make o the K_ELEM at the address in the variable at off (base_arr 0),
+ * or at the array at off (base_arr 1), with no index yet. The variable
+ * or array is a global if global is set. */
+static void make_elem(Operand *o, int off, int global, int base_arr)
 {
     o->kind = K_ELEM;
     o->off = off;
+    o->global = global;
     o->base_arr = base_arr;
     o->idx = -1;
+    o->idx_global = 0;
     o->idx_char = 0;
     o->scale = 0;
     o->disp = 0;
@@ -574,19 +645,22 @@ static void make_elem(Operand *o, int off, int base_arr)
 }
 
 /* Push the address of the K_ELEM o: its base, plus the index times the
- * scale, plus the displacement. For a local array, the displacement is
- * part of the LLA offset when it fits in the frame. */
+ * scale, plus the displacement. For an array, the displacement is part
+ * of the LLA or LA offset when the result is a valid offset. */
 static void push_address(Operand *o)
 {
     int d = o->disp;
-    if (o->base_arr && o->off + d >= 0 && o->off + d <= 255) {
-        put(IR_LOCALADDR, o->off + d, NULL);
+    if (o->base_arr && o->off + d >= 0
+        && o->off + d <= max_offset(o->global)) {
+        push_var_addr(o->off + d, o->global);
         d = 0;
+    } else if (o->base_arr) {
+        push_var_addr(o->off, o->global);
     } else {
-        put(o->base_arr ? IR_LOCALADDR : IR_LOCAL, o->off, NULL);
+        load_var(o->off, o->global, 0);
     }
     if (o->idx >= 0) {
-        put(o->idx_char ? IR_LOCALB : IR_LOCAL, o->idx, NULL);
+        load_var(o->idx, o->idx_global, o->idx_char);
         if (o->scale != 1) {
             put(IR_CONST, o->scale, NULL);
             put(IR_MUL, 0, NULL);   /* a word index becomes IDXW */
@@ -604,8 +678,8 @@ static void push_address(Operand *o)
 static void rvalue(Operand *o)
 {
     if (is_array(o->type) && is_place(o)) {
-        if (o->kind == K_LOCAL)
-            put(IR_LOCALADDR, o->off, NULL);
+        if (o->kind == K_VAR)
+            push_var_addr(o->off, o->global);
         else if (o->kind == K_ELEM)
             push_address(o);
         o->kind = K_VALUE;
@@ -621,8 +695,8 @@ static void rvalue(Operand *o)
         put(IR_CONST, o->val, NULL);
         o->is_bool = o->val == 0 || o->val == 1;
         break;
-    case K_LOCAL:
-        load_local(o);
+    case K_VAR:
+        load_var(o->off, o->global, o->type == TY_CHAR);
         o->is_bool = 0;
         break;
     case K_ELEM:
@@ -675,7 +749,7 @@ static void spill(Operand *o)
     off = new_temp();
     put(IR_SETLOCAL, off, NULL);
     put(IR_DROP, 0, NULL);
-    make_elem(o, off, 0);
+    make_elem(o, off, 0, 0);
 }
 
 /* Report an error unless o is an lvalue that can be assigned to (an
@@ -684,19 +758,20 @@ static void need_lvalue(Operand *o, const char *what)
 {
     if (is_array(o->type) && is_place(o))
         error("an array can't be the", what);
-    if (o->kind != K_LOCAL && o->kind != K_DEREF
+    if (o->kind != K_VAR && o->kind != K_DEREF
         && !(o->kind == K_ELEM && !o->assigned))
         error("lvalue required as", what);
 }
 
-/* Store the value on the stack into lvalue o, which is K_LOCAL or
+/* Store the value on the stack into lvalue o, which is K_VAR or
  * K_ELEM (spill() first). o becomes the assignment's result: for a
- * local, its value is kept on the stack (DLW); for an object reached
- * through an address, it is read back from the object only if needed. */
+ * variable, its value is kept on the stack (DLW, DAW); for an object
+ * reached through an address, it is read back from the object only if
+ * needed. */
 static void assign_to(Operand *o)
 {
-    if (o->kind == K_LOCAL) {
-        store_local(o);
+    if (o->kind == K_VAR) {
+        store_var(o);
         o->kind = K_VALUE;
         return;
     }
@@ -982,7 +1057,7 @@ static void parse_primary(Operand *o)
                 o->type = pointer_to(TY_CHAR);
                 return;
             }
-            if (find_local(name))
+            if (find_var(name))
                 error("called object is not a function:", quote(name));
             s = find_func(name);
             if (!s) {
@@ -996,11 +1071,12 @@ static void parse_primary(Operand *o)
             parse_call(s, o);
             return;
         }
-        s = find_local(name);
+        s = find_var(name);
         if (s) {
-            o->kind = K_LOCAL;      /* load it later, if needed */
+            o->kind = K_VAR;        /* load it later, if needed */
             o->type = s->type;
             o->off = s->offset;
+            o->global = s->kind == S_GLOBAL;
             return;
         }
         if (find_func(name))
@@ -1067,8 +1143,8 @@ static void deref(Operand *o)
         error("unary '*' needs a pointer operand", NULL);
     if (types[t].sub == TY_VOID)
         error("dereferencing a 'void *'", NULL);
-    if (o->kind == K_LOCAL) {
-        make_elem(o, o->off, 0);    /* *p: the address is in p */
+    if (o->kind == K_VAR) {
+        make_elem(o, o->off, o->global, 0);     /* *p: the address is in p */
     } else {
         rvalue(o);
         o->kind = K_DEREF;
@@ -1079,12 +1155,12 @@ static void deref(Operand *o)
 }
 
 /* Can o take an index (a variable one if var is set, else a constant)
- * and stay pending? It can if it is a local array, a pointer local, or
- * a K_ELEM of array type (a row of a multi-dimensional array) that has
- * no variable index yet, since a K_ELEM holds only one. */
+ * and stay pending? It can if it is an array or pointer variable (local
+ * or global), or a K_ELEM of array type (a row of a multi-dimensional
+ * array) that has no variable index yet, since a K_ELEM holds only one. */
 static int pending_base(Operand *o, int var)
 {
-    if (o->kind == K_LOCAL)
+    if (o->kind == K_VAR)
         return is_array(o->type) || is_pointer(o->type);
     return o->kind == K_ELEM && is_array(o->type) && !(var && o->idx >= 0);
 }
@@ -1092,7 +1168,7 @@ static int pending_base(Operand *o, int var)
 /* Parse "[index]" after o: o becomes the element o[index], which C
  * defines as *(o + index). When o is a pending base and the index is a
  * plain variable or a number, nothing is emitted: the element is a
- * K_ELEM (or, for a constant index on a local array, a K_LOCAL at a
+ * K_ELEM (or, for a constant index on an array variable, a K_VAR at a
  * fixed offset). Whether the index is that simple is decided before it
  * is parsed, by looking for ']' after its first token, since otherwise
  * the base's address must be emitted first, below the index. */
@@ -1119,23 +1195,24 @@ static void parse_index(Operand *o)
     }
     if (is_pointer(value_type(r.type)))
         error("array subscript is not an integer", NULL);
-    if (r.kind != K_CONST && r.kind != K_LOCAL)
+    if (r.kind != K_CONST && r.kind != K_VAR)
         fatal("internal error: unexpected array index", NULL);
     size = is_pointer(t) ? elem_size(t) : type_size(types[t].sub);
     if (r.kind == K_CONST) {
         d = wrap16((unsigned)r.val * (unsigned)size);
-        if (o->kind == K_LOCAL && is_array(t)
-            && o->off + d >= 0 && o->off + d <= 255) {
-            o->off += d;            /* a[2]: a local at a fixed offset */
+        if (o->kind == K_VAR && is_array(t) && o->off + d >= 0
+            && o->off + d <= max_offset(o->global)) {
+            o->off += d;            /* a[2]: a variable at a fixed offset */
         } else {
-            if (o->kind == K_LOCAL)
-                make_elem(o, o->off, is_array(t));
+            if (o->kind == K_VAR)
+                make_elem(o, o->off, o->global, is_array(t));
             o->disp = wrap16((unsigned)o->disp + (unsigned)d);
         }
     } else {
-        if (o->kind == K_LOCAL)
-            make_elem(o, o->off, is_array(t));
+        if (o->kind == K_VAR)
+            make_elem(o, o->off, o->global, is_array(t));
         o->idx = r.off;
+        o->idx_global = r.global;
         o->idx_char = r.type == TY_CHAR;
         o->scale = size;
     }
@@ -1145,8 +1222,8 @@ static void parse_index(Operand *o)
 /* Apply unary & to o: the result is its address. */
 static void address_of(Operand *o)
 {
-    if (o->kind == K_LOCAL)
-        put(IR_LOCALADDR, o->off, NULL);
+    if (o->kind == K_VAR)
+        push_var_addr(o->off, o->global);
     else if (o->kind == K_ELEM && !o->assigned)
         push_address(o);                /* &*p is p, &a[i] is a + i */
     else if (o->kind != K_DEREF)        /* K_DEREF: already on the stack */
@@ -1572,7 +1649,7 @@ static void parse_expr(int min_prec, Operand *o)
                 o->val = fold(ir_op, o->val, r.val);
                 o->type = TY_INT;
                 continue;
-            } else if (r.kind == K_LOCAL && swapped_op(ir_op) >= 0) {
+            } else if (r.kind == K_VAR && swapped_op(ir_op) >= 0) {
                 /* c op x: emit x c op' (op' is op with its operands
                  * swapped), so that the peephole stage sees the
                  * constant right before the op (1+x: INCR). */
@@ -1628,6 +1705,31 @@ static int parse_dims(int t, int may_omit)
     return array_of(t, n);
 }
 
+/* Parse the start of a declarator after the base type base: any '*'s,
+ * then the name, which is copied to name. Returns the type so far; any
+ * array sizes come after the name. */
+static int parse_declarator(int base, char *name)
+{
+    int type = parse_pointers(base);
+    if (tok == '(')
+        error("declarators in parentheses are not supported yet",
+              "(such as int (*p)[4])");
+    if (tok != T_ID)
+        error("expected a name, not", tok_desc());
+    strcpy(name, tok_text);
+    next();
+    return type;
+}
+
+/* Parse the rest of a variable's declarator after its name (any array
+ * sizes) and return its full type, which can't be void. */
+static int parse_var_type(int type)
+{
+    if (type == TY_VOID)
+        error("a variable can't have type void", NULL);
+    return parse_dims(type, 0);
+}
+
 /* A declaration: a base type, then declarators, each a name with any
  * '*'s before it, any array sizes after it, and an optional
  * initializer: int a = 1, *p = &a, v[10]; */
@@ -1638,22 +1740,12 @@ static void parse_declaration(void)
         Operand v, e;
         Sym *s;
         char name[MAX_NAME + 1];
-        int type = parse_pointers(base);
-        if (type == TY_VOID)
-            error("a variable can't have type void", NULL);
-        if (tok == '(')
-            error("declarators in parentheses are not supported yet",
-                  "(such as int (*p)[4])");
-        if (tok != T_ID)
-            error("expected a variable name, not", tok_desc());
-        strcpy(name, tok_text);
-        next();
-        type = parse_dims(type, 0);
+        int type = parse_var_type(parse_declarator(base, name));
         if (tok == '(')
             error("local function declarations are not supported", NULL);
         if (is_array(type) && frame_next + type_size(type) > 255)
-            error("local array doesn't fit in the 255-byte frame:",
-                  quote(name));
+            error("local array doesn't fit in the 255-byte frame"
+                  " (make it global):", quote(name));
         /* In C, the name is in scope in its own initializer. */
         s = add_local(name, type, type_size(type));
         if (tok == '=') {
@@ -1664,10 +1756,11 @@ static void parse_declaration(void)
             parse_expr(PREC_ASSIGN, &e);
             check_assign(type, &e, "initialization");
             rvalue(&e);
-            v.kind = K_LOCAL;
+            v.kind = K_VAR;
             v.type = type;
             v.off = s->offset;
-            store_local(&v);
+            v.global = 0;
+            store_var(&v);
             put(IR_DROP, 0, NULL);
             end_expr();
         }
@@ -1995,26 +2088,51 @@ static int parse_params(void)
     return n;
 }
 
-/* Parse one top-level item: a function prototype or a function
- * definition. */
+/* Parse global variable declarations, after the base type base and
+ * the first declarator's type and name: int x, *p, buf[100]; Globals
+ * are zero when the module loads; initializers come in M5. */
+static void parse_globals(int base, int type, char *name)
+{
+    for (;;) {
+        type = parse_var_type(type);
+        if (tok == '(')
+            error("declare functions separately from variables", NULL);
+        if (tok == '=')
+            error("initializers on global variables are not supported yet",
+                  NULL);
+        add_global(name, type);
+        if (tok != ',')
+            break;
+        next();
+        type = parse_declarator(base, name);
+    }
+    expect(';', "expected ';' after declaration, not");
+}
+
+/* Parse one top-level item: global variable declarations, a function
+ * prototype, or a function definition. */
 static void parse_toplevel(void)
 {
-    int type, nparams, i;
+    int base, type, nparams, i;
+    char name[MAX_NAME + 1];
     Sym *fn;
 
     if (tok == T_KEYWORD)
         not_yet();
     if (!is_type_start(tok))
-        error("expected a function definition, not", tok_desc());
-    type = parse_pointers(parse_base_type());
-    if (tok != T_ID)
-        error("expected a function name, not", tok_desc());
-    fn = find_func(tok_text);
+        error("expected a declaration or function definition, not",
+              tok_desc());
+    base = parse_base_type();
+    type = parse_declarator(base, name);
+    if (tok != '(') {
+        parse_globals(base, type, name);
+        return;
+    }
+    if (find_global(name))
+        error("redeclaration of", quote(name));
+    fn = find_func(name);
     if (!fn)
-        fn = add_func(tok_text);
-    next();
-    if (tok != '(')
-        error("global variables are not supported yet", NULL);
+        fn = add_func(name);
 
     cur_fn = fn;                    /* for messages about its variables */
     nparams = parse_params();

@@ -29,7 +29,8 @@
 
 #define MAX_NAME     31     /* significant characters in an identifier */
 #define MAX_STR      512    /* bytes in one string literal */
-#define MAX_SYMS     256
+#define MAX_SYMS     256    /* functions */
+#define MAX_GLOBALS  128    /* global variables */
 #define MAX_PARAMS   16
 #define MAX_LOCALS   128    /* parameters and locals visible at once */
 #define MAX_FUNC_CODE 4096  /* bytecode in one function */
@@ -128,14 +129,14 @@ int array_of(int t, int count);
 
 /* ---------- Symbols (parse.c) ---------- */
 
-enum { S_FUNC, S_LOCAL };
+enum { S_FUNC, S_LOCAL, S_GLOBAL };
 
 typedef struct Sym Sym;
 struct Sym {
     char name[MAX_NAME + 1];
     int kind;
-    int type;           /* S_LOCAL: its type; S_FUNC: the return type */
-    int offset;         /* S_LOCAL: frame offset */
+    int type;           /* a variable's type; S_FUNC: the return type */
+    int offset;         /* S_LOCAL: frame offset; S_GLOBAL: data offset */
     int depth;          /* S_LOCAL: block nesting depth (parameters: 1) */
     /* S_FUNC: */
     int ptypes;         /* index of the parameter types in param_types[]
@@ -166,6 +167,11 @@ enum {
     IR_SETLOCALB,   /* a = frame offset: store the top value's low byte
                      * there, and keep that byte as the value */
     IR_LOCALADDR,   /* a = frame offset: push the address of a local */
+    IR_GLOBAL,      /* a = data offset: push a global word */
+    IR_SETGLOBAL,   /* a = data offset: store top value there, keep it */
+    IR_GLOBALB,     /* a = data offset: push a global byte (a char) */
+    IR_SETGLOBALB,  /* a = data offset: store the top value's low byte
+                     * there, and keep that byte as the value */
     IR_LOAD,        /* ( addr -- word ) load a word */
     IR_LOADB,       /* ( addr -- byte ) load a byte (a char) */
     IR_STORE,       /* ( val addr -- ) store a word */
@@ -205,8 +211,9 @@ enum {
     OP_BRNCH = 0x50,
     OP_CALL = 0x54, OP_ENTER = 0x58, OP_LEAVE = 0x5A, OP_RET = 0x5C,
     OP_CFFB = 0x5E, OP_LB = 0x60, OP_LW = 0x62, OP_LLB = 0x64,
-    OP_LLW = 0x66, OP_DLB = 0x6C, OP_DLW = 0x6E, OP_SB = 0x70, OP_SW = 0x72,
-    OP_SLB = 0x74, OP_SLW = 0x76,
+    OP_LLW = 0x66, OP_LAB = 0x68, OP_LAW = 0x6A, OP_DLB = 0x6C,
+    OP_DLW = 0x6E, OP_SB = 0x70, OP_SW = 0x72, OP_SLB = 0x74, OP_SLW = 0x76,
+    OP_SAB = 0x78, OP_SAW = 0x7A, OP_DAB = 0x7C, OP_DAW = 0x7E,
     OP_NOT = 0x80, OP_ADD = 0x82, OP_SUB = 0x84, OP_MUL = 0x86, OP_DIV = 0x88,
     OP_MOD = 0x8A, OP_INCR = 0x8C, OP_DECR = 0x8E, OP_NEG = 0x90,
     OP_COMP = 0x92, OP_AND = 0x94, OP_IOR = 0x96, OP_XOR = 0x98,
@@ -255,6 +262,7 @@ enum { SYM_DEFINED = 1, SYM_CALLED = 2, SYM_RETURNS = 4 };
 void emit_open(const char *base);
 void emit_put(Mop *m);
 int  data_string(const char *s, int len);   /* returns offset of first char */
+int  data_zero(int n);                      /* returns offset of n 0 bytes */
 void emit_finish(void);
 
 /* ---------- Final pass (link.c) ---------- */

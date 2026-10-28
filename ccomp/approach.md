@@ -1418,6 +1418,53 @@ Defaults, also agreed:
   that suggests making it global; open question 4 stays open.
 - String literals and `pstr()` have type `char *`.
 
+**M4 step 4 (globals) is done, so M4 is done.** Chosen while building
+it (open for review):
+- **A global is a variable like a local.** The parser's pending
+  variable (`K_LOCAL`) became `K_VAR`, with a flag that says whether
+  its offset is a frame offset or a data offset. A `K_ELEM`'s base
+  (array or pointer) and its index variable can each be global too. So
+  everything step 3 gives locals applies to globals, with no new cases:
+  `g[i] = x` is `x LA g LLW i IDXW SW` with no temporary, `g[3]` is a
+  variable at a fixed data offset, and an unused `g++` keeps no copy.
+- **Globals have their own IR ops** (`IR_GLOBAL`, `IR_SETGLOBAL`,
+  `IR_GLOBALB`, `IR_SETGLOBALB`), lowered to `LAW`, `DAW`, `LAB` and
+  `DAB`. IR.md had planned `IR_DATAADDR` then `IR_LOAD`, fused by the
+  peephole stage (`LA g LW` → `LAW g`, issue 17 P7). The parser knows
+  a global's address at compile time, as it knows a local's frame
+  offset, so mirroring the local ops needed no fusing patterns, and the
+  local patterns carried over: `DAW n DROP` → `SAW n` and
+  `SAW n LAW n` → `DAW n`. That last one also works across statements:
+  `g++; a[i] = g;` is `LAW g INCR DAW g LA a LLW i IDXW SW`. (`DAB`
+  keeps only the stored byte on both the C VM and the 6502 VM, as
+  `DLB` does, so it is safe for `char`.)
+- **A separate table of globals** (`MAX_GLOBALS`, 128), because
+  `syms[]` holds the functions and is written to the symbol summary.
+  A name is looked up as a local, then a global, then a function.
+  **Memory note for self-hosting:** a `Sym` is about 50 bytes on a
+  16-bit target, mostly fields that only functions use, so 128 globals
+  take about 6.5K, and `locals[]` as much again. A smaller entry for
+  variables would save most of that; worth doing in a later memory
+  pass, not now.
+- **Data layout:** each global is zero bytes of its size in the data
+  stream, in declaration order, between any string literals. There is
+  no alignment, since the 6502 needs none. More than 32767 bytes of
+  globals and strings is an error at the declaration that crosses the
+  limit.
+- **Redeclaration is an error,** even where C allows it: C's tentative
+  definitions (`int x; int x;`) are valid C, but rare outside headers,
+  and `extern` isn't supported yet. A global can't share a name with a
+  function, in either order. `int x, f(void);` (a function declared
+  with variables) gives "declare functions separately from variables".
+- **The frame-size error now suggests a global:** "local array doesn't
+  fit in the 255-byte frame (make it global)". Open question 4 (large
+  locals on a heap or C stack) stays open.
+- **Not done:** initializers on globals (M5), `static` and `extern`,
+  exporting globals to other modules (issue 11), and global names in
+  the listing (it shows `; data+4`; the final pass doesn't know the
+  names). `LA g LW` → `LAW g` is still unneeded, since only `*&g`
+  produces it.
+
 **M4 step 3 (arrays) is done.** Chosen while building it (open for
 review):
 - **One pending kind for elements.** Step 2's `K_DEREF_LOCAL` (the
@@ -1479,8 +1526,8 @@ review):
   conditional expression), and must be positive. An array's total size
   must be at most 32767 bytes ("array too large"), so sizes fit in an
   `int`. A local array that doesn't fit in the 255-byte frame is an
-  error ("local array doesn't fit in the 255-byte frame"). It will
-  suggest making it global once globals exist (step 4). In a
+  error ("local array doesn't fit in the 255-byte frame"). Since step
+  4, it suggests making the array global. In a
   parameter, the first size may be left out or given, and is ignored:
   `int a[]` and `int a[10]` are `int *a`, and `int m[][3]` is a
   pointer to arrays of 3 ints. Later sizes are required. Array

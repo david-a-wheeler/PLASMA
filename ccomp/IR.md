@@ -111,9 +111,10 @@ Push the constant *a* (taken as 16 bits).
 
 ### `IR_DATAADDR` *a* = data offset
 
-Push the address of byte *a* of this module's data segment. In M1 this
-is used for string literals: *a* is the first character for a C
-string, or the length byte for `pstr()`.
+Push the address of byte *a* of this module's data segment. It is used
+for string literals (*a* is the first character for a C string, or the
+length byte for `pstr()`), and for the address of a global variable:
+`&g`, and a global array used as a value.
 
 - **Stack:** `( -- addr )`.
 - **Now:** `LA addr`, plus a data relocation record. The final pass
@@ -121,10 +122,10 @@ string, or the length byte for `pstr()`.
   entry so the loader can adjust it.
 - **Why it differs from `LA`:** the target is a segment offset, not an
   address (reason 2).
-- **Later:** global variables use it too. A following load or store
-  fuses with it: `LA g LW` → `LAW g`, and `LA g SW` → `SAW g`. A
-  following constant offset folds in: `LA g CN 4 ADD` → `LA g+4` (17,
-  P7 and P9).
+- **Loads and stores of globals don't use it.** They have their own
+  ops (`IR_GLOBAL` and the rest, below), so nothing needs to fuse
+  `LA g LW` into `LAW g`. A constant offset is folded in by the parser:
+  `&a[3]` is `DATAADDR a+6`.
 
 ### `IR_LOCAL` *a* = frame offset
 
@@ -190,6 +191,24 @@ element).
 - **Now:** `LLA a`.
 - **Why it differs:** it doesn't.
 
+### `IR_GLOBAL`, `IR_SETGLOBAL`, `IR_GLOBALB` and `IR_SETGLOBALB` *a* = data offset
+
+The same as `IR_LOCAL`, `IR_SETLOCAL`, `IR_LOCALB` and `IR_SETLOCALB`,
+for a global variable at offset *a* of the data segment. Globals are
+private to the module, and are zero when it loads: each is zero bytes
+in the data segment, in declaration order, between string literals.
+
+- **Stack:** as for the local ops.
+- **Now:** `LAW`, `DAW`, `LAB` and `DAB`, with the address relocated
+  as for `IR_DATAADDR`. The peephole patterns for locals apply to
+  them: `DAW a DROP` → `SAW a`, and `SAW a LAW a` → `DAW a` (also for
+  bytes). `DAB` keeps the stored byte on every VM, as `DLB` does.
+- **Why they differ from `IR_DATAADDR` then `IR_LOAD`:** the parser
+  knows a global's address at compile time, as it knows a local's frame
+  offset, so it handles both the same way. This keeps the load or store
+  a single op without a fusing pattern, and the patterns above carry
+  over from locals.
+
 ### `IR_LOAD` and `IR_LOADB`
 
 Replace an address with the word (or, for a `char`, the zero-extended
@@ -198,9 +217,8 @@ byte) stored there: C's `*p` used as a value.
 - **Stack:** `( addr -- value )`.
 - **Now:** `LW` and `LB`.
 - **Why they differ:** they don't.
-- **Later:** fused with what pushes the address: `LLW p LW` could
-  become a single op if PLASMA had one (it doesn't); `LA g LW` becomes
-  `LAW g` for globals (17, P8).
+- **Later:** `LLW p LW` could become a single op if PLASMA had one (it
+  doesn't). Globals already load with `IR_GLOBAL` (`LAW`).
 
 ### `IR_STORE` and `IR_STOREB`
 
@@ -216,16 +234,19 @@ top, as in PLASMA, and nothing is left on the stack.
 **How stores through pointers are parsed.** `*e` is an lvalue whose
 address is computed by `e`. A streaming parser has already emitted `e`
 when it sees `=`, but the store needs the value first:
-- If `e` is a plain local pointer `p`, nothing has been emitted yet,
-  and `*p = v` is just `v LOCAL p STORE`.
-- An array element whose address comes only from locals and constants
-  is pending too: the array is a local array or a local pointer, and
-  the index is a variable or a constant. So `a[i] = v` is
+- If `e` is a plain pointer variable `p`, nothing has been emitted yet,
+  and `*p = v` is just `v LOCAL p STORE` (`v GLOBAL p STORE` for a
+  global `p`).
+- An array element whose address comes only from variables and
+  constants is pending too: the array is an array or pointer variable,
+  local or global, and the index is a variable (local or global) or a
+  constant. So `a[i] = v` is
   `v LOCALADDR a LOCAL i CONST 2 MUL ADD STORE`, which the peephole
-  stage makes `v LLA a LLW i IDXW SW`. A constant index on a local
-  array is a local at a fixed offset: `a[2] = v` is `v SETLOCAL a+4`.
-  A row of a two-dimensional array takes a constant index the same way
-  (`m[1][i]`, `m[i][2]`).
+  stage makes `v LLA a LLW i IDXW SW` (`v LA a LLW i IDXW SW` for a
+  global `a`). A constant index on an array variable is a variable at a
+  fixed offset: `a[2] = v` is `v SETLOCAL a+4` (`SETGLOBAL a+4`, which
+  becomes `SAW`). A row of a two-dimensional array takes a constant
+  index the same way (`m[1][i]`, `m[i][2]`).
 - Otherwise the address is on the stack. It is saved in a temporary
   local (`SETLOCAL t DROP`, which becomes `SLW t`), and `*e = v` is
   `e SETLOCAL t DROP v LOCAL t STORE` (approach.md 4(e)). Temporaries

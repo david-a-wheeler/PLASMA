@@ -9,7 +9,8 @@
 
 static const char *const ir_names[] = {
     "FUNC", "ENDFUNC", "CONST", "DATAADDR", "LOCAL", "SETLOCAL", "LOCALB",
-    "SETLOCALB", "LOCALADDR", "LOAD", "LOADB", "STORE", "STOREB", "CALL",
+    "SETLOCALB", "LOCALADDR", "GLOBAL", "SETGLOBAL", "GLOBALB",
+    "SETGLOBALB", "LOAD", "LOADB", "STORE", "STOREB", "CALL",
     "DROP", "DUP", "RETURN",
     "ADD", "SUB", "MUL", "DIV", "MOD", "AND", "OR", "XOR", "SHL", "SHR",
     "EQ", "NE", "LT", "GT", "LE", "GE",
@@ -78,7 +79,9 @@ static void dump_ir(int op, int a, Sym *s)
     case IR_FUNC:     printf(" %s", s->name); break;
     case IR_ENDFUNC:  printf(" frame=%d", a); break;
     case IR_CONST:    printf(" %d", a); break;
-    case IR_DATAADDR: printf(" data+%d", a); break;
+    case IR_DATAADDR: case IR_GLOBAL: case IR_SETGLOBAL:
+    case IR_GLOBALB: case IR_SETGLOBALB:
+                      printf(" data+%d", a); break;
     case IR_LOCAL: case IR_SETLOCAL:
     case IR_LOCALB: case IR_SETLOCALB: case IR_LOCALADDR:
                       printf(" [%d]", a); break;
@@ -211,6 +214,15 @@ void ir_put(int op, int a, Sym *s)
     case IR_LOCALADDR:
         m.op = OP_LLA;
         m.a = a;
+        break;
+    case IR_GLOBAL: case IR_SETGLOBAL: case IR_GLOBALB: case IR_SETGLOBALB:
+        /* The absolute-address forms of LLW, DLW, LLB and DLB, with the
+         * address relocated as data. As for locals, a store keeps its
+         * value, and DAW + DROP becomes SAW. */
+        m.op = op == IR_GLOBAL ? OP_LAW : op == IR_SETGLOBAL ? OP_DAW
+             : op == IR_GLOBALB ? OP_LAB : OP_DAB;
+        m.a = a;
+        m.fix = FIX_DATA;
         break;
     case IR_CALL:
         m.op = OP_CALL;

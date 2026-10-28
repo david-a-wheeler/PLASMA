@@ -3,7 +3,8 @@
  * compiler's output as three stream files (approach.md 18.1; formats in
  * ../OBJECT.md):
  *
- *   .data  the data segment's bytes, in order (string literals so far)
+ *   .data  the data segment's bytes, in order: string literals and
+ *          global variables (all zero at load, for now)
  *   .code  for each function: its bytecode, then its relocation records
  *   .syms  the symbol summary, written when compilation ends
  *
@@ -157,6 +158,19 @@ int data_string(const char *s, int len)
     return first;
 }
 
+/* Reserve n zero bytes in the data stream, for a global variable.
+ * Returns their data offset. */
+int data_zero(int n)
+{
+    int first = ndata, i;
+    if (ndata > 0x7FFF - n)
+        error("too much data: globals and strings over 32767 bytes", NULL);
+    for (i = 0; i < n; i++)
+        bputc(&data_out, 0);
+    ndata += n;
+    return first;
+}
+
 /* Write the finished function to the code stream. */
 static void end_function(int frame_size)
 {
@@ -213,7 +227,8 @@ void emit_put(Mop *m)
     case OP_SLB: case OP_SLW:
         code_byte(m->a);
         break;
-    case OP_CW: case OP_LA: case OP_CALL:
+    case OP_CW: case OP_LA: case OP_CALL: case OP_LAB: case OP_LAW:
+    case OP_SAB: case OP_SAW: case OP_DAB: case OP_DAW:
         /* A relocated word is written as 0; the final pass fills it in. */
         if (m->fix == FIX_DATA)
             add_reloc(REL_DATA, m->a);

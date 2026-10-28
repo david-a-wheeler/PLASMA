@@ -14,7 +14,8 @@
  * Patterns (each checked at the end of the window after every op):
  *   DLW n  DROP              -> SLW n      assignment whose value is unused
  *   SLW n  LLW n             -> DLW n      store, then load the same local
- *                                          (these two also for DLB, SLB, LLB)
+ *                                          (these two also for bytes, and
+ *                                          for globals: DAW, SAW, LAW, ...)
  *   const  AND               -> ANDI const for a constant from 0 to 255
  *   const  NEG / COMP        -> const      e.g. -5 is one constant
  *   CN 0   ADD / SUB         -> (nothing)
@@ -31,8 +32,9 @@
  *   DUP  ADD  ADD            -> IDXW       p + 2*i
  *   DUP  update  store  DROP -> update  store   x++ whose old value is
  *        unused. update is INCR, DECR, NEG, COMP, or a constant then ADD
- *        or SUB; store is SLW n, SLB n, or SW or SB after an address
- *        computed only on the stack (LLW p, or LLA a LLW i IDXW, ...).
+ *        or SUB; store is SLW, SLB, SAW or SAB n, or SW or SB after an
+ *        address computed only on the stack (LLW p, LLA a LLW i IDXW, LA g
+ *        LAW i IDXW, ...).
  * All are valid for C: they don't change any value the program sees.
  */
 #include "ccish.h"
@@ -81,6 +83,31 @@ static int invert_branch(int op)
     return op == OP_BRFLS ? OP_BRTRU : OP_BRFLS;
 }
 
+/* The store that doesn't keep its value for a store that does (SLW for
+ * DLW, and so on for DLB, DAW and DAB), or -1. */
+static int plain_store(int op)
+{
+    switch (op) {
+    case OP_DLW: return OP_SLW;
+    case OP_DLB: return OP_SLB;
+    case OP_DAW: return OP_SAW;
+    case OP_DAB: return OP_SAB;
+    }
+    return -1;
+}
+
+/* The store that keeps its value, if load reads back what store wrote
+ * (DLW for SLW then LLW, and so on for bytes and globals), or -1. The
+ * caller checks that the two have the same address. */
+static int keeping_store(int store, int load)
+{
+    if (store == OP_SLW && load == OP_LLW) return OP_DLW;
+    if (store == OP_SLB && load == OP_LLB) return OP_DLB;
+    if (store == OP_SAW && load == OP_LAW) return OP_DAW;
+    if (store == OP_SAB && load == OP_LAB) return OP_DAB;
+    return -1;
+}
+
 /* Is op a one-operand op that can sit between DUP and SLW in the x++
  * pattern below? */
 static int is_unary(int op)
@@ -99,7 +126,8 @@ static int stack_effect(Mop *m, int *pops, int *pushes)
         return 1;
     }
     switch (m->op) {
-    case OP_LA: case OP_LLA: case OP_LLW: case OP_LLB:
+    case OP_LA: case OP_LLA: case OP_LLW: case OP_LLB: case OP_LAW:
+    case OP_LAB:
         *pops = 0;
         return 1;
     case OP_LW: case OP_LB: case OP_INCR: case OP_DECR: case OP_NEG:
@@ -136,12 +164,12 @@ static int expr_len(int end)
 }
 
 /* The number of ops in the store that ends just before window index
- * end: SLW / SLB n, or an address expression then SW / SB. 0 if there
- * isn't one. */
+ * end: SLW / SLB / SAW / SAB n, or an address expression then SW / SB.
+ * 0 if there isn't one. */
 static int store_len(int end)
 {
     int op = end >= 1 ? win[end - 1].op : -1, n;
-    if (op == OP_SLW || op == OP_SLB)
+    if (op == OP_SLW || op == OP_SLB || op == OP_SAW || op == OP_SAB)
         return 1;
     if (op == OP_SW || op == OP_SB) {
         n = expr_len(end - 1);
@@ -193,19 +221,19 @@ static int rewrite(void)
     a = &win[nwin - 2];
     b = &win[nwin - 1];
 
-    /* DLW / DLB n DROP -> SLW / SLB n: an assignment whose value is
-     * unused just stores, without keeping a copy to throw away. */
-    if ((a->op == OP_DLW || a->op == OP_DLB) && b->op == OP_DROP) {
-        a->op = a->op == OP_DLW ? OP_SLW : OP_SLB;
+    /* DLW n DROP -> SLW n (also DLB, DAW, DAB): an assignment whose
+     * value is unused just stores, without keeping a copy to throw away. */
+    if (plain_store(a->op) >= 0 && b->op == OP_DROP) {
+        a->op = plain_store(a->op);
         nwin--;
         return 1;
     }
-    /* SLW n LLW n -> DLW n (and the same for bytes): storing a local and
-     * then loading it again becomes a store that keeps the value. DLB
-     * keeps the stored byte, which is what LLB would load. */
-    if (((a->op == OP_SLW && b->op == OP_LLW)
-         || (a->op == OP_SLB && b->op == OP_LLB)) && a->a == b->a) {
-        a->op = a->op == OP_SLW ? OP_DLW : OP_DLB;
+    /* SLW n LLW n -> DLW n (also for bytes, and SAW / SAB with LAW / LAB):
+     * storing a variable and then loading it again becomes a store that
+     * keeps the value. DLB keeps the stored byte, which is what LLB would
+     * load. */
+    if (keeping_store(a->op, b->op) >= 0 && a->a == b->a) {
+        a->op = keeping_store(a->op, b->op);
         nwin--;
         return 1;
     }

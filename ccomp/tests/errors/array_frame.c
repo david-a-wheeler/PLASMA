@@ -1,4 +1,4 @@
-// expect: :4: error: local array doesn't fit in the 255-byte frame: 'buf'
+// expect: :4: error: local array doesn't fit in the 255-byte frame (make it global): 'buf'
 int main() {
     int i;
     char buf[254];
