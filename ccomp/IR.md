@@ -116,10 +116,8 @@ Push the constant *a* (taken as 16 bits).
 
 ### `IR_DATAADDR` *a* = data offset
 
-Push the address of byte *a* of this module's data segment. It is used
-for string literals (*a* is the first character for a C string, or the
-length byte for `pstr()`), and for the address of a global variable:
-`&g`, and a global array used as a value.
+Push the address of byte *a* of the module's globals: the address of a
+global variable (`&g`), or a global array used as a value.
 
 - **Stack:** `( -- addr )`.
 - **Now:** `LA addr`, plus a data relocation record. The final pass
@@ -131,6 +129,20 @@ length byte for `pstr()`), and for the address of a global variable:
   ops (`IR_GLOBAL` and the rest, below), so nothing needs to fuse
   `LA g LW` into `LAW g`. A constant offset is folded in by the parser:
   `&a[3]` is `DATAADDR a+6`.
+
+### `IR_STRADDR` *a* = string pool offset
+
+Push the address of byte *a* of the string pool, which holds every
+string literal ([OBJECT.md](OBJECT.md)): *a* is the first character for
+a C string, or the length byte for `pstr()`.
+
+- **Stack:** `( -- addr )`.
+- **Now:** `LA addr`, plus a string relocation record, filled in and
+  given an RLD entry by the final pass, as for `IR_DATAADDR`.
+- **Why it differs from `IR_DATAADDR`:** the pool is a separate stream,
+  placed after the globals, so that string literals in a global's
+  initializer don't land in the middle of the global. Its offsets
+  aren't data offsets until the final pass knows the globals' size.
 
 ### `IR_LOCAL` *a* = frame offset
 

@@ -1,5 +1,5 @@
 /*
- * The final pass: turn the compiler's three stream files (../OBJECT.md)
+ * The final pass: turn the compiler's five stream files (../OBJECT.md)
  * into a PLASMA REL module (../../doc/Bytecodes.md), and print the
  * listing (-l), since only this pass knows the final addresses.
  *
@@ -11,7 +11,8 @@
  * Each stream is read once, in order, with no seeking:
  *   1. the symbol summary, so that every address can be computed;
  *   2. the header and dependencies are written, then the data stream is
- *      copied;
+ *      copied, with the data relocations applied (and kept for the RLD),
+ *      then the string pool;
  *   3. the code stream is copied one function at a time, with each
  *      function's relocations applied and kept for the RLD; then the
  *      init function is added;
@@ -30,12 +31,16 @@ typedef struct {
 
 static Lsym lsyms[MAX_SYMS];
 static int nlsyms;
-static int data_size, code_size;
+static int data_size, strs_size, code_size;
+
+/* Load addresses: of the data segment, the string pool after it, and
+ * the code segment after that. */
+static int data_base, strs_base, subseg;
 
 typedef struct {
-    int kind;       /* REL_DATA or REL_FUNC */
-    int at;         /* offset of the word in the code segment */
-    int target;     /* data offset, or symbol index */
+    int kind;       /* REL_DATA, REL_STR or REL_FUNC */
+    int at;         /* load address of the word (in data or code) */
+    int target;     /* data or string pool offset, or symbol index */
 } Lreloc;
 
 static Lreloc relocs[MAX_RELOCS];
@@ -66,9 +71,10 @@ static void read_summary(const char *base)
 
     if (!bopen(&in, name, 0))
         fatal("cannot open", name);
-    if (bgetc(&in) != 'C' || bgetc(&in) != 'I' || bgetc(&in) != 1)
+    if (bgetc(&in) != 'C' || bgetc(&in) != 'I' || bgetc(&in) != 2)
         damaged(name);
     data_size = bgetw(&in);
+    strs_size = bgetw(&in);
     code_size = bgetw(&in);
     nlsyms = bgetw(&in);
     if (nlsyms > MAX_SYMS)
@@ -136,7 +142,7 @@ static const struct { const char *name; int fmt; } opinfo[0xC6 / 2] = {
     {"NATV", F_NONE}, {"JUMPZ", F_WORD}, {"JUMP", F_WORD}
 };
 
-/* The comment for a relocated word at code-segment offset at; the
+/* The comment for a relocated word at load address at; the
  * relocations of the function being listed start at index first. */
 static const char *reloc_note(int at, int first)
 {
@@ -146,6 +152,8 @@ static const char *reloc_note(int at, int first)
         if (relocs[i].at == at) {
             if (relocs[i].kind == REL_DATA) {
                 sprintf(buf, "  ; data+%d", relocs[i].target);
+            } else if (relocs[i].kind == REL_STR) {
+                sprintf(buf, "  ; string+%d", relocs[i].target);
             } else {
                 Lsym *s = &lsyms[relocs[i].target];
                 strcpy(buf, "  ; ");
@@ -160,8 +168,7 @@ static const char *reloc_note(int at, int first)
 
 /* List len bytes of code (in fbuf) that start at code-segment offset
  * start; addresses are shown as loaded at subseg. */
-static void list_code(const char *label, int len, int start, int subseg,
-                      int first_reloc)
+static void list_code(const char *label, int len, int start, int first_reloc)
 {
     int pc = 0, i;
     printf("%s:\n", label);
@@ -196,7 +203,7 @@ static void list_code(const char *label, int len, int start, int subseg,
             break;
         case F_WORD:
             printf(" $%04X%s", fbuf[pc + 1] | (fbuf[pc + 2] << 8),
-                   reloc_note(start + pc + 1, first_reloc));
+                   reloc_note(subseg + start + pc + 1, first_reloc));
             break;
         case F_REL: {
             /* The offset is relative to the offset word itself. */
@@ -235,30 +242,81 @@ static void out_dci(const char *name)
     }
 }
 
-/* Keep a relocation, at a code-segment offset, for the RLD and the
- * listing. */
-static void add_reloc(int kind, int at, int target)
+/* Keep a relocation of the word at load address at, for the RLD and
+ * the listing. Returns the word's final value. A record read from
+ * stream file name is checked first. */
+static int add_reloc(int kind, int at, int target, const char *name)
 {
+    Lreloc *r = &relocs[nrelocs];
+    if ((kind == REL_DATA && target > data_size)
+        || (kind == REL_STR && target > strs_size)
+        || (kind == REL_FUNC && target >= nlsyms)
+        || (kind != REL_DATA && kind != REL_STR && kind != REL_FUNC))
+        damaged(name);
     if (nrelocs >= MAX_RELOCS)
         fatal("too many relocations", NULL);
-    relocs[nrelocs].kind = kind;
-    relocs[nrelocs].at = at;
-    relocs[nrelocs].target = target;
+    r->kind = kind;
+    r->at = at;
+    r->target = target;
     nrelocs++;
-}
-
-/* The final value of a relocated word. */
-static int reloc_value(Lreloc *r, int data_base, int subseg)
-{
-    if (r->kind == REL_DATA)
-        return data_base + r->target;
-    if (lsyms[r->target].flags & SYM_DEFINED)
-        return subseg + lsyms[r->target].code_off;
+    if (kind == REL_DATA)
+        return data_base + target;
+    if (kind == REL_STR)
+        return strs_base + target;
+    if (lsyms[target].flags & SYM_DEFINED)
+        return subseg + lsyms[target].code_off;
     return 0;       /* an import: the loader fills it in */
 }
 
+/* Copy stream file base + suffix (size bytes) into the module. If drel
+ * is set, apply the data relocation records as well: each gives a word
+ * in the data, written as 0, and what its address points to. */
+static void copy_stream(const char *base, const char *suffix, int size,
+                        int drel)
+{
+    Bfile in, rel;
+    const char *name;
+    int i, c, next = -1, kind = 0, target = 0, v;
+
+    /* stream_name() uses one static buffer, so the messages below name
+     * the relocation stream by its suffix. */
+    if (drel) {
+        name = stream_name(base, SUFFIX_DREL);
+        if (!bopen(&rel, name, 0))
+            fatal("cannot open", name);
+    }
+    name = stream_name(base, suffix);
+    if (!bopen(&in, name, 0))
+        fatal("cannot open", name);
+    for (i = 0; ; i++) {
+        if (drel && next < i && (kind = bgetc(&rel)) != EOF) {
+            next = bgetw(&rel);
+            target = bgetw(&rel);
+            if (next < i || next > size - 2)
+                damaged(SUFFIX_DREL);
+        }
+        if ((c = bgetc(&in)) == EOF)
+            break;
+        if (i == next) {
+            /* The word, written as 0, gets its final value. */
+            v = add_reloc(kind, data_base + i, target, SUFFIX_DREL);
+            if (bgetc(&in) == EOF)
+                damaged(name);
+            bputw(&out, v);
+            i++;
+            continue;
+        }
+        bputc(&out, c);
+    }
+    bclose(&in);
+    if (i != size || (drel && next >= i))
+        damaged(name);
+    if (drel)
+        bclose(&rel);
+}
+
 /* Copy the code stream into the module, one function at a time. */
-static void copy_code(const char *base, int data_base, int subseg)
+static void copy_code(const char *base)
 {
     Bfile in;
     const char *name = stream_name(base, SUFFIX_CODE);
@@ -283,16 +341,14 @@ static void copy_code(const char *base, int data_base, int subseg)
         n = bgetw(&in);
         for (i = 0; i < n; i++) {
             int kind = bgetc(&in), off = bgetw(&in), target = bgetw(&in), v;
-            if ((kind != REL_DATA && kind != REL_FUNC) || off > len - 2
-                || (kind == REL_FUNC && target >= nlsyms))
+            if (off < 0 || off > len - 2)
                 damaged(name);
-            add_reloc(kind, at + off, target);
-            v = reloc_value(&relocs[nrelocs - 1], data_base, subseg);
+            v = add_reloc(kind, subseg + at + off, target, name);
             fbuf[off] = (unsigned char)v;
             fbuf[off + 1] = (unsigned char)(v >> 8);
         }
         if (opt_list)
-            list_code(lsyms[idx].name, len, at, subseg, first);
+            list_code(lsyms[idx].name, len, at, first);
         bwrite(&out, fbuf, len);
         func_at[nfuncs++] = at;
         at += len;
@@ -305,10 +361,10 @@ static void copy_code(const char *base, int data_base, int subseg)
 /* The init function runs when the module loads: call main, discard its
  * result, and return 0. A positive init result would be read as "keep
  * the module" flags. Init must be the last bytecode. */
-static int init_code(int main_idx, int init_off, int subseg)
+static int init_code(int main_idx, int init_off)
 {
     int n = 0, v = subseg + lsyms[main_idx].code_off;
-    add_reloc(REL_FUNC, init_off + 1, main_idx);
+    add_reloc(REL_FUNC, subseg + init_off + 1, main_idx, "init");
     fbuf[n++] = OP_CALL;
     fbuf[n++] = (unsigned char)v;
     fbuf[n++] = (unsigned char)(v >> 8);
@@ -333,9 +389,7 @@ void link_module(const char *base, const char *path)
     static const char dep[] = "CMDSYS";
     int module_base = 0x1000, hdr = 10;
     int nimports = 0, main_idx = -1, init_off;
-    int deplen, data_base, subseg, defcnt = 0, total, i, c;
-    Bfile in;
-    const char *name;
+    int deplen, defcnt = 0, total, i;
 
     /* Step 1. */
     read_summary(base);
@@ -354,10 +408,12 @@ void link_module(const char *base, const char *path)
     }
 
     deplen = nimports ? (int)sizeof(dep) - 1 + 1 : 1;   /* name(s) + $00 */
+    /* The data segment holds the globals, then the string pool. One pad
+     * byte between it and the bytecode keeps data from ever sharing an
+     * address with the first function. */
     data_base = module_base + hdr + deplen;
-    /* One pad byte between data and bytecode, so that data can never
-     * share an address with the first function. */
-    subseg = data_base + data_size + 1;
+    strs_base = data_base + data_size;
+    subseg = strs_base + strs_size + 1;
     total = code_size + init_size(main_idx);
     if (subseg + total > 0xFFFF)
         fatal("module too large", NULL);
@@ -365,7 +421,7 @@ void link_module(const char *base, const char *path)
     /* Step 2. */
     if (!bopen(&out, path, 1))
         fatal("cannot create output file", path);
-    bputw(&out, hdr + deplen + data_size + 1 + total);
+    bputw(&out, subseg - module_base + total);
     bputw(&out, 0x6502);                    /* magic */
     bputw(&out, 0);                         /* system flags */
     bputw(&out, subseg);
@@ -375,22 +431,16 @@ void link_module(const char *base, const char *path)
         out_dci(dep);
     bputc(&out, 0);                         /* end of dependencies */
 
-    name = stream_name(base, SUFFIX_DATA);
-    if (!bopen(&in, name, 0))
-        fatal("cannot open", name);
-    for (i = 0; (c = bgetc(&in)) != EOF; i++)
-        bputc(&out, c);
-    bclose(&in);
-    if (i != data_size)
-        damaged(name);
+    copy_stream(base, SUFFIX_DATA, data_size, 1);
+    copy_stream(base, SUFFIX_STRS, strs_size, 0);
     bputc(&out, 0);                         /* pad */
 
     /* Step 3. */
-    copy_code(base, data_base, subseg);
+    copy_code(base);
     if (main_idx >= 0) {
-        int first = nrelocs, n = init_code(main_idx, init_off, subseg);
+        int first = nrelocs, n = init_code(main_idx, init_off);
         if (opt_list)
-            list_code("(init)", n, init_off, subseg, first);
+            list_code("(init)", n, init_off, first);
         bwrite(&out, fbuf, n);
     }
 
@@ -403,7 +453,7 @@ void link_module(const char *base, const char *path)
     }
     for (i = 0; i < nrelocs; i++) {
         Lreloc *r = &relocs[i];
-        int at = subseg - module_base + r->at;
+        int at = r->at - module_base;
         if (r->kind == REL_FUNC && lsyms[r->target].import_idx >= 0) {
             bputc(&out, 0x91);
             bputw(&out, at);

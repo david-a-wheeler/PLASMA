@@ -1365,9 +1365,10 @@ Decided:
   constant* goes through a small separate parser, which accepts a
   string literal, `&name`, `&name[constant]`, an array name, and
   `name + constant` or `name - constant`, with casts. **Limitation
-  (documented):** other forms that C allows, such as `&a[2] + 1` or
-  `&m[1][2]`, are errors ("initializer is not a constant ccish
-  supports"). The alternative, a pending "address constant" operand in
+  (documented):** other forms that C allows, such as `2 + buf` or
+  `&*p`, are errors ("initializer is not a constant ccish supports").
+  (As built, `&m[1][2]` and `&a[2] + 1` are supported too: see the
+  step 2 notes.) The alternative, a pending "address constant" operand in
   the expression parser, would accept any expression that folds to an
   address, but touches pointer arithmetic, comparisons and casts
   throughout. Revisit if real code needs it.
@@ -1422,6 +1423,47 @@ Decided:
   can't size an array, so ccish programs stay valid C.
 - **Not in M5:** nested brace lists, `volatile`, exporting globals,
   and `extern` (wanted later).
+
+**M5 step 2 (global initializers) is done.** Chosen while building it
+(open for review):
+- **Object format version 2.** Two new streams: `.strs`, the string
+  pool, and `.drel`, relocation records for words in the data (5 bytes
+  each, like a function's records). Code references to strings use a
+  new relocation kind, 3. The final pass places the pool right after
+  the globals and applies `.drel` while copying `.data`. Its
+  relocation list now holds load addresses, so that data and code
+  words share it, and their RLD entries are written the same way.
+  (OBJECT.md has the format.) The C VM loads modules at `$0300` and
+  up, not at `$1000`, so the tests do exercise these relocations.
+- **The address-constant parser** (`parse_addr()`) handles, besides
+  the forms decided: any number of constant indexes after `&name`
+  (`&m[1][2]`), and `+` or `-` after any address constant, including
+  a parenthesized or cast one (`&a[2] + 1`, `(char *)buf + 1`). Both
+  cost almost nothing. Integers go through the normal expression
+  parser with output off; after a cast, only a unary expression, as in
+  C. A string's address may go as far as one past its NUL, and a
+  global's as far as the end of the data written so far (one past the
+  end is valid C); further is an error ("initializer address is out of
+  range").
+- **Rows of a `char` array of arrays may be string literals** inside
+  the one-level brace list (`char kw[][6] = {"int", "char"};`), since
+  that is how keyword tables are written; it costs a few lines. Other
+  nested braces wait for M11, as decided.
+- **Sizes from the initializer:** `int t[] = {...}` and
+  `char s[] = "..."`; for a flat list of a two-dimensional array, the
+  count rounds up to whole rows (`int f[][2] = {1, 2, 3};` has 2). An
+  empty list with no size is an error. A global array with no size and
+  no initializer is still "array size missing".
+- **Limits:** globals and the string pool are each limited to 32767
+  bytes (the error names which). Previously strings counted against
+  the data limit.
+- **A `char` initialized with a too-big constant** keeps the low byte
+  silently (`char wrap = 300;` is 44), as a cast would. gcc warns; a
+  warning could come with step 5.
+- **The speaker test** (`tests/run/speaker.c`) still uses a cast:
+  `char *speaker = (char *)0xC030;` now works, but reads through it
+  are `LAW speaker LB`, not `LAB $C030`, until `const` folding (step
+  5).
 
 **M5 step 1 (`sizeof`) is done.** Chosen while building it (open for
 review):

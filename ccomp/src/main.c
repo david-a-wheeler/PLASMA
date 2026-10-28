@@ -45,6 +45,8 @@ static void remove_streams(void)
 {
     if (base_name && !opt_keep) {
         remove(stream_name(base_name, SUFFIX_DATA));
+        remove(stream_name(base_name, SUFFIX_DREL));
+        remove(stream_name(base_name, SUFFIX_STRS));
         remove(stream_name(base_name, SUFFIX_CODE));
         remove(stream_name(base_name, SUFFIX_SYMS));
     }

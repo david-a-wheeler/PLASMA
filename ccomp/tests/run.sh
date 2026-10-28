@@ -128,9 +128,10 @@ limit_test too_large "x = 1000;" 900 "function too large: main"
 limit_test too_many_relocs "puti(1);" 300 \
     "too many calls and data references in main"
 
-# The stream files (.data, .code, .syms) must be gone after every
-# compile, successful or not, unless -k keeps them.
-left=$(find "$OUT" -name '*.data' -o -name '*.code' -o -name '*.syms')
+# The stream files (.data, .drel, .strs, .code, .syms) must be gone
+# after every compile, successful or not, unless -k keeps them.
+left=$(find "$OUT" -name '*.data' -o -name '*.drel' -o -name '*.strs' \
+       -o -name '*.code' -o -name '*.syms')
 if [ -n "$left" ]; then
     echo "FAIL stream files left behind:"
     echo "$left" | sed 's/^/    /'
@@ -139,7 +140,8 @@ else
     pass=$((pass + 1))
 fi
 if "$CCISH" -k -o "$OUT/keep" tests/run/hello.c \
-   && [ -s "$OUT/keep" ] && [ -s "$OUT/keep.data" ] \
+   && [ -s "$OUT/keep" ] && [ -e "$OUT/keep.data" ] \
+   && [ -e "$OUT/keep.drel" ] && [ -s "$OUT/keep.strs" ] \
    && [ -s "$OUT/keep.code" ] && [ -s "$OUT/keep.syms" ]; then
     pass=$((pass + 1))
 else

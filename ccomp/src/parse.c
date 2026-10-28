@@ -3,7 +3,7 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 4, and M5 step 1):
+ * Language so far (milestones 1 to 4, and M5 steps 1 and 2):
  *   - types int, char, void, pointers to them (int *, char **, ...), and
  *     arrays of int, char, pointers and arrays (int m[3][4]);
  *   - function definitions and prototypes returning int, char, void or
@@ -12,8 +12,9 @@
  *   - local variables, declared anywhere in a block (or in a for
  *     statement's first clause), with optional initializers (not for
  *     arrays yet), and block scope;
- *   - global variables, private to the module and zero when it loads
- *     (no initializers yet), declared anywhere between functions;
+ *   - global variables, private to the module, declared anywhere
+ *     between functions, with optional initializers, computed at compile
+ *     time (see "Global initializers" below);
  *   - casts;
  *   - statements: return, if/else, while, do, for, break, continue,
  *     expression statements, empty statements and nested blocks;
@@ -201,9 +202,10 @@ static Sym *find_var(const char *name)
     return s ? s : find_global(name);
 }
 
-/* Declare a global variable of the given type, with zero bytes for it
- * in the data segment. */
-static void add_global(const char *name, int type)
+/* Declare a global variable of the given type, at the next data
+ * offset. The caller then writes its bytes to the data stream: its
+ * initial value, or zeros. */
+static Sym *add_global(const char *name, int type)
 {
     Sym *s;
     if (find_global(name) || find_func(name))
@@ -215,7 +217,8 @@ static void add_global(const char *name, int type)
     strcpy(s->name, name);
     s->kind = S_GLOBAL;
     s->type = type;
-    s->offset = data_zero(type_size(type));
+    s->offset = data_offset();
+    return s;
 }
 
 /* Declare a local (or parameter) of the given type at the current
@@ -1008,10 +1011,10 @@ static void parse_pstr(void)
         error("pstr() needs a string literal, not", tok_desc());
     if (tok_len > 255)
         error("string too long for pstr() (over 255 characters)", NULL);
-    off = data_string(tok_text, tok_len);
+    off = suppress ? 1 : data_string(tok_text, tok_len);
     next();
     expect(')', "expected ')' after pstr argument, not");
-    put(IR_DATAADDR, off - 1, NULL);
+    put(IR_STRADDR, off - 1, NULL);
 }
 
 /* Parse a primary expression: a constant, string, variable, call, or
@@ -1045,7 +1048,7 @@ static void parse_primary(Operand *o)
             return;
         }
         /* A literal in code that can never run takes no data space. */
-        put(IR_DATAADDR, suppress ? 0 : data_string(tok_text, tok_len),
+        put(IR_STRADDR, suppress ? 0 : data_string(tok_text, tok_len),
             NULL);
         o->type = pointer_to(TY_CHAR);
         next();
@@ -1792,12 +1795,14 @@ static int parse_declarator(int base, char *name)
 }
 
 /* Parse the rest of a variable's declarator after its name (any array
- * sizes) and return its full type, which can't be void. */
-static int parse_var_type(int type)
+ * sizes) and return its full type, which can't be void. If may_omit is
+ * set, the first array size may be left out (count 0), for an
+ * initializer to give. */
+static int parse_var_type(int type, int may_omit)
 {
     if (type == TY_VOID)
         error("a variable can't have type void", NULL);
-    return parse_dims(type, 0);
+    return parse_dims(type, may_omit);
 }
 
 /* A declaration: a base type, then declarators, each a name with any
@@ -1810,7 +1815,7 @@ static void parse_declaration(void)
         Operand v, e;
         Sym *s;
         char name[MAX_NAME + 1];
-        int type = parse_var_type(parse_declarator(base, name));
+        int type = parse_var_type(parse_declarator(base, name), 0);
         if (tok == '(')
             error("local function declarations are not supported", NULL);
         if (is_array(type) && frame_next + type_size(type) > 255)
@@ -2158,19 +2163,270 @@ static int parse_params(void)
     return n;
 }
 
+/* ---------- Global initializers ----------
+ *
+ * A global's initial value is computed at compile time and written to
+ * the data stream as the global's bytes (approach.md, "M5 design"). An
+ * integer goes through the expression parser with code output off, and
+ * must fold to a constant. An address goes through parse_addr(), a
+ * small parser of its own, which covers what real code uses: a string
+ * literal, &name with any constant indexes, an array's name, casts,
+ * and + or - a constant. Anything else (2 + buf, &*p) is an error. */
+
+static const char not_const[] = "initializer is not a constant ccish supports";
+
+/* An initializer's value: an integer, or an address (the start of the
+ * global or string at target, in kind's space) plus val bytes. */
+typedef struct {
+    int kind;       /* 0 for an integer, else REL_DATA or REL_STR */
+    int target;     /* data or string pool offset */
+    int val;        /* the integer, or the bytes added to the address */
+    int max;        /* REL_STR: the largest val that stays in the string */
+    int type;
+} Init;
+
+/* Parse a constant expression in an initializer, at precedence prec
+ * (or only a unary expression, if prec is above PREC_MUL), with code
+ * output off. It must fold to a constant. */
+static void parse_const(int prec, Operand *e)
+{
+    int saved = nheld;
+    if (prec > PREC_MUL) {
+        suppress++;
+        parse_unary(e);
+        suppress--;
+        nheld = saved;
+    } else {
+        parse_skipped(prec, e);
+    }
+    if (e->kind != K_CONST)
+        error(not_const, NULL);
+}
+
+/* Parse an address constant for an initializer into *a, or an integer
+ * constant if what follows doesn't start one. With unary set, parse
+ * only a unary expression (a cast's operand); otherwise also any + or -
+ * constants after it, scaled by the element size, as in C. */
+static void parse_addr(Init *a, int unary)
+{
+    Operand e;
+    Sym *s = tok == T_ID ? find_var(tok_text) : NULL;
+    int t, op;
+
+    enter_nest();
+    a->kind = a->target = a->val = 0;
+    if (tok == '(') {
+        next();
+        if (is_type_start(tok)) {
+            /* A cast: of an address, to a pointer type, or of an
+             * integer, to any type. */
+            t = parse_pointers(parse_base_type());
+            expect(')', "expected ')' after the type in a cast, not");
+            parse_addr(a, 1);
+            if (a->kind == 0) {
+                e.kind = K_CONST;
+                e.val = a->val;
+                e.type = a->type;
+                cast(&e, t);
+                if (e.kind != K_CONST)
+                    error(not_const, NULL);
+                a->val = e.val;
+            } else if (!is_pointer(t)) {
+                error(not_const, NULL);
+            }
+            a->type = t;
+        } else {
+            parse_addr(a, 0);
+            expect(')', "expected ')', not");
+        }
+    } else if (tok == T_STR) {
+        a->kind = REL_STR;
+        a->target = data_string(tok_text, tok_len);
+        a->max = tok_len + 1;
+        a->type = pointer_to(TY_CHAR);
+        next();
+    } else if (tok == '&') {
+        /* &name, then any constant indexes: &m[1][2]. */
+        next();
+        s = tok == T_ID ? find_var(tok_text) : NULL;
+        if (!s || s->kind != S_GLOBAL)
+            error(not_const, NULL);
+        next();
+        t = s->type;
+        a->kind = REL_DATA;
+        a->target = s->offset;
+        while (tok == '[' && is_array(t)) {
+            next();
+            parse_const(PREC_COMMA, &e);
+            if (is_pointer(e.type))
+                error("array subscript is not an integer", NULL);
+            expect(']', "expected ']' after an array index, not");
+            t = types[t].sub;
+            a->val += e.val * type_size(t);
+        }
+        a->type = pointer_to(t);
+    } else if (s && s->kind == S_GLOBAL && is_array(s->type)) {
+        /* An array's name: the address of its first element. */
+        a->kind = REL_DATA;
+        a->target = s->offset;
+        a->type = value_type(s->type);
+        next();
+    } else {
+        /* An integer, or a pointer from a cast of one. */
+        parse_const(unary ? PREC_MUL + 1 : PREC_ASSIGN, &e);
+        a->val = e.val;
+        a->type = e.type;
+    }
+    while (!unary && (tok == '+' || tok == '-')) {
+        op = tok;
+        next();
+        parse_const(PREC_MUL, &e);
+        if (is_pointer(e.type))
+            error(not_const, NULL);
+        if (is_pointer(a->type))
+            e.val *= elem_size(a->type);
+        a->val = wrap16((unsigned)a->val
+                        + (unsigned)(op == '+' ? e.val : -e.val));
+    }
+    nest--;
+}
+
+/* Parse the initializer of one scalar of type type (an int, char or
+ * pointer), check it as an assignment, and write it to the data stream. */
+static void parse_scalar_init(int type)
+{
+    Init a;
+    Operand o;
+    if (is_pointer(type)) {
+        parse_addr(&a, 0);
+    } else {
+        parse_const(PREC_ASSIGN, &o);
+        a.kind = 0;
+        a.val = o.val;
+        a.type = o.type;
+    }
+    o.kind = a.kind ? K_VALUE : K_CONST;
+    o.val = a.val;
+    o.type = a.type;
+    o.is_bool = 0;
+    check_assign(type, &o, "initialization");
+    /* An address must stay within the data written so far (one past
+     * the end is allowed, as in C), or within its string. */
+    if ((a.kind == REL_DATA && (a.target + a.val < 0
+                                || a.target + a.val > data_offset()))
+        || (a.kind == REL_STR && (a.val < 0 || a.val > a.max)))
+        error("initializer address is out of range", NULL);
+    if (type_size(type) == 1)
+        data_byte(a.val);
+    else if (a.kind)
+        data_addr(a.kind, a.target + a.val);
+    else
+        data_word(a.val);
+}
+
+/* Write the string literal (the current token) to the data stream as
+ * the elements of a char array with room for max chars, or for any
+ * number if max is 0. Its NUL is written if there is room, as in C.
+ * Returns the number of bytes written. name is for the message. */
+static int parse_string_init(int max, const char *name)
+{
+    int i, n = tok_len;
+    if (max && n > max)
+        error("initializer string is too long for", quote(name));
+    for (i = 0; i < n; i++)
+        data_byte(tok_text[i]);
+    if (!max || n < max) {
+        data_byte(0);
+        n++;
+    }
+    next();
+    return n;
+}
+
+/* Parse the initializer of a global of type type, named name, and
+ * write its bytes to the data stream. Returns the type, with an array
+ * size that was left out filled in from the initializer. An array's
+ * brace list is one level, over its scalar elements, as C allows (a
+ * two-dimensional array takes a flat list); the rows of a char array of
+ * arrays may also be string literals. */
+static int parse_global_init(int type, const char *name)
+{
+    int elem, esize, n = 0, max, per, row;
+
+    if (!is_array(type)) {
+        if (tok == '{') {               /* int x = {5}; is valid C */
+            next();
+            parse_scalar_init(type);
+            if (tok == ',')
+                next();
+            expect('}', "expected '}' after the initializer, not");
+        } else {
+            parse_scalar_init(type);
+        }
+        return type;
+    }
+    for (elem = type; is_array(elem); elem = types[elem].sub)
+        ;
+    esize = type_size(elem);
+    max = type_size(type) / esize;      /* 0 if the size was left out */
+    per = type_size(types[type].sub) / esize;
+    row = is_array(types[type].sub) && types[types[type].sub].sub == TY_CHAR
+          ? type_size(types[type].sub) : 0;
+    if (tok == T_STR && types[type].sub == TY_CHAR) {
+        n = parse_string_init(max, name);
+    } else {
+        expect('{', "expected '{' to start an array initializer, not");
+        while (tok != '}') {
+            if (tok == '{')
+                error("nested braces in initializers are not supported yet",
+                      NULL);
+            if (max && n >= max)
+                error("too many initializers for", quote(name));
+            if (tok == T_STR && row && n % row == 0) {
+                /* A row of a char array of arrays: "abc" fills one. */
+                data_zero(row - parse_string_init(row, name));
+                n += row;
+            } else {
+                parse_scalar_init(elem);
+                n++;
+            }
+            if (tok != ',')
+                break;
+            next();
+        }
+        expect('}', "expected '}' or ',' in an initializer, not");
+    }
+    if (!max) {
+        if (n == 0)
+            error("an array of unknown size needs initializers:",
+                  quote(name));
+        type = array_of(types[type].sub, (n + per - 1) / per);
+        max = type_size(type) / esize;
+    }
+    data_zero((max - n) * esize);       /* the rest of the elements are 0 */
+    return type;
+}
+
 /* Parse global variable declarations, after the base type base and
- * the first declarator's type and name: int x, *p, buf[100]; Globals
- * are zero when the module loads; initializers come in M5. */
+ * the first declarator's type and name: int x = 1, *p = &x, buf[100];
+ * A global without an initializer is zero when the module loads. */
 static void parse_globals(int base, int type, char *name)
 {
+    Sym *s;
     for (;;) {
-        type = parse_var_type(type);
+        type = parse_var_type(type, 1);
         if (tok == '(')
             error("declare functions separately from variables", NULL);
-        if (tok == '=')
-            error("initializers on global variables are not supported yet",
-                  NULL);
-        add_global(name, type);
+        /* In C, the name is in scope in its own initializer. */
+        s = add_global(name, type);
+        if (tok == '=') {
+            next();
+            s->type = parse_global_init(type, name);
+        } else {
+            if (is_array(type) && types[type].count == 0)
+                error("array size missing", NULL);
+            data_zero(type_size(type));
+        }
         if (tok != ',')
             break;
         next();

@@ -8,8 +8,8 @@
 #include "ccish.h"
 
 static const char *const ir_names[] = {
-    "FUNC", "ENDFUNC", "CONST", "DATAADDR", "LOCAL", "SETLOCAL", "LOCALB",
-    "SETLOCALB", "LOCALADDR", "GLOBAL", "SETGLOBAL", "GLOBALB",
+    "FUNC", "ENDFUNC", "CONST", "DATAADDR", "STRADDR", "LOCAL", "SETLOCAL",
+    "LOCALB", "SETLOCALB", "LOCALADDR", "GLOBAL", "SETGLOBAL", "GLOBALB",
     "SETGLOBALB", "LOAD", "LOADB", "STORE", "STOREB", "CALL",
     "DROP", "DUP", "RETURN",
     "ADD", "SUB", "MUL", "DIV", "MOD", "AND", "OR", "XOR", "SHL", "SHR",
@@ -82,6 +82,7 @@ static void dump_ir(int op, int a, Sym *s)
     case IR_DATAADDR: case IR_GLOBAL: case IR_SETGLOBAL:
     case IR_GLOBALB: case IR_SETGLOBALB:
                       printf(" data+%d", a); break;
+    case IR_STRADDR:  printf(" string+%d", a); break;
     case IR_LOCAL: case IR_SETLOCAL:
     case IR_LOCALB: case IR_SETLOCALB: case IR_LOCALADDR:
                       printf(" [%d]", a); break;
@@ -186,9 +187,10 @@ void ir_put(int op, int a, Sym *s)
         mop_const(&m, a);
         break;
     case IR_DATAADDR:
+    case IR_STRADDR:
         m.op = OP_LA;
         m.a = a;
-        m.fix = FIX_DATA;
+        m.fix = op == IR_DATAADDR ? FIX_DATA : FIX_STR;
         break;
     case IR_LOCAL:
         m.op = OP_LLW;

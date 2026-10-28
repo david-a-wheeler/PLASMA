@@ -161,6 +161,7 @@ enum {
     IR_ENDFUNC,     /* a = frame size: end the current function */
     IR_CONST,       /* a = value: push a constant */
     IR_DATAADDR,    /* a = data offset: push the address of data */
+    IR_STRADDR,     /* a = string pool offset: push a string's address */
     IR_LOCAL,       /* a = frame offset: push a local word */
     IR_SETLOCAL,    /* a = frame offset: store top value there, keep it */
     IR_LOCALB,      /* a = frame offset: push a local byte (a char) */
@@ -229,8 +230,9 @@ enum {
 /* For a branch op (BRNCH, BRFLS, ...), Mop.a is the label number; stage
  * 4 turns it into a relative offset. */
 
-/* What an operand word refers to, if it needs relocation. */
-enum { FIX_NONE, FIX_DATA, FIX_FUNC };
+/* What an operand word refers to, if it needs relocation: a data
+ * offset, a function, or an offset in the string pool. */
+enum { FIX_NONE, FIX_DATA, FIX_FUNC, FIX_STR };
 
 /* Marks an ENTER/LEAVE frame size that is filled in at function end. */
 #define FRAME_LATER (-1)
@@ -252,16 +254,24 @@ void peep_flush(void);
 
 /* Stream file names: the output name plus these suffixes. */
 #define SUFFIX_DATA ".data"
+#define SUFFIX_DREL ".drel"
+#define SUFFIX_STRS ".strs"
 #define SUFFIX_CODE ".code"
 #define SUFFIX_SYMS ".syms"
 
-/* Stream record kinds and symbol flags (see ../OBJECT.md). */
-enum { REL_DATA = 1, REL_FUNC = 2 };
+/* Stream record kinds and symbol flags (see ../OBJECT.md). A REL_DATA
+ * target is a data offset, a REL_STR target an offset in the string
+ * pool, and a REL_FUNC target a symbol index. */
+enum { REL_DATA = 1, REL_FUNC = 2, REL_STR = 3 };
 enum { SYM_DEFINED = 1, SYM_CALLED = 2, SYM_RETURNS = 4 };
 
 void emit_open(const char *base);
 void emit_put(Mop *m);
-int  data_string(const char *s, int len);   /* returns offset of first char */
+int  data_string(const char *s, int len);   /* pool offset of first char */
+int  data_offset(void);                     /* data bytes written so far */
+void data_byte(int v);
+void data_word(int v);
+void data_addr(int kind, int target);       /* a relocated word */
 int  data_zero(int n);                      /* returns offset of n 0 bytes */
 void emit_finish(void);
 

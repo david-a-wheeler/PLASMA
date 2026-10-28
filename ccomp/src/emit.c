@@ -1,10 +1,15 @@
 /*
  * Stage 4: the emitter. Encodes machine ops into bytes and writes the
- * compiler's output as three stream files (approach.md 18.1; formats in
+ * compiler's output as five stream files (approach.md 18.1; formats in
  * ../OBJECT.md):
  *
- *   .data  the data segment's bytes, in order: string literals and
- *          global variables (all zero at load, for now)
+ *   .data  the global variables' bytes, in order, with their initial
+ *          values (0 if they have none)
+ *   .drel  relocation records for the words in .data that hold
+ *          addresses (char *p = "hi";)
+ *   .strs  the string pool: every string literal, in order. It is kept
+ *          apart from .data so that literals inside a global's
+ *          initializer don't land in the middle of the global.
  *   .code  for each function: its bytecode, then its relocation records
  *   .syms  the symbol summary, written when compilation ends
  *
@@ -16,10 +21,11 @@
 #include <string.h>
 #include "ccish.h"
 
-static Bfile data_out, code_out;
+static Bfile data_out, drel_out, strs_out, code_out;
 static const char *base_name;
 
 static int ndata;               /* bytes written to the data stream */
+static int nstrs;               /* bytes written to the string pool */
 static int ncode;               /* bytes written to the code stream so far */
 
 /* The function being built. */
@@ -28,9 +34,9 @@ static unsigned char fbuf[MAX_FUNC_CODE];
 static int nfbuf;
 
 typedef struct {
-    int kind;       /* REL_DATA or REL_FUNC */
+    int kind;       /* REL_DATA, REL_STR or REL_FUNC */
     int at;         /* offset of the operand word in fbuf */
-    int target;     /* REL_DATA: data offset; REL_FUNC: symbol index */
+    int target;     /* data or string pool offset, or symbol index */
 } Reloc;
 
 static Reloc relocs[MAX_FUNC_RELOCS];
@@ -52,14 +58,22 @@ static int nframe;
 static int label_word[MAX_LABELS];
 static char label_placed[MAX_LABELS];
 
-/* Create the data and code stream files for output name base. */
+/* Create stream file base + suffix for writing, as b. */
+static void open_stream(Bfile *b, const char *base, const char *suffix)
+{
+    if (!bopen(b, stream_name(base, suffix), 1))
+        fatal("cannot create", stream_name(base, suffix));
+}
+
+/* Create the stream files written during compilation, for output name
+ * base. */
 void emit_open(const char *base)
 {
     base_name = base;
-    if (!bopen(&data_out, stream_name(base, SUFFIX_DATA), 1))
-        fatal("cannot create", stream_name(base, SUFFIX_DATA));
-    if (!bopen(&code_out, stream_name(base, SUFFIX_CODE), 1))
-        fatal("cannot create", stream_name(base, SUFFIX_CODE));
+    open_stream(&data_out, base, SUFFIX_DATA);
+    open_stream(&drel_out, base, SUFFIX_DREL);
+    open_stream(&strs_out, base, SUFFIX_STRS);
+    open_stream(&code_out, base, SUFFIX_CODE);
 }
 
 /* Append one byte to the function buffer. */
@@ -137,25 +151,60 @@ static void place_label(int n)
     label_placed[n] = 1;
 }
 
-/* Write a string literal of len bytes to the data stream. Returns the
- * data offset of its first character. */
+/* Write a string literal of len bytes to the string pool. Returns the
+ * pool offset of its first character. */
 int data_string(const char *s, int len)
 {
     int first, i;
-    /* Keep data offsets well inside 16 bits; the final pass checks
-     * that the whole module fits. */
-    if (ndata > 0x7FFF - len - 2)
-        fatal("too much data", NULL);
+    /* Keep offsets well inside 16 bits; the final pass checks that the
+     * whole module fits. */
+    if (nstrs > 0x7FFF - len - 2)
+        error("too many string literals: over 32767 bytes", NULL);
     /* [len][chars][NUL]: the C pointer is to the first character, and
      * the byte before it makes it a PLASMA string as well. A literal
      * longer than 255 has a meaningless length byte (pstr() rejects it). */
-    bputc(&data_out, len > 255 ? 0 : len);
-    first = ndata + 1;
+    bputc(&strs_out, len > 255 ? 0 : len);
+    first = nstrs + 1;
     for (i = 0; i < len; i++)
-        bputc(&data_out, s[i]);
-    bputc(&data_out, 0);
-    ndata += len + 2;
+        bputc(&strs_out, s[i]);
+    bputc(&strs_out, 0);
+    nstrs += len + 2;
     return first;
+}
+
+/* The number of bytes written to the data stream so far: the data
+ * offset of the next byte. */
+int data_offset(void)
+{
+    return ndata;
+}
+
+/* Append one byte (the low byte of v) to the data stream. */
+void data_byte(int v)
+{
+    if (ndata >= 0x7FFF)
+        error("too much data: globals over 32767 bytes", NULL);
+    bputc(&data_out, v & 0xFF);
+    ndata++;
+}
+
+/* Append a word, low byte first, to the data stream. */
+void data_word(int v)
+{
+    data_byte(v);
+    data_byte(v >> 8);
+}
+
+/* Append a word to the data stream that holds an address: of data
+ * (kind REL_DATA) or of a string (REL_STR), at offset target. It is
+ * written as 0, with a record in the data relocation stream; the final
+ * pass fills it in. */
+void data_addr(int kind, int target)
+{
+    bputc(&drel_out, kind);
+    bputw(&drel_out, ndata);
+    bputw(&drel_out, target);
+    data_word(0);
 }
 
 /* Reserve n zero bytes in the data stream, for a global variable.
@@ -164,7 +213,7 @@ int data_zero(int n)
 {
     int first = ndata, i;
     if (ndata > 0x7FFF - n)
-        error("too much data: globals and strings over 32767 bytes", NULL);
+        error("too much data: globals over 32767 bytes", NULL);
     for (i = 0; i < n; i++)
         bputc(&data_out, 0);
     ndata += n;
@@ -259,6 +308,8 @@ void emit_put(Mop *m)
         /* A relocated word is written as 0; the final pass fills it in. */
         if (m->fix == FIX_DATA)
             add_reloc(REL_DATA, m->a);
+        else if (m->fix == FIX_STR)
+            add_reloc(REL_STR, m->a);
         else if (m->fix == FIX_FUNC)
             add_reloc(REL_FUNC, (int)(m->sym - syms));
         code_word(m->fix == FIX_NONE ? m->a : 0);
@@ -277,17 +328,25 @@ void emit_put(Mop *m)
     }
 }
 
-/* Close the data and code streams and write the symbol summary. */
+/* Close stream b, written as base + suffix, checking for errors. */
+static void close_stream(Bfile *b, const char *suffix)
+{
+    if (bclose(b) != 0)
+        fatal("error writing", stream_name(base_name, suffix));
+}
+
+/* Close the streams written during compilation, and write the symbol
+ * summary. */
 void emit_finish(void)
 {
     Bfile out;
     int i, n;
     const char *name;
 
-    if (bclose(&data_out) != 0)
-        fatal("error writing", stream_name(base_name, SUFFIX_DATA));
-    if (bclose(&code_out) != 0)
-        fatal("error writing", stream_name(base_name, SUFFIX_CODE));
+    close_stream(&data_out, SUFFIX_DATA);
+    close_stream(&drel_out, SUFFIX_DREL);
+    close_stream(&strs_out, SUFFIX_STRS);
+    close_stream(&code_out, SUFFIX_CODE);
 
     /* stream_name() uses one static buffer, so get this name last. */
     name = stream_name(base_name, SUFFIX_SYMS);
@@ -295,8 +354,9 @@ void emit_finish(void)
         fatal("cannot create", name);
     bputc(&out, 'C');
     bputc(&out, 'I');
-    bputc(&out, 1);                         /* format version */
+    bputc(&out, 2);                         /* format version */
     bputw(&out, ndata);
+    bputw(&out, nstrs);
     bputw(&out, ncode);
     bputw(&out, nsyms);
     for (i = 0; i < nsyms; i++) {
