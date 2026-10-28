@@ -17,6 +17,7 @@
  *                                          (these two also for DLB, SLB, LLB)
  *   const  AND               -> ANDI const for a constant from 0 to 255
  *   const  NEG / COMP        -> const      e.g. -5 is one constant
+ *   CN 0   ADD / SUB         -> (nothing)
  *   CN 1   ADD / SUB         -> INCR / DECR
  *   NEG  BRFLS / BRTRU       -> BRFLS / BRTRU    comparison used as a test
  *   NOT ANDI 1  BRFLS/BRTRU  -> BRTRU / BRFLS    branch on !x
@@ -30,12 +31,15 @@
  *   DUP  ADD  ADD            -> IDXW       p + 2*i
  *   DUP  update  store  DROP -> update  store   x++ whose old value is
  *        unused. update is INCR, DECR, NEG, COMP, or a constant then ADD
- *        or SUB; store is SLW n, SLB n, or LLW n then SW or SB.
+ *        or SUB; store is SLW n, SLB n, or SW or SB after an address
+ *        computed only on the stack (LLW p, or LLA a LLW i IDXW, ...).
  * All are valid for C: they don't change any value the program sees.
  */
 #include "ccish.h"
 
-#define WINDOW 6
+/* Big enough for an unused a[i]++ through a pointer with an offset:
+ * DUP INCR LLW p LLW i IDXW CB d ADD SW DROP. */
+#define WINDOW 10
 
 static Mop win[WINDOW];
 static int nwin;
@@ -84,15 +88,65 @@ static int is_unary(int op)
     return op == OP_INCR || op == OP_DECR || op == OP_NEG || op == OP_COMP;
 }
 
-/* The number of ops (1 or 2) in the store that ends just before window
- * index end: SLW / SLB n, or LLW n then SW / SB. 0 if there isn't one. */
+/* If m is an op that only works on the stack (no branch, call or
+ * store), set how many values it pops and pushes and return 1. */
+static int stack_effect(Mop *m, int *pops, int *pushes)
+{
+    int v;
+    *pushes = 1;
+    if (mop_const_value(m, &v)) {
+        *pops = 0;
+        return 1;
+    }
+    switch (m->op) {
+    case OP_LA: case OP_LLA: case OP_LLW: case OP_LLB:
+        *pops = 0;
+        return 1;
+    case OP_LW: case OP_LB: case OP_INCR: case OP_DECR: case OP_NEG:
+    case OP_COMP: case OP_ANDI:
+        *pops = 1;
+        return 1;
+    case OP_ADD: case OP_SUB: case OP_MUL: case OP_IDXW: case OP_SHL:
+    case OP_AND: case OP_IOR: case OP_XOR:
+        *pops = 2;
+        return 1;
+    case OP_DUP:
+        *pops = 1;
+        *pushes = 2;
+        return 1;
+    }
+    return 0;
+}
+
+/* The number of ops in the self-contained expression that ends just
+ * before window index end and pushes one value (such as the address
+ * LLA a LLW i IDXW), or 0 if there isn't one. It scans backward,
+ * counting the values still needed. */
+static int expr_len(int end)
+{
+    int need = 1, i, pops, pushes;
+    for (i = end - 1; i >= 0; i--) {
+        if (!stack_effect(&win[i], &pops, &pushes) || need < pushes)
+            return 0;
+        need += pops - pushes;
+        if (need == 0)
+            return end - i;
+    }
+    return 0;
+}
+
+/* The number of ops in the store that ends just before window index
+ * end: SLW / SLB n, or an address expression then SW / SB. 0 if there
+ * isn't one. */
 static int store_len(int end)
 {
-    int op = end >= 1 ? win[end - 1].op : -1;
+    int op = end >= 1 ? win[end - 1].op : -1, n;
     if (op == OP_SLW || op == OP_SLB)
         return 1;
-    if ((op == OP_SW || op == OP_SB) && end >= 2 && win[end - 2].op == OP_LLW)
-        return 2;
+    if (op == OP_SW || op == OP_SB) {
+        n = expr_len(end - 1);
+        return n ? n + 1 : 0;
+    }
     return 0;
 }
 
@@ -168,6 +222,13 @@ static int rewrite(void)
     if ((b->op == OP_NEG || b->op == OP_COMP) && mop_const_value(a, &v)) {
         mop_const(a, b->op == OP_NEG ? -v : ~v);
         nwin--;
+        return 1;
+    }
+    /* CN 0 ADD / SUB -> nothing: adding or subtracting 0 changes
+     * nothing (p[0] when p is itself loaded, as in names[i][0]). */
+    if ((b->op == OP_ADD || b->op == OP_SUB)
+        && mop_const_value(a, &v) && v == 0) {
+        nwin -= 2;
         return 1;
     }
     /* CN 1 ADD / SUB -> INCR / DECR: adding or subtracting 1 is a

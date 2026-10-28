@@ -182,7 +182,9 @@ the stack is always 0–255, so the parser converts a value to `char`
 
 ### `IR_LOCALADDR` *a* = frame offset
 
-Push the address of the local at frame offset *a*: C's `&x`.
+Push the address of the local at frame offset *a*: C's `&x`, and the
+address of a local array (its value in C, a pointer to its first
+element).
 
 - **Stack:** `( -- addr )`.
 - **Now:** `LLA a`.
@@ -216,6 +218,14 @@ address is computed by `e`. A streaming parser has already emitted `e`
 when it sees `=`, but the store needs the value first:
 - If `e` is a plain local pointer `p`, nothing has been emitted yet,
   and `*p = v` is just `v LOCAL p STORE`.
+- An array element whose address comes only from locals and constants
+  is pending too: the array is a local array or a local pointer, and
+  the index is a variable or a constant. So `a[i] = v` is
+  `v LOCALADDR a LOCAL i CONST 2 MUL ADD STORE`, which the peephole
+  stage makes `v LLA a LLW i IDXW SW`. A constant index on a local
+  array is a local at a fixed offset: `a[2] = v` is `v SETLOCAL a+4`.
+  A row of a two-dimensional array takes a constant index the same way
+  (`m[1][i]`, `m[i][2]`).
 - Otherwise the address is on the stack. It is saved in a temporary
   local (`SETLOCAL t DROP`, which becomes `SLW t`), and `*e = v` is
   `e SETLOCAL t DROP v LOCAL t STORE` (approach.md 4(e)). Temporaries
@@ -226,7 +236,14 @@ kept on the stack (`DLW`). For an object reached through a pointer, it
 is read back (`LOCAL p LOAD`) only if the value is used, so `*p = v;`
 as a statement costs nothing extra. Compound assignment and `++`/`--`
 load through the same address before the store, as in
-`LOCAL p LOAD CONST 1 ADD LOCAL p STORE` for `++*p`.
+`LOCAL p LOAD CONST 1 ADD LOCAL p STORE` for `++*p`. For a pending
+array element, `++`/`--` compute its address twice. A compound
+assignment to an element with an index variable saves the address in a
+temporary instead, so it is computed once: `a[i] += v` becomes
+`LLA a LLW i IDXW DLW t LW v ADD LLW t SW`. That is 1 byte smaller, and
+it stays right if `v` changes `i` through a pointer. (With a SWAP
+opcode, neither the second copy nor the temporary would be needed:
+approach.md issue 21.)
 
 A load through a pointer whose value is unused (`*p;` or `(void)*p;`)
 is still done, since on an Apple II reading some addresses (such as

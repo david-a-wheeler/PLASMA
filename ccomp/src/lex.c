@@ -348,6 +348,25 @@ void next(void)
     error("unexpected character in source", NULL);
 }
 
+/* Is the token after the current one a ']' (or the digraph :>) on the
+ * same line? Only spaces and tabs are skipped, so that the line number
+ * stays right for messages about the current token; anything else
+ * answers no. The parser uses this to see whether an index is simple. */
+int next_is_rbracket(void)
+{
+    int c2;
+    while (ch == ' ' || ch == '\t')
+        getch();
+    if (ch == ']')
+        return 1;
+    if (ch != ':')
+        return 0;
+    c2 = bgetc(in);
+    if (c2 != EOF)
+        bungetc(in, c2);
+    return c2 == '>';
+}
+
 /* Describe the current token for an error message, e.g. "'while'" or
  * "a number". The result is in a static buffer. */
 const char *tok_desc(void)

@@ -3,22 +3,26 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 3, and M4 steps 1 and 2):
- *   - types int, char, void, and pointers to them (int *, char **, ...);
- *   - function definitions and prototypes returning any of these, with
- *     parameters of any of them but void;
+ * Language so far (milestones 1 to 3, and M4 steps 1 to 3):
+ *   - types int, char, void, pointers to them (int *, char **, ...), and
+ *     arrays of int, char, pointers and arrays (int m[3][4]);
+ *   - function definitions and prototypes returning int, char, void or
+ *     a pointer, with parameters of any of these but void; an array
+ *     parameter (int a[], int m[][4]) is a pointer, as in C;
  *   - local variables, declared anywhere in a block (or in a for
- *     statement's first clause), with optional initializers, and block
- *     scope;
+ *     statement's first clause), with optional initializers (not for
+ *     arrays yet), and block scope;
  *   - casts;
  *   - statements: return, if/else, while, do, for, break, continue,
  *     expression statements, empty statements and nested blocks;
  *   - expressions: integer and character constants, string literals,
  *     variables, function calls, parentheses, the pstr() builtin,
- *     unary - + ~ ! * & ++ --, postfix ++ --, binary * / % + - << >> & ^ |,
- *     comparisons, && || ?:, and = += -= *= /= %= &= |= ^= <<= >>=.
- *     Pointer arithmetic scales by the element size, pointers compare
- *     unsigned, and pointer types are checked as strictly as C says.
+ *     unary - + ~ ! * & ++ --, postfix ++ -- and [], binary
+ *     * / % + - << >> & ^ |, comparisons, && || ?:, and
+ *     = += -= *= /= %= &= |= ^= <<= >>=. Pointer arithmetic scales by
+ *     the element size, pointers compare unsigned, pointer types are
+ *     checked as strictly as C says, and an array used as a value is a
+ *     pointer to its first element.
  * A function called but not defined in the file must be one of the
  * CMDSYS functions in cmdsys_funcs[] below; it is imported from CMDSYS.
  *
@@ -31,7 +35,8 @@
  * an assignment (x = ..., x += ..., x++). Instead the parser returns a
  * *pending* operand, and emits the load only once it knows the value is
  * needed (approach.md 4(a), option A). An object reached through a
- * pointer is pending the same way; see the Operand kinds below.
+ * pointer, and an array element, are pending the same way, so that
+ * a[i] = x needs no temporary; see the Operand kinds below.
  *
  * Constant folding works the same way. A constant is a *pending
  * constant* until its value is needed on the stack, so unary operators
@@ -447,13 +452,32 @@ static void place_forward(int n)
 
 /*
  * An operand on its way through the expression parser. The last three
- * kinds are lvalues: what to load or store isn't decided until the
- * parser sees what follows. An object reached through a pointer (*e)
- * is K_DEREF when e's value is on the stack. Storing into it needs the
+ * kinds are places (lvalues, or arrays): what to load or store isn't
+ * decided until the parser sees what follows.
+ *
+ * K_ELEM is an object whose address can be computed at any time from
+ * locals and constants, without a temporary: base + index * scale +
+ * disp. The base is the pointer in the local word off (*p, p[i]) or
+ * the address of the local array at off (a[i]), and the index is a
+ * local variable, or there is none. So nothing is emitted until the
+ * parser sees whether the object is assigned to, and a[i] = x is
+ * "x LLA a LLW i IDXW SW" (approach.md 4(a), and "Pending array
+ * elements" under Milestones). A constant index on a local array needs
+ * no address at all: a[2] is K_LOCAL, at a fixed frame offset.
+ *
+ * An object reached through any other address (*f(), a[i + 1]) is
+ * K_DEREF, with the address on the stack. Storing into it needs the
  * value first and the address on top, and there is no SWAP, so before
  * a store the address is saved in a temporary local (spill()), and it
- * becomes K_DEREF_LOCAL. *p, with p a local variable, is K_DEREF_LOCAL
- * from the start, and needs no temporary (approach.md 4(a) and 4(e)).
+ * becomes a K_ELEM based on that temporary (approach.md 4(e)). A
+ * compound assignment to an indexed K_ELEM (a[i] += e) is spilled too,
+ * so its address is computed once. A SWAP opcode would make spills
+ * unnecessary: addr e SWAP SW (approach.md issue 21).
+ *
+ * A place of array type is the array object. Used as a value, it is a
+ * pointer to its first element (rvalue()); value_type() gives that
+ * type. It isn't converted before it is used, so that a[i], *a and &a
+ * can still see the array.
  */
 enum {
     K_VALUE,        /* its value is on the stack */
@@ -461,19 +485,26 @@ enum {
     K_CONST,        /* a constant, not emitted yet (val = value) */
     K_LOCAL,        /* a local variable, not loaded yet (off = offset) */
     K_DEREF,        /* the object at the address on the stack */
-    K_DEREF_LOCAL   /* the object at the address in the local word off */
+    K_ELEM          /* the object at base + index * scale + disp */
 };
 
 typedef struct {
     int kind;
     int type;       /* its C type. A char value on the stack is always
                      * 0 to 255, so it needs no conversion to char. */
-    int off;
-    int val;
+    int off;        /* K_LOCAL: frame offset; K_ELEM: the base's offset */
+    int val;        /* K_CONST: the value */
     int is_bool;    /* K_VALUE: known to be 1 or 0 (a comparison, !, &&) */
-    int assigned;   /* K_DEREF_LOCAL: the result of an assignment to the
+    int assigned;   /* K_ELEM: the result of an assignment to the
                      * object, so not an lvalue. Its value, if needed,
                      * is read back from the object. */
+    /* K_ELEM only: */
+    int base_arr;   /* the base is the address of the local array at off,
+                     * not the pointer in the local word off */
+    int idx;        /* frame offset of the index variable, or -1 */
+    int idx_char;   /* the index variable is a char */
+    int scale;      /* bytes per step of the index */
+    int disp;       /* a constant number of bytes added */
 } Operand;
 
 /* C precedence levels (higher binds tighter). */
@@ -485,6 +516,7 @@ enum {
 
 static void parse_expr(int min_prec, Operand *o);
 static void parse_unary(Operand *o);
+static void binary(Operand *o, Operand *r, int op);
 
 /* Push the value of the local variable o (a char is one byte). */
 static void load_local(Operand *o)
@@ -512,9 +544,75 @@ static int store_op(int t)
     return t == TY_CHAR ? IR_STOREB : IR_STORE;
 }
 
-/* Make sure the operand's value is on the stack. */
+/* Is o a place (a variable, or an object reached through an address)
+ * whose value hasn't been loaded? */
+static int is_place(Operand *o)
+{
+    return o->kind == K_LOCAL || o->kind == K_DEREF || o->kind == K_ELEM;
+}
+
+/* The type of a value of type t: an array's value is a pointer to its
+ * first element. */
+static int value_type(int t)
+{
+    return is_array(t) ? pointer_to(types[t].sub) : t;
+}
+
+/* Make o the K_ELEM at the address in the local word off (base_arr 0),
+ * or at the local array at off (base_arr 1), with no index yet. */
+static void make_elem(Operand *o, int off, int base_arr)
+{
+    o->kind = K_ELEM;
+    o->off = off;
+    o->base_arr = base_arr;
+    o->idx = -1;
+    o->idx_char = 0;
+    o->scale = 0;
+    o->disp = 0;
+    o->is_bool = 0;
+    o->assigned = 0;
+}
+
+/* Push the address of the K_ELEM o: its base, plus the index times the
+ * scale, plus the displacement. For a local array, the displacement is
+ * part of the LLA offset when it fits in the frame. */
+static void push_address(Operand *o)
+{
+    int d = o->disp;
+    if (o->base_arr && o->off + d >= 0 && o->off + d <= 255) {
+        put(IR_LOCALADDR, o->off + d, NULL);
+        d = 0;
+    } else {
+        put(o->base_arr ? IR_LOCALADDR : IR_LOCAL, o->off, NULL);
+    }
+    if (o->idx >= 0) {
+        put(o->idx_char ? IR_LOCALB : IR_LOCAL, o->idx, NULL);
+        if (o->scale != 1) {
+            put(IR_CONST, o->scale, NULL);
+            put(IR_MUL, 0, NULL);   /* a word index becomes IDXW */
+        }
+        put(IR_ADD, 0, NULL);
+    }
+    if (d != 0) {
+        put(IR_CONST, d, NULL);
+        put(IR_ADD, 0, NULL);
+    }
+}
+
+/* Make sure the operand's value is on the stack. An array's value is
+ * the address of its first element (for K_DEREF, already there). */
 static void rvalue(Operand *o)
 {
+    if (is_array(o->type) && is_place(o)) {
+        if (o->kind == K_LOCAL)
+            put(IR_LOCALADDR, o->off, NULL);
+        else if (o->kind == K_ELEM)
+            push_address(o);
+        o->kind = K_VALUE;
+        o->type = value_type(o->type);
+        o->is_bool = 0;
+        return;
+    }
     switch (o->kind) {
     case K_VOID:
         error("void value used in an expression", NULL);
@@ -527,8 +625,8 @@ static void rvalue(Operand *o)
         load_local(o);
         o->is_bool = 0;
         break;
-    case K_DEREF_LOCAL:
-        put(IR_LOCAL, o->off, NULL);
+    case K_ELEM:
+        push_address(o);
         /* fall through */
     case K_DEREF:
         put(load_op(o->type), 0, NULL);
@@ -568,30 +666,33 @@ static void end_expr(void)
 }
 
 /* If o is K_DEREF, save its address (on the stack) in a temporary, so
- * that it can be pushed again after a value: o becomes K_DEREF_LOCAL. */
+ * that it can be pushed again after a value: o becomes a K_ELEM. */
 static void spill(Operand *o)
 {
+    int off;
     if (o->kind != K_DEREF)
         return;
-    o->off = new_temp();
-    put(IR_SETLOCAL, o->off, NULL);
+    off = new_temp();
+    put(IR_SETLOCAL, off, NULL);
     put(IR_DROP, 0, NULL);
-    o->kind = K_DEREF_LOCAL;
+    make_elem(o, off, 0);
 }
 
-/* Report an error unless o is an lvalue (something that can be
- * assigned to); what says how it was used. */
+/* Report an error unless o is an lvalue that can be assigned to (an
+ * array can't be); what says how it was used. */
 static void need_lvalue(Operand *o, const char *what)
 {
+    if (is_array(o->type) && is_place(o))
+        error("an array can't be the", what);
     if (o->kind != K_LOCAL && o->kind != K_DEREF
-        && !(o->kind == K_DEREF_LOCAL && !o->assigned))
+        && !(o->kind == K_ELEM && !o->assigned))
         error("lvalue required as", what);
 }
 
 /* Store the value on the stack into lvalue o, which is K_LOCAL or
- * K_DEREF_LOCAL (spill() first). o becomes the assignment's result: for
- * a local, its value is kept on the stack (DLW); for an object reached
- * through a pointer, it is read back from the object only if needed. */
+ * K_ELEM (spill() first). o becomes the assignment's result: for a
+ * local, its value is kept on the stack (DLW); for an object reached
+ * through an address, it is read back from the object only if needed. */
 static void assign_to(Operand *o)
 {
     if (o->kind == K_LOCAL) {
@@ -599,7 +700,7 @@ static void assign_to(Operand *o)
         o->kind = K_VALUE;
         return;
     }
-    put(IR_LOCAL, o->off, NULL);
+    push_address(o);
     put(store_op(o->type), 0, NULL);
     o->assigned = 1;
 }
@@ -610,7 +711,7 @@ static void assign_to(Operand *o)
  * done, since it may read I/O (such as the Apple II's $C010). */
 static void discard(Operand *o)
 {
-    if (o->kind == K_DEREF || (o->kind == K_DEREF_LOCAL && !o->assigned))
+    if (o->kind == K_DEREF || (o->kind == K_ELEM && !o->assigned))
         rvalue(o);
     if (o->kind == K_VALUE)
         put(IR_DROP, 0, NULL);
@@ -645,7 +746,7 @@ static int compatible(int a, int b)
  * where, for the message. */
 static void check_assign(int to, Operand *o, const char *where)
 {
-    int from = o->type;
+    int from = value_type(o->type);
     if (o->kind == K_VOID)
         error("void value used in an expression", NULL);
     if (is_pointer(to)) {
@@ -957,19 +1058,88 @@ static void deref(Operand *o)
     int t = o->type;
     if (o->kind == K_VOID)
         error("void value used in an expression", NULL);
+    if (is_array(t) && is_place(o)) {
+        /* *a is a[0]: the same address, with the element's type. */
+        o->type = types[t].sub;
+        return;
+    }
     if (!is_pointer(t))
         error("unary '*' needs a pointer operand", NULL);
     if (types[t].sub == TY_VOID)
         error("dereferencing a 'void *'", NULL);
     if (o->kind == K_LOCAL) {
-        o->kind = K_DEREF_LOCAL;    /* *p: the address is in p */
+        make_elem(o, o->off, 0);    /* *p: the address is in p */
     } else {
         rvalue(o);
         o->kind = K_DEREF;
+        o->is_bool = 0;
+        o->assigned = 0;
     }
     o->type = types[t].sub;
-    o->is_bool = 0;
-    o->assigned = 0;
+}
+
+/* Can o take an index (a variable one if var is set, else a constant)
+ * and stay pending? It can if it is a local array, a pointer local, or
+ * a K_ELEM of array type (a row of a multi-dimensional array) that has
+ * no variable index yet, since a K_ELEM holds only one. */
+static int pending_base(Operand *o, int var)
+{
+    if (o->kind == K_LOCAL)
+        return is_array(o->type) || is_pointer(o->type);
+    return o->kind == K_ELEM && is_array(o->type) && !(var && o->idx >= 0);
+}
+
+/* Parse "[index]" after o: o becomes the element o[index], which C
+ * defines as *(o + index). When o is a pending base and the index is a
+ * plain variable or a number, nothing is emitted: the element is a
+ * K_ELEM (or, for a constant index on a local array, a K_LOCAL at a
+ * fixed offset). Whether the index is that simple is decided before it
+ * is parsed, by looking for ']' after its first token, since otherwise
+ * the base's address must be emitted first, below the index. */
+static void parse_index(Operand *o)
+{
+    Operand r;
+    int t = o->type, simple, size, d;
+
+    next();                         /* '[' */
+    simple = (tok == T_NUM || tok == T_ID) && pending_base(o, tok == T_ID)
+             && next_is_rbracket();
+    if (!simple)
+        rvalue(o);
+    parse_expr(PREC_COMMA, &r);
+    expect(']', "expected ']' after an array index, not");
+    if (!simple) {
+        if (!is_pointer(o->type) && !is_pointer(value_type(r.type)))
+            error("subscripted value is neither array nor pointer", NULL);
+        if (is_pointer(o->type) && is_pointer(value_type(r.type)))
+            error("array subscript is not an integer", NULL);
+        binary(o, &r, IR_ADD);
+        deref(o);
+        return;
+    }
+    if (is_pointer(value_type(r.type)))
+        error("array subscript is not an integer", NULL);
+    if (r.kind != K_CONST && r.kind != K_LOCAL)
+        fatal("internal error: unexpected array index", NULL);
+    size = is_pointer(t) ? elem_size(t) : type_size(types[t].sub);
+    if (r.kind == K_CONST) {
+        d = wrap16((unsigned)r.val * (unsigned)size);
+        if (o->kind == K_LOCAL && is_array(t)
+            && o->off + d >= 0 && o->off + d <= 255) {
+            o->off += d;            /* a[2]: a local at a fixed offset */
+        } else {
+            if (o->kind == K_LOCAL)
+                make_elem(o, o->off, is_array(t));
+            o->disp = wrap16((unsigned)o->disp + (unsigned)d);
+        }
+    } else {
+        if (o->kind == K_LOCAL)
+            make_elem(o, o->off, is_array(t));
+        o->idx = r.off;
+        o->idx_char = r.type == TY_CHAR;
+        o->scale = size;
+    }
+    o->type = types[t].sub;
 }
 
 /* Apply unary & to o: the result is its address. */
@@ -977,8 +1147,8 @@ static void address_of(Operand *o)
 {
     if (o->kind == K_LOCAL)
         put(IR_LOCALADDR, o->off, NULL);
-    else if (o->kind == K_DEREF_LOCAL && !o->assigned)
-        put(IR_LOCAL, o->off, NULL);    /* &*p is p */
+    else if (o->kind == K_ELEM && !o->assigned)
+        push_address(o);                /* &*p is p, &a[i] is a + i */
     else if (o->kind != K_DEREF)        /* K_DEREF: already on the stack */
         error("lvalue required as", "unary '&' operand");
     o->kind = K_VALUE;
@@ -995,7 +1165,7 @@ static void parse_unary(Operand *o)
     case '-': case '+': case '~': case '!':
         next();
         parse_unary(o);
-        if (t != '!' && is_pointer(o->type))
+        if (t != '!' && is_pointer(value_type(o->type)))
             error("pointer operand to unary", t == '-' ? "'-'"
                   : t == '+' ? "'+'" : "'~'");
         if (o->kind == K_CONST) {
@@ -1042,7 +1212,10 @@ static void parse_unary(Operand *o)
             next();
             post_incdec(o, t == T_INC ? IR_ADD : IR_SUB);
             continue;
-        case '[': case '.': case T_ARROW: case '(':
+        case '[':
+            parse_index(o);
+            continue;
+        case '.': case T_ARROW: case '(':
             not_yet();
         }
         return;
@@ -1103,7 +1276,7 @@ static int is_void(Operand *o)
  * a void * (giving void *), or a null pointer constant. */
 static int cond_type(Operand *b, int b_null, Operand *c, int c_null)
 {
-    int bt = b->type, ct = c->type;
+    int bt = value_type(b->type), ct = value_type(c->type);
     if (!is_pointer(bt) && !is_pointer(ct))
         return bt == ct ? bt : TY_INT;
     if (bt == ct)
@@ -1116,14 +1289,6 @@ static int cond_type(Operand *b, int b_null, Operand *c, int c_null)
         return ct;
     error("type mismatch in conditional expression", NULL);
     return TY_INT;
-}
-
-/* Is o an lvalue kind (a variable, or an object reached through a
- * pointer), whose value hasn't been loaded? */
-static int is_place(Operand *o)
-{
-    return o->kind == K_LOCAL || o->kind == K_DEREF
-           || o->kind == K_DEREF_LOCAL;
 }
 
 /*
@@ -1229,7 +1394,7 @@ static void push_scaled(Operand *i, int p)
  * so flip r's too. */
 static void compare_pointers(Operand *o, Operand *r, int op)
 {
-    int lt = o->type, rt = r->type;
+    int lt = o->type, rt = value_type(r->type);
     if (!is_pointer(lt) || !is_pointer(rt)) {
         if (is_relational(op) || !(is_null(o) || is_null(r)))
             error("comparison between pointer and integer", NULL);
@@ -1254,7 +1419,7 @@ static void compare_pointers(Operand *o, Operand *r, int op)
  */
 static void binary(Operand *o, Operand *r, int op)
 {
-    int lt = o->type, rt = r->type, n, t;
+    int lt = o->type, rt = value_type(r->type), n, t;
     int result = TY_INT;
 
     if (r->kind == K_VOID)
@@ -1328,6 +1493,15 @@ static void parse_expr(int min_prec, Operand *o)
             error("lvalue required as", "left operand of assignment");
         need_lvalue(o, "left operand of assignment");
         next();
+        if (ir_op >= 0 && o->kind == K_ELEM && o->idx >= 0) {
+            /* x op= e loads x, then stores into it after e. Saving an
+             * indexed element's address (spill()) is 1 byte smaller than
+             * computing it twice, and stays right if e changes the index
+             * through a pointer. With a SWAP opcode, neither would be
+             * needed: addr DUP LW e op SWAP SW (approach.md issue 21). */
+            push_address(o);
+            o->kind = K_DEREF;
+        }
         spill(o);
         if (ir_op >= 0) {
             /* x op= e: compute x op e, then store it as for x = e. */
@@ -1382,7 +1556,7 @@ static void parse_expr(int min_prec, Operand *o)
         if (mark >= 0 && nheld > mark) {
             /* The right operand emitted nothing, so the left constant
              * is still held. */
-            if (is_pointer(r.type)) {
+            if (is_pointer(value_type(r.type))) {
                 if (ir_op == IR_ADD && r.kind != K_VOID) {
                     /* c + p: emit p, then c scaled. */
                     Operand c = *o;
@@ -1423,27 +1597,68 @@ static void parse_expr(int min_prec, Operand *o)
 
 static void parse_block(int new_scope);
 
+/* Parse any array sizes ("[3][4]") after a declarator's name, and
+ * return the declared type, given the type t before them: int m[3][4]
+ * is an array of 3 arrays of 4 ints. If may_omit is set (an array
+ * parameter), the first size may be left out, giving a count of 0. */
+static int parse_dims(int t, int may_omit)
+{
+    Operand e;
+    int n = 0;
+    if (tok != '[')
+        return t;
+    enter_nest();
+    next();
+    if (tok == ']') {
+        if (!may_omit)
+            error("array size missing", NULL);
+    } else {
+        parse_expr(PREC_COND, &e);
+        if (e.kind != K_CONST || is_pointer(e.type))
+            error("array size must be a constant", NULL);
+        if (e.val <= 0)
+            error("array size must be positive", NULL);
+        n = e.val;
+    }
+    expect(']', "expected ']' after an array size, not");
+    t = parse_dims(t, 0);
+    if (type_size(t) == 0)
+        error("array elements can't have type void", NULL);
+    nest--;
+    return array_of(t, n);
+}
+
 /* A declaration: a base type, then declarators, each a name with any
- * '*'s before it and an optional initializer: int a = 1, *p = &a; */
+ * '*'s before it, any array sizes after it, and an optional
+ * initializer: int a = 1, *p = &a, v[10]; */
 static void parse_declaration(void)
 {
     int base = parse_base_type();
     for (;;) {
         Operand v, e;
         Sym *s;
+        char name[MAX_NAME + 1];
         int type = parse_pointers(base);
         if (type == TY_VOID)
             error("a variable can't have type void", NULL);
+        if (tok == '(')
+            error("declarators in parentheses are not supported yet",
+                  "(such as int (*p)[4])");
         if (tok != T_ID)
             error("expected a variable name, not", tok_desc());
-        /* In C, the name is in scope in its own initializer. */
-        s = add_local(tok_text, type, type_size(type));
+        strcpy(name, tok_text);
         next();
-        if (tok == '[')
-            error("arrays are not supported yet", NULL);
+        type = parse_dims(type, 0);
         if (tok == '(')
             error("local function declarations are not supported", NULL);
+        if (is_array(type) && frame_next + type_size(type) > 255)
+            error("local array doesn't fit in the 255-byte frame:",
+                  quote(name));
+        /* In C, the name is in scope in its own initializer. */
+        s = add_local(name, type, type_size(type));
         if (tok == '=') {
+            if (is_array(type))
+                error("array initializers are not supported yet", NULL);
             next();
             begin_expr();
             parse_expr(PREC_ASSIGN, &e);
@@ -1738,6 +1953,7 @@ static int parse_params(void)
         return -1;
     }
     for (;;) {
+        char name[MAX_NAME + 1];
         int type;
         if (tok == T_ELLIPSIS)
             error("variable argument lists are not supported yet", NULL);
@@ -1753,19 +1969,23 @@ static int parse_params(void)
             }
             error("a parameter can't have type void", NULL);
         }
-        if (tok == '[')
-            error("array parameters are not supported yet", NULL);
         if (n >= MAX_PARAMS)
             fatal("too many parameters", NULL);
+        name[0] = '\0';             /* a prototype may leave it out */
+        if (tok == T_ID) {
+            strcpy(name, tok_text);
+            next();
+        }
+        /* An array parameter is a pointer to its first element, as in
+         * C: int a[] and int a[10] are int *a, and int m[][4] is a
+         * pointer to arrays of 4 ints. */
+        type = parse_dims(type, 1);
+        if (is_array(type))
+            type = pointer_to(types[type].sub);
         /* ENTER puts parameter n at offset 2n, as a word even for a
          * char (which is then read as its low byte). Parameters are the
          * first variables allocated, so add_local puts them there. */
-        if (tok == T_ID) {
-            add_local(tok_text, type, 2);
-            next();
-        } else {
-            add_local("", type, 2);
-        }
+        add_local(name, type, 2);
         n++;
         if (tok != ',')
             break;

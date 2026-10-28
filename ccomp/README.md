@@ -43,14 +43,18 @@ Hello5
 
 ## The language so far
 
-* Types `int`, `char`, `void`, and pointers to them (`int *`,
-  `char **`, `void *`, ...).
-* Function definitions and prototypes returning any of these, with
-  parameters of any type but `void`. A prototype and a definition must
+* Types `int`, `char`, `void`, pointers to them (`int *`,
+  `char **`, `void *`, ...), and arrays (`int a[10]`, `char *names[4]`,
+  `int m[3][4]`).
+* Function definitions and prototypes returning any of these but an
+  array, with parameters of any type but `void`. An array parameter
+  is a pointer, as in C: `int a[]` and `int a[10]` are `int *a`, and
+  `int m[][4]` points to arrays of 4 ints. A prototype and a definition must
   agree on the return and parameter types. `main` takes no parameters.
   Its return value is ignored.
 * Local variables, declared anywhere in a block, with optional
-  initializers (`int a, b = 1, *p = &a;`). They have block scope, and
+  initializers (`int a, b = 1, *p = &a;`), but not yet for arrays.
+  Array sizes are constant expressions. They have block scope, and
   an inner block may shadow an outer name. As in C99, the first clause
   of `for` may declare variables, which are in scope only in the loop.
 * `char` is one byte and unsigned (0–255). A value is converted to
@@ -64,6 +68,10 @@ Hello5
   `++`, `--`, `+=`, `-=`) counts in elements, as in C, and arithmetic
   on a `void *` is an error. Pointers compare unsigned, since
   addresses at or above `$8000` are normal.
+* Arrays: `a[i]` is `*(a + i)`, as in C (so `i[a]` works too), and an
+  array used as a value is a pointer to its first element. An array
+  can't be assigned to. A local array must fit in the function's
+  255-byte frame, with the other locals.
 * Types are checked as strictly as C requires (GCC 14 does the same by
   default): mixing integers and pointers needs a cast, except for the
   constant 0, and pointer types must match unless one is `void *`.
@@ -76,7 +84,8 @@ Hello5
 * Expressions, with C's precedence and associativity:
   - integer and character constants, string literals, variables,
     function calls and parentheses;
-  - unary `- + ~ ! * &`, and prefix and postfix `++ --`;
+  - unary `- + ~ ! * &`, prefix and postfix `++ --`, and indexing
+    `a[i]`;
   - binary `* / % + - << >> & ^ |`;
   - comparisons `< > <= >= == !=`, and `&& || ?:`;
   - assignment `= += -= *= /= %= &= |= ^= <<= >>=`.
@@ -99,7 +108,8 @@ Hello5
 * Digraphs `<% %> <: :>`, `/* */` and `//` comments, and LF, CR or CRLF
   line endings.
 
-Anything else, such as arrays, globals, function pointers, `switch`,
+Anything else, such as globals, array initializers, `sizeof`,
+function pointers, declarators in parentheses (`int (*p)[4]`), `switch`,
 `goto`, the comma operator, or the types `signed`, `unsigned`, `short`
 and `long`, gives a "not supported yet" error.
 
@@ -153,14 +163,22 @@ function returns exactly one.
   uses one to four labels.
 * Only a few peephole optimizations so far (see `src/peep.c`): removal
   of unreachable code, plain stores for assignments whose value is
-  unused, folded negative constants, `INCR`/`DECR`, `ANDI`, `IDXW`,
+  unused, folded negative constants, adding 0, `INCR`/`DECR`, `ANDI`,
+  `IDXW`,
   multiplication by 0, 1, 3 or a power of two without `MUL`,
   `DLW` for a store followed by a load of the same variable, and single
   branch ops for tests such as `x == 0`, `x != y` and `!x`.
 * A store through a pointer that isn't a plain variable, such as
   `*p++ = x` or `*f() = x`, first saves the address in a hidden local
   (2 bytes of the 255-byte frame, for that statement only), because
-  PLASMA has no SWAP. So does `i + p` with an `int *` `p`.
+  PLASMA has no SWAP. So does `i + p` with an `int *` `p`. A store
+  into an array element doesn't, when the array is a local array or a
+  local pointer and the index is a variable or a constant (`a[i] = x`,
+  `p[3] = x`, `m[1][j] = x`). A more complex index (`a[i + 1] = x`,
+  `a[f()] = x`) or two variable indexes (`m[i][j] = x`) do. So does a
+  compound assignment to an element with a variable index
+  (`a[i] += x`), which is 1 byte smaller than computing the address
+  twice and computes it once, as C requires.
 * A `for` loop with a step clause jumps around the step's code, which
   costs two extra branches per loop (approach.md, issue 17, plans a
   fix).

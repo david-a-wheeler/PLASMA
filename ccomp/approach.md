@@ -287,7 +287,7 @@ time. `*p = e` is emitted as `MARK p MARK e SWAP2 SW` and comes out as
   symbolic) until the end of the full expression.
 - **Adding a real SWAP opcode** isn't needed. The rare fallback is a
   temporary local, and a new opcode would break compatibility with
-  existing PLASMA VMs.
+  existing PLASMA VMs. (Since reopened as a possibility: issue 21.)
 
 **(e) Is avoiding SWAP worth the effort?** (This answers a question
 from the discussion.) Yes, mainly because it costs much less than it
@@ -1246,10 +1246,28 @@ Raised in discussion (2026-10-27): the VM might be changed after all
    serve M11's `unsigned int`. They would give `$FFFF` for true, like
    PLASMA's own comparisons. Four opcodes. (CMDSYS's `isult` and
    friends do this today, at the cost of a call.)
-3. **`SWAP`: `( a b -- b a )`.** General, 1 byte. With reversed
-   stores, its remaining uses are rarer (`i + p` scaling, compound
-   assignment through a computed address), so it is a cheap fallback
-   rather than the main fix. One opcode (it was `$2E` until 2015).
+3. **`SWAP`: `( a b -- b a )`.** General, 1 byte. One opcode (it was
+   `$2E` until 2015). It would make ccish simpler, not just its output
+   smaller (noted during M4 step 3):
+   - Any store could compute its address first, as C reads it:
+     `addr e SWAP SW`. That costs 1 byte and no temporary, against 4
+     bytes and 2 frame bytes for a spill.
+   - Compound assignment would compute the address once, with no
+     temporary: `addr DUP LW e ADD SWAP SW`. That also fixes the
+     mismatch with C in `a[i] += f()` (see the M4 step 3 notes).
+   - Most of the cost it removes is in the compiler. M10's block
+     exchange (the `MARK`/`SWAP2` pseudo-ops of 4(d)) would no longer
+     be needed for stores, and neither would the spill paths in
+     `parse.c`. Pending places, and the lookahead that keeps `a[i]`
+     pending, would become an optional size optimization:
+     `e LLA a LLW i IDXW SW` is still 1 byte shorter than
+     `LLA a LLW i IDXW e SWAP SW`.
+
+   Reversed stores (candidate 1) save that last byte on stores, but
+   SWAP alone covers stores, compound assignment and other reorderings
+   (such as `i + p` scaling) with one opcode. It is also the easiest to
+   argue for upstream, since it is a general stack operation that
+   PLASMA once had.
 4. **For M11's `unsigned`:** `UDIV` and `UMOD` (otherwise a runtime
    routine), and a logical shift right `USHR` (otherwise `SHR` then a
    mask, which needs a computed mask for a variable count). Three
@@ -1280,7 +1298,8 @@ issue. In summary:
    stages as push-style functions in one program.
 4. **No SWAP opcode.** Use spills first, then add block exchange as an
    optimization. Reconsider SWAP only if measurements justify it
-   (4(e)).
+   (4(e)). Issue 21 has since reopened this: SWAP would simplify the
+   compiler as well.
 5. **Expressions:** precedence climbing (5A).
 6. **Varargs:** caller-built argument block plus count (6A), but not in
    the first milestone.
@@ -1398,6 +1417,84 @@ Defaults, also agreed:
 - Local arrays must fit the 255-byte frame. A bigger one is an error
   that suggests making it global; open question 4 stays open.
 - String literals and `pstr()` have type `char *`.
+
+**M4 step 3 (arrays) is done.** Chosen while building it (open for
+review):
+- **One pending kind for elements.** Step 2's `K_DEREF_LOCAL` (the
+  object at the address in a local word) became `K_ELEM`: the object at
+  base + index × scale + disp, where the base is a pointer local or the
+  address of a local array, and the index is a local variable (`int` or
+  `char`) or absent. `*p` is `p[0]`, and a spilled address is a
+  `K_ELEM` based on its temporary. Nothing is emitted until the parser
+  sees whether the element is assigned to, as decided.
+- **Which `a[i]` stay pending.** The base is a local array, a pointer
+  local, or a row of a multi-dimensional array (`m[1]`, `m[i]`), and the
+  index is a single identifier or number. The parser can't parse the
+  index first and decide afterward, since for any other index the
+  base's address must be emitted first, below the index. So it looks
+  ahead: the token after the index's first token must be `]` (or
+  `:>`) on the same line, with only spaces and tabs between
+  (`next_is_rbracket()` in `lex.c`; skipping only blanks keeps the line
+  number right for errors). So `a[i]`, `a[ 2 ]`, `p[n]` and `m[1][j]`
+  are pending, but `a[-1]`, `a[N - 1]`, `a[(i)]` and an index split
+  across lines are not. Those still work; a store into them just
+  spills.
+- **A `K_ELEM` holds one variable index.** `m[i][j] = x` computes the
+  row's address (`LLA m LLW i CN 3 SHL ADD`), adds `j`, and spills.
+  A constant index folds into the displacement, so `m[1][j]` and
+  `m[i][2]` stay pending, and for a local array the displacement is
+  part of the `LLA` offset (`m[i][2]` is `LLA m+4 LLW i ... ADD`).
+- **A constant index on a local array is a plain local** (`a[2]` is
+  `LLW a+4`), as decided. One whose offset falls outside the frame (an
+  out-of-bounds index, such as `&a[300]`) is computed as an address
+  instead. Out-of-bounds constant indexes are not errors, since
+  `&a[n]` is valid C.
+- **Compound assignment to an element with an index variable spills
+  its address** (decided in discussion): `a[i] += x` is
+  `LLA a LLW i IDXW DLW t LW x ADD LLW t SW`. Computing the address
+  again (`… LW x ADD LLA a LLW i IDXW SW`) would be 1 byte larger and
+  one op slower. It would also differ from C when the right side calls
+  a function that changes `i` through a pointer: the load and the store
+  would use different elements, but C evaluates the lvalue once. The
+  spill costs 2 frame bytes, shared with the function's other
+  temporaries (`tests/run/compound_elem.c`).
+  - **Still computed twice:** `*p op= e`, `p[3] op= e` and an element
+    with a constant index, where a spill would cost code. So they keep
+    the issue if `e` changes `p` through a pointer, which needs `&p` to
+    escape. Step 2's `*p += f()` has always behaved this way. `++`/`--`
+    also compute the address twice, which is always correct because
+    there is no right side.
+  - Plain `=` is fine, since C doesn't say whether the address or the
+    value is computed first.
+  - **A SWAP opcode** (issue 21) would fix every case with no temporary
+    and no second copy: `addr DUP LW x ADD SWAP SW`.
+- **Arrays turn into pointers lazily.** An operand of array type stays
+  a place until its value is needed. `rvalue()` then pushes the address
+  of the first element (`LLA a`, or nothing for a `K_DEREF`), and type
+  checks use `value_type()`. So `&a` (a pointer to the array), `*a`,
+  `a[i]` and `&(a)` see the array itself, and `sizeof a` will too
+  (M5). `*a` and `**m` are the first element at a fixed offset, with no
+  code.
+- **Declarations.** Array sizes are constant expressions (parsed as a
+  conditional expression), and must be positive. An array's total size
+  must be at most 32767 bytes ("array too large"), so sizes fit in an
+  `int`. A local array that doesn't fit in the 255-byte frame is an
+  error ("local array doesn't fit in the 255-byte frame"). It will
+  suggest making it global once globals exist (step 4). In a
+  parameter, the first size may be left out or given, and is ignored:
+  `int a[]` and `int a[10]` are `int *a`, and `int m[][3]` is a
+  pointer to arrays of 3 ints. Later sizes are required. Array
+  initializers wait for M5.
+- **Declarators in parentheses** (`int (*p)[4]`) are not supported yet.
+  Pointers to arrays still arise from `&a`, from a multi-dimensional
+  array used as a value, and from parameters such as `int m[][4]`.
+- **Peephole stage.** The window grew from 6 to 10 ops, and the rule
+  that drops the copy for an unused `x++` now accepts any store whose
+  address is computed only on the stack. A backward scan counts stack
+  effects to find where the address starts (`expr_len()` in `peep.c`),
+  so an unused `a[i]++` keeps no copy either. A new rule removes
+  `CN 0 ADD` and `CN 0 SUB` (from `names[i][0]`, where the pointer is
+  loaded).
 
 **M4 step 2 (pointers) is done.** Chosen while building it (open for
 review):

@@ -96,6 +96,7 @@ extern int tok_len;                 /* T_STR length, not counting a NUL */
 
 void lex_open(Bfile *f);
 void next(void);                    /* advance to the next token */
+int  next_is_rbracket(void);        /* is the token after this one ']'? */
 const char *tok_desc(void);         /* the current token, for messages */
 
 /* ---------- Types (type.c) ----------
@@ -103,13 +104,17 @@ const char *tok_desc(void);         /* the current token, for messages */
  * types are the same exactly when their indexes are (approach.md, "M4
  * design"). The basic types have fixed indexes. */
 
-enum { TK_VOID, TK_CHAR, TK_INT, TK_PTR };  /* Type.kind */
+enum { TK_VOID, TK_CHAR, TK_INT, TK_PTR, TK_ARRAY };  /* Type.kind */
 enum { TY_VOID, TY_CHAR, TY_INT };          /* indexes of the basic types */
+
+#define MAX_OBJECT 32767    /* bytes in one array */
 
 typedef struct {
     int kind;           /* TK_* */
-    int sub;            /* TK_PTR: the type pointed to (arrays later) */
-    int count;          /* element count, for arrays (later) */
+    int sub;            /* TK_PTR: the type pointed to; TK_ARRAY: the
+                         * element type */
+    int count;          /* TK_ARRAY: the element count, or 0 if unknown
+                         * (only while parsing an array parameter) */
 } Type;
 
 extern Type types[MAX_TYPES];
@@ -117,7 +122,9 @@ extern int ntypes;
 
 int type_size(int t);
 int is_pointer(int t);
+int is_array(int t);
 int pointer_to(int t);
+int array_of(int t, int count);
 
 /* ---------- Symbols (parse.c) ---------- */
 
