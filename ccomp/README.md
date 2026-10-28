@@ -92,6 +92,12 @@ Hello5
     function calls and parentheses;
   - unary `- + ~ ! * &`, prefix and postfix `++ --`, and indexing
     `a[i]`;
+  - `sizeof expr` and `sizeof(type)`, where a type may have `*`s and
+    array sizes (`sizeof(char *[4])`). The expression isn't run. The
+    result is an `int` (`unsigned` isn't supported yet), and is a
+    constant, so it can size an array. An array gives its full size, a
+    string literal its length plus 1, and an array parameter 2 (it is a
+    pointer);
   - binary `* / % + - << >> & ^ |`;
   - comparisons `< > <= >= == !=`, and `&& || ?:`;
   - assignment `= += -= *= /= %= &= |= ^= <<= >>=`.
@@ -114,8 +120,8 @@ Hello5
 * Digraphs `<% %> <: :>`, `/* */` and `//` comments, and LF, CR or CRLF
   line endings.
 
-Anything else, such as initializers on globals and arrays, `sizeof`,
-`static`, `extern`,
+Anything else, such as initializers on globals and arrays, `static`,
+`const`, `extern`,
 function pointers, declarators in parentheses (`int (*p)[4]`), `switch`,
 `goto`, the comma operator, or the types `signed`, `unsigned`, `short`
 and `long`, gives a "not supported yet" error.
@@ -173,8 +179,12 @@ function returns exactly one.
   unused, folded negative constants, adding 0, `INCR`/`DECR`, `ANDI`,
   `IDXW`,
   multiplication by 0, 1, 3 or a power of two without `MUL`,
-  `DLW` for a store followed by a load of the same variable, and single
-  branch ops for tests such as `x == 0`, `x != y` and `!x`.
+  `DLW` for a store followed by a load of the same variable, `LAB` and
+  friends for a load or store through a constant address (reading the
+  speaker, `*(char *)0xC030`, is `LAB $C030`), and single branch ops
+  for tests such as `x == 0`, `x != y` and `!x`. A function with no
+  parameters, locals or temporaries has no frame: no `ENTER`, and `RET`
+  instead of `LEAVE`.
 * A store through a pointer that isn't a plain variable, such as
   `*p++ = x` or `*f() = x`, first saves the address in a hidden local
   (2 bytes of the 255-byte frame, for that statement only), because
@@ -190,8 +200,10 @@ function returns exactly one.
 * A `for` loop with a step clause jumps around the step's code, which
   costs two extra branches per loop (approach.md, issue 17, plans a
   fix).
-* String literals in code that is never compiled (such as `0 && f("x")`)
-  still take space in the data segment.
+* String literals in a statement that can never run (such as the body
+  of `if (0)`) still take space in the data segment. (In an
+  expression that is never run, such as `0 && f("x")` or a `sizeof`
+  operand, they don't.)
 * Globals are zero bytes in the module file, since PLASMA modules have
   no uninitialized-data segment, so `char buf[4096];` adds 4K to the
   file. Globals and string literals together are limited to 32767

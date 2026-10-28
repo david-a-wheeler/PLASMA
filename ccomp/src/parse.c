@@ -3,7 +3,7 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 4):
+ * Language so far (milestones 1 to 4, and M5 step 1):
  *   - types int, char, void, pointers to them (int *, char **, ...), and
  *     arrays of int, char, pointers and arrays (int m[3][4]);
  *   - function definitions and prototypes returning int, char, void or
@@ -19,7 +19,7 @@
  *     expression statements, empty statements and nested blocks;
  *   - expressions: integer and character constants, string literals,
  *     variables, function calls, parentheses, the pstr() builtin,
- *     unary - + ~ ! * & ++ --, postfix ++ -- and [], binary
+ *     unary - + ~ ! * & ++ -- and sizeof, postfix ++ -- and [], binary
  *     * / % + - << >> & ^ |, comparisons, && || ?:, and
  *     = += -= *= /= %= &= |= ^= <<= >>=. Pointer arithmetic scales by
  *     the element size, pointers compare unsigned, pointer types are
@@ -350,6 +350,10 @@ static int nheld;
  * of 0 && x: it is checked, but put() emits nothing. */
 static int suppress;
 
+/* Above 0 while parsing the operand of sizeof (which suppress also
+ * covers). */
+static int in_sizeof;
+
 /* Emit an IR op, after any held constants. All of the parser's IR goes
  * through here. */
 static void put(int op, int a, Sym *s)
@@ -563,6 +567,9 @@ enum {
 
 static void parse_expr(int min_prec, Operand *o);
 static void parse_unary(Operand *o);
+static void parse_postfix(Operand *o);
+static void parse_sizeof(Operand *o);
+static int parse_dims(int t, int may_omit);
 static void binary(Operand *o, Operand *r, int op);
 
 /* Push the variable at off, a data offset if global, else a frame
@@ -1027,7 +1034,19 @@ static void parse_primary(Operand *o)
         next();
         return;
     case T_STR:
-        put(IR_DATAADDR, data_string(tok_text, tok_len), NULL);
+        if (in_sizeof) {
+            /* In C a literal is a char array, so sizeof "hi" is 3: here
+             * it is that array, at an address on the stack. Elsewhere
+             * it is just a char *, so that literals don't each add a
+             * type (an array of their length) to the type table. */
+            o->kind = K_DEREF;
+            o->type = array_of(TY_CHAR, tok_len + 1);
+            next();
+            return;
+        }
+        /* A literal in code that can never run takes no data space. */
+        put(IR_DATAADDR, suppress ? 0 : data_string(tok_text, tok_len),
+            NULL);
         o->type = pointer_to(TY_CHAR);
         next();
         return;
@@ -1279,8 +1298,20 @@ static void parse_unary(Operand *o)
         else
             address_of(o);
         return;
+    case T_SIZEOF:
+        next();
+        parse_sizeof(o);
+        return;
     }
     parse_primary(o);
+    parse_postfix(o);
+}
+
+/* Parse any postfix operators after the operand o: ++, -- and [].
+ * (A call's "(" is handled with the function name.) */
+static void parse_postfix(Operand *o)
+{
+    int t;
     for (;;) {
         switch (tok) {
         case T_INC:
@@ -1297,6 +1328,45 @@ static void parse_unary(Operand *o)
         }
         return;
     }
+}
+
+/* Parse the operand of sizeof, after "sizeof": a type name in
+ * parentheses, or a unary expression, which is checked but not run (it
+ * emits nothing). o becomes the size, an int constant. */
+static void parse_sizeof(Operand *o)
+{
+    int t, saved = nheld;
+    enter_nest();
+    suppress++;
+    in_sizeof++;
+    if (tok == '(') {
+        next();
+        if (is_type_start(tok)) {
+            /* A type name: a base type, '*'s and array sizes. */
+            t = parse_dims(parse_pointers(parse_base_type()), 0);
+            expect(')', "expected ')' after the type in sizeof, not");
+        } else {
+            /* A parenthesized expression, which may be followed by
+             * postfix operators: sizeof (a)[0] is the size of (a)[0]. */
+            parse_expr(PREC_COMMA, o);
+            expect(')', "expected ')', not");
+            parse_postfix(o);
+            t = o->type;
+        }
+    } else {
+        parse_unary(o);
+        t = o->type;
+    }
+    suppress--;
+    in_sizeof--;
+    nheld = saved;              /* drop anything held inside it */
+    nest--;
+    if (t == TY_VOID)
+        error("sizeof can't be applied to type void", NULL);
+    o->kind = K_CONST;
+    o->val = type_size(t);
+    o->type = TY_INT;
+    o->is_bool = 0;
 }
 
 /*

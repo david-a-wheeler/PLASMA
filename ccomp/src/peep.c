@@ -16,6 +16,8 @@
  *   SLW n  LLW n             -> DLW n      store, then load the same local
  *                                          (these two also for bytes, and
  *                                          for globals: DAW, SAW, LAW, ...)
+ *   CW a   LB / LW / SB / SW -> LAB / LAW / SAB / SAW a   constant address
+ *                                          (also after CB, CFFB, or LA)
  *   const  AND               -> ANDI const for a constant from 0 to 255
  *   const  NEG / COMP        -> const      e.g. -5 is one constant
  *   CN 0   ADD / SUB         -> (nothing)
@@ -105,6 +107,19 @@ static int keeping_store(int store, int load)
     if (store == OP_SLB && load == OP_LLB) return OP_DLB;
     if (store == OP_SAW && load == OP_LAW) return OP_DAW;
     if (store == OP_SAB && load == OP_LAB) return OP_DAB;
+    return -1;
+}
+
+/* The absolute-address form of a load or store through an address on
+ * the stack (LAB for LB, and so on), or -1. */
+static int absolute_op(int op)
+{
+    switch (op) {
+    case OP_LB: return OP_LAB;
+    case OP_LW: return OP_LAW;
+    case OP_SB: return OP_SAB;
+    case OP_SW: return OP_SAW;
+    }
     return -1;
 }
 
@@ -234,6 +249,20 @@ static int rewrite(void)
      * load. */
     if (keeping_store(a->op, b->op) >= 0 && a->a == b->a) {
         a->op = keeping_store(a->op, b->op);
+        nwin--;
+        return 1;
+    }
+    /* CW addr LB -> LAB addr (also LW, SB, SW, after CB or CFFB, or LA
+     * for a data address): a load or store through a constant address
+     * is one op, such as reading the speaker at $C030. Not after CN or
+     * MINUS1, which are shorter than LAB's address word. */
+    if (absolute_op(b->op) >= 0 && (a->op == OP_CW || a->op == OP_CB
+                                    || a->op == OP_CFFB || a->op == OP_LA)) {
+        if (a->op != OP_LA) {
+            mop_const_value(a, &v);
+            a->a = v;
+        }
+        a->op = absolute_op(b->op);
         nwin--;
         return 1;
     }

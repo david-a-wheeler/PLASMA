@@ -869,7 +869,8 @@ into one of our pipeline stages:
   3-byte `ENTER` (everything after it shifts uniformly, so relative
   branches stay valid; adjust fixup offsets by -3). Then turn each
   `LEAVE 0` (2 bytes) into `RET` plus 1 unreachable pad byte, which
-  keeps every later offset the same.
+  keeps every later offset the same. (Done, during M5 step 1; a final
+  `LEAVE` needs no pad.)
 
 #### Where hints come in (issue 10)
 
@@ -1341,9 +1342,121 @@ issue. In summary:
     entries; strict pointer type checking, with casts; unsigned
     pointer comparisons; zeroed global arrays in the data segment for
     now.
+14. **M5** (see "M5 design" under Milestones): address constants
+    through a small separate parser; string literals in their own
+    pool; local array initializers as element stores; `static` on
+    globals, functions and locals; `const` enforced, with warnings.
 
 
 ## Milestones
+
+**M5 design (decided in discussion, 2026-10-28).** M5 is built in five
+steps, each ending with all tests passing:
+1. `sizeof`;
+2. global initializers;
+3. local array initializers;
+4. `static`;
+5. `const`, and warnings.
+
+Decided:
+- **Global initializers are computed at compile time** (decision 10).
+  An integer initializer goes through the normal constant folder, with
+  code output switched off, and must fold to a constant. An *address
+  constant* goes through a small separate parser, which accepts a
+  string literal, `&name`, `&name[constant]`, an array name, and
+  `name + constant` or `name - constant`, with casts. **Limitation
+  (documented):** other forms that C allows, such as `&a[2] + 1` or
+  `&m[1][2]`, are errors ("initializer is not a constant ccish
+  supports"). The alternative, a pending "address constant" operand in
+  the expression parser, would accept any expression that folds to an
+  address, but touches pointer arithmetic, comparisons and casts
+  throughout. Revisit if real code needs it.
+- **String literals move to their own pool** (a new stream file),
+  which the final pass places after the globals. Otherwise, in
+  `char *names[] = {"zero", "one"};` each literal would be written to
+  the data stream in the middle of the array. Code references to
+  strings get a new relocation kind, and pointers stored in the data
+  segment get relocation records in another new stream. The object
+  format becomes version 2. (The alternative, buffering an array's
+  initializer in memory, would cap the size of tables, and
+  self-hosting needs big ones.)
+- **Brace lists are one level** (decision 10): `int t[] = {1, 2, 3};`,
+  where an omitted size comes from the count, missing elements are
+  zero, and a trailing comma is allowed. A flat list for a
+  multi-dimensional array (`int m[2][3] = {1, 2, 3, 4, 5, 6};`) is
+  valid C and allowed. Nested braces wait for M11. A scalar may have
+  braces (`int x = {5};`). A `char` array may be initialized from a
+  string literal (`char s[] = "hi";` has 3 elements, and
+  `char s[2] = "hi";` has no NUL, as in C).
+- **Local array initializers are element stores:** for example
+  `CN 1 SLW t`, with pairs of `char`s stored as one word. Remaining
+  elements are zeroed with `memset` when that is shorter than storing
+  zeros. Elements may be non-constant (`{x, y}`), as C99 allows.
+  Copying an image from the data segment with `memcpy` (9 bytes plus
+  the data, so smaller from about 5 elements) is a possible M10
+  optimization.
+- **`sizeof expr` and `sizeof(type)`.** The expression is parsed but
+  not run (code output is switched off, as for unreachable code). An
+  array gives its full size, since arrays aren't converted to pointers
+  until used; an array parameter gives 2. The type is `int`, since
+  `unsigned` (C's `size_t`) waits for M11; sizes are at most 32767.
+  A type name takes `*`s and array sizes, as declarations do.
+- **`static`:**
+  - on globals: accepted, and means what globals already mean
+    (private). It will matter once globals can be exported.
+  - on functions: accepted, and will keep them from being exported
+    once exporting exists.
+  - on locals: stored in the data segment like a global, with block
+    scope (a `K_VAR` with the global flag). The initializer is
+    constant and applied at load, once. It is also the C way to have a
+    local array bigger than the frame (`static char line[256];`).
+- **`const` is enforced**, as part of the type: `const char *` and
+  `char *` are different types. Following gcc, assigning to or
+  incrementing a `const` object is an error, and converting
+  `const char *` to `char *` without a cast (which C requires a
+  diagnostic for, and gcc warns about) is a **warning**. So ccish
+  gets warnings: printed like errors, but compilation continues. String
+  literals stay `char *`, as in C. A read of a `const` scalar with a
+  constant initializer folds to the constant (`const int N = 10;`
+  makes `x < N` use `CB 10`), but `&N` still works, and, as in C, `N`
+  can't size an array, so ccish programs stay valid C.
+- **Not in M5:** nested brace lists, `volatile`, exporting globals,
+  and `extern` (wanted later).
+
+**M5 step 1 (`sizeof`) is done.** Chosen while building it (open for
+review):
+- **`sizeof "hi"` is 3.** In C a string literal is a `char` array, but
+  ccish gives it type `char *`, so that each literal doesn't add a type
+  entry (an array of its length) to the 128-entry type table. Only
+  inside a `sizeof` operand is a literal that array (a `K_DEREF` of
+  array type, with no code). So `sizeof "hi"[0]` is 1, as in C.
+- **`sizeof (a)[1]`** is the size of `(a)[1]`, as in C: after a
+  parenthesized expression, postfix operators still apply (the postfix
+  loop is now `parse_postfix()`). `sizeof(int) x` is a syntax error, as
+  in C.
+- **`sizeof` of `void`** (the type, or a `void` call) is an error. gcc
+  gives 1 as an extension.
+- **String literals in code that is never run no longer take data
+  space** when the code is an expression parsed with output switched
+  off (`0 && f("x")`, a `sizeof` operand). Literals in a statement that
+  can never run (the body of `if (0)`) still do, because statements
+  are compiled and then dropped by the peephole stage.
+- **Added during step 1, at the user's request** (a speaker-click test,
+  `tests/run/speaker.c`):
+  - **Functions with no frame** (no parameters, locals or
+    temporaries) have no `ENTER`, and `RET` in place of `LEAVE`, as in
+    PLASMA's compiler (issue 17, P20, done as planned there). So
+    `void click(void) { *(char *)0xC030; }` is `LAB $C030 DROP RET`.
+    `main` is often frameless too.
+  - **A load or store through a constant address is one op:**
+    `CW $C030 LB` → `LAB $C030` (also `LW`, `SB`, `SW`; issue 17, P8),
+    and after `CB` or `CFFB` too, which is the same size but one
+    dispatch fewer. Not after `CN` or `MINUS1`, which would grow.
+    `LA g LW` → `LAW g` (P7) comes with it for free.
+  - The address is written as a cast for now. With M5's initializers
+    and `const`, it can be named (`char *const speaker = (char *)
+    0xC030;`), and const folding should give the same code; the test
+    will be updated then.
 
 **M4 design (decided in discussion, 2026-10-27).** M4 is built in four
 steps, each ending with all tests passing:

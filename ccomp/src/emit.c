@@ -171,6 +171,31 @@ int data_zero(int n)
     return first;
 }
 
+/* For a function whose frame is empty (no parameters, locals or
+ * temporaries), drop the frame, as PLASMA's compiler does: remove the
+ * ENTER, and make each LEAVE a RET. The frame size is only known at the
+ * end, so this edits the finished buffer. Removing the ENTER at the
+ * start moves all of the code back by the same amount, so relative
+ * branch offsets stay valid. A LEAVE (2 bytes) in the middle becomes
+ * RET plus a pad byte (another RET, which never runs), so that nothing
+ * after it moves; a final LEAVE just becomes RET. */
+static void drop_frame(void)
+{
+    int i;
+    if (nframe == 0 || frame_at[0] != 1 || fbuf[0] != OP_ENTER)
+        fatal("internal error: no ENTER at the start of", fn->name);
+    for (i = 1; i < nframe; i++) {      /* frame_at[0] is the ENTER's */
+        fbuf[frame_at[i] - 1] = OP_RET;
+        fbuf[frame_at[i]] = OP_RET;
+    }
+    if (nframe > 1 && frame_at[nframe - 1] == nfbuf - 1)
+        nfbuf--;                        /* a final LEAVE needs no pad */
+    memmove(fbuf, fbuf + 3, nfbuf - 3);
+    nfbuf -= 3;
+    for (i = 0; i < nrelocs; i++)
+        relocs[i].at -= 3;
+}
+
 /* Write the finished function to the code stream. */
 static void end_function(int frame_size)
 {
@@ -179,6 +204,8 @@ static void end_function(int frame_size)
         error("too many parameters and locals in", fn->name);
     for (i = 0; i < nframe; i++)
         fbuf[frame_at[i]] = (unsigned char)frame_size;
+    if (frame_size == 0)
+        drop_frame();
     for (i = 0; i < MAX_LABELS; i++)
         if (!label_placed[i] && label_word[i] != NO_LINK)
             fatal("internal error: branch to a label never placed in",

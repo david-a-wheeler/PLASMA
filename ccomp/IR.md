@@ -66,8 +66,13 @@ first parameter deepest.
 - **Why it differs from `ENTER`:** `ENTER` needs the frame size up
   front, but it isn't known yet (reason 3). The marker also tells stage
   4 where the function starts, for its RLD entry.
-- **Later:** if the frame size turns out to be 0, stage 4 deletes the
-  `ENTER` and turns each `LEAVE 0` into `RET` (approach.md, 17, P20).
+- **Also:** if the frame size turns out to be 0 (no parameters, locals
+  or temporaries), stage 4 deletes the `ENTER` and turns each `LEAVE`
+  into `RET`, as PLASMA's compiler does (approach.md, 17, P20). Since
+  the `ENTER` is first, removing it moves all of the code equally, so
+  branch offsets stay valid. A `LEAVE` in the middle of the function
+  becomes `RET` plus a pad byte that never runs (another `RET`), so
+  nothing after it moves; a final `LEAVE` becomes just `RET`.
 
 ### `IR_ENDFUNC` *a* = frame size
 
@@ -471,11 +476,10 @@ value is on top of the stack; for a `void` function, nothing is.
 - **Why it differs from `LEAVE`/`RET`:** PLASMA must pick between
   `LEAVE n` and `RET` depending on the frame, which isn't known yet
   (reason 3).
-- **Later:**
-  - `RET` when the frame turns out empty;
-  - a return inside a `for` loop that uses PLASMA's FOR opcodes must
-    first drop the loop's two stack values. The parser knows the loop
-    nesting, so it will emit those drops (17, P18).
+- **Also:** `RET` when the frame turns out empty (see `IR_FUNC`).
+- **Later:** a return inside a `for` loop that uses PLASMA's FOR
+  opcodes must first drop the loop's two stack values. The parser knows
+  the loop nesting, so it will emit those drops (17, P18).
 
 ## Between stages 2 and 4: machine ops
 
