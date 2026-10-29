@@ -1567,21 +1567,24 @@ Decided with it:
   its tag number. Struct entries are never shared, since two structs
   with the same members are still different types. Qualifiers work
   unchanged (`const struct node *`).
-- **New tables, as parallel arrays (decision 15):** about 4K in all.
-  - Tags (32): name, size (-1 while incomplete), and block depth (a
+- **New tables, as parallel arrays (decision 15):** about 1.5K in all
+  (shrunk from about 4K after step 2, in discussion: the first sizes
+  matched each other, not what programs need).
+  - Tags (24): name, size (-1 while incomplete), and block depth (a
     `char`): 5 bytes each.
-  - Members (256): owning tag (a `char`), name, type handle, offset: 7
+  - Members (128): owning tag (a `char`), name, type handle, offset: 7
     bytes each. (Changed while building step 1 from "first member and
     count" per tag: a struct defined inside another's member list adds
     its members in the middle of the outer one's, so a struct's
     members aren't always contiguous. Lookup scans all members for the
-    tag, which is at most 256 compares.)
-  - A name pool (2K) holding each tag and member name once. The
-    tables hold its 2-byte offset instead of a 32-byte array: 8K of
-    fixed names becomes 2K plus 2 bytes per entry. A full pool is a
-    clean error, and its size is one constant. The `Sym` split
-    (18.4) can reuse it later, which is when its size gets budgeted
-    for real.
+    tag, which is at most 128 compares.)
+  - A name pool (512 bytes) holding each tag and member name once. The
+    tables hold its 2-byte offset instead of a 32-byte array. ccish's
+    own source, the largest program it must compile, has about 13
+    structs and 60 distinct member names: about 400 bytes of names. A
+    full pool is a clean error, and each size is one constant, retuned
+    in M12 by measuring. The `Sym` split (18.4) can reuse the pool
+    later, which is when its size gets budgeted for all names.
 - **Self-reference:** a tag gets its entry when first mentioned and its
   size at its `}`, so `struct node *next;` works as an incomplete type.
 - **Block-scope tags** record their depth and become invisible at
@@ -1620,6 +1623,36 @@ it:
 - Not folded yet: `(pts + 1)->y` is `LA pts CN 4 ADD CN 2 ADD LW`. The
   same happens for `p + 1` on its own; adding neighboring constants is
   a peephole pattern for M10.
+
+**M6 step 2 is done** (assignment and initializers). Settled while
+building it:
+- The choice between word moves and `memcpy` is by estimated code size
+  (`addr_cost()`, `access_cost()`), not a fixed 4 bytes: word moves
+  only when neither side's address is on the stack already and they
+  are no bigger than the call. So a 4-byte copy between locals is
+  `LLW SLW LLW SLW` (8 bytes, the same as the call), but between
+  globals it is `LA LA CN 4 CALL memcpy` (10 bytes, not 12). A 3-byte
+  struct moves a word and a byte.
+- `memcpy` takes the destination first, so when the source's address
+  was emitted first (`c = *f()`), the destination's address is rotated
+  ahead of it in stage 2's buffer (4(d2)), with a temporary only if
+  the buffer overflowed. When the destination's address is on the
+  stack already (`*f() = s`), it is kept with `DUP` for the result, and
+  dropped if unused: 2 bytes that a later peephole pattern could
+  remove.
+- A struct copy calls the program's own `memcpy` if it declares one
+  (as gcc does), which must have three parameters, C's order; a value
+  it returns is dropped.
+- The result of an assignment is the destination with `assigned` set,
+  now for `K_VAR` too (only a struct's), so it is readable (`c = b =
+  a`, `(b = a).y`) but isn't an lvalue and has no address.
+- Initializers: `init_flat()` walks arrays and structs together over
+  one flat list, and replaces the array-only walk. With no padding, the
+  scalars are contiguous, so one "initialized so far" offset is enough
+  to zero the rest and to size an array from its list. Every earlier
+  test's listing is unchanged. A local may also be initialized from a
+  struct expression (a copy); a global or static can't, since its
+  initializer must be constant.
 
 **M5 design (decided in discussion, 2026-10-28).** M5 is built in six
 steps, each ending with all tests passing:

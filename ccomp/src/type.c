@@ -233,6 +233,16 @@ int member_find(int tag, int name)
     return -1;
 }
 
+/* The member of tag's struct after member m, in order (the first if m
+ * is -1), or -1 if there are no more. */
+int member_next(int tag, int m)
+{
+    while (++m < nmembers)
+        if (mb_tag[m] == tag)
+            return m;
+    return -1;
+}
+
 /* The type of member m, with its qualifiers. */
 int member_type(int m)
 {

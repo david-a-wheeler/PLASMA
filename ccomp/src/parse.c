@@ -3,7 +3,7 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 5, and M6 step 1):
+ * Language so far (milestones 1 to 5, and M6 steps 1 and 2):
  *   - types int, char, void, structs, pointers to them (int *, char **,
  *     struct node *, ...), and arrays of any of these but void
  *     (int m[3][4]);
@@ -12,8 +12,11 @@
  *     is visible until the end of its block (see parse_struct()). A
  *     member is a place at a constant offset in its struct, so s.m and
  *     p->m use the same pending operands as variables and array
- *     elements. Structs as whole values (assignment, initializers,
- *     passing, returning) come in later steps;
+ *     elements. A struct assignment copies its bytes (copy_struct()),
+ *     and the result is the object assigned to, not an lvalue
+ *     (Operand.assigned). Struct and array initializers are flat lists
+ *     over their scalar members and elements (init_flat()). Passing
+ *     and returning structs come in a later step;
  *   - function definitions and prototypes returning int, char, void or
  *     a pointer, with parameters of any of these but void; an array
  *     parameter (int a[], int m[][4]) is a pointer, as in C;
@@ -678,9 +681,10 @@ typedef struct {
                      * not a frame offset */
     int val;        /* K_CONST: the value */
     int is_bool;    /* K_VALUE: known to be 1 or 0 (a comparison, !, &&) */
-    int assigned;   /* K_ELEM: the result of an assignment to the
-                     * object, so not an lvalue. Its value, if needed,
-                     * is read back from the object. */
+    int assigned;   /* K_VAR, K_ELEM: the result of an assignment to
+                     * the object (K_VAR: only a struct's), so not an
+                     * lvalue. Its value, if needed, is read back from
+                     * the object. */
     /* K_ELEM only: */
     int base_arr;   /* the base is the address of the array at off, not
                      * the pointer in the variable at off */
@@ -710,7 +714,7 @@ static void parse_unary(Operand *o);
 static void parse_postfix(Operand *o);
 static void parse_sizeof(Operand *o);
 static int parse_dims(int t, int may_omit);
-static int parse_local_array_init(int type, const char *name, int base);
+static int parse_local_init(int type, const char *name, int base);
 static int parse_global_init(int type, const char *name);
 static void binary(Operand *o, Operand *r, int op, int lstart, int mid);
 static void finish_store(Operand *o, int keep);
@@ -952,17 +956,36 @@ static void finish_store(Operand *o, int keep)
     o->kind = keep ? K_VALUE : K_VOID;
 }
 
+/* Does type t hold a const object: is it a struct with a const member,
+ * at any depth (in a member struct, or as an array's elements)? Such a
+ * struct can't be assigned to as a whole. */
+static int holds_const(int t)
+{
+    int m, tag;
+    if (is_array(t))
+        return is_const(type_sub(t)) || holds_const(type_sub(t));
+    if (!is_struct(t))
+        return 0;
+    tag = struct_tag(t);
+    for (m = member_next(tag, -1); m >= 0; m = member_next(tag, m))
+        if (is_const(member_type(m)) || holds_const(member_type(m)))
+            return 1;
+    return 0;
+}
+
 /* Report an error unless o is an lvalue that can be assigned to (an
- * array can't be); what says how it was used. */
+ * array can't be, nor a struct with a const member); what says how it
+ * was used. */
 static void need_lvalue(Operand *o, const char *what)
 {
     if (is_array(o->type) && is_place(o))
         error("an array can't be the", what);
-    if (o->kind != K_VAR && o->kind != K_DEREF
-        && !(o->kind == K_ELEM && !o->assigned))
+    if (!is_place(o) || o->assigned)
         error("lvalue required as", what);
     if (o->quals & Q_CONST)
         error("a 'const' object can't be the", what);
+    if (holds_const(o->type))
+        error("a struct with a 'const' member can't be the", what);
 }
 
 /* Store the value on the stack into lvalue o, which is K_VAR or
@@ -1050,12 +1073,18 @@ static int compatible(int a, int b)
  * the constant 0, and pointer types must be compatible. A pointer may
  * gain qualifiers on what it points to (char * to const char *), but
  * losing one is a warning, as in gcc: C requires a diagnostic, and the
- * program may still be right. where says where, for the message. */
+ * program may still be right. A struct needs the same struct type.
+ * where says where, for the message. */
 static void check_assign(int to, Operand *o, const char *where)
 {
     int from = value_type(o->type), lost;
     if (o->kind == K_VOID)
         error("void value used in an expression", NULL);
+    if (is_struct(to) || is_struct(from)) {
+        if (unqual(to) != unqual(from))
+            error("incompatible types in", where);
+        return;
+    }
     if (is_pointer(to)) {
         if (!is_pointer(from)) {
             if (!is_null(o))
@@ -1517,9 +1546,11 @@ static void parse_index(Operand *o)
 /* Apply unary & to o: the result is its address. */
 static void address_of(Operand *o)
 {
+    if (o->assigned)
+        error("lvalue required as", "unary '&' operand");
     if (o->kind == K_VAR)
         push_var_addr(o->off, o->global);
-    else if (o->kind == K_ELEM && !o->assigned)
+    else if (o->kind == K_ELEM)
         push_address(o);                /* &*p is p, &a[i] is a + i */
     else if (o->kind != K_DEREF)        /* K_DEREF: already on the stack */
         error("lvalue required as", "unary '&' operand");
@@ -1527,6 +1558,27 @@ static void address_of(Operand *o)
     o->type = pointer_to(o->type | o->quals);   /* &N is a const int * */
     o->quals = 0;
     o->is_bool = 0;
+}
+
+/* Move the place o off bytes further on, for a member or a part of a
+ * struct: a variable stays a variable at a new offset if it can, a
+ * K_ELEM adds to its displacement, and a K_DEREF adds to its address.
+ * Its type is unchanged; the caller sets it. */
+static void offset_place(Operand *o, int off)
+{
+    int assigned = o->assigned;
+    if (o->kind == K_VAR && o->off + off <= max_offset(o->global)) {
+        o->off += off;
+    } else if (o->kind == K_VAR) {
+        make_elem(o, o->off, o->global, 1);
+        o->disp = off;
+        o->assigned = assigned;
+    } else if (o->kind == K_ELEM) {
+        o->disp = wrap16((unsigned)o->disp + (unsigned)off);
+    } else if (off != 0) {          /* K_DEREF: the address is on the stack */
+        put(IR_CONST, off, NULL);
+        put(IR_ADD, 0, NULL);
+    }
 }
 
 /* Parse ".member" or "->member" (arrow set) after o: o becomes the
@@ -1566,17 +1618,7 @@ static void parse_member(Operand *o, int arrow)
     }
     if (arrow)
         deref(o);
-    if (o->kind == K_VAR && o->off + off <= max_offset(o->global)) {
-        o->off += off;
-    } else if (o->kind == K_VAR) {
-        make_elem(o, o->off, o->global, 1);
-        o->disp = off;
-    } else if (o->kind == K_ELEM) {
-        o->disp = wrap16((unsigned)o->disp + (unsigned)off);
-    } else if (off != 0) {          /* K_DEREF: the address is on the stack */
-        put(IR_CONST, off, NULL);
-        put(IR_ADD, 0, NULL);
-    }
+    offset_place(o, off);
     set_object(o, qualify(member_type(m), o->quals));
 }
 
@@ -2072,6 +2114,135 @@ static void compound_elem(Operand *x, Operand *r, int op)
     reversed_op(x, op);
 }
 
+/* Bytes of code that push the address of the place o (a K_VAR or
+ * K_ELEM): an estimate, for choosing how to copy a struct. */
+static int addr_cost(Operand *o)
+{
+    int c = o->global ? 3 : 2;
+    if (o->kind == K_ELEM && o->idx >= 0)
+        c += (o->idx_global ? 3 : 2) + (o->scale != 1 ? 2 : 0) + 1;
+    if (o->kind == K_ELEM && o->disp != 0 && !o->base_arr)
+        c += 2;
+    return c;
+}
+
+/* Bytes of code that load or store the word at offset off in the place
+ * o (a K_VAR or K_ELEM): an estimate, as for addr_cost(). */
+static int access_cost(Operand *o, int off)
+{
+    if (o->kind == K_VAR)
+        return o->global ? 3 : 2;
+    return addr_cost(o) + (off != 0 ? 2 : 0) + 1;
+}
+
+/* Push the address of the place o. A K_DEREF's is already on the
+ * stack. */
+static void push_place_addr(Operand *o)
+{
+    if (o->kind == K_VAR)
+        push_var_addr(o->off, o->global);
+    else if (o->kind == K_ELEM)
+        push_address(o);
+}
+
+/* The function a struct copy calls: memcpy(dst, src, n), from CMDSYS
+ * unless the program declares its own, which must take C's arguments
+ * in C's order. A value it returns is dropped. */
+static Sym *copy_func(void)
+{
+    Sym *s = find_func("memcpy");
+    if (!s) {
+        s = add_func("memcpy");
+        declare_cmdsys(s, find_cmdsys("memcpy"));
+    } else if (s->nparams != 3) {
+        error("a struct copy calls memcpy(dst, src, n), but this program"
+              " declares memcpy differently", NULL);
+    }
+    if (!suppress)
+        s->called = 1;
+    return s;
+}
+
+/*
+ * Copy the struct r into the place o (approach.md, "M6 design"). r's
+ * code starts at IR position start (if it emitted any). Between two
+ * places whose addresses need no code yet (K_VAR, K_ELEM), the words
+ * are moved one at a time (LLW b SLW a ...) when that is no bigger
+ * than calling memcpy; otherwise memcpy(dst, src, n) is called, with
+ * dst's address first. If r's address was already emitted and o's
+ * wasn't, the two are exchanged in stage 2's buffer, as for a store
+ * (finish_store()). o becomes the result: the object assigned to, not
+ * an lvalue (for a K_DEREF, its address was kept with DUP).
+ */
+static void copy_struct(Operand *o, Operand *r, int start)
+{
+    Operand d, v;
+    Sym *fn;
+    int n = type_size(o->type), k, cost = 0, mid, t;
+
+    if (!is_place(r))
+        error("this struct value is not supported yet", NULL);
+    if (o->kind != K_DEREF && r->kind != K_DEREF) {
+        for (k = 0; k < n; k += 2)
+            cost += access_cost(o, k) + access_cost(r, k);
+        if (cost <= addr_cost(o) + addr_cost(r) + (n < 16 ? 1 : 2) + 3) {
+            for (k = 0; k < n; k += 2) {
+                v = *r;
+                d = *o;
+                offset_place(&v, k);
+                offset_place(&d, k);
+                v.type = d.type = n - k == 1 ? TY_CHAR : TY_INT;
+                rvalue(&v);
+                if (d.kind == K_VAR) {
+                    store_var(&d);
+                    put(IR_DROP, 0, NULL);
+                } else {
+                    push_address(&d);
+                    put(store_op(d.type), 0, NULL);
+                }
+            }
+            o->assigned = 1;
+            return;
+        }
+    }
+    fn = copy_func();
+    if (o->kind == K_DEREF || r->kind != K_DEREF) {
+        push_place_addr(o);         /* nothing for a K_DEREF */
+        push_place_addr(r);
+    } else if (ir_holds(start)) {
+        mid = ir_here();
+        push_place_addr(o);
+        ir_rotate(start, mid);
+    } else {
+        t = new_temp();
+        put(IR_SETLOCAL, t, NULL);
+        put(IR_DROP, 0, NULL);
+        push_place_addr(o);
+        put(IR_LOCAL, t, NULL);
+    }
+    put(IR_CONST, n, NULL);
+    put(IR_CALL, 3, fn);
+    if (fn->type != TY_VOID)
+        put(IR_DROP, 0, NULL);
+    if (o->kind != K_DEREF)
+        o->assigned = 1;
+}
+
+/* Parse the right side of a struct assignment, with o the struct
+ * assigned to, and copy it. o becomes the result. */
+static void struct_assign(Operand *o)
+{
+    Operand r;
+    int mark, h;
+    if (o->kind == K_DEREF)
+        put(IR_DUP, 0, NULL);       /* the address, kept for the result */
+    mark = ir_here();
+    h = nheld;
+    parse_expr(PREC_ASSIGN, &r);
+    check_assign(o->type, &r, "assignment");
+    copy_struct(o, &r, code_start(mark, h));
+}
+
 /* Parse an assignment after its operator (ir_op, -1 for '='), with o
  * the lvalue, whose parsing began at IR position m0 with h0 constants
  * held. o becomes the result. */
@@ -2079,8 +2250,10 @@ static void parse_assign(Operand *o, int ir_op, int m0, int h0)
 {
     Operand r, x;
 
-    if (is_struct(o->type))
-        error("assigning a struct is not supported yet", NULL);
+    if (is_struct(o->type) && ir_op < 0) {
+        struct_assign(o);
+        return;
+    }
     if (ir_op < 0 && o->kind == K_DEREF) {
         start_store(o, code_start(m0, h0));
         return;
@@ -2289,16 +2462,6 @@ static int parse_var_type(int type, int may_omit)
     return type;
 }
 
-/* Report an error if a variable of type type, about to be initialized,
- * is or holds a struct: struct initializers come in M6 step 2. */
-static void check_struct_init(int type)
-{
-    while (is_array(type))
-        type = type_sub(type);
-    if (is_struct(type))
-        error("struct initializers are not supported yet", NULL);
-}
-
 /* Parse a struct's member list, from '{' to '}', and complete tag's
  * struct: each member is at the next byte, with no padding, since the
  * 6502 has no alignment rules (approach.md, "M6 design"). While the
@@ -2385,12 +2548,37 @@ static int parse_struct(void)
     return struct_type(tag);
 }
 
+/* Initialize the local struct s from a struct expression (after the
+ * '='), as C allows for a local: struct pt b = a; It is a struct
+ * copy into s. */
+static void init_struct_copy(Sym *s)
+{
+    Operand v, e;
+    int mark, h;
+    begin_expr();
+    v.kind = K_VAR;
+    v.type = unqual(s->type);
+    v.quals = 0;
+    v.off = s->offset;
+    v.global = 0;
+    v.assigned = 0;
+    v.is_bool = 0;
+    mark = ir_here();
+    h = nheld;
+    parse_expr(PREC_ASSIGN, &e);
+    check_assign(v.type, &e, "initialization");
+    copy_struct(&v, &e, code_start(mark, h));
+    end_expr();
+}
+
 /* Record that the variable s has the known value v, if reading it may
  * give v at compile time: it is a const scalar (an int, char or
- * pointer) and not volatile. A char keeps the low byte, as stored. */
+ * pointer, not an array or struct) and not volatile. A char keeps the
+ * low byte, as stored. */
 static void set_known(Sym *s, int v)
 {
-    if ((s->type & Q_ALL) != Q_CONST || is_array(s->type))
+    if ((s->type & Q_ALL) != Q_CONST || is_array(s->type)
+        || is_struct(s->type))
         return;
     s->has_val = 1;
     s->val = unqual(s->type) == TY_CHAR ? v & 0xFF : v;
@@ -2418,8 +2606,6 @@ static void parse_declaration(int is_static)
             error("local function declarations are not supported", NULL);
         if (is_array(type) && type_count(type) == 0 && tok != '=')
             error("array size missing", NULL);
-        if (tok == '=')
-            check_struct_init(type);
         if (is_static) {
             /* In C, the name is in scope in its own initializer. */
             s = add_static_local(name, type);
@@ -2446,9 +2632,12 @@ static void parse_declaration(int is_static)
          * whose size comes from its initializer grows as it is parsed:
          * see reserve().) */
         s = add_local(name, type, type_size(type));
-        if (tok == '=' && is_array(type)) {
+        if (tok == '=' && (is_array(type) || is_struct(type))) {
             next();
-            s->type = parse_local_array_init(type, name, s->offset);
+            if (is_struct(type) && tok != '{')
+                init_struct_copy(s);    /* struct pt b = a; */
+            else
+                s->type = parse_local_init(type, name, s->offset);
         } else if (tok == '=') {
             next();
             braced = tok == '{';        /* int x = {5}; is valid C */
@@ -2980,11 +3169,11 @@ static void parse_scalar_init(int type)
 }
 
 /*
- * An array's initializer is parsed the same way for a global and a
- * local; only where its elements go differs. A global's are written to
- * the data stream, in order. A local array's are stores into the frame
- * (approach.md, "M5 design"), at frame offset init_base plus each
- * element's offset: CN 1 SLW t. Two neighboring char constants are
+ * An array's or struct's initializer is parsed the same way for a
+ * global and a local; only where its elements go differs. A global's
+ * are written to the data stream, in order. A local's are stores into
+ * the frame (approach.md, "M5 design"), at frame offset init_base plus
+ * each element's offset: CN 1 SLW t. Two neighboring char constants are
  * stored as one word (CW SLW, 5 bytes, not 8), and the zeros after the
  * last initializer are stored with a chain of DLWs, or by memset when
  * that is shorter.
@@ -3147,59 +3336,90 @@ static int init_string(int max, int off)
     return n;
 }
 
-/* Parse the initializer of an array of type type, named name, for a
- * global or a local (init_local). Returns the type, with an array size
- * that was left out filled in from the initializer. The brace list is
- * one level, over the scalar elements, as C allows (a two-dimensional
- * array takes a flat list); the rows of a char array of arrays may also
- * be string literals. */
-static int parse_array_init(int type, const char *name)
+/* Set by init_flat() when the initializer list's '}' is reached. */
+static int init_done;
+/* The end of what has been initialized so far: the offset after the
+ * last scalar (or string). With no padding, the scalars of an
+ * aggregate are contiguous, so everything before it is initialized. */
+static int init_end;
+
+/* After one scalar (or string) of a brace list: skip a ',', and note
+ * whether the list ends here. */
+static void after_leaf(void)
 {
-    int elem, esize, n = 0, max, per, row, i;
+    if (tok == ',')
+        next();
+    else if (tok != '}')
+        error("expected '}' or ',' in an initializer, not", tok_desc());
+    init_done = tok == '}';
+}
+
+/* Initialize the object of type t at offset off (of the variable being
+ * initialized) from a brace list, as far as the list goes. The list is
+ * flat, as C allows: the scalars of arrays and structs, in order, at any
+ * depth (struct pt ps[2] = {1, 2, 3, 4};). A char array in it may be
+ * given a string literal instead ({"abc", 5}). An array of unknown size
+ * (count 0, only at the top) takes as many elements as the list gives. */
+static void init_flat(int t, int off)
+{
+    int n, i, m, tag;
+    if (is_array(t) && unqual(type_sub(t)) == TY_CHAR && tok == T_STR) {
+        n = type_count(t);
+        i = init_string(n, off);
+        init_zero(n - i, off + i);
+        init_end = off + (n ? n : i);
+        after_leaf();
+    } else if (is_array(t)) {
+        n = type_count(t);
+        for (i = 0; (n == 0 || i < n) && !init_done; i++)
+            init_flat(type_sub(t), off + i * type_size(type_sub(t)));
+    } else if (is_struct(t)) {
+        tag = struct_tag(t);
+        for (m = member_next(tag, -1); m >= 0 && !init_done;
+             m = member_next(tag, m))
+            init_flat(member_type(m), off + member_off(m));
+    } else {
+        if (tok == '{')
+            error("nested braces in initializers are not supported yet",
+                  NULL);
+        init_elem(unqual(t), off);
+        init_end = off + type_size(t);
+        after_leaf();
+    }
+}
+
+/* Parse the initializer of an array or struct of type type, named name,
+ * for a global or a local (init_local): a brace list (init_flat()), or,
+ * for a char array, a string literal. Returns the type, with an array
+ * size that was left out filled in from the initializer. Whatever the
+ * list doesn't reach is zero. */
+static int parse_aggr_init(int type, const char *name)
+{
+    int esize;
 
     init_name = name;
-    for (elem = type; is_array(elem); elem = type_sub(elem))
-        ;
-    elem = unqual(elem);    /* initializing a const element is allowed */
-    esize = type_size(elem);
-    max = type_size(type) / esize;      /* 0 if the size was left out */
-    per = type_size(type_sub(type)) / esize;
-    row = is_array(type_sub(type))
-          && unqual(type_sub(type_sub(type))) == TY_CHAR
-          ? type_size(type_sub(type)) : 0;
-    if (tok == T_STR && unqual(type_sub(type)) == TY_CHAR) {
-        n = init_string(max, 0);
+    init_end = 0;
+    if (is_array(type) && unqual(type_sub(type)) == TY_CHAR
+        && tok == T_STR) {
+        init_end = init_string(type_count(type), 0);
     } else {
-        expect('{', "expected '{' to start an array initializer, not");
-        while (tok != '}') {
-            if (tok == '{')
-                error("nested braces in initializers are not supported yet",
-                      NULL);
-            if (max && n >= max)
-                error("too many initializers for", quote(name));
-            if (tok == T_STR && row && n % row == 0) {
-                /* A row of a char array of arrays: "abc" fills one. */
-                i = init_string(row, n);
-                init_zero(row - i, n + i);
-                n += row;
-            } else {
-                init_elem(elem, n * esize);
-                n++;
-            }
-            if (tok != ',')
-                break;
-            next();
-        }
-        expect('}', "expected '}' or ',' in an initializer, not");
+        expect('{', is_array(type)
+                    ? "expected '{' to start an array initializer, not"
+                    : "expected '{' to start a struct initializer, not");
+        init_done = tok == '}';
+        init_flat(type, 0);
+        if (!init_done)
+            error("too many initializers for", quote(name));
+        next();                     /* '}' */
     }
-    if (!max) {
-        if (n == 0)
+    if (is_array(type) && type_count(type) == 0) {
+        if (init_end == 0)
             error("an array of unknown size needs initializers:",
                   quote(name));
-        type = array_of(type_sub(type), (n + per - 1) / per);
-        max = type_size(type) / esize;
+        esize = type_size(type_sub(type));
+        type = array_of(type_sub(type), (init_end + esize - 1) / esize);
     }
-    init_zero((max - n) * esize, n * esize);    /* the rest are 0 */
+    init_zero(type_size(type) - init_end, init_end);    /* the rest */
     return type;
 }
 
@@ -3208,10 +3428,10 @@ static int parse_array_init(int type, const char *name)
  * size that was left out filled in. */
 static int parse_global_init(int type, const char *name)
 {
-    if (is_array(type)) {
+    if (is_array(type) || is_struct(type)) {
         init_local = 0;
         init_base = 0;
-        return parse_array_init(type, name);
+        return parse_aggr_init(type, name);
     }
     if (tok == '{') {                   /* int x = {5}; is valid C */
         next();
@@ -3225,15 +3445,15 @@ static int parse_global_init(int type, const char *name)
     return type;
 }
 
-/* Parse the initializer of a local array of type type, named name, at
- * frame offset base, as stores into the frame. Returns the type, with
- * an array size that was left out filled in. */
-static int parse_local_array_init(int type, const char *name, int base)
+/* Parse the brace initializer of a local array or struct of type type,
+ * named name, at frame offset base, as stores into the frame. Returns
+ * the type, with an array size that was left out filled in. */
+static int parse_local_init(int type, const char *name, int base)
 {
     init_local = 1;
     init_base = base;
     held_char = -1;
-    type = parse_array_init(type, name);
+    type = parse_aggr_init(type, name);
     flush_char();
     init_local = 0;
     reserve(base + type_size(type));
@@ -3253,7 +3473,6 @@ static void parse_globals(int base, int type, char *name)
         /* In C, the name is in scope in its own initializer. */
         s = add_global(name, type);
         if (tok == '=') {
-            check_struct_init(type);
             next();
             s->type = parse_global_init(type, name);
             if (init_known)

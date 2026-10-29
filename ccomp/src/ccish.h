@@ -41,9 +41,9 @@
 #define MAX_LABELS   256    /* branch targets in one function */
 #define MAX_TYPES    128    /* distinct types */
 #define MAX_PARAM_TYPES 512 /* parameter types of all declared functions */
-#define MAX_TAGS     32     /* struct tags, including hidden ones */
-#define MAX_MEMBERS  256    /* struct members, in all structs */
-#define MAX_POOL     2048   /* bytes of names in the name pool */
+#define MAX_TAGS     24     /* struct tags, including hidden ones */
+#define MAX_MEMBERS  128    /* struct members, in all structs */
+#define MAX_POOL     512    /* bytes of names in the name pool */
 #define BLOCK        512    /* file I/O buffer size: one ProDOS block */
 
 /* ---------- Diagnostics (main.c) ---------- */
@@ -164,6 +164,7 @@ int tag_size(int tag);
 void tag_set_size(int tag, int size);
 int member_add(int tag, int name, int type, int off);
 int member_find(int tag, int name);     /* a member, or -1 */
+int member_next(int tag, int m);        /* the next member, in order */
 int member_type(int m);
 int member_off(int m);
 

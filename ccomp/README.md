@@ -84,6 +84,12 @@ Hello5
     braces aren't supported yet. A `char` array may be a string
     (`char s[] = "hi";` has 3 elements), and so may each row of a
     `char` array of arrays (`char kw[][6] = {"int", "char"};`).
+  - Structs: a brace list too, over the struct's scalar members in
+    order (`struct pt p = {1, 2};`), and the same for arrays of structs
+    and structs holding arrays or structs, all as one flat list
+    (`struct pt ps[] = {1, 2, 3, 4};` is 2 points). A `char` array
+    member may be a string (`{"nut", 40}`). Nested braces aren't
+    supported yet.
   - A scalar may be in braces (`int x = {5};`).
 * `static`:
   - A static local (`static int n = 10;`) keeps its value between
@@ -114,9 +120,19 @@ Hello5
     pointer to it is fine, but not a variable, `sizeof`, `->` or
     pointer arithmetic. Using a tag for the first time in a parameter
     list gives a warning, as in gcc, since it is visible only there.
-  - Not yet: structs as whole values (assignment, initializers,
-    passing and returning; M6 steps 2 and 3), `union` (step 4), and
-    `typedef` (M11). `==` on structs is an error, as in C.
+  - Assignment copies the struct (`a = b`, `*p = s`, `c = b = a`). The
+    result is the struct assigned to, which isn't an lvalue, as in C.
+    Between two variables it is a word move per member word when that
+    is no bigger (`LLW b SLW a ...`); otherwise, and always through a
+    pointer, it calls `memcpy(dst, src, n)`: CMDSYS's, or the program's
+    own if it declares one, which must take C's arguments. A struct
+    with a `const` member can't be assigned as a whole.
+  - Initializers: a flat brace list over the scalar members, as for an
+    array (below), and a local may also be initialized from another
+    struct (`struct pt b = a;`).
+  - Not yet: passing and returning structs (M6 step 3), `union`
+    (step 4), and `typedef` (M11). `==` on structs is an error, as in
+    C.
 * `char` is one byte and unsigned (0–255). A value is converted to
   `char` by keeping its low byte when it is stored into a `char`,
   passed as a `char` parameter, returned from a `char` function, or
@@ -252,9 +268,10 @@ function returns exactly one.
   data references, and 256 labels (`MAX_FUNC_CODE`, `MAX_FUNC_RELOCS`,
   `MAX_LABELS` in `src/ccish.h`). Each `if`, loop, `&&`, `||` and `?:`
   uses one to four labels.
-* A program may have at most 32 struct tags (counting those in blocks
-  that have ended), 256 struct members in all, and 2048 bytes of
-  distinct tag and member names (`MAX_TAGS`, `MAX_MEMBERS`, `MAX_POOL`).
+* A program may have at most 24 struct tags (counting those in blocks
+  that have ended), 128 struct members in all, and 512 bytes of
+  distinct tag and member names, each with a NUL (`MAX_TAGS`,
+  `MAX_MEMBERS`, `MAX_POOL`).
 * Only a few peephole optimizations so far (see `src/peep.c`): removal
   of unreachable code, plain stores for assignments whose value is
   unused, folded negative constants, adding 0, `INCR`/`DECR`, `ANDI`,
