@@ -222,7 +222,7 @@ Hello5
   device), and cases may be in any order. A case value is an integer
   constant expression (`'a'`, `2 + sizeof(int)`; a `const` variable
   isn't one, as in C). Limits: case values in one switch may span at
-  most 32767 (a 6502 VM rule for `SEL`), and at most 64 cases may be
+  most 32767 (a 6502 VM rule for `SEL`), and at most 36 cases may be
   in the switches open at once (`MAX_CASES`).
 * Expressions, with C's precedence and associativity:
   - integer and character constants, string literals, variables,
@@ -312,20 +312,25 @@ function returns exactly one.
 * Output has only been tested on the C VM (`plvm`), not yet on a 6502
   VM.
 * Compilation stops at the first error.
-* One function may have at most 4096 bytes of bytecode, 256 calls and
-  data references, and 256 labels (`MAX_FUNC_CODE`, `MAX_FUNC_RELOCS`,
-  `MAX_LABELS` in `src/ccish.h`). Each `if`, loop, `&&`, `||` and `?:`
-  uses one to four labels.
-* A file may have at most 272 functions (declared, defined or called),
-  72 variables visible at once (globals, plus the parameters and
-  locals in scope), 24 struct tags (counting those in blocks that have
-  ended), 128 struct members in all, 256 enum constants and typedef
-  names visible at once, and 5632 bytes of distinct names, each with a
-  NUL, not counting those of the current function's parameters and
-  locals after it ends (`MAX_FUNCS`, `MAX_VARS`, `MAX_TAGS`,
-  `MAX_MEMBERS`, `MAX_IDS`, `MAX_POOL`). The function, variable and
-  name limits are sized to just above what ccish's own source needs
-  (approach.md, "`Sym` split design").
+* Limits are fixed sizes in `src/ccish.h`, set just above what
+  ccish's own source needs, since every byte counts on a 64K machine
+  (approach.md, "Table sizes"). Going past one is a clear error.
+  - One function: 1280 bytes of bytecode, 128 calls and data
+    references, 104 labels, and 31 `return`s (`MAX_FUNC_CODE`,
+    `MAX_FUNC_RELOCS`, `MAX_LABELS`, `MAX_RETURNS`). Each `if`, loop,
+    `&&`, `||` and `?:` uses one to four labels.
+  - One file: 272 functions (declared, defined or called), 72
+    variables visible at once (globals, plus the parameters and locals
+    in scope), 384 parameter types in all, 56 distinct types, 10
+    struct tags (counting those in blocks that have ended), 64 struct
+    members in all, 240 enum constants and typedef names visible at
+    once, and 5632 bytes of distinct names, each with a NUL, not
+    counting those of a function's parameters and locals after it ends
+    (`MAX_FUNCS`, `MAX_VARS`, `MAX_PARAM_TYPES`, `MAX_TYPES`,
+    `MAX_TAGS`, `MAX_MEMBERS`, `MAX_IDS`, `MAX_POOL`).
+  - A string literal: 256 characters (`MAX_STR`).
+  - The module: 2432 relocations (calls and address references) in
+    the final pass (`MAX_RELOCS`).
 * Only a few peephole optimizations so far (see `src/peep.c`): removal
   of unreachable code, plain stores for assignments whose value is
   unused, folded negative constants, adding 0, `INCR`/`DECR`, `ANDI`,

@@ -1836,6 +1836,39 @@ two tables of parallel arrays (decision 15):
   functions table, the variables table, then names into the pool with
   local release.
 
+**Table sizes (2026-10-29; decided in discussion: "slightly exceed
+ccish's need").** Every fixed table is sized just above the peak
+measured on ccish's own files (with an instrumented build, and from the
+self-compile streams of 18.5), about 10-20% more; the peaks are noted
+next to each limit in `ccish.h`:
+
+| Limit | Peak | Was | Now |
+|---|---|---|---|
+| `MAX_FUNC_CODE` (bytes in one function) | 1,053 (`peep.c`) | 4096 | 1280 |
+| `MAX_FUNC_RELOCS` (in one function) | 112 | 256 | 128 |
+| `MAX_RETURNS` (ENTER and LEAVEs in one function) | 23 | 128 | 32 |
+| `MAX_RELOCS` (final pass, the module) | 2,263 (`parse.c`) | 2048 | 2432 |
+| `MAX_LABELS` (in one function) | 90 (`lex.c`) | 256 | 104 |
+| `MAX_TYPES` | 46 | 128 | 56 |
+| `MAX_PARAM_TYPES` | 343 | 512 | 384 |
+| `MAX_TAGS` / `MAX_MEMBERS` | 7 / 51 | 24 / 128 | 10 / 64 |
+| `MAX_IDS` | 216 | 256 | 240 |
+| `MAX_CASES` | 29 | 64 | 36 |
+| `MAX_STR` (one string literal) | 85 | 512 | 256 |
+
+- Saved at 16-bit sizes: about 6.0K in the compiler (2.8K of it the
+  function code buffer) and 0.5K net in the final pass.
+- `MAX_STR` stays at 256, not about 100, so that a full PLASMA string
+  (255 characters, the `pstr()` limit) can be written.
+- **`MAX_RELOCS` had to grow:** `parse.c` needs 2,263 relocations, more
+  than the old 2,048, which the self-compile hadn't shown because it
+  stops before the final pass. Holding them costs 6 bytes each (14.6K);
+  streaming them instead (18.6 B4) would remove the table.
+- `MAX_NEST` (32) and `MAX_PARAMS` (16) are unchanged: their arrays are
+  small, and nesting wasn't measured.
+- The test `local_init_frame.c` used a 300-character literal; it now
+  uses 256.
+
 **The `Sym` split is done** (2026-10-29), in two steps (functions,
 then variables with their names). Settled while building it:
 - The limits come from measuring ccish's own files with an instrumented

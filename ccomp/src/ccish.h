@@ -25,30 +25,36 @@
 
 #include <stdio.h>
 
-/* ---------- Limits ---------- */
+/* ---------- Limits ----------
+ * Sized just above what ccish's own source needs (approach.md, "Table
+ * sizes"), since every byte counts on a 64K machine; the peak each
+ * comes from is in parentheses. */
 
 #define MAX_NAME     31     /* significant characters in an identifier */
-#define MAX_STR      512    /* bytes in one string literal */
-#define MAX_FUNCS    272    /* functions (ccish's own parse.c: 245) */
+#define MAX_STR      256    /* bytes in one string literal: a PLASMA
+                             * string's 255 and one more (85) */
+#define MAX_FUNCS    272    /* functions (245) */
 #define MAX_VARS     72     /* globals, plus the parameters and locals
-                             * visible at once (ccish's parse.c: 59) */
+                             * visible at once (59) */
 #define MAX_PARAMS   16
-#define MAX_FUNC_CODE 4096  /* bytecode in one function */
-#define MAX_FUNC_RELOCS 256 /* relocations in one function */
-#define MAX_RETURNS  128    /* frame-size bytes (ENTER, LEAVEs) in one function */
-#define MAX_RELOCS   2048   /* final pass: relocations in the module */
+#define MAX_FUNC_CODE 1280  /* bytecode in one function (1,053) */
+#define MAX_FUNC_RELOCS 128 /* relocations in one function (112) */
+#define MAX_RETURNS  32     /* frame-size bytes (ENTER, LEAVEs) in one
+                             * function (23) */
+#define MAX_RELOCS   2432   /* final pass: relocations in the module
+                             * (2,263) */
 #define MAX_NEST     32     /* nesting of parentheses and blocks */
-#define MAX_LABELS   256    /* branch targets in one function */
-#define MAX_TYPES    128    /* distinct types */
-#define MAX_PARAM_TYPES 512 /* parameter types of all declared functions */
-#define MAX_TAGS     24     /* struct tags, including hidden ones */
-#define MAX_MEMBERS  128    /* struct members, in all structs */
-#define MAX_POOL     5632   /* bytes of names in the name pool (ccish's
-                             * parse.c: about 5,100) */
-#define MAX_IDS      256    /* enum constants and typedef names */
+#define MAX_LABELS   104    /* branch targets in one function (90) */
+#define MAX_TYPES    56     /* distinct types (46) */
+#define MAX_PARAM_TYPES 384 /* parameter types of all declared functions
+                             * (343) */
+#define MAX_TAGS     10     /* struct tags, including hidden ones (7) */
+#define MAX_MEMBERS  64     /* struct members, in all structs (51) */
+#define MAX_POOL     5632   /* bytes of names in the name pool (5,100) */
+#define MAX_IDS      240    /* enum constants and typedef names (216) */
 #define MAX_BYVAL    8      /* bytes in a struct passed or returned by value */
-#define MAX_CASES    64     /* case labels in all the switches open at once;
-                             * at most 255, a SEL table's limit */
+#define MAX_CASES    36     /* case labels in all the switches open at once
+                             * (29); at most 255, a SEL table's limit */
 #define BLOCK        512    /* file I/O buffer size: one ProDOS block */
 
 /* ---------- Diagnostics (main.c) ---------- */
