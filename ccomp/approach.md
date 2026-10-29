@@ -669,6 +669,42 @@ Existing programs need at least parts of `stdio.h` (`printf`, `fopen`,
 - `exit()` from a nested call needs a way to unwind, perhaps the
   existing `longjmp.pla` library.
 
+**`malloc` (sketch, discussed 2026-10-29; for M9).** ccish has no
+`malloc` yet. What exists:
+- **CMDSYS's heap** (`heapalloc`, `heapallocalign`, `heapmark`,
+  `heaprelease`, `heapavail`), which ccish programs can already call.
+  It is mark/release: `heapalloc` takes the next bytes off the top, and
+  `heaprelease(p)` frees everything from `p` up. A block in the middle
+  can't be freed, so it suits memory kept until the program ends, or
+  freed in LIFO order. That isn't C's `free()`.
+- **PLASMA's `memmgr` library** (`src/libsrc/memmgr.pla`): handles
+  (`hmemNew`, `hmemLock`, `hmemUnlock`, `hmemDel`), compaction and
+  swapping to disk, with blocks of at most 8K. Its model differs from
+  C's: a pointer is only valid while its handle is locked, but
+  `malloc`'s memory must never move. (ccish also can't import it yet;
+  it imports only CMDSYS.)
+
+The simplest correct `malloc` is a free-list allocator written in
+C-ish, about 100–150 lines:
+- On first use, take one region from `heapalloc`.
+- Each block has a size word in front. Free blocks form a list, kept in
+  address order; `malloc` takes the first that fits (first fit) and
+  splits off the rest if it is big enough to be useful.
+- `free` puts a block back in the list and merges it with free
+  neighbors, so that the region doesn't fragment into small pieces.
+- `realloc` grows in place when the next block is free, or else
+  allocates, copies and frees. `calloc` clears.
+- Out of memory gives `NULL`, as C requires.
+
+This gives C's semantics (stable pointers, freeing any block), and it
+can't be confused with `heaprelease`, which a program shouldn't then
+use on memory below the region. The hard question is the same as for
+large locals (open question 4): on a 64K machine, how much of the heap
+to claim, against what loaded modules and the frame stack need. Options:
+a size the program sets (a compiler or link option), or growing the
+region with further `heapalloc` calls while nothing else has been
+allocated above it.
+
 ### 13. Peephole optimizer
 
 - **A. A window over the last few emitted instructions, in place.**
@@ -1421,6 +1457,26 @@ issue. In summary:
     through a small separate parser; string literals in their own
     pool; local array initializers as element stores; `static` on
     globals, functions and locals; `const` enforced, with warnings.
+15. **Space first, in the compiler's own code and data** (decided in
+    discussion, 2026-10-29). The compiler must eventually fit a 64K
+    Apple II, compiled by itself, so every design is checked for the
+    space its data structures and its code take there:
+    - **Use the smallest type that holds the values:** a `char` (0 to
+      255) wherever it will do, an `int` only where needed, and pack
+      flags and small fields into bits when that saves real space.
+    - **Use parallel arrays, not arrays of structs:** one array per
+      field, all of the same length (one constant), with comments
+      tying them together. In code ccish compiles, reading
+      `type_sub[t]` is `LA type_sub LLW t IDXW LW` (5 bytes), but
+      `types[t].sub` with 6-byte entries needs `t * 6 + 2` first
+      (about 9 bytes, with a multiply or `DUP IDXW DUP ADD`). A `char`
+      array is `... ADD LB`. It also needs no `struct`, which ccish
+      lacks until M6.
+    - **Applied so far:** the type table (M5 step 6). **Next:** `Sym`,
+      an 11-`int` struct shared by functions and variables, most of
+      whose fields variables don't use. Splitting it into function and
+      variable tables of parallel arrays is planned as its own step
+      after M5 step 6. M12 (issue 18.4) then measures what is left.
 
 
 ## Milestones
@@ -1513,7 +1569,7 @@ Decided:
   gets warnings: printed like errors, but compilation continues. String
   literals stay `char *`, as in C. A read of a `const` scalar with a
   constant initializer folds to the constant (`const int N = 10;`
-  makes `x < N` use `CB 10`), but `&N` still works, and, as in C, `N`
+  makes `x < N` use `CN 10`), but `&N` still works, and, as in C, `N`
   can't size an array, so ccish programs stay valid C.
   - **Pointers fold too** (decided in discussion, 2026-10-29). A
     pointer is a scalar, so a `const` pointer whose initializer is an
@@ -1537,17 +1593,112 @@ Decided:
   - It changes no code. ccish never drops or merges loads through
     pointers (M4 step 2 notes), so every access already happens as
     written.
-  - **Limitation:** it isn't part of the type yet, so converting
-    `volatile char *` to `char *` gives no warning (gcc warns).
-  - The M10 optimizations of issue 17 that change loads (byte
-    narrowing, duplicate loads) must honour `volatile`, so it has to
-    become part of the type before they are built.
+  - **It is part of the type after all** (changed in discussion,
+    2026-10-29, with the representation below): it costs nothing, so
+    converting `volatile char *` to `char *` warns as gcc does, and the
+    M10 optimizations of issue 17 that change loads (byte narrowing,
+    duplicate loads) can see it. A `volatile` object is never folded,
+    even if it is also `const` (`const volatile int x = 1;`).
+- **How qualifiers are represented** (decided in discussion,
+  2026-10-29): as bits in the type handle, not as type-table entries
+  (the trick Clang's `QualType` uses). A type handle is an `int`: the
+  low 8 bits are the index into the type table, and `0x100` is `const`,
+  `0x200` is `volatile`. So `const char` is `TY_CHAR | 0x100`, and
+  `char *const` is the `char *` index with `0x100`, with no table entry
+  of their own. Only a pointer to a qualified type needs an entry
+  (`const char *` is a pointer whose pointee handle has `0x100`), and
+  C requires that one, since `const char *` and `char *` are different
+  types. Removing qualifiers is a mask, and testing one is a bit test.
+  The alternative, lcc's, makes every qualified type an entry of its
+  own and adds a qualifier field to every entry.
+  - Every read of the table goes through helpers in `type.c`
+    (`type_kind()`, `type_sub()`, `type_count()`) that mask the bits,
+    so no code indexes the table with a qualified handle.
+  - An array is never qualified itself; its elements are
+    (`const int t[3]` is an array of `const int`), as in C.
+  - Operands carry unqualified types, with an `is_const` flag for a
+    place, so that tests such as `type == TY_CHAR` still work.
+- **The type table becomes parallel arrays** (decided in discussion,
+  2026-10-29; see decision 15): `char type_kind[]`, `int type_sub[]`
+  (a handle, with its qualifier bits) and `int type_count[]`, all
+  `MAX_TYPES` long: 5 bytes per entry instead of 6.
   - When step 6 is done, `tests/run/speaker.c` changes to the form
     above, with `SPEAKER` and a `KEYBOARD` constant for `$C000`, and
     its listing checks stay the same (`LAB $C030`, no `CW $C0`).
 - **Not in M5:** nested brace lists, exporting globals, and `extern`
   (wanted later). (`volatile` was here until 2026-10-29; it is now
   accepted in step 6, as above.)
+
+**M5 step 6 (`const`, `volatile` and warnings) is done, so M5 is
+done.** Chosen while building it (open for review):
+- **Representation,** as decided above: qualifiers are bits in the type
+  handle (`Q_CONST` `0x100`, `Q_VOLATILE` `0x200`), and the type table
+  is three private parallel arrays in `type.c` (`char tkind[]`,
+  `int tsub[]`, `int tcount[]`: 5 bytes per entry), read only through
+  `type_kind()`, `type_sub()` and `type_count()`. Existing code
+  generation is unchanged: every listing of the earlier tests is
+  identical.
+- **Operands carry unqualified types;** a place keeps its object's
+  qualifiers in `Operand.quals` (from the variable, a pointer's target,
+  or an array's element), so `&N` is a `const int *` and assignments
+  can be refused. A parameter's or return type's own qualifiers are
+  dropped, as C says (`f(const int n)` and `f(int n)` are the same
+  function type), and so are a cast's (`(const int)x` is an `int`).
+- **C's pointer rules:** a pointer may gain qualifiers on its target;
+  losing one is a warning (C requires a diagnostic; gcc warns); deeper
+  levels must match exactly (`char **` to `const char **` is an error,
+  as in GCC 14). Comparisons and `p - q` ignore the targets'
+  qualifiers, and `?:` gives a pointer to a type with both targets'
+  qualifiers (`char *` and `const char *` give `const char *`).
+- **Folding happens in `parse_primary()`,** when a variable with a
+  known value is read, so the folder sees a constant (`N * 2` is 20).
+  It is skipped when the variable is a place: followed by an
+  assignment operator, `++` or `--`, or the operand of prefix `&`,
+  `++` or `--` (`want_place`). A variable has a known value
+  (`Sym.has_val`) when it is `const`, not `volatile`, a scalar, and
+  initialized with an integer constant (a `char` keeps the low byte).
+  `volatile char *const SPEAKER = (volatile char *)0xC030;` folds,
+  since the pointer itself isn't volatile, so the speaker test now uses
+  it and its code is unchanged (`LAB $C030`).
+- **A folded value isn't a C constant expression** (`Operand.nonice`):
+  it can't size an array or initialize a global or static ("a const
+  variable's value isn't a constant expression in C"), and a
+  `const int` holding 0 isn't a null pointer constant. The mark
+  carries through folding, `&&`, `||` and `?:`. gcc accepts some of
+  these as extensions; ccish keeps programs valid C.
+- **Not folded:** a `const` pointer initialized with an address
+  (`char *const msg = "hi";`, `= buf`), since a constant operand can't
+  carry a relocation; it is loaded from memory. A `const` object still
+  takes its space (a global's data bytes, a local's frame slot and
+  store), since `&N` may be used later and a single pass can't know;
+  recursion also needs a distinct local in each call.
+- **CMDSYS signatures** now use `const` where the function only reads
+  through a pointer: `puts(const char *)`, and the sources of `strcpy`,
+  `strcat` and `memcpy` (letters `S` and `P` in `cmdsys_funcs[]`).
+  So a program's own prototype must use `const` there too
+  (`void puts(char *);` now gives "declaration doesn't match the
+  CMDSYS function"); no test had one.
+- **Warnings:** `warning()` in `main.c`, printed like errors
+  (`file:line: warning: ...`), and compilation continues. The test
+  runner gained `// stderr-has: TEXT` for run tests, and a run test
+  without one must now compile with no messages at all, so a spurious
+  warning anywhere fails a test.
+- **Space added, to be recovered by the planned `Sym` split** (decision
+  15): `Sym` gained two `int`s (`has_val`, `val`), and `Operand` two
+  (`quals`, `nonice`), which could share one flags `char`. Each
+  `Operand` lives on the parser's stack during recursion, so its size
+  matters there too.
+- **Not done:** a warning for a constant that doesn't fit in a `char`
+  (`char c = 300;`, gcc's `-Woverflow`), possible now that warnings
+  exist.
+- **Tests:** `tests/run/const.c` (folding of global, local and static
+  `const` values, `int const`, `&N`, `sizeof N`, a `const volatile`
+  that is read each time, `const char *` parameters, comparisons and
+  `?:`, and all four warnings with their positions), the updated
+  `speaker.c`, and ten error tests (assignment and `++` to `const`
+  variables, parameters, array elements, pointer targets and `const`
+  pointers; a `const` variable as an array size, a global initializer
+  and a null pointer; and `char **` to `const char **`).
 
 **M5 step 5 (`static`) is done.** Chosen while building it (open for
 review):

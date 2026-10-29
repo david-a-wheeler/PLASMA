@@ -84,6 +84,14 @@ void error(const char *msg, const char *detail)
     exit(1);
 }
 
+/* Report a likely mistake in the program being compiled that C still
+ * allows, as gcc would warn about it (such as discarding const), and
+ * go on compiling. */
+void warning(const char *msg, const char *detail)
+{
+    report("warning", msg, detail);
+}
+
 /* Report a problem that isn't the program's fault (a compiler limit or
  * a file error), remove partial output, and exit. */
 void fatal(const char *msg, const char *detail)

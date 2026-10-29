@@ -52,6 +52,7 @@ extern int opt_ir;          /* -i: print the IR stream */
 
 void error(const char *msg, const char *detail);
 void fatal(const char *msg, const char *detail);
+void warning(const char *msg, const char *detail);
 
 /* ---------- Block-buffered file I/O (bio.c) ---------- */
 
@@ -80,7 +81,7 @@ enum {
     T_ID = 256, T_NUM, T_STR,
     /* keywords supported now, in the order of keywords[] in lex.c */
     T_INT, T_VOID, T_RETURN, T_IF, T_ELSE, T_WHILE, T_DO, T_FOR, T_BREAK,
-    T_CONTINUE, T_CHAR, T_SIZEOF, T_STATIC,
+    T_CONTINUE, T_CHAR, T_SIZEOF, T_STATIC, T_CONST, T_VOLATILE,
     /* any other C keyword: reported as "not supported yet" */
     T_KEYWORD,
     /* multi-character operators (not all are supported by the parser yet) */
@@ -101,31 +102,38 @@ int  next_is_rbracket(void);        /* is the token after this one ']'? */
 const char *tok_desc(void);         /* the current token, for messages */
 
 /* ---------- Types (type.c) ----------
- * A type is an index into types[]. Equal types share one entry, so two
- * types are the same exactly when their indexes are (approach.md, "M4
- * design"). The basic types have fixed indexes. */
+ * A type is a handle: an int whose low 8 bits index the type table,
+ * and whose bits Q_CONST and Q_VOLATILE are its qualifiers
+ * (approach.md, "M5 design"). Equal unqualified types share one table
+ * entry, so two types are the same exactly when their handles are.
+ * The basic types have fixed indexes. A qualified type needs no entry
+ * of its own: const char is TY_CHAR | Q_CONST. Only a pointer to a
+ * qualified type does, since const char * and char * differ. An array
+ * is never qualified itself; its elements are (const int t[3]).
+ * The table is private to type.c; use the functions below. */
 
-enum { TK_VOID, TK_CHAR, TK_INT, TK_PTR, TK_ARRAY };  /* Type.kind */
+enum { TK_VOID, TK_CHAR, TK_INT, TK_PTR, TK_ARRAY };  /* type_kind() */
 enum { TY_VOID, TY_CHAR, TY_INT };          /* indexes of the basic types */
+#define Q_CONST    0x100
+#define Q_VOLATILE 0x200
+#define Q_ALL      0x300
+#define TY_INDEX   0xFF     /* MAX_TYPES must be at most 256 */
 
 #define MAX_OBJECT 32767    /* bytes in one array */
 
-typedef struct {
-    int kind;           /* TK_* */
-    int sub;            /* TK_PTR: the type pointed to; TK_ARRAY: the
-                         * element type */
-    int count;          /* TK_ARRAY: the element count, or 0 if unknown
-                         * (only while parsing an array parameter) */
-} Type;
-
-extern Type types[MAX_TYPES];
-extern int ntypes;
-
+int type_kind(int t);       /* TK_* */
+int type_sub(int t);        /* pointer: the type pointed to; array: the
+                             * element type (handles, with qualifiers) */
+int type_count(int t);      /* array: the element count, or 0 if unknown
+                             * (only while parsing an array parameter) */
 int type_size(int t);
 int is_pointer(int t);
 int is_array(int t);
 int pointer_to(int t);
 int array_of(int t, int count);
+int qualify(int t, int q);
+int unqual(int t);
+int is_const(int t);
 
 /* ---------- Symbols (parse.c) ---------- */
 
@@ -138,6 +146,10 @@ struct Sym {
     int type;           /* a variable's type; S_FUNC: the return type */
     int offset;         /* S_LOCAL: frame offset; S_GLOBAL: data offset */
     int depth;          /* S_LOCAL: block nesting depth (parameters: 1) */
+    /* A const scalar with a constant integer initializer, not volatile:
+     * reading it gives val, at compile time. */
+    int has_val;
+    int val;
     /* S_FUNC: */
     int ptypes;         /* index of the parameter types in param_types[]
                          * (parse.c), or -1 until a declaration gives them */

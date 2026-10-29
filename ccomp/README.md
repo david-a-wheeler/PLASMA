@@ -115,6 +115,24 @@ Hello5
   constant 0, and pointer types must match unless one is `void *`.
   This applies to assignments, initializers, arguments, return values,
   comparisons and `?:`.
+* `const` and `volatile`, before or after the type (`const char`,
+  `char const`) and after a `*` (`char *const p` is a const pointer).
+  - A `const` object can't be assigned to or incremented. A pointer may
+    gain `const` or `volatile` on what it points to (`char *` to
+    `const char *`), but losing one is a warning, as in gcc; deeper
+    levels must match (`char **` to `const char **` is an error).
+  - Reading a `const` variable (an `int`, `char` or pointer, not
+    `volatile`) whose initializer is a constant gives that value at
+    compile time: with `const int N = 10;`, `x < N` is
+    `LLW x CN 10 ISLT`, and `N * 2` is 20. With
+    `volatile char *const SPEAKER = (volatile char *)0xC030;`,
+    `*SPEAKER` is `LAB $C030`. `&N` still works. As in C, `N` isn't a
+    constant expression, so it can't size an array or initialize a
+    global, and a `const int` holding 0 isn't a null pointer.
+  - `volatile` changes no code: ccish never drops or merges memory
+    reads. It is checked as part of the type, as above.
+* Warnings are printed like errors (`file:line: warning: ...`), and
+  compilation continues.
 * Casts between any of these types. `(void)` discards a value.
 * Statements: `return`, `if`/`else`, `while`, `do`, `for`, `break`,
   `continue`, expression statements, empty statements and nested
@@ -152,8 +170,7 @@ Hello5
 * Digraphs `<% %> <: :>`, `/* */` and `//` comments, and LF, CR or CRLF
   line endings.
 
-Anything else, such as
-`const`, `extern`,
+Anything else, such as `extern`,
 function pointers, declarators in parentheses (`int (*p)[4]`), `switch`,
 `goto`, the comma operator, or the types `signed`, `unsigned`, `short`
 and `long`, gives a "not supported yet" error.
@@ -177,9 +194,11 @@ For example, `puts` takes a PLASMA string and adds no newline, and
 `memset` fills with a 16-bit pattern, so `memset(p, 'a', 4)` gives
 `a`, NUL, `a`, NUL (with 0, as ccish uses it, that makes no
 difference). The
-table gives each one C types, such as `void puts(char *)` and
+table gives each one C types, such as `void puts(const char *)` and
 `void *heapalloc(int)`, and the compiler checks calls against them, so
-a mistake is caught at compile time and not at load time.
+a mistake is caught at compile time and not at load time. A pointer
+that a function only reads is `const` (`puts`, the source of `strcpy`,
+`strcat` and `memcpy`), so passing a `const char *` needs no cast.
 
 As in PLASMA, a `void` function returns no value, and any other
 function returns exactly one.
@@ -191,13 +210,13 @@ function returns exactly one.
 | `src/main.c` | Command line, error messages, running the two passes |
 | `src/bio.c` | File I/O through 512-byte block buffers |
 | `src/lex.c` | Lexer |
-| `src/type.c` | The table of types |
+| `src/type.c` | The table of types (parallel arrays), with qualifiers as bits in a type handle |
 | `src/parse.c` | Stage 1: parser, producing IR ops |
 | `src/lower.c` | Stage 2: IR ops to PLASMA machine ops (see [IR.md](IR.md)) |
 | `src/peep.c` | Stage 3: peephole optimizer |
 | `src/emit.c` | Stage 4: encoding one function at a time, writing the stream files |
 | `src/link.c` | Final pass: stream files to REL module, and the listing (see [OBJECT.md](OBJECT.md)) |
-| `tests/run/` | Programs, each with its expected output (`.expected`); comment lines can also check the generated code |
+| `tests/run/` | Programs, each with its expected output (`.expected`); comment lines can also check the generated code and the warnings; a program with no warning checks must compile silently |
 | `tests/errors/` | Programs that must fail; the first line gives the expected message |
 
 ## Known limits

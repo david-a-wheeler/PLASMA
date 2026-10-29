@@ -8,6 +8,10 @@
 #                          // listing-has: TEXT      some line contains TEXT
 #                          // listing-lacks: TEXT    no line contains TEXT
 #                          // listing-count: N TEXT  exactly N lines do
+#                        and the compiler's messages (warnings):
+#                          // stderr-has: TEXT       some line contains TEXT
+#                        A test with no stderr-has lines must compile with
+#                        no messages at all.
 # tests/errors/NAME.c    must fail to compile; stderr must contain the
 #                        text after "// expect: " on the file's first line.
 # Afterward, no stream files may be left over, and -k must keep them.
@@ -54,6 +58,32 @@ check_listing() {
     return $bad
 }
 
+# Check the compiler's messages ($2) against the stderr-has directives in
+# source $1, or, if there are none, check that there were no messages.
+# Prints each problem; returns 1 if there were any.
+check_stderr() {
+    if ! grep -q "^// stderr-has: " "$1"; then
+        if [ -s "$2" ]; then
+            echo "    unexpected compiler messages:"
+            sed 's/^/      /' "$2"
+            return 1
+        fi
+        return 0
+    fi
+    bad=0
+    while IFS= read -r line; do
+        case "$line" in
+        "// stderr-has: "*)
+            text=${line#"// stderr-has: "}
+            if ! grep -qF -- "$text" "$2"; then
+                echo "    compiler messages have no line with: $text"
+                bad=1
+            fi ;;
+        esac
+    done < "$1"
+    return $bad
+}
+
 for src in tests/run/*.c; do
     name=$(basename "$src" .c)
     # plvm looks modules up by lowercase name with no extension.
@@ -74,6 +104,10 @@ for src in tests/run/*.c; do
         fail=$((fail + 1))
     elif ! problems=$(check_listing "$src" "$OUT/$name.lst"); then
         echo "FAIL $src: generated code (see $OUT/$name.lst):"
+        echo "$problems"
+        fail=$((fail + 1))
+    elif ! problems=$(check_stderr "$src" "$OUT/$name.err"); then
+        echo "FAIL $src: compiler messages (see $OUT/$name.err):"
         echo "$problems"
         fail=$((fail + 1))
     else

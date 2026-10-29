@@ -3,7 +3,7 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 4, and M5 steps 1 to 5):
+ * Language so far (milestones 1 to 5):
  *   - types int, char, void, pointers to them (int *, char **, ...), and
  *     arrays of int, char, pointers and arrays (int m[3][4]);
  *   - function definitions and prototypes returning int, char, void or
@@ -19,6 +19,13 @@
  *     global is (S_GLOBAL), with block scope, and a global's kind of
  *     initializer; on a global or a function, static changes nothing
  *     yet, since nothing is exported;
+ *   - const and volatile, as part of the type (bits in the type handle;
+ *     see type.c). Operands carry unqualified types, and a place keeps
+ *     its object's qualifiers in Operand.quals. A const object can't be
+ *     assigned to; dropping a qualifier from a pointer's target is a
+ *     warning. Reading a const scalar with a constant initializer gives
+ *     its value at compile time (see parse_primary()), but that value
+ *     isn't a C constant expression (Operand.nonice);
  *   - casts;
  *   - statements: return, if/else, while, do, for, break, continue,
  *     expression statements, empty statements and nested blocks;
@@ -153,19 +160,21 @@ static Sym *add_func(const char *name)
 /*
  * The CMDSYS functions a program may call, from src/inc/cmdsys.plh,
  * with their types as a signature: the return type, then each
- * parameter's type, as v (void), i (int), c (char), s (char *) or
- * p (void *). Their names and meanings are PLASMA's, not C's: puts()
+ * parameter's type, as v (void), i (int), c (char), s (char *),
+ * S (const char *), p (void *) or P (const void *). A pointer the
+ * function only reads is const, so that passing a const char * needs
+ * no cast. Their names and meanings are PLASMA's, not C's: puts()
  * takes a PLASMA (length-prefixed) string and adds no newline, and
  * strcpy() copies PLASMA strings. divmod() returns two values and is
  * left out.
  */
 static const struct { const char *name, *sig; } cmdsys_funcs[] = {
-    {"putc", "vc"}, {"putln", "v"}, {"puts", "vs"}, {"puti", "vi"},
+    {"putc", "vc"}, {"putln", "v"}, {"puts", "vS"}, {"puti", "vi"},
     {"putb", "vi"}, {"puth", "vi"}, {"getc", "i"}, {"gets", "sc"},
     {"call", "iiiiii"}, {"syscall", "iip"}, {"heapmark", "p"},
     {"heapallocalign", "piip"}, {"heapalloc", "pi"}, {"heaprelease", "ip"},
-    {"heapavail", "i"}, {"memset", "vpii"}, {"memcpy", "vppi"},
-    {"strcpy", "sss"}, {"strcat", "sss"}, {"toupper", "ii"}, {"sext", "ii"},
+    {"heapavail", "i"}, {"memset", "vpii"}, {"memcpy", "vpPi"},
+    {"strcpy", "ssS"}, {"strcat", "ssS"}, {"toupper", "ii"}, {"sext", "ii"},
     {"isugt", "iii"}, {"isuge", "iii"}, {"isult", "iii"}, {"isule", "iii"},
     {NULL, NULL}
 };
@@ -285,13 +294,15 @@ static int nparam_types;
 
 /* Record that fn's n parameters have the types of locals[0..n-1] (the
  * parameters just parsed), or check them against the types an earlier
- * declaration gave. The caller has already checked the count. */
+ * declaration gave. The caller has already checked the count. A
+ * parameter's own qualifiers don't count, as in C: f(const int n) and
+ * f(int n) are the same function type. */
 static void set_param_types(Sym *fn, int n)
 {
     int i;
     if (fn->ptypes >= 0) {
         for (i = 0; i < n; i++)
-            if (param_types[fn->ptypes + i] != locals[i].type)
+            if (param_types[fn->ptypes + i] != unqual(locals[i].type))
                 error("conflicting parameter types for", quote(fn->name));
         return;
     }
@@ -299,19 +310,32 @@ static void set_param_types(Sym *fn, int n)
         fatal("too many function parameters in all", NULL);
     fn->ptypes = nparam_types;
     for (i = 0; i < n; i++)
-        param_types[nparam_types++] = locals[i].type;
+        param_types[nparam_types++] = unqual(locals[i].type);
 }
 
 /* Is t a token that starts a type name? */
 static int is_type_start(int t)
 {
-    return t == T_INT || t == T_CHAR || t == T_VOID;
+    return t == T_INT || t == T_CHAR || t == T_VOID || t == T_CONST
+           || t == T_VOLATILE;
 }
 
-/* Parse a basic type name (int, char or void) and return its type. */
+/* Parse any qualifiers (const, volatile), and return them as Q_ bits. */
+static int parse_quals(void)
+{
+    int q = 0;
+    while (tok == T_CONST || tok == T_VOLATILE) {
+        q |= tok == T_CONST ? Q_CONST : Q_VOLATILE;
+        next();
+    }
+    return q;
+}
+
+/* Parse a basic type name (int, char or void), with any qualifiers
+ * before or after it (const char, char const), and return its type. */
 static int parse_base_type(void)
 {
-    int t = TY_INT;
+    int q = parse_quals(), t = TY_INT;
     if (tok == T_CHAR)
         t = TY_CHAR;
     else if (tok == T_VOID)
@@ -319,28 +343,34 @@ static int parse_base_type(void)
     else if (tok != T_INT)
         error("expected a type, not", tok_desc());
     next();
-    return t;
+    return t | q | parse_quals();
 }
 
 /* Parse any '*'s after a base type t: each makes a pointer to the type
- * before it, so "char **" is a pointer to a pointer to char. */
+ * before it, so "char **" is a pointer to a pointer to char. Qualifiers
+ * after a '*' qualify that pointer: char *const p is a const pointer to
+ * char. */
 static int parse_pointers(int t)
 {
     while (tok == '*') {
         next();
         t = pointer_to(t);
+        t |= parse_quals();
     }
     return t;
 }
 
-/* The type a letter stands for in a cmdsys_funcs[] signature. */
+/* The type a letter stands for in a cmdsys_funcs[] signature: S and P
+ * are the const forms of s and p, for what a function only reads. */
 static int sig_type(char c)
 {
     switch (c) {
     case 'v': return TY_VOID;
     case 'c': return TY_CHAR;
     case 's': return pointer_to(TY_CHAR);
+    case 'S': return pointer_to(TY_CHAR | Q_CONST);
     case 'p': return pointer_to(TY_VOID);
+    case 'P': return pointer_to(TY_VOID | Q_CONST);
     }
     return TY_INT;
 }
@@ -376,6 +406,16 @@ static int matches_cmdsys(Sym *fn, int c)
 }
 
 /* ---------- Constants ---------- */
+
+/* The error for a const variable's value where C requires a constant
+ * expression (an array size, a global's initializer). */
+static const char not_ice[] =
+    "a const variable's value isn't a constant expression in C";
+
+/* Set by parse_scalar_init(): whether the initializer it parsed was an
+ * integer constant (not an address), and its value. A const variable
+ * initialized so has a known value (set_known()). */
+static int init_known, init_val;
 
 /* Left operands held back for folding; see the comment at the top. */
 static int held[MAX_NEST + 1];
@@ -585,8 +625,16 @@ enum {
 
 typedef struct {
     int kind;
-    int type;       /* its C type. A char value on the stack is always
-                     * 0 to 255, so it needs no conversion to char. */
+    int type;       /* its C type, unqualified. A char value on the stack
+                     * is always 0 to 255, so it needs no conversion to
+                     * char. */
+    int quals;      /* a place: its object's qualifiers (Q_CONST,
+                     * Q_VOLATILE), which type leaves out */
+    int nonice;     /* K_CONST: not an integer constant expression in C,
+                     * because a const variable's value went into it
+                     * (const int N = 10; N + 1). It can't size an array
+                     * or initialize a global, and 0 isn't a null
+                     * pointer constant. */
     int off;        /* K_VAR: its offset; K_ELEM: the base's offset */
     int global;     /* K_VAR, K_ELEM: off is a data offset (a global),
                      * not a frame offset */
@@ -687,7 +735,7 @@ static int is_place(Operand *o)
  * first element. */
 static int value_type(int t)
 {
-    return is_array(t) ? pointer_to(types[t].sub) : t;
+    return is_array(t) ? pointer_to(type_sub(t)) : t;
 }
 
 /* Make o the K_ELEM at the address in the variable at off (base_arr 0),
@@ -873,6 +921,8 @@ static void need_lvalue(Operand *o, const char *what)
     if (o->kind != K_VAR && o->kind != K_DEREF
         && !(o->kind == K_ELEM && !o->assigned))
         error("lvalue required as", what);
+    if (o->quals & Q_CONST)
+        error("a 'const' object can't be the", what);
 }
 
 /* Store the value on the stack into lvalue o, which is K_VAR or
@@ -906,36 +956,54 @@ static void discard(Operand *o)
         put(IR_DROP, 0, NULL);
 }
 
-/* Is o a null pointer constant: an integer constant 0? */
+/* Is o a null pointer constant: an integer constant expression 0? (A
+ * const int variable holding 0 isn't one, in C.) */
 static int is_null(Operand *o)
 {
-    return o->kind == K_CONST && o->val == 0 && !is_pointer(o->type);
+    return o->kind == K_CONST && o->val == 0 && !is_pointer(o->type)
+           && !o->nonice;
 }
 
 /* The size of what pointer type t points to. Arithmetic on a void *
  * is an error, since void has no size. */
 static int elem_size(int t)
 {
-    int n = type_size(types[t].sub);
+    int n = type_size(type_sub(t));
     if (n == 0)
         error("pointer arithmetic on a 'void *'", NULL);
     return n;
 }
 
+/* Do pointer types a and b point to the same type, apart from that
+ * type's own qualifiers (const char * and char *)? */
+static int same_target(int a, int b)
+{
+    return unqual(type_sub(a)) == unqual(type_sub(b));
+}
+
+/* Is pointer type t a pointer to void (with any qualifiers)? */
+static int is_void_ptr(int t)
+{
+    return unqual(type_sub(t)) == TY_VOID;
+}
+
 /* Can pointer types a and b be mixed (in ==, != or ?:)? They can if
- * they are the same, or if either is void *. */
+ * they point to the same type, whatever its qualifiers, or if either
+ * is a void *. */
 static int compatible(int a, int b)
 {
-    return a == b || types[a].sub == TY_VOID || types[b].sub == TY_VOID;
+    return same_target(a, b) || is_void_ptr(a) || is_void_ptr(b);
 }
 
 /* Check that o can be assigned (or passed, or returned) to type to, as
  * C requires: integers and pointers don't mix without a cast, except
- * the constant 0, and pointer types must be compatible. where says
- * where, for the message. */
+ * the constant 0, and pointer types must be compatible. A pointer may
+ * gain qualifiers on what it points to (char * to const char *), but
+ * losing one is a warning, as in gcc: C requires a diagnostic, and the
+ * program may still be right. where says where, for the message. */
 static void check_assign(int to, Operand *o, const char *where)
 {
-    int from = value_type(o->type);
+    int from = value_type(o->type), lost;
     if (o->kind == K_VOID)
         error("void value used in an expression", NULL);
     if (is_pointer(to)) {
@@ -944,6 +1012,14 @@ static void check_assign(int to, Operand *o, const char *where)
                 error("pointer from integer without a cast in", where);
         } else if (!compatible(from, to)) {
             error("incompatible pointer types in", where);
+        } else {
+            lost = type_sub(from) & ~type_sub(to) & Q_ALL;
+            if (lost & Q_CONST)
+                warning("'const' qualifier discarded from pointer target"
+                        " type in", where);
+            if (lost & Q_VOLATILE)
+                warning("'volatile' qualifier discarded from pointer target"
+                        " type in", where);
         }
     } else if (is_pointer(from)) {
         error("integer from pointer without a cast in", where);
@@ -985,11 +1061,13 @@ static void to_char(Operand *o)
     o->type = TY_CHAR;
 }
 
-/* Apply the cast (type) to o. A cast's result is never an lvalue. To
+/* Apply the cast (type) to o. A cast's result is never an lvalue, so
+ * the type's own qualifiers don't matter ((const int)x is an int). To
  * void, the value is discarded. Between integers and pointers, the
  * value is unchanged (both are 16 bits). */
 static void cast(Operand *o, int type)
 {
+    type = unqual(type);
     if (type == TY_VOID) {
         discard(o);
         o->kind = K_VOID;
@@ -1127,17 +1205,31 @@ static void parse_pstr(void)
     put(IR_STRADDR, off - 1, NULL);
 }
 
+/* Set while parsing the operand of prefix &, ++ or --, which must stay a
+ * place: the next primary expression that isn't in parentheses clears
+ * it. Then a const variable isn't folded to its value. */
+static int want_place;
+
 /* Parse a primary expression: a constant, string, variable, call, or
  * expression in parentheses. Constants and variables stay pending. A
- * cast is parsed here too, since it also starts with '('. */
+ * cast is parsed here too, since it also starts with '('.
+ *
+ * Reading a const variable with a constant initializer gives its value
+ * at compile time (Sym.has_val), a K_CONST, so const int N = 10; makes
+ * x < N use CB 10. Not when it is a place: assigned to (an error, made
+ * by need_lvalue()), incremented, or the operand of &, so &N works. */
 static void parse_primary(Operand *o)
 {
     char name[MAX_NAME + 1];
     Sym *s;
-    int c;
+    int c, place = want_place;
 
+    if (tok != '(')
+        want_place = 0;
     o->kind = K_VALUE;
     o->type = TY_INT;
+    o->quals = 0;
+    o->nonice = 0;
     o->is_bool = 0;
     o->assigned = 0;
     switch (tok) {
@@ -1204,9 +1296,18 @@ static void parse_primary(Operand *o)
             return;
         }
         s = find_var(name);
+        if (s && s->has_val && !place && !assign_op(&c)
+            && tok != T_INC && tok != T_DEC) {
+            o->kind = K_CONST;      /* a const variable's known value */
+            o->type = unqual(s->type);
+            o->val = s->val;
+            o->nonice = 1;
+            return;
+        }
         if (s) {
             o->kind = K_VAR;        /* load it later, if needed */
-            o->type = s->type;
+            o->type = unqual(s->type);
+            o->quals = s->type & Q_ALL;
             o->off = s->offset;
             o->global = s->kind == S_GLOBAL;
             return;
@@ -1260,6 +1361,16 @@ static void post_incdec(Operand *o, int ir_op)
     o->assigned = 0;
 }
 
+/* Make the place o an object of type t (a pointer's target, or an
+ * array's element), which may be qualified: o's type is t without its
+ * qualifiers, and o->quals keeps them (*p is const if p is a const
+ * char *). */
+static void set_object(Operand *o, int t)
+{
+    o->type = unqual(t);
+    o->quals = t & Q_ALL;
+}
+
 /* Apply unary * to o: the result is the object o points to. */
 static void deref(Operand *o)
 {
@@ -1268,12 +1379,12 @@ static void deref(Operand *o)
         error("void value used in an expression", NULL);
     if (is_array(t) && is_place(o)) {
         /* *a is a[0]: the same address, with the element's type. */
-        o->type = types[t].sub;
+        set_object(o, type_sub(t));
         return;
     }
     if (!is_pointer(t))
         error("unary '*' needs a pointer operand", NULL);
-    if (types[t].sub == TY_VOID)
+    if (is_void_ptr(t))
         error("dereferencing a 'void *'", NULL);
     if (o->kind == K_VAR) {
         make_elem(o, o->off, o->global, 0);     /* *p: the address is in p */
@@ -1283,7 +1394,7 @@ static void deref(Operand *o)
         o->is_bool = 0;
         o->assigned = 0;
     }
-    o->type = types[t].sub;
+    set_object(o, type_sub(t));
 }
 
 /* Can o take an index (a variable one if var is set, else a constant)
@@ -1329,7 +1440,7 @@ static void parse_index(Operand *o)
         error("array subscript is not an integer", NULL);
     if (r.kind != K_CONST && r.kind != K_VAR)
         fatal("internal error: unexpected array index", NULL);
-    size = is_pointer(t) ? elem_size(t) : type_size(types[t].sub);
+    size = is_pointer(t) ? elem_size(t) : type_size(type_sub(t));
     if (r.kind == K_CONST) {
         d = wrap16((unsigned)r.val * (unsigned)size);
         if (o->kind == K_VAR && is_array(t) && o->off + d >= 0
@@ -1348,7 +1459,7 @@ static void parse_index(Operand *o)
         o->idx_char = r.type == TY_CHAR;
         o->scale = size;
     }
-    o->type = types[t].sub;
+    set_object(o, type_sub(t));
 }
 
 /* Apply unary & to o: the result is its address. */
@@ -1361,7 +1472,8 @@ static void address_of(Operand *o)
     else if (o->kind != K_DEREF)        /* K_DEREF: already on the stack */
         error("lvalue required as", "unary '&' operand");
     o->kind = K_VALUE;
-    o->type = pointer_to(o->type);
+    o->type = pointer_to(o->type | o->quals);   /* &N is a const int * */
+    o->quals = 0;
     o->is_bool = 0;
 }
 
@@ -1400,11 +1512,13 @@ static void parse_unary(Operand *o)
         return;
     case T_INC: case T_DEC:
         next();
+        want_place = 1;             /* ++N: an error, not ++10 */
         parse_unary(o);
         pre_incdec(o, t == T_INC ? IR_ADD : IR_SUB);
         return;
     case '*': case '&':
         next();
+        want_place = t == '&';      /* &N: N's address, not 10's */
         parse_unary(o);
         if (t == '*')
             deref(o);
@@ -1474,11 +1588,12 @@ static void parse_sizeof(Operand *o)
     in_sizeof--;
     nheld = saved;              /* drop anything held inside it */
     nest--;
-    if (t == TY_VOID)
+    if (unqual(t) == TY_VOID)
         error("sizeof can't be applied to type void", NULL);
     o->kind = K_CONST;
     o->val = type_size(t);
     o->type = TY_INT;
+    o->nonice = 0;              /* sizeof N is a constant expression */
     o->is_bool = 0;
 }
 
@@ -1501,12 +1616,15 @@ static void parse_logical(Operand *o, int prec)
             parse_skipped(prec + 1, &r);
             o->val = !is_and;
             o->type = TY_INT;
+            o->nonice |= r.nonice;
             return;
         }
         /* 1 && x and 0 || x are x, as 1 or 0. */
+        end = o->nonice;
         parse_expr(prec + 1, &r);
         to_bool(&r);
         *o = r;
+        o->nonice |= end;
         return;
     }
     if (is_and)
@@ -1533,16 +1651,22 @@ static int is_void(Operand *o)
 /* The type of x ? b : c, given whether b and c are null pointer
  * constants. Integers give their common type, or int if they differ
  * (char and int: C promotes both). A pointer may meet the same type,
- * a void * (giving void *), or a null pointer constant. */
+ * a void * (giving void *), or a null pointer constant. Two pointers
+ * give a pointer to a type with the qualifiers of both targets: char *
+ * and const char * give const char *. */
 static int cond_type(Operand *b, int b_null, Operand *c, int c_null)
 {
-    int bt = value_type(b->type), ct = value_type(c->type);
+    int bt = value_type(b->type), ct = value_type(c->type), q;
     if (!is_pointer(bt) && !is_pointer(ct))
         return bt == ct ? bt : TY_INT;
     if (bt == ct)
         return bt;
-    if (is_pointer(bt) && is_pointer(ct) && compatible(bt, ct))
-        return types[bt].sub == TY_VOID ? bt : ct;
+    if (is_pointer(bt) && is_pointer(ct) && compatible(bt, ct)) {
+        q = (type_sub(bt) | type_sub(ct)) & Q_ALL;
+        if (is_void_ptr(bt) || is_void_ptr(ct))
+            return pointer_to(TY_VOID | q);
+        return pointer_to(unqual(type_sub(bt)) | q);
+    }
     if (is_pointer(bt) && c_null)
         return bt;
     if (is_pointer(ct) && b_null)
@@ -1577,10 +1701,12 @@ static void parse_conditional(Operand *o)
         if (is_void(&b) != is_void(&c))
             error("only one side of '?:' is void", NULL);
         type = cond_type(&b, is_null(&b), &c, is_null(&c));
+        b_null = o->nonice;
         *o = take_b ? b : c;
         if (is_place(o))
             rvalue(o);              /* the result is not an lvalue */
         o->type = type;
+        o->nonice |= b_null;        /* N ? 1 : 2 is no more constant */
         return;
     }
     rvalue(o);
@@ -1658,7 +1784,8 @@ static void compare_pointers(Operand *o, Operand *r, int op)
     if (!is_pointer(lt) || !is_pointer(rt)) {
         if (is_relational(op) || !(is_null(o) || is_null(r)))
             error("comparison between pointer and integer", NULL);
-    } else if (is_relational(op) ? lt != rt : !compatible(lt, rt)) {
+    } else if (is_relational(op) ? !same_target(lt, rt)
+                                 : !compatible(lt, rt)) {
         error("comparison of incompatible pointer types", NULL);
     }
     if (is_relational(op) && r->kind == K_CONST) {
@@ -1715,7 +1842,7 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
         result = rt;
     } else if (is_pointer(lt) && is_pointer(rt) && op == IR_SUB) {
         /* p - q: the difference in elements. */
-        if (lt != rt)
+        if (!same_target(lt, rt))
             error("incompatible pointer types in", "subtraction");
         n = elem_size(lt);
         rvalue(r);
@@ -1961,6 +2088,7 @@ static void parse_expr(int min_prec, Operand *o)
                 nheld--;
                 o->val = fold(ir_op, o->val, r.val);
                 o->type = TY_INT;
+                o->nonice |= r.nonice;
                 continue;
             } else if (r.kind == K_VAR && swapped_op(ir_op) >= 0) {
                 /* c op x: emit x c op' (op' is op with its operands
@@ -2006,6 +2134,8 @@ static int parse_dims(int t, int may_omit)
         parse_expr(PREC_COND, &e);
         if (e.kind != K_CONST || is_pointer(e.type))
             error("array size must be a constant", NULL);
+        if (e.nonice)
+            error(not_ice, "(an array size must be one)");
         if (e.val <= 0)
             error("array size must be positive", NULL);
         n = e.val;
@@ -2040,9 +2170,20 @@ static int parse_declarator(int base, char *name)
  * initializer to give. */
 static int parse_var_type(int type, int may_omit)
 {
-    if (type == TY_VOID)
+    if (unqual(type) == TY_VOID)
         error("a variable can't have type void", NULL);
     return parse_dims(type, may_omit);
+}
+
+/* Record that the variable s has the known value v, if reading it may
+ * give v at compile time: it is a const scalar (an int, char or
+ * pointer) and not volatile. A char keeps the low byte, as stored. */
+static void set_known(Sym *s, int v)
+{
+    if ((s->type & Q_ALL) != Q_CONST || is_array(s->type))
+        return;
+    s->has_val = 1;
+    s->val = unqual(s->type) == TY_CHAR ? v & 0xFF : v;
 }
 
 /* A declaration: a base type, then declarators, each a name with any
@@ -2060,7 +2201,7 @@ static void parse_declaration(int is_static)
         int type = parse_var_type(parse_declarator(base, name), 1), braced;
         if (tok == '(')
             error("local function declarations are not supported", NULL);
-        if (is_array(type) && types[type].count == 0 && tok != '=')
+        if (is_array(type) && type_count(type) == 0 && tok != '=')
             error("array size missing", NULL);
         if (is_static) {
             /* In C, the name is in scope in its own initializer. */
@@ -2068,6 +2209,8 @@ static void parse_declaration(int is_static)
             if (tok == '=') {
                 next();
                 s->type = parse_global_init(type, name);
+                if (init_known)
+                    set_known(s, init_val);
             } else {
                 data_zero(type_size(type));
             }
@@ -2094,9 +2237,11 @@ static void parse_declaration(int is_static)
             begin_expr();
             parse_expr(PREC_ASSIGN, &e);
             check_assign(type, &e, "initialization");
+            if (e.kind == K_CONST)
+                set_known(s, e.val);
             rvalue(&e);
             v.kind = K_VAR;
-            v.type = type;
+            v.type = unqual(type);
             v.off = s->offset;
             v.global = 0;
             store_var(&v);
@@ -2340,6 +2485,8 @@ static void parse_statement(void)
     case T_INT:
     case T_CHAR:
     case T_VOID:
+    case T_CONST:
+    case T_VOLATILE:
         parse_declaration(0);
         return;
     case T_STATIC:
@@ -2407,8 +2554,8 @@ static int parse_params(void)
         if (!is_type_start(tok))
             error("expected a parameter type, not", tok_desc());
         type = parse_pointers(parse_base_type());
-        if (type == TY_VOID) {
-            if (n == 0 && tok == ')') {
+        if (unqual(type) == TY_VOID) {
+            if (type == TY_VOID && n == 0 && tok == ')') {
                 next();
                 return 0;           /* (void): no parameters */
             }
@@ -2426,7 +2573,7 @@ static int parse_params(void)
          * pointer to arrays of 4 ints. */
         type = parse_dims(type, 1);
         if (is_array(type))
-            type = pointer_to(types[type].sub);
+            type = pointer_to(type_sub(type));
         /* ENTER puts parameter n at offset 2n, as a word even for a
          * char (which is then read as its low byte). Parameters are the
          * first variables allocated, so add_local puts them there. */
@@ -2478,6 +2625,8 @@ static void parse_const(int prec, Operand *e)
     }
     if (e->kind != K_CONST)
         error(not_const, NULL);
+    if (e->nonice)
+        error(not_ice, "(an initializer here must be one)");
 }
 
 /* Parse an address constant for an initializer into *a, or an integer
@@ -2504,6 +2653,7 @@ static void parse_addr(Init *a, int unary)
                 e.kind = K_CONST;
                 e.val = a->val;
                 e.type = a->type;
+                e.nonice = 0;
                 cast(&e, t);
                 if (e.kind != K_CONST)
                     error(not_const, NULL);
@@ -2511,7 +2661,7 @@ static void parse_addr(Init *a, int unary)
             } else if (!is_pointer(t)) {
                 error(not_const, NULL);
             }
-            a->type = t;
+            a->type = unqual(t);
         } else {
             parse_addr(a, 0);
             expect(')', "expected ')', not");
@@ -2538,7 +2688,7 @@ static void parse_addr(Init *a, int unary)
             if (is_pointer(e.type))
                 error("array subscript is not an integer", NULL);
             expect(']', "expected ']' after an array index, not");
-            t = types[t].sub;
+            t = type_sub(t);
             a->val += e.val * type_size(t);
         }
         a->type = pointer_to(t);
@@ -2569,7 +2719,8 @@ static void parse_addr(Init *a, int unary)
 }
 
 /* Parse the initializer of one scalar of type type (an int, char or
- * pointer), check it as an assignment, and write it to the data stream. */
+ * pointer), check it as an assignment, and write it to the data stream.
+ * Sets init_known and init_val. */
 static void parse_scalar_init(int type)
 {
     Init a;
@@ -2585,8 +2736,11 @@ static void parse_scalar_init(int type)
     o.kind = a.kind ? K_VALUE : K_CONST;
     o.val = a.val;
     o.type = a.type;
+    o.nonice = 0;
     o.is_bool = 0;
     check_assign(type, &o, "initialization");
+    init_known = a.kind == 0;
+    init_val = a.val;
     /* An address must stay within the data written so far (one past
      * the end is allowed, as in C), or within its string. */
     if ((a.kind == REL_DATA && (a.target + a.val < 0
@@ -2780,14 +2934,16 @@ static int parse_array_init(int type, const char *name)
     int elem, esize, n = 0, max, per, row, i;
 
     init_name = name;
-    for (elem = type; is_array(elem); elem = types[elem].sub)
+    for (elem = type; is_array(elem); elem = type_sub(elem))
         ;
+    elem = unqual(elem);    /* initializing a const element is allowed */
     esize = type_size(elem);
     max = type_size(type) / esize;      /* 0 if the size was left out */
-    per = type_size(types[type].sub) / esize;
-    row = is_array(types[type].sub) && types[types[type].sub].sub == TY_CHAR
-          ? type_size(types[type].sub) : 0;
-    if (tok == T_STR && types[type].sub == TY_CHAR) {
+    per = type_size(type_sub(type)) / esize;
+    row = is_array(type_sub(type))
+          && unqual(type_sub(type_sub(type))) == TY_CHAR
+          ? type_size(type_sub(type)) : 0;
+    if (tok == T_STR && unqual(type_sub(type)) == TY_CHAR) {
         n = init_string(max, 0);
     } else {
         expect('{', "expected '{' to start an array initializer, not");
@@ -2816,7 +2972,7 @@ static int parse_array_init(int type, const char *name)
         if (n == 0)
             error("an array of unknown size needs initializers:",
                   quote(name));
-        type = array_of(types[type].sub, (n + per - 1) / per);
+        type = array_of(type_sub(type), (n + per - 1) / per);
         max = type_size(type) / esize;
     }
     init_zero((max - n) * esize, n * esize);    /* the rest are 0 */
@@ -2875,8 +3031,10 @@ static void parse_globals(int base, int type, char *name)
         if (tok == '=') {
             next();
             s->type = parse_global_init(type, name);
+            if (init_known)
+                set_known(s, init_val);
         } else {
-            if (is_array(type) && types[type].count == 0)
+            if (is_array(type) && type_count(type) == 0)
                 error("array size missing", NULL);
             data_zero(type_size(type));
         }
@@ -2915,6 +3073,7 @@ static void parse_toplevel(void)
         parse_globals(base, type, name);
         return;
     }
+    type = unqual(type);    /* const int f(void) returns an int */
     if (find_global(name))
         error("redeclaration of", quote(name));
     fn = find_func(name);
