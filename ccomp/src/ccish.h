@@ -57,16 +57,26 @@
                              * (29); at most 255, a SEL table's limit */
 #define BLOCK        512    /* file I/O buffer size: one ProDOS block */
 
-/* ---------- Diagnostics (main.c) ---------- */
+/* ---------- Diagnostics and program support (diag.c) ----------
+ * Shared by the programs ccish (both passes), cccomp (the compile
+ * pass) and cclink (the final pass); see approach.md, "B3". */
 
 extern const char *src_name;
 extern int src_line;
 extern int opt_list;        /* -l: print a listing of the generated code */
 extern int opt_ir;          /* -i: print the IR stream */
+extern int opt_keep;        /* -k: keep the stream files */
 
 void error(const char *msg, const char *detail);
 void fatal(const char *msg, const char *detail);
 void warning(const char *msg, const char *detail);
+const char *stream_name(const char *base, const char *suffix);
+void remove_streams(const char *base);      /* unless -k */
+const char *base_of(const char *src);       /* "x.c" -> "x" */
+
+/* Defined by each program: after an error, close the open files and
+ * remove partial output. */
+void clean_up(void);
 
 /* ---------- Block-buffered file I/O (bio.c) ---------- */
 
@@ -213,6 +223,8 @@ extern int fn_code[MAX_FUNCS];      /* once defined: the start of its
 extern int nfuncs;
 
 void parse_program(void);
+void compile_file(const char *src, const char *base);  /* the compile pass */
+void compile_abort(void);                   /* after an error */
 
 /* ---------- Stage 1 -> 2: IR ops (lower.c) ----------
  * Each op's meaning, and why it differs from PLASMA's, is in ../IR.md. */
@@ -354,8 +366,6 @@ void emit_abort(void);                      /* after an error */
 /* ---------- Final pass (link.c) ---------- */
 
 void link_module(const char *base, const char *path);
-
-/* Build "base" + suffix in a static buffer (main.c). */
-const char *stream_name(const char *base, const char *suffix);
+void link_abort(void);                      /* after an error */
 
 #endif

@@ -1836,6 +1836,83 @@ two tables of parallel arrays (decision 15):
   functions table, the variables table, then names into the pool with
   local release.
 
+**B3: the final pass as its own module (investigated and decided in
+discussion, 2026-10-29).** Option B3 of 18.6: about 30K (the final
+pass's 14.6K relocation table, 10.9K symbol table, 1.3K code buffer,
+2.8K of code and 0.9K of strings) never shares memory with the
+compiler. Start with **B3a** (two commands), built so that **B3b** (one
+command, through a driver) is easy later.
+- **How B3b works, with PLASMA as it is:** `cmdsys:modexec(name)` loads
+  a module and runs its init; when init returns (below `modkeep`), CMD
+  restores the heap and the global symbol table, freeing the module
+  (`execmod` in `src/vmsrc/apple/cmd.pla`). It is what the shell runs
+  for every `+MODULE` command, so it is well tested, on 128K machines
+  too, unlike the overlay ideas of 18.4. A module reads its arguments
+  from `cmdsys:cmdline`, a PLASMA string of the whole command line
+  (81 characters at most), split by `args.pla`; the first word is the
+  module's own name. If init returns a **negative** value, the loader
+  sets `perr` from it and `modexec` returns it, so a driver can tell the
+  compile pass failed.
+- **The driver:** about 30 lines of PLASMA: read its arguments, write
+  `CCCOMP FOO.C` into the command line buffer and `modexec` it, stop
+  on failure, then write `CCLINK FOO` and `modexec` that. The driver is
+  named `CCISH`, so that the command is the same as on the host. It is PLASMA
+  because ccish can't call through CMDSYS's table yet (function
+  pointers, M11); it can become C later.
+- **What B3a does now, so that B3b is easy:**
+  1. Two complete entry points, each taking everything from its own
+     command line and sharing nothing in memory, only the stream files:
+     the compile pass and the final pass. The host `ccish` still runs
+     both in sequence, for convenience and for the tests.
+  2. In the split, the compile pass leaves the stream files and the
+     final pass removes them after success; `-k` and `-l` are
+     final-pass options, `-i` a compile-pass one.
+  3. Arguments short enough for the 81-character command line.
+  4. Each pass closes all its files on every exit path (ProDOS needs
+     it, and `modexec` doesn't do it; the shell does, after a command).
+- **Later, also needed for self-hosting in general:** ccish's generated
+  init drops `main`'s return value; it should return a negative value
+  when `main` returns non-zero, so any C program reports failure to the
+  shell (positive init values mean "keep the module" and must not be
+  used). And `exit()` (M9 library) must unwind to the module's init with
+  its status, since ccish's `error()` exits from deep in the parser.
+- **`plvm` is a simulator, not the real system.** It interprets
+  bytecode in C, over an emulated flat 64K memory, and implements
+  CMDSYS and the loader natively in C (`src/vmsrc/cmdsys.c`); on an
+  Apple II they are the 6502 VM and `cmd.pla`. So they can differ: we
+  have already met differences in `NOT`, `SEL` and division by zero,
+  and `plvm`'s `modexec` doesn't free the module when its init returns.
+  That is fixed in a separate commit (38ef7b8f), written to be offered
+  upstream, so that `plvm` imitates CMD's freeing. Also, `plvm` keeps
+  module bytecode in host memory outside the emulated 64K (much as a
+  128K Apple II keeps it in auxiliary memory), so code size doesn't
+  count against its 64K at all. Still, `plvm` is right for
+  testing that ccish's code is correct, but not for trusting memory
+  numbers: the real free memory (E1), the loader's behavior and
+  ProDOS's file buffers must be measured on the real 6502 VM and CMD,
+  in an Apple II emulator or on a real machine. Since memory is now the
+  main question, that setup (M13) may be worth bringing forward, at
+  least for measuring.
+
+**B3a is done** (2026-10-29). Settled while building it:
+- Three programs from the same sources: `ccish` (both passes, as before),
+  `cccomp` (the compile pass: `cccomp [-i] [-k] [-o output] input.c`)
+  and `cclink` (the final pass: `cclink [-l] [-k] [-o module] output`).
+  On the Apple II, the passes are the modules `CCCOMP` and `CCLINK`.
+- `diag.c` holds what all three share: diagnostics, stream naming and
+  removal, and the default output name. Each program defines
+  `clean_up()`, which closes its open files and removes its partial
+  output after an error (`compile_abort()`, `link_abort()`).
+- The compile pass's body is `compile_file()` in `parse.c`.
+- The `Bfile`s that were locals in `link.c` and `emit_finish()` are now
+  static, so that an error can close them, and so that their 512-byte
+  buffers take no frame space: two of the self-compile workarounds of
+  18.5 are no longer needed.
+- `make test` also checks that `cccomp` then `cclink` write exactly
+  `ccish`'s module for every run test, that `cccomp` leaves the stream
+  files and `cclink` removes them, and that a compile error leaves no
+  stream files.
+
 **Table sizes (2026-10-29; decided in discussion: "slightly exceed
 ccish's need").** Every fixed table is sized just above the peak
 measured on ccish's own files (with an instrumented build, and from the

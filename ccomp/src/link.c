@@ -61,11 +61,25 @@ static void damaged(const char *what)
 
 /* ---------- Step 1: the symbol summary ---------- */
 
+/* The files the final pass reads (in, and rel for data relocations)
+ * and writes (out). They are static, not locals, so that their 512-byte
+ * buffers take no frame space (a frame holds 255 bytes), and so that
+ * link_abort() can close them after an error. */
+static Bfile in, rel, out;
+
+/* After an error: close whichever of the final pass's files are open
+ * (ProDOS needs it). */
+void link_abort(void)
+{
+    bclose(&in);
+    bclose(&rel);
+    bclose(&out);
+}
+
 /* Step 1: read the symbol summary into lsyms[], with the data and
  * code sizes. */
 static void read_summary(const char *base)
 {
-    Bfile in;
     const char *name = stream_name(base, SUFFIX_SYMS);
     int i, n, j;
 
@@ -257,8 +271,6 @@ static void list_code(const char *label, int len, int start, int first_reloc)
 
 /* ---------- Steps 2-4: the module ---------- */
 
-static Bfile out;
-
 /* Write a name in DCI form: uppercase, high bit set on every character
  * but the last. PLASMA keeps 16 significant characters. */
 static void out_dci(const char *name)
@@ -306,7 +318,6 @@ static int add_reloc(int kind, int at, int target, const char *name)
 static void copy_stream(const char *base, const char *suffix, int size,
                         int drel)
 {
-    Bfile in, rel;
     const char *name;
     int i, c, next = -1, kind = 0, target = 0, v;
 
@@ -350,7 +361,6 @@ static void copy_stream(const char *base, const char *suffix, int size,
 /* Copy the code stream into the module, one function at a time. */
 static void copy_code(const char *base)
 {
-    Bfile in;
     const char *name = stream_name(base, SUFFIX_CODE);
     int at = 0, idx, len, n, i, first, c;
 

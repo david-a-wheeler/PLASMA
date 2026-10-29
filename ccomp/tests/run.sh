@@ -15,6 +15,8 @@
 # tests/errors/NAME.c    must fail to compile; stderr must contain the
 #                        text after "// expect: " on the file's first line.
 # Afterward, no stream files may be left over, and -k must keep them.
+# The passes as programs of their own, cccomp then cclink, must write
+# the same module as ccish for every run test.
 
 set -u
 CCISH=./ccish
@@ -156,11 +158,48 @@ limit_test() {
         fail=$((fail + 1))
     fi
 }
-# 900 x 5 bytes (CW, SLW) is over the 4096-byte function buffer.
+# 900 x 5 bytes (CW, SLW) is over the 1280-byte function buffer.
 limit_test too_large "x = 1000;" 900 "function too large: main"
-# 300 calls is over the 256 relocations allowed in one function.
+# 300 calls is over the 128 relocations allowed in one function.
 limit_test too_many_relocs "puti(1);" 300 \
     "too many calls and data references in main"
+
+# The passes as programs of their own (approach.md, "B3"): for every
+# run test, cccomp then cclink must write the same module as ccish.
+split_bad=0
+for src in tests/run/*.c; do
+    name=$(basename "$src" .c)
+    mod=$(echo "$name" | tr 'A-Z' 'a-z')
+    if ! ./cccomp -o "$OUT/split_$mod" "$src" 2>/dev/null \
+       || ! ./cclink "$OUT/split_$mod" 2>/dev/null \
+       || ! cmp -s "$OUT/split_$mod" "$OUT/$mod"; then
+        echo "FAIL $src: cccomp then cclink don't write ccish's module"
+        split_bad=1
+    fi
+done
+if [ $split_bad -eq 0 ]; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+fi
+# cccomp leaves the stream files for cclink, and cclink removes them.
+if ./cccomp -o "$OUT/split_streams" tests/run/hello.c \
+   && [ -s "$OUT/split_streams.code" ] && [ -s "$OUT/split_streams.syms" ] \
+   && ./cclink "$OUT/split_streams" && [ -s "$OUT/split_streams" ] \
+   && [ ! -e "$OUT/split_streams.code" ]; then
+    pass=$((pass + 1))
+else
+    echo "FAIL cccomp/cclink: stream files not passed on, or not removed"
+    fail=$((fail + 1))
+fi
+# A compile error in cccomp leaves no stream files for cclink.
+if ./cccomp -o "$OUT/split_err" tests/errors/const_assign.c 2>/dev/null \
+   || [ -e "$OUT/split_err.code" ] || [ -e "$OUT/split_err.syms" ]; then
+    echo "FAIL cccomp: a compile error must fail and leave no stream files"
+    fail=$((fail + 1))
+else
+    pass=$((pass + 1))
+fi
 
 # The stream files (.data, .drel, .strs, .code, .syms) must be gone
 # after every compile, successful or not, unless -k keeps them.

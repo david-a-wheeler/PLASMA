@@ -4050,6 +4050,32 @@ static void parse_toplevel(void)
     pool_release(mark);
 }
 
+/* The source file being compiled. */
+static Bfile src_file;
+
+/* The compile pass: compile source file src into the stream files of
+ * output name base (approach.md 18.1), for the final pass. */
+void compile_file(const char *src, const char *base)
+{
+    src_name = src;
+    if (!bopen(&src_file, src, 0))
+        fatal("cannot open", src);
+    emit_open(base);
+    lex_open(&src_file);
+    parse_program();
+    bclose(&src_file);
+    src_line = 0;
+    emit_finish();
+}
+
+/* After an error in the compile pass: close its open files (ProDOS
+ * needs it), writing out what the streams hold. */
+void compile_abort(void)
+{
+    bclose(&src_file);
+    emit_abort();
+}
+
 /* Stage 1's entry: parse the whole source file, then check that every
  * function called but not defined is a CMDSYS function. */
 void parse_program(void)

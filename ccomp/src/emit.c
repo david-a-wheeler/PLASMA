@@ -22,6 +22,7 @@
 #include "ccish.h"
 
 static Bfile data_out, drel_out, strs_out, code_out;
+static Bfile syms_out;      /* written at the end (emit_finish()) */
 static const char *base_name;
 
 static int ndata;               /* bytes written to the data stream */
@@ -351,6 +352,7 @@ static void close_stream(Bfile *b, const char *suffix)
  * error, and so that ProDOS can remove the files. */
 void emit_abort(void)
 {
+    bclose(&syms_out);
     bclose(&data_out);
     bclose(&drel_out);
     bclose(&strs_out);
@@ -361,7 +363,6 @@ void emit_abort(void)
  * summary. */
 void emit_finish(void)
 {
-    Bfile out;
     int i, n;
     const char *name;
 
@@ -372,27 +373,27 @@ void emit_finish(void)
 
     /* stream_name() uses one static buffer, so get this name last. */
     name = stream_name(base_name, SUFFIX_SYMS);
-    if (!bopen(&out, name, 1))
+    if (!bopen(&syms_out, name, 1))
         fatal("cannot create", name);
-    bputc(&out, 'C');
-    bputc(&out, 'I');
-    bputc(&out, 2);                         /* format version */
-    bputw(&out, ndata);
-    bputw(&out, nstrs);
-    bputw(&out, ncode);
-    bputw(&out, nfuncs);
+    bputc(&syms_out, 'C');
+    bputc(&syms_out, 'I');
+    bputc(&syms_out, 2);                         /* format version */
+    bputw(&syms_out, ndata);
+    bputw(&syms_out, nstrs);
+    bputw(&syms_out, ncode);
+    bputw(&syms_out, nfuncs);
     for (i = 0; i < nfuncs; i++) {
         int defined = fn_flags[i] & FN_DEFINED;
-        bputc(&out, (defined ? SYM_DEFINED : 0)
+        bputc(&syms_out, (defined ? SYM_DEFINED : 0)
                     | (fn_flags[i] & FN_CALLED ? SYM_CALLED : 0)
                     | (fn_type[i] != TY_VOID ? SYM_RETURNS : 0));
-        bputc(&out, fn_flags[i] & FN_COUNTED ? fn_nparams[i] : 255);
-        bputw(&out, defined ? fn_code[i] : 0);
+        bputc(&syms_out, fn_flags[i] & FN_COUNTED ? fn_nparams[i] : 255);
+        bputw(&syms_out, defined ? fn_code[i] : 0);
         name = name_of(fn_name[i]);
         n = (int)strlen(name);
-        bputc(&out, n);
-        bwrite(&out, (const unsigned char *)name, n);
+        bputc(&syms_out, n);
+        bwrite(&syms_out, (const unsigned char *)name, n);
     }
-    if (bclose(&out) != 0)
+    if (bclose(&syms_out) != 0)
         fatal("error writing", name);
 }
