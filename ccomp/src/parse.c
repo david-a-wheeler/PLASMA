@@ -3,7 +3,7 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 4, and M5 steps 1 to 3):
+ * Language so far (milestones 1 to 4, and M5 steps 1 to 5):
  *   - types int, char, void, pointers to them (int *, char **, ...), and
  *     arrays of int, char, pointers and arrays (int m[3][4]);
  *   - function definitions and prototypes returning int, char, void or
@@ -15,6 +15,10 @@
  *   - global variables, private to the module, declared anywhere
  *     between functions, with optional initializers, computed at compile
  *     time (see "Global initializers" below);
+ *   - static: a static local is a variable in the data segment, as a
+ *     global is (S_GLOBAL), with block scope, and a global's kind of
+ *     initializer; on a global or a function, static changes nothing
+ *     yet, since nothing is exported;
  *   - casts;
  *   - statements: return, if/else, while, do, for, break, continue,
  *     expression statements, empty statements and nested blocks;
@@ -249,6 +253,28 @@ static Sym *add_local(const char *name, int type, int size)
     frame_next += size;
     if (frame_next > frame_max)
         frame_max = frame_next;
+    return s;
+}
+
+/* Declare a static local of the given type at the current depth. It has
+ * block scope, like any local, but lives in the data segment like a
+ * global (S_GLOBAL, at the next data offset), so it keeps its value
+ * between calls and takes no frame space. The caller then writes its
+ * bytes to the data stream: its initial value, or zeros. */
+static Sym *add_static_local(const char *name, int type)
+{
+    Sym *s = find_local(name);
+    if (s && s->depth == depth)
+        error("redeclaration of", quote(name));
+    if (nlocals >= MAX_LOCALS)
+        fatal("too many variables in scope", NULL);
+    s = &locals[nlocals++];
+    memset(s, 0, sizeof(*s));
+    strcpy(s->name, name);
+    s->kind = S_GLOBAL;
+    s->type = type;
+    s->depth = depth;
+    s->offset = data_offset();
     return s;
 }
 
@@ -599,6 +625,7 @@ static void parse_postfix(Operand *o);
 static void parse_sizeof(Operand *o);
 static int parse_dims(int t, int may_omit);
 static int parse_local_array_init(int type, const char *name, int base);
+static int parse_global_init(int type, const char *name);
 static void binary(Operand *o, Operand *r, int op, int lstart, int mid);
 static void finish_store(Operand *o, int keep);
 
@@ -2020,8 +2047,10 @@ static int parse_var_type(int type, int may_omit)
 
 /* A declaration: a base type, then declarators, each a name with any
  * '*'s before it, any array sizes after it, and an optional
- * initializer: int a = 1, *p = &a, v[10]; */
-static void parse_declaration(void)
+ * initializer: int a = 1, *p = &a, v[10]; If is_static is set (after
+ * "static"), the variables are static locals: in the data segment, with
+ * constant initializers applied once, when the module loads. */
+static void parse_declaration(int is_static)
 {
     int base = parse_base_type();
     for (;;) {
@@ -2033,9 +2062,23 @@ static void parse_declaration(void)
             error("local function declarations are not supported", NULL);
         if (is_array(type) && types[type].count == 0 && tok != '=')
             error("array size missing", NULL);
+        if (is_static) {
+            /* In C, the name is in scope in its own initializer. */
+            s = add_static_local(name, type);
+            if (tok == '=') {
+                next();
+                s->type = parse_global_init(type, name);
+            } else {
+                data_zero(type_size(type));
+            }
+            if (tok != ',')
+                break;
+            next();
+            continue;
+        }
         if (is_array(type) && frame_next + type_size(type) > 255)
             error("local array doesn't fit in the 255-byte frame"
-                  " (make it global):", quote(name));
+                  " (make it static or global):", quote(name));
         /* In C, the name is in scope in its own initializer. (An array
          * whose size comes from its initializer grows as it is parsed:
          * see reserve().) */
@@ -2197,8 +2240,10 @@ static void parse_for(void)
     next();                         /* "for" */
     expect('(', "expected '(' after 'for', not");
     depth++;
+    if (tok == T_STATIC)
+        error("a 'for' loop can't declare a static variable", NULL);
     if (is_type_start(tok)) {
-        parse_declaration();        /* includes the ';' */
+        parse_declaration(0);       /* includes the ';' */
     } else {
         if (tok != ';')
             parse_expr_statement();
@@ -2295,7 +2340,13 @@ static void parse_statement(void)
     case T_INT:
     case T_CHAR:
     case T_VOID:
-        parse_declaration();
+        parse_declaration(0);
+        return;
+    case T_STATIC:
+        next();
+        if (!is_type_start(tok))
+            error("expected a type after 'static', not", tok_desc());
+        parse_declaration(1);
         return;
     case T_KEYWORD:
         not_yet();
@@ -2576,7 +2627,7 @@ static void reserve(int end)
         return;
     if (end > 255)
         error("local array doesn't fit in the 255-byte frame"
-              " (make it global):", quote(init_name));
+              " (make it static or global):", quote(init_name));
     frame_next = end;
     if (frame_next > frame_max)
         frame_max = frame_next;
@@ -2838,13 +2889,21 @@ static void parse_globals(int base, int type, char *name)
 }
 
 /* Parse one top-level item: global variable declarations, a function
- * prototype, or a function definition. */
+ * prototype, or a function definition. Any may start with "static",
+ * which is accepted and, for now, changes nothing: globals and
+ * functions are already private to the module, since ccish exports
+ * nothing yet (approach.md, "M5 design"). */
 static void parse_toplevel(void)
 {
     int base, type, nparams, i;
     char name[MAX_NAME + 1];
     Sym *fn;
 
+    if (tok == T_STATIC) {
+        next();
+        if (!is_type_start(tok))
+            error("expected a type after 'static', not", tok_desc());
+    }
     if (tok == T_KEYWORD)
         not_yet();
     if (!is_type_start(tok))

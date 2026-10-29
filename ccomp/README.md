@@ -84,6 +84,16 @@ Hello5
     (`char s[] = "hi";` has 3 elements), and so may each row of a
     `char` array of arrays (`char kw[][6] = {"int", "char"};`).
   - A scalar may be in braces (`int x = {5};`).
+* `static`:
+  - A static local (`static int n = 10;`) keeps its value between
+    calls. It has block scope, like any local, but lives in the data
+    segment, like a global, so it takes no frame space: a buffer too
+    big for the frame can be a static local
+    (`static char line[300];`). Its initializer takes the forms a
+    global's does, must be constant, and is applied once, when the
+    module loads. A `for` loop's declaration can't be static, as in C.
+  - On a global or a function, `static` is accepted and changes
+    nothing yet, since nothing is exported from the module.
 * `char` is one byte and unsigned (0–255). A value is converted to
   `char` by keeping its low byte when it is stored into a `char`,
   passed as a `char` parameter, returned from a `char` function, or
@@ -98,7 +108,8 @@ Hello5
 * Arrays: `a[i]` is `*(a + i)`, as in C (so `i[a]` works too), and an
   array used as a value is a pointer to its first element. An array
   can't be assigned to. A local array must fit in the function's
-  255-byte frame, with the other locals; a bigger one can be global.
+  255-byte frame, with the other locals; a bigger one can be global or
+  a static local.
 * Types are checked as strictly as C requires (GCC 14 does the same by
   default): mixing integers and pointers needs a cast, except for the
   constant 0, and pointer types must match unless one is `void *`.
@@ -141,7 +152,7 @@ Hello5
 * Digraphs `<% %> <: :>`, `/* */` and `//` comments, and LF, CR or CRLF
   line endings.
 
-Anything else, such as `static`,
+Anything else, such as
 `const`, `extern`,
 function pointers, declarators in parentheses (`int (*p)[4]`), `switch`,
 `goto`, the comma operator, or the types `signed`, `unsigned`, `short`

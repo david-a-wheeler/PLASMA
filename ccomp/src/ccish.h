@@ -80,7 +80,7 @@ enum {
     T_ID = 256, T_NUM, T_STR,
     /* keywords supported now, in the order of keywords[] in lex.c */
     T_INT, T_VOID, T_RETURN, T_IF, T_ELSE, T_WHILE, T_DO, T_FOR, T_BREAK,
-    T_CONTINUE, T_CHAR, T_SIZEOF,
+    T_CONTINUE, T_CHAR, T_SIZEOF, T_STATIC,
     /* any other C keyword: reported as "not supported yet" */
     T_KEYWORD,
     /* multi-character operators (not all are supported by the parser yet) */

@@ -1549,6 +1549,42 @@ Decided:
   (wanted later). (`volatile` was here until 2026-10-29; it is now
   accepted in step 6, as above.)
 
+**M5 step 5 (`static`) is done.** Chosen while building it (open for
+review):
+- **A static local is a global with block scope.** It goes in
+  `locals[]`, so it leaves scope at the end of its block like any
+  local, but its symbol is `S_GLOBAL`, at the next data offset. So
+  everything that handles globals works on it unchanged: `LAW`/`SAW`,
+  `LAB`, pending elements (`line[i]`), `&x`, `sizeof`, and use in
+  another static's address constant (`static int *pa = &arr[1];`).
+  It doesn't count toward `MAX_GLOBALS`, but does toward `MAX_LOCALS`
+  while in scope.
+- **Its bytes are written to the data stream where it is declared,**
+  in the middle of the function, by the global-initializer code
+  (`parse_global_init()`), so initializers take exactly a global's
+  forms and must be constant. An automatic local's value or address
+  gives "initializer is not a constant ccish supports", as C requires.
+- **No frame space:** a function whose only locals are static has no
+  frame (no `ENTER`), and `static char line[300];` works in a 4-byte
+  frame. The "local array doesn't fit in the 255-byte frame" error now
+  says "(make it static or global)"; its two tests changed to match.
+- **Only a leading `static`** is accepted (`static int x;`). C also
+  allows `int static x;`, which ccish rejects; it is rare. A type is
+  required after it ("expected a type after 'static'"): C89's implicit
+  `int` isn't supported anywhere.
+- **`for (static int i ...)`** is an error, as C99 6.8.5p3 requires.
+- **On globals and functions,** `static` is accepted and ignored, and
+  the declaration needn't agree with others (`int f(void);` then
+  `static int f(void) { ... }`). C11 6.2.2p7 makes that mix undefined,
+  so no diagnostic is required; a check can come with exports and
+  `extern`, when linkage starts to matter.
+- **Tests:** `tests/run/static.c` (a counter that starts at 10, a
+  300-byte static buffer, two blocks' statics with the same name,
+  string, array and address initializers, and `static` on a global and
+  a function), and error tests for a `for` declaration, an automatic
+  value or address in an initializer, a missing type, and a
+  redeclaration.
+
 **M5 step 4 (rotation in place) is done.** Chosen while building it
 (open for review):
 - **The buffer** is in `ir_put()` (`lower.c`): 64 IR records (op,
@@ -2216,7 +2252,48 @@ M1 is built fresh around the pipeline.
    earlier, so that test programs can be more realistic sooner?
 4. **Large locals (issue 6):** heap/C-stack allocation (6A), or static
    (6B, breaks recursion)? Until this is decided, they can be a compile
-   error.
+   error. (Since M5 step 5, a program can write `static` itself, as C
+   allows, and the error suggests it. The open part is whether an
+   automatic local bigger than the frame should work too.)
+
+   **Estimate (discussed 2026-10-29; deferred to M12).** PLASMA's
+   frame can't grow: `ENTER` takes a one-byte size, and `LLW`/`LLA`
+   one-byte offsets. So large automatic locals need a software "C
+   stack":
+   - **Runtime:** a stack pointer `csp` and a region for it, set up by
+     the module's init code (say `heapalloc` of a size given by a
+     compiler option); one per module until M9's runtime library.
+   - **Entry,** only in functions that need it: `LAW csp DLW save CW N
+     ADD SAW csp` (about 11 bytes; `N` patched at the function's end,
+     as the `ENTER` size is), plus an overflow check (about 10 bytes
+     and an error routine), since a deep recursion would otherwise
+     overwrite the heap silently.
+   - **Each return:** `LLW save SAW csp` (4 bytes) before `LEAVE`.
+   - **Access:** a large array is a pending element based on the
+     pointer in `save`, which the operand model already handles (like
+     `p[i]`). `a[i]` costs the same as in the frame; `a[2]` is
+     `LLW save CB 4 ADD LW` (5 bytes) instead of `LLW a+4` (2).
+   - **Total:** about 150 lines of compiler, and about 25 bytes and 2
+     frame bytes per function that uses it.
+
+   Against it:
+   - **Memory is limited in the first place.** On a 64K machine, a
+     region has to be reserved up front and sized by guesswork, since
+     recursion depth isn't known, and it is lost to everything else
+     even when unused. Programs that fit in 64K rarely want large
+     buffers in recursive functions; they make them global or static.
+   - Every exit path must restore `csp`: a future `longjmp`, or a
+     PLASMA `throw` that unwinds through C code, would leak the space.
+     Multitasking (issue 19) would need a C stack per task.
+
+   Rejected: `heapalloc`/`heaprelease` at entry and exit, since
+   `heaprelease` also frees anything allocated during the call (a
+   long-lived buffer, or a loaded module), which breaks correct
+   programs; and a VM change, which costs far more.
+
+   So for now, large locals are an error that suggests `static` or a
+   global. Revisit at M12, if compiling ccish's own source shows a
+   need.
 5. **Newlines (issue 9):** `'\n'` = 10 with stdio translation (9B)?
 6. **Calling PLASMA routines (issue 8):** the `pstr()` builtin, used
    from M1? The alternative for M1 is to support only `puti` and
