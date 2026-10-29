@@ -41,6 +41,9 @@
 #define MAX_LABELS   256    /* branch targets in one function */
 #define MAX_TYPES    128    /* distinct types */
 #define MAX_PARAM_TYPES 512 /* parameter types of all declared functions */
+#define MAX_TAGS     32     /* struct tags, including hidden ones */
+#define MAX_MEMBERS  256    /* struct members, in all structs */
+#define MAX_POOL     2048   /* bytes of names in the name pool */
 #define BLOCK        512    /* file I/O buffer size: one ProDOS block */
 
 /* ---------- Diagnostics (main.c) ---------- */
@@ -81,7 +84,7 @@ enum {
     T_ID = 256, T_NUM, T_STR,
     /* keywords supported now, in the order of keywords[] in lex.c */
     T_INT, T_VOID, T_RETURN, T_IF, T_ELSE, T_WHILE, T_DO, T_FOR, T_BREAK,
-    T_CONTINUE, T_CHAR, T_SIZEOF, T_STATIC, T_CONST, T_VOLATILE,
+    T_CONTINUE, T_CHAR, T_SIZEOF, T_STATIC, T_CONST, T_VOLATILE, T_STRUCT,
     /* any other C keyword: reported as "not supported yet" */
     T_KEYWORD,
     /* multi-character operators (not all are supported by the parser yet) */
@@ -101,6 +104,14 @@ void next(void);                    /* advance to the next token */
 int  next_is_rbracket(void);        /* is the token after this one ']'? */
 const char *tok_desc(void);         /* the current token, for messages */
 
+/* ---------- Names (name.c) ----------
+ * The name pool holds each name once, as a NUL-terminated string; a
+ * name is its offset in the pool (approach.md, "M6 design"). */
+
+int name_find(const char *s);       /* its offset, or -1 if not there */
+int intern(const char *s);          /* its offset, added if needed */
+const char *name_of(int n);
+
 /* ---------- Types (type.c) ----------
  * A type is a handle: an int whose low 8 bits index the type table,
  * and whose bits Q_CONST and Q_VOLATILE are its qualifiers
@@ -109,10 +120,11 @@ const char *tok_desc(void);         /* the current token, for messages */
  * The basic types have fixed indexes. A qualified type needs no entry
  * of its own: const char is TY_CHAR | Q_CONST. Only a pointer to a
  * qualified type does, since const char * and char * differ. An array
- * is never qualified itself; its elements are (const int t[3]).
+ * is never qualified itself; its elements are (const int t[3]). A
+ * struct type has one entry per tag, made by struct_type().
  * The table is private to type.c; use the functions below. */
 
-enum { TK_VOID, TK_CHAR, TK_INT, TK_PTR, TK_ARRAY };  /* type_kind() */
+enum { TK_VOID, TK_CHAR, TK_INT, TK_PTR, TK_ARRAY, TK_STRUCT };
 enum { TY_VOID, TY_CHAR, TY_INT };          /* indexes of the basic types */
 #define Q_CONST    0x100
 #define Q_VOLATILE 0x200
@@ -134,6 +146,26 @@ int array_of(int t, int count);
 int qualify(int t, int q);
 int unqual(int t);
 int is_const(int t);
+
+/* Struct tags and members. A tag is a struct type's number (named, or
+ * anonymous with name -1), and is visible from the block depth it was
+ * declared at until that block ends. A tag's size is -1 until its
+ * member list is complete. */
+int is_struct(int t);
+int struct_type(int tag);   /* the struct type of tag */
+int struct_tag(int t);      /* the tag of struct type t */
+int tag_new(int name, int depth);
+int tag_find(int name, int depth);  /* innermost visible tag named
+                                     * name, at depth or any depth if
+                                     * depth < 0; -1 if none */
+void tag_hide(int depth);   /* hide the tags declared deeper */
+int tag_name(int tag);
+int tag_size(int tag);
+void tag_set_size(int tag, int size);
+int member_add(int tag, int name, int type, int off);
+int member_find(int tag, int name);     /* a member, or -1 */
+int member_type(int m);
+int member_off(int m);
 
 /* ---------- Symbols (parse.c) ---------- */
 

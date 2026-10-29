@@ -1197,6 +1197,63 @@ library (M9).
   about 10 `int`s. Intern names in a string pool, and shrink records to
   the fields actually needed.
 
+#### 18.5 Can ccish compile itself? (assessed 2026-10-29, after M5)
+
+Not yet. Two separate kinds of things stand in the way.
+
+**Language features the compiler's source uses** (5,866 lines in
+`src/`, counted with grep):
+
+| Feature | Uses | Planned in |
+|---|---|---|
+| `#include`, `#define` (30), one include guard | 51 directives | M8 |
+| `struct`, with `->` and `.` | 13 declarations, about 500 accesses | M6 |
+| `switch` | 26, with 218 `case` labels | M7 |
+| `unsigned` / `typedef` / `enum` | 36 / 10 / 13 | M11 |
+| `printf` family (varargs) | 31 | M9 library + M11 |
+| stdio files (`fopen`, `fread`, `fwrite`, `fclose`, `remove`) | 7 | M9 library |
+| `string.h` / `exit` | 59 / 11 | M9 library |
+| Nested initializers (`cmdsys_funcs[]`: an array of structs) | a few | M11 |
+| `extern`, and linking 9 `.c` files | 11 | issue 11; no milestone yet |
+| `long` | 1 (`lex.c`, number overflow) | none: rewrite it |
+
+Nothing else: no function pointers, `goto`, `union` or comma operator.
+So, apart from `long` and multi-file linking, the source keeps to the
+features planned up to M11, as intended (issue 15). **Open:** link
+separately compiled modules (`extern` and exports, issue 11), or build
+the compiler from one file.
+
+**Memory, the bigger obstacle.** Even under `plvm` the compiler must
+fit in 64K: plvm emulates a 64K 6502 memory (`MEM6502_SIZE` in
+`src/vmsrc/plvm.h`). With 16-bit `int`s, the fixed tables alone come
+to about 66K, before any code:
+
+| Table | Size on the target |
+|---|---|
+| `Sym` × 512 (`syms`, `globals`, `locals`): a 32-byte name and 12 `int`s, 56 bytes each | ~28.7K |
+| Final pass `relocs`: 2048 × 6 bytes | ~12K |
+| Final pass `lsyms`: 256 × 40 bytes | ~10K |
+| Two 4K function code buffers (`emit.c`, `link.c`) | 8K |
+| File buffers, emit relocations, parameter types, labels, types, `tok_text` | ~7K |
+
+Then the code: probably 25–35K of bytecode for this much C (a guess,
+not measured), and the PLASMA system itself.
+
+**What follows:**
+- Self-hosting stays at M12, after M6–M11, but the space work isn't
+  optional along the way: every milestone should keep the tables in
+  mind (decision 15), and new tables should be sized for the target.
+- The parse pass's tables and the final pass's are never needed at
+  once. Running the final pass as a separate module (18.1, 18.4
+  "load, run, free") gives each nearly all of memory.
+- The `Sym` split (decision 15) is the largest single data saving:
+  variables stop carrying function fields, and names can be interned
+  (18.4 "Compact symbol tables"). Postponed for now (discussed
+  2026-10-29), but needed before M12.
+- Measure, don't guess: once ccish can compile most of its own files
+  (after M9 or so), compile each one and record its code size, to
+  replace the estimate above.
+
 ### 19. Target application: a small Unix-like command set (possible, not committed)
 
 Once the compiler works well, use it to build a small toybox-style
@@ -1424,13 +1481,14 @@ issue. In summary:
    a REL module that runs under `plvm`. Each later milestone adds a
    little and keeps everything working. See "Milestones" below.
 10. **Wanted in the language, at different milestones:**
-    - `struct`, `switch` and simple initializers. Simple initializers
-      are needed for real-world use. "Simple" means:
+    - `struct` and `union` (M6), `switch` and simple initializers.
+      Simple initializers are needed for real-world use. "Simple"
+      means:
       - scalars and pointers (`int n = 5;`, `char *s = "hi";`,
         `int *p = &x;`);
       - `char` arrays from string literals;
       - one-level brace lists (`int t[] = {1, 2, 3};`).
-    - Later: `unsigned`, `union`, varargs, `typedef`, `enum`, function
+    - Later: `unsigned`, varargs, `typedef`, `enum`, function
       pointers and nested initializers.
 
     Implementation notes on initializers:
@@ -1480,6 +1538,88 @@ issue. In summary:
 
 
 ## Milestones
+
+**M6 design (decided in discussion, 2026-10-29).** M6 is built in four
+steps, each ending with all tests passing:
+1. declarations and access: `struct tag { ... };` at file and block
+   scope, anonymous structs, struct variables (global, local,
+   `static`), arrays of structs, pointers to structs, `.`, `->`, `&`
+   and `sizeof`, with errors for an unknown member, `.` on a
+   non-struct, an incomplete struct used where its size is needed,
+   and `==` on structs;
+2. assignment and initializers: `a = b` copies with word moves up to
+   4 bytes and CMDSYS `memcpy(dst, src, n)` beyond (its argument order
+   is the order C reads `a = b`); flat brace initializers walk the
+   scalar members in order, with C's brace elision
+   (`struct pt a[2] = {1, 2, 3, 4};`), and nested braces stay in M11;
+3. pass and return by value (issue 16): up to 4 scalar members return
+   as a PLASMA multi-value return, larger structs through a hidden
+   pointer. How to pass `char` members, since frame slots are words,
+   is decided at the start of the step;
+4. `union` (moved from M11): every member at offset 0, the size of
+   the largest.
+
+Decided with it:
+- **Layout:** members in order, with no padding (the 6502 has no
+  alignment rules, and C allows any). This matches PLASMA's `struc`
+  layouts byte for byte, so C can read PLASMA data structures.
+- **Type table:** a struct is a new kind, `TK_STRUCT`, whose `tsub` is
+  its tag number. Struct entries are never shared, since two structs
+  with the same members are still different types. Qualifiers work
+  unchanged (`const struct node *`).
+- **New tables, as parallel arrays (decision 15):** about 4K in all.
+  - Tags (32): name, size (-1 while incomplete), and block depth (a
+    `char`): 5 bytes each.
+  - Members (256): owning tag (a `char`), name, type handle, offset: 7
+    bytes each. (Changed while building step 1 from "first member and
+    count" per tag: a struct defined inside another's member list adds
+    its members in the middle of the outer one's, so a struct's
+    members aren't always contiguous. Lookup scans all members for the
+    tag, which is at most 256 compares.)
+  - A name pool (2K) holding each tag and member name once. The
+    tables hold its 2-byte offset instead of a 32-byte array: 8K of
+    fixed names becomes 2K plus 2 bytes per entry. A full pool is a
+    clean error, and its size is one constant. The `Sym` split
+    (18.4) can reuse it later, which is when its size gets budgeted
+    for real.
+- **Self-reference:** a tag gets its entry when first mentioned and its
+  size at its `}`, so `struct node *next;` works as an incomplete type.
+- **Block-scope tags** record their depth and become invisible at
+  their block's `}`, so an inner tag can shadow an outer one. They
+  aren't reclaimed: reusing a slot could let a dead struct's type be
+  mistaken for a live one (a static local's size is computed after its
+  block ends), and the cost is a few bytes per tag, only in functions
+  that declare types.
+- **Member access** reuses the pending operands' constant
+  displacement: `s.m` on a local is `LLW s+off` and on a global
+  `LAW g+off`, `p->m` is `LLW p CB off ADD LW` (just `LLW p LW` at
+  offset 0), and `a[i].m` adds `off` to the indexed element. `&s.m`,
+  arrays in structs (`s.buf[i]`) and chains (`p->q->r`) follow.
+- **`typedef` stays in M11.** Until then programs write `struct node`.
+
+**M6 step 1 is done** (declarations and access). Settled while building
+it:
+- The name pool is its own file, `name.c` (`intern()`, `name_find()`,
+  `name_of()`), so the `Sym` split can use it. Looking up a member
+  uses `name_find()`, so a misspelled name doesn't grow the pool.
+- Tags are hidden at the end of a block, after a prototype, and after a
+  function body; file scope is depth 0. A tag first seen in a parameter
+  list gets gcc's warning, since the same name defined later is a
+  different struct (which then makes a prototype and a definition
+  conflict).
+- While a member list is parsed, its tag's size is -2, which catches
+  `struct s { struct s { ... } x; }`; a member of the struct's own type
+  is an incomplete type, as in C.
+- Struct values aren't supported yet: assignment, initializers, struct
+  parameters and struct returns each give "not supported yet", and any
+  other use of a struct as a value (`a == b`, `if (s)`, `f(s)`) gives
+  "a struct can't be used as a value here". `*p;` with a struct `*p`
+  evaluates `p` and loads nothing.
+- Through a constant pointer (`((struct regs *)0xC080)->status`), the
+  member offset is added at compile time, so it is one `LAB` or `LAW`.
+- Not folded yet: `(pts + 1)->y` is `LA pts CN 4 ADD CN 2 ADD LW`. The
+  same happens for `p + 1` on its own; adding neighboring constants is
+  a peephole pattern for M10.
 
 **M5 design (decided in discussion, 2026-10-28).** M5 is built in six
 steps, each ending with all tests passing:
@@ -2361,17 +2501,19 @@ a proposal.
    Stores through pointers, using spills (4(e)).
 4. **M5:** simple initializers, `sizeof`, `static` and `const`, and
    block exchange by rotation in place (4(d2)).
-5. **M6:** `struct`.
+5. **M6:** `struct` and `union`.
 6. **M7:** `switch` (as a compare chain first).
 7. **M8:** the built-in minimal preprocessor (3B).
 8. **M9:** a runtime library in C-ish: file I/O over FILEIO, memory
    and strings.
 9. **M10:** optimization: the `for` side buffer and
    fused FOR opcodes, peephole patterns, and `SEL` tables.
-10. **M11:** `unsigned`, `union`, varargs (`printf`), `typedef`,
+10. **M11:** `unsigned`, varargs (`printf`), `typedef`,
     `enum`, function pointers and nested initializers.
 11. **M12:** self-hosting under `plvm` (the bootstrap test in issue
-    15), then fitting it into the 64K budget.
+    15), then fitting it into the 64K budget. Since plvm's memory is
+    64K too, the fitting can't wait until after self-hosting: see the
+    assessment in 18.5 (the tables alone are about 66K today).
 12. **M13:** a 64K Apple II in an emulator, then real machines.
 
 The compiler is written in standard C and built with gcc throughout.

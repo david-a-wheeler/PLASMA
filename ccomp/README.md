@@ -43,11 +43,12 @@ Hello5
 
 ## The language so far
 
-* Types `int`, `char`, `void`, pointers to them (`int *`,
-  `char **`, `void *`, ...), and arrays (`int a[10]`, `char *names[4]`,
-  `int m[3][4]`).
+* Types `int`, `char`, `void`, structs, pointers to them (`int *`,
+  `char **`, `void *`, `struct node *`, ...), and arrays (`int a[10]`,
+  `char *names[4]`, `int m[3][4]`, `struct pt pts[8]`).
 * Function definitions and prototypes returning any of these but an
-  array, with parameters of any type but `void`. An array parameter
+  array or a struct, with parameters of any type but `void` or a struct
+  (a pointer to a struct is fine). An array parameter
   is a pointer, as in C: `int a[]` and `int a[10]` are `int *a`, and
   `int m[][4]` points to arrays of 4 ints. A prototype and a definition must
   agree on the return and parameter types. `main` takes no parameters.
@@ -94,6 +95,28 @@ Hello5
     module loads. A `for` loop's declaration can't be static, as in C.
   - On a global or a function, `static` is accepted and changes
     nothing yet, since nothing is exported from the module.
+* Structs (`struct pt { int x, y; };`), at file scope or in a block:
+  - Members are laid out in order with no padding (the 6502 has no
+    alignment rules), as PLASMA's `struc` lays them out, so C can read
+    PLASMA's data structures. A member may have any complete type:
+    another struct, an array, a pointer (to its own struct too, for a
+    linked list: `struct node *next;`).
+  - `s.m`, `p->m`, `&s.m`, `sizeof`, arrays of structs and pointers to
+    them. A member of a variable compiles like a variable (`s.m` on a
+    local is one `LLW`), and one reached through a pointer adds its
+    offset (`p->m` is `LLW p CB off ADD LW`, and just `LLW p LW` at
+    offset 0). Through a constant pointer, such as a block of I/O
+    registers, the offset is added at compile time.
+  - A tag can be declared first and defined later (`struct s;`), and a
+    tag defined in a block is visible only until the block ends. A
+    member of a `const` struct is `const`.
+  - A struct whose definition hasn't been seen yet is incomplete: a
+    pointer to it is fine, but not a variable, `sizeof`, `->` or
+    pointer arithmetic. Using a tag for the first time in a parameter
+    list gives a warning, as in gcc, since it is visible only there.
+  - Not yet: structs as whole values (assignment, initializers,
+    passing and returning; M6 steps 2 and 3), `union` (step 4), and
+    `typedef` (M11). `==` on structs is an error, as in C.
 * `char` is one byte and unsigned (0–255). A value is converted to
   `char` by keeping its low byte when it is stored into a `char`,
   passed as a `char` parameter, returned from a `char` function, or
@@ -140,8 +163,8 @@ Hello5
 * Expressions, with C's precedence and associativity:
   - integer and character constants, string literals, variables,
     function calls and parentheses;
-  - unary `- + ~ ! * &`, prefix and postfix `++ --`, and indexing
-    `a[i]`;
+  - unary `- + ~ ! * &`, prefix and postfix `++ --`, indexing
+    `a[i]`, and members `s.m` and `p->m`;
   - `sizeof expr` and `sizeof(type)`, where a type may have `*`s and
     array sizes (`sizeof(char *[4])`). The expression isn't run. The
     result is an `int` (`unsigned` isn't supported yet), and is a
@@ -210,7 +233,8 @@ function returns exactly one.
 | `src/main.c` | Command line, error messages, running the two passes |
 | `src/bio.c` | File I/O through 512-byte block buffers |
 | `src/lex.c` | Lexer |
-| `src/type.c` | The table of types (parallel arrays), with qualifiers as bits in a type handle |
+| `src/name.c` | The name pool: each struct tag and member name stored once |
+| `src/type.c` | The table of types (parallel arrays), with qualifiers as bits in a type handle, and struct tags and members |
 | `src/parse.c` | Stage 1: parser, producing IR ops |
 | `src/lower.c` | Stage 2: IR ops to PLASMA machine ops (see [IR.md](IR.md)) |
 | `src/peep.c` | Stage 3: peephole optimizer |
@@ -228,6 +252,9 @@ function returns exactly one.
   data references, and 256 labels (`MAX_FUNC_CODE`, `MAX_FUNC_RELOCS`,
   `MAX_LABELS` in `src/ccish.h`). Each `if`, loop, `&&`, `||` and `?:`
   uses one to four labels.
+* A program may have at most 32 struct tags (counting those in blocks
+  that have ended), 256 struct members in all, and 2048 bytes of
+  distinct tag and member names (`MAX_TAGS`, `MAX_MEMBERS`, `MAX_POOL`).
 * Only a few peephole optimizations so far (see `src/peep.c`): removal
   of unreachable code, plain stores for assignments whose value is
   unused, folded negative constants, adding 0, `INCR`/`DECR`, `ANDI`,

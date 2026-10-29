@@ -3,9 +3,17 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 5):
- *   - types int, char, void, pointers to them (int *, char **, ...), and
- *     arrays of int, char, pointers and arrays (int m[3][4]);
+ * Language so far (milestones 1 to 5, and M6 step 1):
+ *   - types int, char, void, structs, pointers to them (int *, char **,
+ *     struct node *, ...), and arrays of any of these but void
+ *     (int m[3][4]);
+ *   - struct definitions at file or block scope, with members of any
+ *     complete type, laid out in order with no padding; a struct's tag
+ *     is visible until the end of its block (see parse_struct()). A
+ *     member is a place at a constant offset in its struct, so s.m and
+ *     p->m use the same pending operands as variables and array
+ *     elements. Structs as whole values (assignment, initializers,
+ *     passing, returning) come in later steps;
  *   - function definitions and prototypes returning int, char, void or
  *     a pointer, with parameters of any of these but void; an array
  *     parameter (int a[], int m[][4]) is a pointer, as in C;
@@ -31,7 +39,7 @@
  *     expression statements, empty statements and nested blocks;
  *   - expressions: integer and character constants, string literals,
  *     variables, function calls, parentheses, the pstr() builtin,
- *     unary - + ~ ! * & ++ -- and sizeof, postfix ++ -- and [], binary
+ *     unary - + ~ ! * & ++ -- and sizeof, postfix ++ -- [] . ->, binary
  *     * / % + - << >> & ^ |, comparisons, && || ?:, and
  *     = += -= *= /= %= &= |= ^= <<= >>=. Pointer arithmetic scales by
  *     the element size, pointers compare unsigned, pointer types are
@@ -93,6 +101,7 @@ static int depth;           /* block depth; parameters are at depth 1 */
 static int frame_next;      /* next free frame offset */
 static int frame_max;       /* frame size needed so far */
 static Sym *cur_fn;
+static int in_params;       /* parsing a function's parameter list */
 static int nest;            /* current nesting depth, to limit recursion */
 
 /* Return name in single quotes, for error messages. The result is in a
@@ -317,7 +326,29 @@ static void set_param_types(Sym *fn, int n)
 static int is_type_start(int t)
 {
     return t == T_INT || t == T_CHAR || t == T_VOID || t == T_CONST
-           || t == T_VOLATILE;
+           || t == T_VOLATILE || t == T_STRUCT;
+}
+
+/* Describe tag for a message: 'struct name', or an unnamed struct. The
+ * result may be in a static buffer. */
+static const char *tag_desc(int tag)
+{
+    static char buf[MAX_NAME + 10];
+    if (tag_name(tag) < 0)
+        return "an unnamed struct";
+    sprintf(buf, "'struct %s'", name_of(tag_name(tag)));
+    return buf;
+}
+
+/* Report an error if t is an incomplete struct type, which has no size
+ * yet; what says what would have that type ("a variable"). */
+static void need_complete(int t, const char *what)
+{
+    char msg[48];
+    if (is_struct(t) && type_size(t) == 0) {
+        sprintf(msg, "%s can't have the incomplete type", what);
+        error(msg, tag_desc(struct_tag(t)));
+    }
 }
 
 /* Parse any qualifiers (const, volatile), and return them as Q_ bits. */
@@ -331,18 +362,25 @@ static int parse_quals(void)
     return q;
 }
 
-/* Parse a basic type name (int, char or void), with any qualifiers
- * before or after it (const char, char const), and return its type. */
+static int parse_struct(void);
+
+/* Parse a basic type name (int, char, void, or a struct type), with any
+ * qualifiers before or after it (const char, char const), and return
+ * its type. */
 static int parse_base_type(void)
 {
     int q = parse_quals(), t = TY_INT;
-    if (tok == T_CHAR)
-        t = TY_CHAR;
-    else if (tok == T_VOID)
-        t = TY_VOID;
-    else if (tok != T_INT)
-        error("expected a type, not", tok_desc());
-    next();
+    if (tok == T_STRUCT) {
+        t = parse_struct();
+    } else {
+        if (tok == T_CHAR)
+            t = TY_CHAR;
+        else if (tok == T_VOID)
+            t = TY_VOID;
+        else if (tok != T_INT)
+            error("expected a type, not", tok_desc());
+        next();
+    }
     return t | q | parse_quals();
 }
 
@@ -789,6 +827,8 @@ static void push_address(Operand *o)
  * the address of its first element (for K_DEREF, already there). */
 static void rvalue(Operand *o)
 {
+    if (is_struct(o->type))
+        error("a struct can't be used as a value here", NULL);
     if (is_array(o->type) && is_place(o)) {
         if (o->kind == K_VAR)
             push_var_addr(o->off, o->global);
@@ -945,9 +985,16 @@ static void assign_to(Operand *o)
 /* Discard the value of an expression used as a statement. A pending
  * variable or constant ("x;") emits nothing, nor does the result of an
  * assignment through a pointer. A load through a pointer is still
- * done, since it may read I/O (such as the Apple II's $C010). */
+ * done, since it may read I/O (such as the Apple II's $C010). A struct
+ * isn't loaded (*p; evaluates p). */
 static void discard(Operand *o)
 {
+    if (is_struct(o->type) && is_place(o)) {
+        if (o->kind == K_DEREF)
+            put(IR_DROP, 0, NULL);  /* its address */
+        o->kind = K_VOID;
+        return;
+    }
     if (o->kind == K_STORE)
         finish_store(o, 0);
     if (o->kind == K_DEREF || (o->kind == K_ELEM && !o->assigned))
@@ -964,13 +1011,16 @@ static int is_null(Operand *o)
            && !o->nonice;
 }
 
-/* The size of what pointer type t points to. Arithmetic on a void *
- * is an error, since void has no size. */
+/* The size of what pointer type t points to. Arithmetic on a void *,
+ * or on a pointer to an incomplete struct, is an error, since what it
+ * points to has no size. */
 static int elem_size(int t)
 {
     int n = type_size(type_sub(t));
     if (n == 0)
-        error("pointer arithmetic on a 'void *'", NULL);
+        error(is_struct(type_sub(t))
+              ? "pointer arithmetic on a pointer to an incomplete struct"
+              : "pointer arithmetic on a 'void *'", NULL);
     return n;
 }
 
@@ -1068,6 +1118,8 @@ static void to_char(Operand *o)
 static void cast(Operand *o, int type)
 {
     type = unqual(type);
+    if (is_struct(type))
+        error("a cast to a struct type isn't allowed", NULL);
     if (type == TY_VOID) {
         discard(o);
         o->kind = K_VOID;
@@ -1477,6 +1529,57 @@ static void address_of(Operand *o)
     o->is_bool = 0;
 }
 
+/* Parse ".member" or "->member" (arrow set) after o: o becomes the
+ * member, a place at a constant offset in the struct (approach.md, "M6
+ * design"). A member of a variable is a variable at a fixed offset
+ * (s.m: LLW s+off), and one reached through a pointer adds the offset
+ * as a displacement (p->m: LLW p CB off ADD LW). A member of a const
+ * struct is const. For a constant pointer, such as a memory-mapped
+ * I/O block, the offset is added at compile time. */
+static void parse_member(Operand *o, int arrow)
+{
+    char msg[MAX_NAME + 40];
+    int t = arrow ? value_type(o->type) : o->type, tag, m, off;
+
+    next();                         /* '.' or '->' */
+    if (arrow && !(is_pointer(t) && is_struct(type_sub(t))))
+        error("'->' needs a pointer to a struct", NULL);
+    if (!arrow && !is_struct(t))
+        error("'.' needs a struct", NULL);
+    if (!arrow && !is_place(o))
+        error("a member of a struct value is not supported yet", NULL);
+    tag = struct_tag(arrow ? type_sub(t) : t);
+    if (tok != T_ID)
+        error("expected a member name, not", tok_desc());
+    if (tag_size(tag) < 0)
+        error("member access into the incomplete type", tag_desc(tag));
+    m = member_find(tag, name_find(tok_text));
+    if (m < 0) {
+        sprintf(msg, "%s has no member named", tag_desc(tag));
+        error(msg, quote(tok_text));
+    }
+    next();
+    off = member_off(m);
+    if (arrow && o->kind == K_CONST) {
+        o->val = wrap16((unsigned)o->val + (unsigned)off);
+        off = 0;
+    }
+    if (arrow)
+        deref(o);
+    if (o->kind == K_VAR && o->off + off <= max_offset(o->global)) {
+        o->off += off;
+    } else if (o->kind == K_VAR) {
+        make_elem(o, o->off, o->global, 1);
+        o->disp = off;
+    } else if (o->kind == K_ELEM) {
+        o->disp = wrap16((unsigned)o->disp + (unsigned)off);
+    } else if (off != 0) {          /* K_DEREF: the address is on the stack */
+        put(IR_CONST, off, NULL);
+        put(IR_ADD, 0, NULL);
+    }
+    set_object(o, qualify(member_type(m), o->quals));
+}
+
 /* Parse a unary expression: prefix operators, then a primary
  * expression, then postfix ++ and --. */
 static void parse_unary(Operand *o)
@@ -1534,8 +1637,8 @@ static void parse_unary(Operand *o)
     parse_postfix(o);
 }
 
-/* Parse any postfix operators after the operand o: ++, -- and [].
- * (A call's "(" is handled with the function name.) */
+/* Parse any postfix operators after the operand o: ++, --, [], . and
+ * ->. (A call's "(" is handled with the function name.) */
 static void parse_postfix(Operand *o)
 {
     int t;
@@ -1550,7 +1653,10 @@ static void parse_postfix(Operand *o)
         case '[':
             parse_index(o);
             continue;
-        case '.': case T_ARROW: case '(':
+        case '.': case T_ARROW:
+            parse_member(o, tok == T_ARROW);
+            continue;
+        case '(':
             not_yet();
         }
         return;
@@ -1590,6 +1696,9 @@ static void parse_sizeof(Operand *o)
     nest--;
     if (unqual(t) == TY_VOID)
         error("sizeof can't be applied to type void", NULL);
+    if (is_struct(t) && type_size(t) == 0)
+        error("sizeof can't be applied to the incomplete type",
+              tag_desc(struct_tag(t)));
     o->kind = K_CONST;
     o->val = type_size(t);
     o->type = TY_INT;
@@ -1970,6 +2079,8 @@ static void parse_assign(Operand *o, int ir_op, int m0, int h0)
 {
     Operand r, x;
 
+    if (is_struct(o->type))
+        error("assigning a struct is not supported yet", NULL);
     if (ir_op < 0 && o->kind == K_DEREF) {
         start_store(o, code_start(m0, h0));
         return;
@@ -2142,6 +2253,7 @@ static int parse_dims(int t, int may_omit)
     }
     expect(']', "expected ']' after an array size, not");
     t = parse_dims(t, 0);
+    need_complete(t, "an array element");
     if (type_size(t) == 0)
         error("array elements can't have type void", NULL);
     nest--;
@@ -2165,14 +2277,112 @@ static int parse_declarator(int base, char *name)
 }
 
 /* Parse the rest of a variable's declarator after its name (any array
- * sizes) and return its full type, which can't be void. If may_omit is
- * set, the first array size may be left out (count 0), for an
- * initializer to give. */
+ * sizes) and return its full type, which can't be void or an
+ * incomplete struct. If may_omit is set, the first array size may be
+ * left out (count 0), for an initializer to give. */
 static int parse_var_type(int type, int may_omit)
 {
     if (unqual(type) == TY_VOID)
         error("a variable can't have type void", NULL);
-    return parse_dims(type, may_omit);
+    type = parse_dims(type, may_omit);
+    need_complete(type, "a variable");
+    return type;
+}
+
+/* Report an error if a variable of type type, about to be initialized,
+ * is or holds a struct: struct initializers come in M6 step 2. */
+static void check_struct_init(int type)
+{
+    while (is_array(type))
+        type = type_sub(type);
+    if (is_struct(type))
+        error("struct initializers are not supported yet", NULL);
+}
+
+/* Parse a struct's member list, from '{' to '}', and complete tag's
+ * struct: each member is at the next byte, with no padding, since the
+ * 6502 has no alignment rules (approach.md, "M6 design"). While the
+ * list is parsed, the tag's size is -2, so a nested redefinition of
+ * the same tag is caught. */
+static void parse_members(int tag)
+{
+    char name[MAX_NAME + 1];
+    int off = 0, base, t;
+
+    enter_nest();
+    tag_set_size(tag, -2);
+    next();                         /* '{' */
+    if (tok == '}')
+        error("a struct needs at least one member", NULL);
+    while (tok != '}') {
+        if (tok == T_KEYWORD)
+            not_yet();
+        if (!is_type_start(tok))
+            error("expected a struct member, not", tok_desc());
+        base = parse_base_type();
+        for (;;) {
+            t = parse_declarator(base, name);
+            if (tok == '(')
+                error("a struct member can't be a function:", quote(name));
+            t = parse_dims(t, 0);
+            if (unqual(t) == TY_VOID)
+                error("a struct member can't have type void", NULL);
+            need_complete(t, "a struct member");
+            if (member_find(tag, name_find(name)) >= 0)
+                error("duplicate struct member", quote(name));
+            if (off > MAX_OBJECT - type_size(t))
+                error("struct too large (over 32767 bytes)", NULL);
+            member_add(tag, intern(name), t, off);
+            off += type_size(t);
+            if (tok != ',')
+                break;
+            next();
+        }
+        expect(';', "expected ';' after a struct member, not");
+    }
+    next();
+    tag_set_size(tag, off);
+    nest--;
+}
+
+/*
+ * Parse a struct type after "struct", and return it: a tag, a member
+ * list, or both. As in C:
+ *   - struct s { ... } defines s in the current block (or at file
+ *     scope), completing an earlier "struct s;" there;
+ *   - struct s; alone declares a new s in the current block, hiding any
+ *     outer one;
+ *   - struct s elsewhere refers to the innermost visible s, or declares
+ *     a new, incomplete one, so that struct node *next; works before
+ *     struct node is complete.
+ * A tag first seen in a parameter list is visible only inside that
+ * function, which is rarely what was meant; gcc warns, and so do we.
+ */
+static int parse_struct(void)
+{
+    int name = -1, tag = -1;
+
+    next();                         /* struct */
+    if (tok == T_ID) {
+        name = intern(tok_text);
+        next();
+        tag = tag_find(name, tok == '{' || tok == ';' ? depth : -1);
+    } else if (tok != '{') {
+        error("expected a struct name or '{' after 'struct', not",
+              tok_desc());
+    }
+    if (tag < 0) {
+        tag = tag_new(name, depth);
+        if (in_params && name >= 0)
+            warning("declared in a parameter list, so not visible outside"
+                    " it:", tag_desc(tag));
+    }
+    if (tok == '{') {
+        if (tag_size(tag) != -1)
+            error("redefinition of", tag_desc(tag));
+        parse_members(tag);
+    }
+    return struct_type(tag);
 }
 
 /* Record that the variable s has the known value v, if reading it may
@@ -2188,12 +2398,17 @@ static void set_known(Sym *s, int v)
 
 /* A declaration: a base type, then declarators, each a name with any
  * '*'s before it, any array sizes after it, and an optional
- * initializer: int a = 1, *p = &a, v[10]; If is_static is set (after
+ * initializer: int a = 1, *p = &a, v[10]; A struct type may have no
+ * declarators (struct pt { int x, y; };). If is_static is set (after
  * "static"), the variables are static locals: in the data segment, with
  * constant initializers applied once, when the module loads. */
 static void parse_declaration(int is_static)
 {
     int base = parse_base_type();
+    if (tok == ';' && is_struct(base)) {
+        next();                     /* struct pt { ... }; declares only */
+        return;
+    }
     for (;;) {
         Operand v, e;
         Sym *s;
@@ -2203,6 +2418,8 @@ static void parse_declaration(int is_static)
             error("local function declarations are not supported", NULL);
         if (is_array(type) && type_count(type) == 0 && tok != '=')
             error("array size missing", NULL);
+        if (tok == '=')
+            check_struct_init(type);
         if (is_static) {
             /* In C, the name is in scope in its own initializer. */
             s = add_static_local(name, type);
@@ -2221,6 +2438,9 @@ static void parse_declaration(int is_static)
         }
         if (is_array(type) && frame_next + type_size(type) > 255)
             error("local array doesn't fit in the 255-byte frame"
+                  " (make it static or global):", quote(name));
+        if (is_struct(type) && frame_next + type_size(type) > 255)
+            error("local struct doesn't fit in the 255-byte frame"
                   " (make it static or global):", quote(name));
         /* In C, the name is in scope in its own initializer. (An array
          * whose size comes from its initializer grows as it is parsed:
@@ -2487,6 +2707,7 @@ static void parse_statement(void)
     case T_VOID:
     case T_CONST:
     case T_VOLATILE:
+    case T_STRUCT:
         parse_declaration(0);
         return;
     case T_STATIC:
@@ -2519,11 +2740,12 @@ static void parse_block(int new_scope)
     }
     next();
     if (new_scope) {
-        /* The block's variables go out of scope, and their frame slots
-         * can be reused by later blocks. */
+        /* The block's variables and struct tags go out of scope, and
+         * the variables' frame slots can be reused by later blocks. */
         depth--;
         nlocals = saved_nlocals;
         frame_next = saved_next;
+        tag_hide(depth);
     }
     nest--;
 }
@@ -2574,6 +2796,8 @@ static int parse_params(void)
         type = parse_dims(type, 1);
         if (is_array(type))
             type = pointer_to(type_sub(type));
+        if (is_struct(type))
+            error("passing a struct by value is not supported yet", NULL);
         /* ENTER puts parameter n at offset 2n, as a word even for a
          * char (which is then read as its low byte). Parameters are the
          * first variables allocated, so add_local puts them there. */
@@ -3029,6 +3253,7 @@ static void parse_globals(int base, int type, char *name)
         /* In C, the name is in scope in its own initializer. */
         s = add_global(name, type);
         if (tok == '=') {
+            check_struct_init(type);
             next();
             s->type = parse_global_init(type, name);
             if (init_known)
@@ -3057,6 +3282,7 @@ static void parse_toplevel(void)
     char name[MAX_NAME + 1];
     Sym *fn;
 
+    depth = 0;                      /* file scope, for struct tags */
     if (tok == T_STATIC) {
         next();
         if (!is_type_start(tok))
@@ -3068,12 +3294,18 @@ static void parse_toplevel(void)
         error("expected a declaration or function definition, not",
               tok_desc());
     base = parse_base_type();
+    if (tok == ';' && is_struct(base)) {
+        next();                     /* struct pt { ... }; declares only */
+        return;
+    }
     type = parse_declarator(base, name);
     if (tok != '(') {
         parse_globals(base, type, name);
         return;
     }
     type = unqual(type);    /* const int f(void) returns an int */
+    if (is_struct(type))
+        error("returning a struct is not supported yet", NULL);
     if (find_global(name))
         error("redeclaration of", quote(name));
     fn = find_func(name);
@@ -3081,7 +3313,9 @@ static void parse_toplevel(void)
         fn = add_func(name);
 
     cur_fn = fn;                    /* for messages about its variables */
+    in_params = 1;
     nparams = parse_params();
+    in_params = 0;
     if (tok == ';') {
         /* A prototype. "()" leaves the parameter count unspecified.
          * A call before any declaration assumed int, and its code
@@ -3098,6 +3332,7 @@ static void parse_toplevel(void)
         fn->declared = 1;
         next();
         cur_fn = NULL;
+        tag_hide(0);                /* tags declared in the parameters */
         return;
     }
     if (nparams < 0)
@@ -3135,6 +3370,7 @@ static void parse_toplevel(void)
     put(IR_ENDFUNC, frame_max, fn);
     cur_fn = NULL;
     nlocals = 0;
+    tag_hide(0);
 }
 
 /* Stage 1's entry: parse the whole source file, then check that every
