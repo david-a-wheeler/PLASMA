@@ -16,7 +16,8 @@
 #                        text after "// expect: " on the file's first line.
 # Afterward, no stream files may be left over, and -k must keep them.
 # The passes as programs of their own, cccomp then cclink, must write
-# the same module as ccish for every run test.
+# the same module as ccish for every run test. The message file must
+# agree with the sources (tests/check_msgs.sh).
 
 set -u
 CCISH=./ccish
@@ -199,6 +200,30 @@ if ./cccomp -o "$OUT/split_err" tests/errors/const_assign.c 2>/dev/null \
     fail=$((fail + 1))
 else
     pass=$((pass + 1))
+fi
+
+# The message file must agree with the sources (approach.md, "C2").
+if ./tests/check_msgs.sh; then
+    pass=$((pass + 1))
+else
+    echo "FAIL tests/check_msgs.sh: ccish.msg and the sources disagree"
+    fail=$((fail + 1))
+fi
+# Without the message file, a message is just its numbers (here 41,
+# "lvalue required as", with part 194, "left operand of assignment").
+mkdir -p "$OUT/nomsg"
+cp "$CCISH" "$OUT/nomsg/ccish"
+printf 'int main() { 1 = 2; return 0; }\n' > "$OUT/nomsg/t.c"
+if "$OUT/nomsg/ccish" -o "$OUT/nomsg/t" "$OUT/nomsg/t.c" 2>"$OUT/nomsg/t.err"
+then
+    echo "FAIL no message file: compiled, but should have failed"
+    fail=$((fail + 1))
+elif grep -qF "t.c:1: error 41 (194):" "$OUT/nomsg/t.err"; then
+    pass=$((pass + 1))
+else
+    echo "FAIL no message file: wanted 'error 41 (194):', got:"
+    sed 's/^/    /' "$OUT/nomsg/t.err"
+    fail=$((fail + 1))
 fi
 
 # The stream files (.data, .drel, .strs, .code, .syms) must be gone

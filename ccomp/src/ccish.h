@@ -67,9 +67,16 @@ extern int opt_list;        /* -l: print a listing of the generated code */
 extern int opt_ir;          /* -i: print the IR stream */
 extern int opt_keep;        /* -k: keep the stream files */
 
-void error(const char *msg, const char *detail);
-void fatal(const char *msg, const char *detail);
-void warning(const char *msg, const char *detail);
+/* Diagnostics take a message number: its text is in the message file,
+ * ccish.msg, and is also written, in double quotes, in a comment right
+ * after the number wherever it is used. A part is another message
+ * number, printed after the text (0 for none). */
+void error(int msg, const char *detail);
+void error_in(int msg, int part, const char *detail);
+void fatal(int msg, const char *detail);
+void warning(int msg, const char *detail);
+void warning_in(int msg, int part, const char *detail);
+void msg_init(const char *argv0);           /* find ccish.msg */
 const char *stream_name(const char *base, const char *suffix);
 void remove_streams(const char *base);      /* unless -k */
 const char *base_of(const char *src);       /* "x.c" -> "x" */

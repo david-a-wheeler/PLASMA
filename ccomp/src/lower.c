@@ -266,7 +266,7 @@ static void lower(int op, int a, int f)
         m.a = 1;
         break;
     default:
-        fatal("internal error: unknown IR op", NULL);
+        fatal(174 /* "internal error: unknown IR op" */, NULL);
     }
     peep_put(&m);
     if (op == IR_ENDFUNC)
@@ -337,7 +337,7 @@ void ir_rotate(int m0, int m1)
 {
     int i = m0 - base, j = m1 - base;
     if (i < 0 || i > j || j > nbuf)
-        fatal("internal error: bad IR rotation", NULL);
+        fatal(175 /* "internal error: bad IR rotation" */, NULL);
     reverse(i, j);
     reverse(j, nbuf);
     reverse(i, nbuf);

@@ -221,7 +221,7 @@ cclink [-l] [-k] [-o module] output      the final pass: writes the module, and
     global, and a `const int` holding 0 isn't a null pointer.
   - `volatile` changes no code: ccish never drops or merges memory
     reads. It is checked as part of the type, as above.
-* Warnings are printed like errors (`file:line: warning: ...`), and
+* Warnings are printed like errors (`file:line: warning 49: ...`), and
   compilation continues.
 * Casts between any of these types. `(void)` discards a value.
 * Statements: `return`, `if`/`else`, `while`, `do`, `for`, `switch`,
@@ -308,6 +308,7 @@ function returns exactly one.
 | `src/main.c` | `ccish`: the command line, then both passes |
 | `src/cccomp.c`, `src/cclink.c` | The compile pass and the final pass as programs of their own |
 | `src/diag.c` | Error messages and stream files, shared by all three programs |
+| `ccish.msg` | The text of every error and warning, by number (see "Messages") |
 | `src/bio.c` | File I/O through 512-byte block buffers |
 | `src/lex.c` | Lexer |
 | `src/name.c` | The name pool: each struct tag and member name stored once |
@@ -319,6 +320,35 @@ function returns exactly one.
 | `src/link.c` | Final pass: stream files to REL module, and the listing (see [OBJECT.md](OBJECT.md)) |
 | `tests/run/` | Programs, each with its expected output (`.expected`); comment lines can also check the generated code and the warnings; a program with no warning checks must compile silently |
 | `tests/errors/` | Programs that must fail; the first line gives the expected message |
+| `tests/check_msgs.sh` | Checks `ccish.msg` against the message comments in the sources |
+
+## Messages
+
+Every error and warning has a number, printed before its text:
+
+```
+hello.c:3: error 41: lvalue required as left operand of assignment
+```
+
+The text comes from the message file, `ccish.msg`, which the programs
+read from their own directory, only when they print a message, so no
+message text takes memory (approach.md, "C2 design"). Each line of
+the file is a number, a space and the text, in ascending order. If the
+file can't be found, only the numbers are printed
+(`hello.c:3: error 41 (194):`), and the file explains them.
+
+In the sources, a message is its number, with its text in a comment
+right after it, in double quotes:
+
+```c
+error(41 /* "lvalue required as" */, NULL);
+```
+
+To add a message, give it the next unused number in `ccish.msg` and
+write the same text in both places. `make test` runs
+`tests/check_msgs.sh`, which checks that every comment matches the
+file, that every number used is in the file and every number in the
+file is used, and that the file's numbers ascend.
 
 ## Known limits
 

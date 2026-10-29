@@ -56,7 +56,7 @@ static unsigned char fbuf[MAX_FUNC_CODE];
  * the others. */
 static void damaged(const char *what)
 {
-    fatal("compiler stream file is damaged:", what);
+    fatal(188 /* "compiler stream file is damaged:" */, what);
 }
 
 /* ---------- Step 1: the symbol summary ---------- */
@@ -84,7 +84,7 @@ static void read_summary(const char *base)
     int i, n, j;
 
     if (!bopen(&in, name, 0))
-        fatal("cannot open", name);
+        fatal(171 /* "cannot open" */, name);
     if (bgetc(&in) != 'C' || bgetc(&in) != 'I' || bgetc(&in) != 2)
         damaged(name);
     data_size = bgetw(&in);
@@ -92,7 +92,7 @@ static void read_summary(const char *base)
     code_size = bgetw(&in);
     nlsyms = bgetw(&in);
     if (nlsyms > MAX_FUNCS)
-        fatal("too many functions", NULL);
+        fatal(26 /* "too many functions" */, NULL);
     for (i = 0; i < nlsyms; i++) {
         Lsym *s = &lsyms[i];
         s->flags = bgetc(&in);
@@ -298,7 +298,7 @@ static int add_reloc(int kind, int at, int target, const char *name)
         || (kind != REL_DATA && kind != REL_STR && kind != REL_FUNC))
         damaged(name);
     if (nrelocs >= MAX_RELOCS)
-        fatal("too many relocations", NULL);
+        fatal(189 /* "too many relocations" */, NULL);
     r->kind = kind;
     r->at = at;
     r->target = target;
@@ -326,11 +326,11 @@ static void copy_stream(const char *base, const char *suffix, int size,
     if (drel) {
         name = stream_name(base, SUFFIX_DREL);
         if (!bopen(&rel, name, 0))
-            fatal("cannot open", name);
+            fatal(171 /* "cannot open" */, name);
     }
     name = stream_name(base, suffix);
     if (!bopen(&in, name, 0))
-        fatal("cannot open", name);
+        fatal(171 /* "cannot open" */, name);
     for (i = 0; ; i++) {
         if (drel && next < i && (kind = bgetc(&rel)) != EOF) {
             next = bgetw(&rel);
@@ -365,7 +365,7 @@ static void copy_code(const char *base)
     int at = 0, idx, len, n, i, first, c;
 
     if (!bopen(&in, name, 0))
-        fatal("cannot open", name);
+        fatal(171 /* "cannot open" */, name);
     while ((c = bgetc(&in)) != EOF) {
         bungetc(&in, c);
         idx = bgetw(&in);
@@ -444,7 +444,7 @@ void link_module(const char *base, const char *path)
                 main_idx = i;
         } else if (s->flags & SYM_CALLED) {
             if (nimports >= 255)
-                fatal("too many imported functions", NULL);
+                fatal(190 /* "too many imported functions" */, NULL);
             s->import_idx = nimports++;
         }
     }
@@ -458,11 +458,11 @@ void link_module(const char *base, const char *path)
     subseg = strs_base + strs_size + 1;
     total = code_size + init_size(main_idx);
     if (subseg + total > 0xFFFF)
-        fatal("module too large", NULL);
+        fatal(191 /* "module too large" */, NULL);
 
     /* Step 2. */
     if (!bopen(&out, path, 1))
-        fatal("cannot create output file", path);
+        fatal(192 /* "cannot create output file" */, path);
     bputw(&out, subseg - module_base + total);
     bputw(&out, 0x6502);                    /* magic */
     bputw(&out, 0);                         /* system flags */
@@ -518,5 +518,5 @@ void link_module(const char *base, const char *path)
     bputc(&out, 0);
 
     if (bclose(&out) != 0)
-        fatal("error writing output file", path);
+        fatal(193 /* "error writing output file" */, path);
 }

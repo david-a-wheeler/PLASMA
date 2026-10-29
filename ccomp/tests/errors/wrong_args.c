@@ -1,4 +1,4 @@
-// expect: :4: error: wrong number of arguments in call to 'puts'
+// expect: :4: error 55: wrong number of arguments in call to 'puts'
 int main()
 {
     puts(pstr("a"), 2);

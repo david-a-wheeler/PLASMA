@@ -1,4 +1,4 @@
-// expect: :3: error: array size missing
+// expect: :3: error 87: array size missing
 int main() {
     int a[];
     return 0;

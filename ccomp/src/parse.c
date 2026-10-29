@@ -131,15 +131,15 @@ static const char *quote(const char *name)
  * supported yet. */
 static void not_yet(void)
 {
-    error("not supported yet:", tok_desc());
+    error(24 /* "not supported yet:" */, tok_desc());
 }
 
-/* Skip the current token, which must be t; otherwise report what was
- * expected and what was found. */
-static void expect(int t, const char *what)
+/* Skip the current token, which must be t; otherwise report message
+ * msg (what was expected) and what was found. */
+static void expect(int t, int msg)
 {
     if (tok != t)
-        error(what, tok_desc());
+        error(msg, tok_desc());
     next();
 }
 
@@ -148,7 +148,7 @@ static void expect(int t, const char *what)
 static void enter_nest(void)
 {
     if (++nest > MAX_NEST)
-        fatal("nesting too deep", NULL);
+        fatal(25 /* "nesting too deep" */, NULL);
 }
 
 /* The function named name, or -1. */
@@ -166,7 +166,7 @@ static int find_func(const char *name)
 static int add_func(const char *name)
 {
     if (nfuncs >= MAX_FUNCS)
-        fatal("too many functions", NULL);
+        fatal(26 /* "too many functions" */, NULL);
     fn_name[nfuncs] = intern(name);
     fn_type[nfuncs] = TY_INT;   /* C89 implicit declarations return int */
     fn_ptypes[nfuncs] = -1;
@@ -306,7 +306,7 @@ static void check_not_id(const char *name)
 {
     int i = id_find(name_find(name));
     if (i >= 0 && id_depth(i) == depth)
-        error("redeclaration of", quote(name));
+        error(27 /* "redeclaration of" */, quote(name));
 }
 
 /* Report a redeclaration if a variable named name was declared at
@@ -315,9 +315,9 @@ static void check_not_var(const char *name)
 {
     int v = find_var(name);
     if (v >= 0 && var_depth(v) == depth)
-        error("redeclaration of", quote(name));
+        error(27 /* "redeclaration of" */, quote(name));
     if (depth == 0 && find_func(name) >= 0)
-        error("redeclaration of", quote(name));
+        error(27 /* "redeclaration of" */, quote(name));
 }
 
 /* Push a variable named name ("" for an unnamed prototype parameter)
@@ -330,7 +330,7 @@ static int push_var(const char *name, int type, int off, int flags)
         check_not_id(name);
     }
     if (nvars >= MAX_VARS)
-        fatal("too many variables", NULL);
+        fatal(28 /* "too many variables" */, NULL);
     var_name[nvars] = name[0] ? intern(name) : -1;
     var_type[nvars] = type;
     var_off[nvars] = off;
@@ -344,7 +344,7 @@ static int push_var(const char *name, int type, int off, int flags)
 static int add_global(const char *name, int type)
 {
     if (nvars != nglobals)
-        fatal("internal error: a global declared among locals", NULL);
+        fatal(29 /* "internal error: a global declared among locals" */, NULL);
     nglobals++;
     return push_var(name, type, data_offset(), V_DATA);
 }
@@ -356,7 +356,7 @@ static int add_local(const char *name, int type, int size)
 {
     int v = push_var(name, type, frame_next, 0);
     if (frame_next + size > 255)
-        error("too many local variables in", quote(fname(cur_fn)));
+        error(30 /* "too many local variables in" */, quote(fname(cur_fn)));
     frame_next += size;
     if (frame_next > frame_max)
         frame_max = frame_next;
@@ -391,11 +391,12 @@ static void set_param_types(int f, int n)
         for (i = 0; i < n; i++)
             if (param_types[fn_ptypes[f] + i]
                 != unqual(var_type[nglobals + i]))
-                error("conflicting parameter types for", quote(fname(f)));
+                error(31 /* "conflicting parameter types for" */,
+                      quote(fname(f)));
         return;
     }
     if (nparam_types + n > MAX_PARAM_TYPES)
-        fatal("too many function parameters in all", NULL);
+        fatal(32 /* "too many function parameters in all" */, NULL);
     fn_ptypes[f] = nparam_types;
     for (i = 0; i < n; i++)
         param_types[nparam_types++] = unqual(var_type[nglobals + i]);
@@ -421,15 +422,12 @@ static const char *tag_desc(int tag)
     return buf;
 }
 
-/* Report an error if t is an incomplete struct type, which has no size
- * yet; what says what would have that type ("a variable"). */
-static void need_complete(int t, const char *what)
+/* Report error msg (such as "a variable can't have the incomplete
+ * type") if t is an incomplete struct type, which has no size yet. */
+static void need_complete(int t, int msg)
 {
-    char msg[48];
-    if (is_struct(t) && type_size(t) == 0) {
-        sprintf(msg, "%s can't have the incomplete type", what);
+    if (is_struct(t) && type_size(t) == 0)
         error(msg, tag_desc(struct_tag(t)));
-    }
 }
 
 /* Parse any qualifiers (const, volatile), and return them as Q_ bits. */
@@ -470,7 +468,7 @@ static int parse_base_type(void)
         else if (tok == T_ID && typedef_type(tok_text) >= 0)
             t = typedef_type(tok_text);
         else if (tok != T_INT)
-            error("expected a type, not", tok_desc());
+            error(33 /* "expected a type, not" */, tok_desc());
         next();
     }
     base_tagged = tagged;           /* after any members' own types */
@@ -512,7 +510,7 @@ static void declare_cmdsys(int f, int c)
     const char *sig = cmdsys_funcs[c].sig;
     int i, n = (int)strlen(sig) - 1;
     if (nparam_types + n > MAX_PARAM_TYPES)
-        fatal("too many function parameters in all", NULL);
+        fatal(32 /* "too many function parameters in all" */, NULL);
     fn_type[f] = sig_type(sig[0]);
     set_nparams(f, n);
     fn_ptypes[f] = nparam_types;
@@ -537,11 +535,6 @@ static int matches_cmdsys(int f, int c)
 }
 
 /* ---------- Constants ---------- */
-
-/* The error for a const variable's value where C requires a constant
- * expression (an array size, a global's initializer). */
-static const char not_ice[] =
-    "a const variable's value isn't a constant expression in C";
 
 /* Set by parse_scalar_init(): whether the initializer it parsed was an
  * integer constant (not an address), and its value. A const variable
@@ -595,9 +588,9 @@ static unsigned magnitude(int v)
 static void check_right_const(int op, int v)
 {
     if ((op == IR_DIV || op == IR_MOD) && v == 0)
-        error("division by zero", NULL);
+        error(34 /* "division by zero" */, NULL);
     if ((op == IR_SHL || op == IR_SHR) && (v < 0 || v > 15))
-        error("shift count out of range (0 to 15):",
+        error(35 /* "shift count out of range (0 to 15):" */,
               v < 0 ? "negative" : "too big");
 }
 
@@ -671,7 +664,7 @@ static int label_uses[MAX_LABELS];  /* branches to each label so far */
 static int new_label(void)
 {
     if (nlabels >= MAX_LABELS)
-        error("too many branches in", quote(fname(cur_fn)));
+        error(36 /* "too many branches in" */, quote(fname(cur_fn)));
     label_uses[nlabels] = 0;
     return nlabels++;
 }
@@ -924,7 +917,7 @@ static void push_address(Operand *o)
 static void rvalue(Operand *o)
 {
     if (is_struct(o->type))
-        error("a struct can't be used as a value here", NULL);
+        error(37 /* "a struct can't be used as a value here" */, NULL);
     if (is_array(o->type) && is_place(o)) {
         if (o->kind == K_VAR)
             push_var_addr(o->off, o->global);
@@ -937,7 +930,7 @@ static void rvalue(Operand *o)
     }
     switch (o->kind) {
     case K_VOID:
-        error("void value used in an expression", NULL);
+        error(38 /* "void value used in an expression" */, NULL);
         break;
     case K_CONST:
         put(IR_CONST, o->val, -1);
@@ -967,7 +960,7 @@ static int new_temp(void)
 {
     int off = frame_next;
     if (frame_next + 2 > 255)
-        error("too many local variables in", quote(fname(cur_fn)));
+        error(30 /* "too many local variables in" */, quote(fname(cur_fn)));
     frame_next += 2;
     if (frame_next > frame_max)
         frame_max = frame_next;
@@ -1023,7 +1016,7 @@ static void finish_store(Operand *o, int keep)
 {
     int t1 = -1, t2;
     if (ir_here() != o->mend || nheld != 0)
-        fatal("internal error: code after a pending store", NULL);
+        fatal(39 /* "internal error: code after a pending store" */, NULL);
     if (ir_holds(o->m0)) {
         if (keep)
             put(IR_DUP, 0, -1);   /* it ends up below the address */
@@ -1066,18 +1059,19 @@ static int holds_const(int t)
 }
 
 /* Report an error unless o is an lvalue that can be assigned to (an
- * array can't be, nor a struct with a const member); what says how it
- * was used. */
-static void need_lvalue(Operand *o, const char *what)
+ * array can't be, nor a struct with a const member); what is a message
+ * part saying how it was used ("left operand of assignment"). */
+static void need_lvalue(Operand *o, int what)
 {
     if (is_array(o->type) && is_place(o))
-        error("an array can't be the", what);
+        error_in(40 /* "an array can't be the" */, what, NULL);
     if (!is_place(o) || o->assigned)
-        error("lvalue required as", what);
+        error_in(41 /* "lvalue required as" */, what, NULL);
     if (o->quals & Q_CONST)
-        error("a 'const' object can't be the", what);
+        error_in(42 /* "a 'const' object can't be the" */, what, NULL);
     if (holds_const(o->type))
-        error("a struct with a 'const' member can't be the", what);
+        error_in(43 /* "a struct with a 'const' member can't be the" */,
+                 what, NULL);
 }
 
 /* Store the value on the stack into lvalue o, which is K_VAR or
@@ -1147,8 +1141,9 @@ static int elem_size(int t)
     int n = type_size(type_sub(t));
     if (n == 0)
         error(is_struct(type_sub(t))
-              ? "pointer arithmetic on a pointer to an incomplete struct"
-              : "pointer arithmetic on a 'void *'", NULL);
+              ? 44 /* "pointer arithmetic on a pointer to an incomplete "
+                      "struct" */
+              : 45 /* "pointer arithmetic on a 'void *'" */, NULL);
     return n;
 }
 
@@ -1179,34 +1174,38 @@ static int compatible(int a, int b)
  * gain qualifiers on what it points to (char * to const char *), but
  * losing one is a warning, as in gcc: C requires a diagnostic, and the
  * program may still be right. A struct needs the same struct type.
- * where says where, for the message. */
-static void check_assign(int to, Operand *o, const char *where)
+ * where is a message part saying where ("assignment", or "argument"
+ * with a detail such as "1 of 'f'"). */
+static void check_assign(int to, Operand *o, int where,
+                         const char *detail)
 {
     int from = value_type(o->type), lost;
     if (o->kind == K_VOID)
-        error("void value used in an expression", NULL);
+        error(38 /* "void value used in an expression" */, NULL);
     if (is_struct(to) || is_struct(from)) {
         if (unqual(to) != unqual(from))
-            error("incompatible types in", where);
+            error_in(46 /* "incompatible types in" */, where, detail);
         return;
     }
     if (is_pointer(to)) {
         if (!is_pointer(from)) {
             if (!is_null(o))
-                error("pointer from integer without a cast in", where);
+                error_in(47 /* "pointer from integer without a cast in" */,
+                         where, detail);
         } else if (!compatible(from, to)) {
-            error("incompatible pointer types in", where);
+            error_in(48 /* "incompatible pointer types in" */, where, detail);
         } else {
             lost = type_sub(from) & ~type_sub(to) & Q_ALL;
             if (lost & Q_CONST)
-                warning("'const' qualifier discarded from pointer target"
-                        " type in", where);
+                warning_in(49 /* "'const' qualifier discarded from pointer "
+                              "target type in" */, where, detail);
             if (lost & Q_VOLATILE)
-                warning("'volatile' qualifier discarded from pointer target"
-                        " type in", where);
+                warning_in(50 /* "'volatile' qualifier discarded from pointer "
+                              "target type in" */, where, detail);
         }
     } else if (is_pointer(from)) {
-        error("integer from pointer without a cast in", where);
+        error_in(51 /* "integer from pointer without a cast in" */,
+                 where, detail);
     }
 }
 
@@ -1253,7 +1252,7 @@ static void cast(Operand *o, int type)
 {
     type = unqual(type);
     if (is_struct(type))
-        error("a cast to a struct type isn't allowed", NULL);
+        error(52 /* "a cast to a struct type isn't allowed" */, NULL);
     if (type == TY_VOID) {
         discard(o);
         o->kind = K_VOID;
@@ -1387,20 +1386,21 @@ static void push_zero_result(int t)
 }
 
 /* Report an error if t is a struct too big to pass or return by value
- * (MAX_BYVAL bytes), or an incomplete one; what is "passed" or
- * "returned". */
-static void check_byval(int t, const char *what)
+ * (MAX_BYVAL bytes), or an incomplete one; is_param says which. */
+static void check_byval(int t, int is_param)
 {
-    char msg[64];
     if (!is_struct(t))
         return;
-    need_complete(t, *what == 'p' ? "a parameter" : "a return value");
-    if (type_size(t) > MAX_BYVAL) {
-        sprintf(msg, "a struct over %d bytes can't be %s by value:",
-                MAX_BYVAL, what);
-        error(msg, *what == 'p' ? "use a pointer to it"
-                               : "return it through a pointer parameter");
-    }
+    need_complete(t, is_param
+                     ? 210 /* "a parameter can't have the incomplete type" */
+                     : 211 /* "a return value can't have the incomplete"
+                              " type" */);
+    if (type_size(t) > MAX_BYVAL)
+        error(is_param ? 212 /* "a struct over 8 bytes can't be passed by"
+                                " value: use a pointer to it" */
+                       : 213 /* "a struct over 8 bytes can't be returned by"
+                                " value: return it through a pointer"
+                                " parameter" */, NULL);
 }
 
 /* Calls emitted so far. A compound assignment compares it before and
@@ -1412,7 +1412,7 @@ static int ncalls;
  * emit the call. */
 static void parse_call(int f, Operand *o)
 {
-    char where[MAX_NAME + 32];
+    char where[MAX_NAME + 16];
     Operand a;
     int nargs = 0;
     next();                         /* '(' */
@@ -1420,13 +1420,14 @@ static void parse_call(int f, Operand *o)
         for (;;) {
             parse_expr(PREC_ASSIGN, &a);
             if (fn_ptypes[f] >= 0 && nargs < nparams_of(f)) {
-                sprintf(where, "argument %d of %s", nargs + 1,
+                sprintf(where, "%d of %s", nargs + 1,
                         quote(fname(f)));
-                check_assign(param_types[fn_ptypes[f] + nargs], &a, where);
+                check_assign(param_types[fn_ptypes[f] + nargs], &a,
+                             200 /* "argument" */, where);
             }
             if (is_struct(a.type)) {
                 if (fn_ptypes[f] < 0)
-                    error("passing a struct needs a prototype for",
+                    error(53 /* "passing a struct needs a prototype for" */,
                           quote(fname(f)));
                 push_struct_words(&a);
             } else {
@@ -1438,11 +1439,12 @@ static void parse_call(int f, Operand *o)
             next();
         }
     }
-    expect(')', "expected ')' after arguments, not");
+    expect(')', 54 /* "expected ')' after arguments, not" */);
     if (nparams_of(f) < 0)
         set_nparams(f, nargs);      /* first use fixes the count */
     else if (nparams_of(f) != nargs)
-        error("wrong number of arguments in call to", quote(fname(f)));
+        error(55 /* "wrong number of arguments in call to" */,
+              quote(fname(f)));
     fn_flags[f] |= FN_CALLED;
     if (!suppress)
         ncalls++;
@@ -1458,12 +1460,13 @@ static void parse_pstr(void)
     int off;
     next();                         /* '(' */
     if (tok != T_STR)
-        error("pstr() needs a string literal, not", tok_desc());
+        error(56 /* "pstr() needs a string literal, not" */, tok_desc());
     if (tok_len > 255)
-        error("string too long for pstr() (over 255 characters)", NULL);
+        error(57 /* "string too long for pstr() (over 255 characters)" */,
+              NULL);
     off = suppress ? 1 : data_string(tok_text, tok_len);
     next();
-    expect(')', "expected ')' after pstr argument, not");
+    expect(')', 58 /* "expected ')' after pstr argument, not" */);
     put(IR_STRADDR, off - 1, -1);
 }
 
@@ -1522,7 +1525,7 @@ static void parse_primary(Operand *o)
         if (is_type_start()) {
             /* A cast: (type) unary-expression. */
             c = parse_pointers(parse_base_type());
-            expect(')', "expected ')' after the type in a cast, not");
+            expect(')', 59 /* "expected ')' after the type in a cast, not" */);
             parse_unary(o);
             cast(o, c);
             nest--;
@@ -1530,7 +1533,7 @@ static void parse_primary(Operand *o)
         }
         /* The result may still be a pending variable: (x) = 1 is valid. */
         parse_expr(PREC_COMMA, o);
-        expect(')', "expected ')', not");
+        expect(')', 60 /* "expected ')', not" */);
         nest--;
         return;
     case T_ID:
@@ -1539,9 +1542,11 @@ static void parse_primary(Operand *o)
         c = find_id(name);
         if (c >= 0) {
             if (id_kind(c) == ID_TYPEDEF)
-                error("a type name can't be used as a value:", quote(name));
+                error(61 /* "a type name can't be used as a value:" */,
+                      quote(name));
             if (tok == '(')
-                error("called object is not a function:", quote(name));
+                error(62 /* "called object is not a function:" */,
+                      quote(name));
             o->kind = K_CONST;      /* an enum constant */
             o->val = id_val(c);
             return;
@@ -1553,7 +1558,8 @@ static void parse_primary(Operand *o)
                 return;
             }
             if (find_var(name) >= 0)
-                error("called object is not a function:", quote(name));
+                error(62 /* "called object is not a function:" */,
+                      quote(name));
             f = find_func(name);
             if (f < 0) {
                 f = add_func(name);
@@ -1584,14 +1590,15 @@ static void parse_primary(Operand *o)
             return;
         }
         if (find_func(name) >= 0)
-            error("function pointers are not supported yet:", quote(name));
-        error("undeclared identifier", quote(name));
+            error(63 /* "function pointers are not supported yet:" */,
+                  quote(name));
+        error(64 /* "undeclared identifier" */, quote(name));
         return;
     case T_KEYWORD:
         not_yet();
         return;
     }
-    error("expected an expression, not", tok_desc());
+    error(65 /* "expected an expression, not" */, tok_desc());
 }
 
 /* Check that lvalue o can be the operand of ++ or --, and get it ready:
@@ -1600,7 +1607,7 @@ static void parse_primary(Operand *o)
 static int start_incdec(Operand *o)
 {
     Operand v;
-    need_lvalue(o, "operand of ++ or --");
+    need_lvalue(o, 195 /* "operand of ++ or --" */);
     spill(o);
     v = *o;
     rvalue(&v);
@@ -1647,16 +1654,16 @@ static void deref(Operand *o)
 {
     int t = o->type;
     if (o->kind == K_VOID)
-        error("void value used in an expression", NULL);
+        error(38 /* "void value used in an expression" */, NULL);
     if (is_array(t) && is_place(o)) {
         /* *a is a[0]: the same address, with the element's type. */
         set_object(o, type_sub(t));
         return;
     }
     if (!is_pointer(t))
-        error("unary '*' needs a pointer operand", NULL);
+        error(66 /* "unary '*' needs a pointer operand" */, NULL);
     if (is_void_ptr(t))
-        error("dereferencing a 'void *'", NULL);
+        error(67 /* "dereferencing a 'void *'" */, NULL);
     if (o->kind == K_VAR) {
         make_elem(o, o->off, o->global, 0);     /* *p: the address is in p */
     } else {
@@ -1697,20 +1704,21 @@ static void parse_index(Operand *o)
     if (!simple)
         rvalue(o);
     parse_expr(PREC_COMMA, &r);
-    expect(']', "expected ']' after an array index, not");
+    expect(']', 68 /* "expected ']' after an array index, not" */);
     if (!simple) {
         if (!is_pointer(o->type) && !is_pointer(value_type(r.type)))
-            error("subscripted value is neither array nor pointer", NULL);
+            error(69 /* "subscripted value is neither array nor pointer" */,
+                  NULL);
         if (is_pointer(o->type) && is_pointer(value_type(r.type)))
-            error("array subscript is not an integer", NULL);
+            error(70 /* "array subscript is not an integer" */, NULL);
         binary(o, &r, IR_ADD, -1, -1);
         deref(o);
         return;
     }
     if (is_pointer(value_type(r.type)))
-        error("array subscript is not an integer", NULL);
+        error(70 /* "array subscript is not an integer" */, NULL);
     if (r.kind != K_CONST && r.kind != K_VAR)
-        fatal("internal error: unexpected array index", NULL);
+        fatal(71 /* "internal error: unexpected array index" */, NULL);
     size = is_pointer(t) ? elem_size(t) : type_size(type_sub(t));
     if (r.kind == K_CONST) {
         d = wrap16((unsigned)r.val * (unsigned)size);
@@ -1737,13 +1745,15 @@ static void parse_index(Operand *o)
 static void address_of(Operand *o)
 {
     if (o->assigned)
-        error("lvalue required as", "unary '&' operand");
+        error_in(41 /* "lvalue required as" */,
+                 196 /* "unary '&' operand" */, NULL);
     if (o->kind == K_VAR)
         push_var_addr(o->off, o->global);
     else if (o->kind == K_ELEM)
         push_address(o);                /* &*p is p, &a[i] is a + i */
     else if (o->kind != K_DEREF)        /* K_DEREF: already on the stack */
-        error("lvalue required as", "unary '&' operand");
+        error_in(41 /* "lvalue required as" */,
+                 196 /* "unary '&' operand" */, NULL);
     o->kind = K_VALUE;
     o->type = pointer_to(o->type | o->quals);   /* &N is a const int * */
     o->quals = 0;
@@ -1780,25 +1790,27 @@ static void offset_place(Operand *o, int off)
  * I/O block, the offset is added at compile time. */
 static void parse_member(Operand *o, int arrow)
 {
-    char msg[MAX_NAME + 40];
+    char msg[2 * MAX_NAME + 16];
     int t = arrow ? value_type(o->type) : o->type, tag, m, off;
 
     next();                         /* '.' or '->' */
     if (arrow && !(is_pointer(t) && is_struct(type_sub(t))))
-        error("'->' needs a pointer to a struct", NULL);
+        error(72 /* "'->' needs a pointer to a struct" */, NULL);
     if (!arrow && !is_struct(t))
-        error("'.' needs a struct", NULL);
+        error(73 /* "'.' needs a struct" */, NULL);
     if (!arrow && o->kind == K_VALUE)
         materialize(o);             /* f().x */
     tag = struct_tag(arrow ? type_sub(t) : t);
     if (tok != T_ID)
-        error("expected a member name, not", tok_desc());
+        error(74 /* "expected a member name, not" */, tok_desc());
     if (tag_size(tag) < 0)
-        error("member access into the incomplete type", tag_desc(tag));
+        error(75 /* "member access into the incomplete type" */,
+              tag_desc(tag));
     m = member_find(tag, name_find(tok_text));
     if (m < 0) {
-        sprintf(msg, "%s has no member named", tag_desc(tag));
-        error(msg, quote(tok_text));
+        sprintf(msg, "%s in ", quote(tok_text));
+        strcat(msg, tag_desc(tag));
+        error(214 /* "no member named" */, msg);
     }
     next();
     off = member_off(m);
@@ -1822,7 +1834,7 @@ static void parse_unary(Operand *o)
         next();
         parse_unary(o);
         if (t != '!' && is_pointer(value_type(o->type)))
-            error("pointer operand to unary", t == '-' ? "'-'"
+            error(76 /* "pointer operand to unary" */, t == '-' ? "'-'"
                   : t == '+' ? "'+'" : "'~'");
         if (o->kind == K_CONST) {
             if (t == '-')
@@ -1909,12 +1921,12 @@ static void parse_sizeof(Operand *o)
         if (is_type_start()) {
             /* A type name: a base type, '*'s and array sizes. */
             t = parse_dims(parse_pointers(parse_base_type()), 0);
-            expect(')', "expected ')' after the type in sizeof, not");
+            expect(')', 77 /* "expected ')' after the type in sizeof, not" */);
         } else {
             /* A parenthesized expression, which may be followed by
              * postfix operators: sizeof (a)[0] is the size of (a)[0]. */
             parse_expr(PREC_COMMA, o);
-            expect(')', "expected ')', not");
+            expect(')', 60 /* "expected ')', not" */);
             parse_postfix(o);
             t = o->type;
         }
@@ -1927,9 +1939,9 @@ static void parse_sizeof(Operand *o)
     nheld = saved;              /* drop anything held inside it */
     nest--;
     if (unqual(t) == TY_VOID)
-        error("sizeof can't be applied to type void", NULL);
+        error(78 /* "sizeof can't be applied to type void" */, NULL);
     if (is_struct(t) && type_size(t) == 0)
-        error("sizeof can't be applied to the incomplete type",
+        error(79 /* "sizeof can't be applied to the incomplete type" */,
               tag_desc(struct_tag(t)));
     o->kind = K_CONST;
     o->val = type_size(t);
@@ -2012,7 +2024,7 @@ static int cond_type(Operand *b, int b_null, Operand *c, int c_null)
         return bt;
     if (is_pointer(ct) && b_null)
         return ct;
-    error("type mismatch in conditional expression", NULL);
+    error(80 /* "type mismatch in conditional expression" */, NULL);
     return TY_INT;
 }
 
@@ -2034,13 +2046,13 @@ static void parse_conditional(Operand *o)
             parse_expr(PREC_COMMA, &b);
         else
             parse_skipped(PREC_COMMA, &b);
-        expect(':', "expected ':' in conditional expression, not");
+        expect(':', 81 /* "expected ':' in conditional expression, not" */);
         if (take_b)
             parse_skipped(PREC_COND, &c);
         else
             parse_expr(PREC_COND, &c);
         if (is_void(&b) != is_void(&c))
-            error("only one side of '?:' is void", NULL);
+            error(82 /* "only one side of '?:' is void" */, NULL);
         type = cond_type(&b, is_null(&b), &c, is_null(&c));
         b_null = o->nonice;
         *o = take_b ? b : c;
@@ -2059,14 +2071,14 @@ static void parse_conditional(Operand *o)
     if (!is_void(&b))
         rvalue(&b);
     branch(IR_JUMP, end_l);
-    expect(':', "expected ':' in conditional expression, not");
+    expect(':', 81 /* "expected ':' in conditional expression, not" */);
     place_forward(else_l);
     parse_expr(PREC_COND, &c);
     type = cond_type(&b, b_null, &c, is_null(&c));
     if (!is_void(&c))
         rvalue(&c);
     if (is_void(&b) != is_void(&c))
-        error("only one side of '?:' is void", NULL);
+        error(82 /* "only one side of '?:' is void" */, NULL);
     place_forward(end_l);
     o->kind = b.kind;
     o->type = type;
@@ -2124,10 +2136,10 @@ static void compare_pointers(Operand *o, Operand *r, int op)
     int lt = o->type, rt = value_type(r->type);
     if (!is_pointer(lt) || !is_pointer(rt)) {
         if (is_relational(op) || !(is_null(o) || is_null(r)))
-            error("comparison between pointer and integer", NULL);
+            error(83 /* "comparison between pointer and integer" */, NULL);
     } else if (is_relational(op) ? !same_target(lt, rt)
                                  : !compatible(lt, rt)) {
-        error("comparison of incompatible pointer types", NULL);
+        error(84 /* "comparison of incompatible pointer types" */, NULL);
     }
     if (is_relational(op) && r->kind == K_CONST) {
         r->val = wrap16((unsigned)r->val ^ 0x8000u);
@@ -2184,7 +2196,7 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
     } else if (is_pointer(lt) && is_pointer(rt) && op == IR_SUB) {
         /* p - q: the difference in elements. */
         if (!same_target(lt, rt))
-            error("incompatible pointer types in", "subtraction");
+            error(48 /* "incompatible pointer types in" */, "subtraction");
         n = elem_size(lt);
         rvalue(r);
         put(IR_SUB, 0, -1);
@@ -2200,7 +2212,7 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
         o->is_bool = 0;
         return;
     } else {
-        error("invalid operands to binary", op_name(op));
+        error(85 /* "invalid operands to binary" */, op_name(op));
     }
     put(op, 0, -1);
     o->kind = K_VALUE;
@@ -2217,7 +2229,7 @@ static void start_store(Operand *o, int start)
     Operand r;
     int mid = ir_here();
     parse_expr(PREC_ASSIGN, &r);
-    check_assign(o->type, &r, "assignment");
+    check_assign(o->type, &r, 197 /* "assignment" */, NULL);
     rvalue(&r);
     o->kind = K_STORE;
     o->m0 = start;
@@ -2345,8 +2357,8 @@ static int copy_func(void)
         f = add_func("memcpy");
         declare_cmdsys(f, find_cmdsys("memcpy"));
     } else if (nparams_of(f) != 3) {
-        error("a struct copy calls memcpy(dst, src, n), but this program"
-              " declares memcpy differently", NULL);
+        error(86 /* "a struct copy calls memcpy(dst, src, n), but this "
+                    "program declares memcpy differently" */, NULL);
     }
     if (!suppress)
         fn_flags[f] |= FN_CALLED;
@@ -2446,7 +2458,7 @@ static void struct_assign(Operand *o)
     mark = ir_here();
     h = nheld;
     parse_expr(PREC_ASSIGN, &r);
-    check_assign(o->type, &r, "assignment");
+    check_assign(o->type, &r, 197 /* "assignment" */, NULL);
     copy_struct(o, &r, code_start(mark, h));
 }
 
@@ -2496,7 +2508,7 @@ static void parse_assign(Operand *o, int ir_op, int m0, int h0)
         spill(o);
         parse_expr(PREC_ASSIGN, &r);
     }
-    check_assign(o->type, &r, "assignment");
+    check_assign(o->type, &r, 197 /* "assignment" */, NULL);
     rvalue(&r);
     assign_to(o);
     o->is_bool = ir_op < 0 && r.is_bool && o->kind == K_VALUE;
@@ -2519,8 +2531,9 @@ static void parse_expr(int min_prec, Operand *o)
         /* Assignment is right-associative and binds loosest of all but
          * ','; it is only possible directly after a unary expression. */
         if (min_prec > PREC_ASSIGN)
-            error("lvalue required as", "left operand of assignment");
-        need_lvalue(o, "left operand of assignment");
+            error_in(41 /* "lvalue required as" */,
+                     194 /* "left operand of assignment" */, NULL);
+        need_lvalue(o, 194 /* "left operand of assignment" */);
         next();
         parse_assign(o, ir_op, m0, h0);
     }
@@ -2529,7 +2542,8 @@ static void parse_expr(int min_prec, Operand *o)
         int mark = -1;
         lstart = -1;
         if (assign_op(&ir_op))
-            error("lvalue required as", "left operand of assignment");
+            error_in(41 /* "lvalue required as" */,
+                     194 /* "left operand of assignment" */, NULL);
         prec = binary_prec(&ir_op, &supported);
         if (prec == 0 || prec < min_prec)
             break;
@@ -2546,7 +2560,7 @@ static void parse_expr(int min_prec, Operand *o)
         if (o->kind == K_CONST && !is_pointer(o->type)) {
             /* Hold it back: it may fold with the right operand. */
             if (nheld > MAX_NEST)
-                fatal("nesting too deep", NULL);
+                fatal(25 /* "nesting too deep" */, NULL);
             mark = nheld;
             held[nheld++] = o->val;
         } else {
@@ -2620,22 +2634,25 @@ static int parse_dims(int t, int may_omit)
     next();
     if (tok == ']') {
         if (!may_omit)
-            error("array size missing", NULL);
+            error(87 /* "array size missing" */, NULL);
     } else {
         parse_expr(PREC_COND, &e);
         if (e.kind != K_CONST || is_pointer(e.type))
-            error("array size must be a constant", NULL);
+            error(88 /* "array size must be a constant" */, NULL);
         if (e.nonice)
-            error(not_ice, "(an array size must be one)");
+            error_in(201 /* "a const variable's value isn't a constant"
+                          " expression in C" */,
+                     202 /* "(an array size must be one)" */, NULL);
         if (e.val <= 0)
-            error("array size must be positive", NULL);
+            error(89 /* "array size must be positive" */, NULL);
         n = e.val;
     }
-    expect(']', "expected ']' after an array size, not");
+    expect(']', 90 /* "expected ']' after an array size, not" */);
     t = parse_dims(t, 0);
-    need_complete(t, "an array element");
+    need_complete(t, 209 /* "an array element can't have the incomplete"
+                            " type" */);
     if (type_size(t) == 0)
-        error("array elements can't have type void", NULL);
+        error(91 /* "array elements can't have type void" */, NULL);
     nest--;
     return array_of(t, n);
 }
@@ -2647,10 +2664,10 @@ static int parse_declarator(int base, char *name)
 {
     int type = parse_pointers(base);
     if (tok == '(')
-        error("declarators in parentheses are not supported yet",
+        error(92 /* "declarators in parentheses are not supported yet" */,
               "(such as int (*p)[4])");
     if (tok != T_ID)
-        error("expected a name, not", tok_desc());
+        error(93 /* "expected a name, not" */, tok_desc());
     strcpy(name, tok_text);
     next();
     return type;
@@ -2663,9 +2680,9 @@ static int parse_declarator(int base, char *name)
 static int parse_var_type(int type, int may_omit)
 {
     if (unqual(type) == TY_VOID)
-        error("a variable can't have type void", NULL);
+        error(94 /* "a variable can't have type void" */, NULL);
     type = parse_dims(type, may_omit);
-    need_complete(type, "a variable");
+    need_complete(type, 207 /* "a variable can't have the incomplete type" */);
     return type;
 }
 
@@ -2683,32 +2700,34 @@ static void parse_members(int tag)
     tag_set_size(tag, -2);
     next();                         /* '{' */
     if (tok == '}')
-        error("a struct needs at least one member", NULL);
+        error(95 /* "a struct needs at least one member" */, NULL);
     while (tok != '}') {
         if (tok == T_KEYWORD)
             not_yet();
         if (!is_type_start())
-            error("expected a struct member, not", tok_desc());
+            error(96 /* "expected a struct member, not" */, tok_desc());
         base = parse_base_type();
         for (;;) {
             t = parse_declarator(base, name);
             if (tok == '(')
-                error("a struct member can't be a function:", quote(name));
+                error(97 /* "a struct member can't be a function:" */,
+                      quote(name));
             t = parse_dims(t, 0);
             if (unqual(t) == TY_VOID)
-                error("a struct member can't have type void", NULL);
-            need_complete(t, "a struct member");
+                error(98 /* "a struct member can't have type void" */, NULL);
+            need_complete(t, 208 /* "a struct member can't have the"
+                                    " incomplete type" */);
             if (member_find(tag, name_find(name)) >= 0)
-                error("duplicate struct member", quote(name));
+                error(99 /* "duplicate struct member" */, quote(name));
             if (off > MAX_OBJECT - type_size(t))
-                error("struct too large (over 32767 bytes)", NULL);
+                error(100 /* "struct too large (over 32767 bytes)" */, NULL);
             member_add(tag, intern(name), t, off);
             off += type_size(t);
             if (tok != ',')
                 break;
             next();
         }
-        expect(';', "expected ';' after a struct member, not");
+        expect(';', 101 /* "expected ';' after a struct member, not" */);
     }
     next();
     tag_set_size(tag, off);
@@ -2738,18 +2757,18 @@ static int parse_struct(void)
         next();
         tag = tag_find(name, tok == '{' || tok == ';' ? depth : -1);
     } else if (tok != '{') {
-        error("expected a struct name or '{' after 'struct', not",
+        error(102 /* "expected a struct name or '{' after 'struct', not" */,
               tok_desc());
     }
     if (tag < 0) {
         tag = tag_new(name, depth);
         if (in_params && name >= 0)
-            warning("declared in a parameter list, so not visible outside"
-                    " it:", tag_desc(tag));
+            warning(103 /* "declared in a parameter list, so not visible "
+                           "outside it:" */, tag_desc(tag));
     }
     if (tok == '{') {
         if (tag_size(tag) != -1)
-            error("redefinition of", tag_desc(tag));
+            error(104 /* "redefinition of" */, tag_desc(tag));
         parse_members(tag);
     }
     return struct_type(tag);
@@ -2773,15 +2792,16 @@ static int parse_enum(void)
     if (tok == T_ID)
         next();                     /* the tag */
     else if (tok != '{')
-        error("expected an enum name or '{' after 'enum', not", tok_desc());
+        error(105 /* "expected an enum name or '{' after 'enum', not" */,
+              tok_desc());
     if (tok != '{')
         return TY_INT;
     next();
     if (tok == '}')
-        error("an enum needs at least one constant", NULL);
+        error(106 /* "an enum needs at least one constant" */, NULL);
     while (tok != '}') {
         if (tok != T_ID)
-            error("expected an enum constant, not", tok_desc());
+            error(107 /* "expected an enum constant, not" */, tok_desc());
         check_not_var(tok_text);
         check_not_id(tok_text);
         name = intern(tok_text);
@@ -2790,13 +2810,17 @@ static int parse_enum(void)
             next();
             parse_skipped(PREC_COND, &e);
             if (e.kind != K_CONST || is_pointer(e.type))
-                error("an enum value must be an integer constant", NULL);
+                error(108 /* "an enum value must be an integer constant" */,
+                      NULL);
             if (e.nonice)
-                error(not_ice, "(an enum value must be one)");
+                error_in(201 /* "a const variable's value isn't a constant"
+                              " expression in C" */,
+                         203 /* "(an enum value must be one)" */, NULL);
             v = e.val;
             full = 0;
         } else if (full) {
-            error("enum value too large for an int (over 32767)", NULL);
+            error(109 /* "enum value too large for an int (over 32767)" */,
+                  NULL);
         }
         id_add(name, ID_CONST, v, depth);
         full = v == 0x7FFF;
@@ -2805,7 +2829,7 @@ static int parse_enum(void)
             break;
         next();
     }
-    expect('}', "expected ',' or '}' in an enum, not");
+    expect('}', 110 /* "expected ',' or '}' in an enum, not" */);
     return TY_INT;
 }
 
@@ -2819,17 +2843,18 @@ static void parse_typedef(void)
 
     next();                         /* typedef */
     if (!is_type_start())
-        error("expected a type after 'typedef', not", tok_desc());
+        error(111 /* "expected a type after 'typedef', not" */, tok_desc());
     base = parse_base_type();
     for (;;) {
         t = parse_declarator(base, name);
         if (tok == '(')
-            error("typedefs of function types are not supported", NULL);
+            error(112 /* "typedefs of function types are not supported" */,
+                  NULL);
         t = parse_dims(t, 0);
         i = id_find(name_find(name));
         if (i >= 0 && id_depth(i) == depth) {
             if (id_kind(i) != ID_TYPEDEF || id_val(i) != t)
-                error("redeclaration of", quote(name));
+                error(27 /* "redeclaration of" */, quote(name));
         } else {
             check_not_var(name);
             id_add(intern(name), ID_TYPEDEF, t, depth);
@@ -2838,7 +2863,7 @@ static void parse_typedef(void)
             break;
         next();
     }
-    expect(';', "expected ';' after a typedef, not");
+    expect(';', 113 /* "expected ';' after a typedef, not" */);
 }
 
 /* Initialize the local struct s from a struct expression (after the
@@ -2859,7 +2884,7 @@ static void init_struct_copy(int s)
     mark = ir_here();
     h = nheld;
     parse_expr(PREC_ASSIGN, &e);
-    check_assign(v.type, &e, "initialization");
+    check_assign(v.type, &e, 198 /* "initialization" */, NULL);
     copy_struct(&v, &e, code_start(mark, h));
     end_expr();
 }
@@ -2896,9 +2921,10 @@ static void parse_declaration(int is_static)
         char name[MAX_NAME + 1];
         int type = parse_var_type(parse_declarator(base, name), 1), braced;
         if (tok == '(')
-            error("local function declarations are not supported", NULL);
+            error(114 /* "local function declarations are not supported" */,
+                  NULL);
         if (is_array(type) && type_count(type) == 0 && tok != '=')
-            error("array size missing", NULL);
+            error(87 /* "array size missing" */, NULL);
         if (is_static) {
             /* In C, the name is in scope in its own initializer. */
             s = add_static_local(name, type);
@@ -2916,11 +2942,11 @@ static void parse_declaration(int is_static)
             continue;
         }
         if (is_array(type) && frame_next + type_size(type) > 255)
-            error("local array doesn't fit in the 255-byte frame"
-                  " (make it static or global):", quote(name));
+            error(115 /* "local array doesn't fit in the 255-byte frame "
+                         "(make it static or global):" */, quote(name));
         if (is_struct(type) && frame_next + type_size(type) > 255)
-            error("local struct doesn't fit in the 255-byte frame"
-                  " (make it static or global):", quote(name));
+            error(116 /* "local struct doesn't fit in the 255-byte frame "
+                         "(make it static or global):" */, quote(name));
         /* In C, the name is in scope in its own initializer. (An array
          * whose size comes from its initializer grows as it is parsed:
          * see reserve().) */
@@ -2938,7 +2964,7 @@ static void parse_declaration(int is_static)
                 next();
             begin_expr();
             parse_expr(PREC_ASSIGN, &e);
-            check_assign(type, &e, "initialization");
+            check_assign(type, &e, 198 /* "initialization" */, NULL);
             if (e.kind == K_CONST)
                 set_known(s, e.val);
             rvalue(&e);
@@ -2952,14 +2978,15 @@ static void parse_declaration(int is_static)
             if (braced) {
                 if (tok == ',')
                     next();
-                expect('}', "expected '}' after the initializer, not");
+                expect('}', 117 /* "expected '}' after the initializer,"
+                                   " not" */);
             }
         }
         if (tok != ',')
             break;
         next();
     }
-    expect(';', "expected ';' after declaration, not");
+    expect(';', 118 /* "expected ';' after declaration, not" */);
 }
 
 /* Parse a full expression used as a statement (or a for clause), and
@@ -3000,9 +3027,9 @@ static void parse_cond(int n, int on_true)
 /* Parse "( condition )" and branch to label n as cond_branch does. */
 static void parse_paren_cond(int n, int on_true)
 {
-    expect('(', "expected '(' before condition, not");
+    expect('(', 119 /* "expected '(' before condition, not" */);
     parse_cond(n, on_true);
-    expect(')', "expected ')' after condition, not");
+    expect(')', 120 /* "expected ')' after condition, not" */);
 }
 
 /* The innermost loops' and switches' labels, for break and continue.
@@ -3018,7 +3045,7 @@ static void parse_statement(void);
 static void loop_body(int brk, int cont)
 {
     if (nloops >= MAX_NEST)
-        fatal("loops nested too deeply", NULL);
+        fatal(121 /* "loops nested too deeply" */, NULL);
     brk_label[nloops] = brk;
     cont_label[nloops] = cont;
     nloops++;
@@ -3064,10 +3091,10 @@ static void parse_do(void)
     next();                         /* "do" */
     place_label(top);
     loop_body(brk, cont);
-    expect(T_WHILE, "expected 'while' after the body of 'do', not");
+    expect(T_WHILE, 122 /* "expected 'while' after the body of 'do', not" */);
     place_forward(cont);
     parse_paren_cond(top, 1);
-    expect(';', "expected ';' after 'do ... while (...)', not");
+    expect(';', 123 /* "expected ';' after 'do ... while (...)', not" */);
     place_forward(brk);
 }
 
@@ -3087,23 +3114,23 @@ static void parse_for(void)
     int top, brk, cont, body;
 
     next();                         /* "for" */
-    expect('(', "expected '(' after 'for', not");
+    expect('(', 124 /* "expected '(' after 'for', not" */);
     depth++;
     if (tok == T_STATIC)
-        error("a 'for' loop can't declare a static variable", NULL);
+        error(125 /* "a 'for' loop can't declare a static variable" */, NULL);
     if (is_type_start()) {
         parse_declaration(0);       /* includes the ';' */
     } else {
         if (tok != ';')
             parse_expr_statement();
-        expect(';', "expected ';' after 'for' initialization, not");
+        expect(';', 126 /* "expected ';' after 'for' initialization, not" */);
     }
     top = new_label();
     brk = new_label();
     place_label(top);
     if (tok != ';')
         parse_cond(brk, 0);
-    expect(';', "expected ';' after 'for' condition, not");
+    expect(';', 127 /* "expected ';' after 'for' condition, not" */);
     cont = top;
     if (tok != ')') {
         body = new_label();
@@ -3114,7 +3141,7 @@ static void parse_for(void)
         branch(IR_JUMP, top);
         place_forward(body);
     }
-    expect(')', "expected ')' after 'for' clauses, not");
+    expect(')', 128 /* "expected ')' after 'for' clauses, not" */);
     loop_body(brk, cont);
     branch(IR_JUMP, cont);
     place_forward(brk);
@@ -3130,13 +3157,13 @@ static void parse_break_continue(void)
     int is_break = tok == T_BREAK;
     next();
     if (nloops == 0 && is_break)
-        error("'break' is not inside a loop or switch", NULL);
+        error(129 /* "'break' is not inside a loop or switch" */, NULL);
     if (!is_break && (nloops == 0 || cont_label[nloops - 1] < 0))
-        error("'continue' is not inside a loop", NULL);
+        error(130 /* "'continue' is not inside a loop" */, NULL);
     branch(IR_JUMP, is_break ? brk_label[nloops - 1]
                              : cont_label[nloops - 1]);
-    expect(';', is_break ? "expected ';' after 'break', not"
-                         : "expected ';' after 'continue', not");
+    expect(';', is_break ? 131 /* "expected ';' after 'break', not" */
+                         : 132 /* "expected ';' after 'continue', not" */);
 }
 
 /*
@@ -3162,33 +3189,38 @@ static void parse_case_labels(void)
     int l, i;
     while (tok == T_CASE || tok == T_DEFAULT) {
         if (sw_first < 0)
-            error(tok == T_CASE ? "'case' is not inside a switch"
-                                : "'default' is not inside a switch", NULL);
+            error(tok == T_CASE ? 133 /* "'case' is not inside a switch" */
+                                : 134 /* "'default' is not inside a switch" */,
+NULL);
         l = new_label();
         if (tok == T_DEFAULT) {
             next();
             if (sw_default >= 0)
-                error("more than one 'default' in a switch", NULL);
+                error(135 /* "more than one 'default' in a switch" */, NULL);
             sw_default = l;
         } else {
             next();
             parse_skipped(PREC_COND, &e);
             if (e.kind != K_CONST || is_pointer(e.type))
-                error("a case label must be an integer constant", NULL);
+                error(136 /* "a case label must be an integer constant" */,
+                      NULL);
             if (e.nonice)
-                error(not_ice, "(a case label must be one)");
+                error_in(201 /* "a const variable's value isn't a constant"
+                              " expression in C" */,
+                         204 /* "(a case label must be one)" */, NULL);
             for (i = sw_first; i < ncases; i++)
                 if (case_val[i] == e.val) {
                     sprintf(buf, "%d", e.val);
-                    error("duplicate case value", buf);
+                    error(137 /* "duplicate case value" */, buf);
                 }
             if (ncases >= MAX_CASES)
-                fatal("too many case labels in the switches open at once",
+                fatal(138 /* "too many case labels in the switches open at "
+                             "once" */,
                       NULL);
             case_val[ncases] = e.val;
             case_label[ncases++] = l;
         }
-        expect(':', "expected ':' after a case label, not");
+        expect(':', 139 /* "expected ':' after a case label, not" */);
         place_label(l);
     }
 }
@@ -3213,7 +3245,7 @@ static void sort_cases(void)
     /* Written so that it can't overflow with a 16-bit int. */
     if (ncases > sw_first && case_val[sw_first] < 0
         && case_val[ncases - 1] > case_val[sw_first] + 32767)
-        error("case values too far apart (more than 32767)", NULL);
+        error(140 /* "case values too far apart (more than 32767)" */, NULL);
 }
 
 /* One entry of a case table: value v, leading to label l. */
@@ -3243,16 +3275,16 @@ static void parse_switch(void)
     int def = sw_default, i;
 
     next();                         /* "switch" */
-    expect('(', "expected '(' after 'switch', not");
+    expect('(', 141 /* "expected '(' after 'switch', not" */);
     begin_expr();
     parse_expr(PREC_COMMA, &o);
     if (o.kind == K_VOID || is_struct(o.type)
         || is_pointer(value_type(o.type)))
-        error("a switch needs an integer value", NULL);
+        error(142 /* "a switch needs an integer value" */, NULL);
     rvalue(&o);
     branch(IR_SEL, tab);
     end_expr();
-    expect(')', "expected ')' after the switch value, not");
+    expect(')', 143 /* "expected ')' after the switch value, not" */);
     sw_first = ncases;
     sw_default = -1;
     loop_body(brk, nloops > 0 ? cont_label[nloops - 1] : -1);
@@ -3306,7 +3338,7 @@ static void parse_statement(void)
         parse_break_continue();
         return;
     case T_ELSE:
-        error("'else' without a matching 'if'", NULL);
+        error(144 /* "'else' without a matching 'if'" */, NULL);
         return;
     case '{':
         parse_block(1);
@@ -3321,10 +3353,11 @@ static void parse_statement(void)
                 push_zero_result(fn_type[cur_fn]);  /* C89 allows this */
         } else {
             if (fn_type[cur_fn] == TY_VOID)
-                error("void function returns a value:", quote(fname(cur_fn)));
+                error(145 /* "void function returns a value:" */,
+                      quote(fname(cur_fn)));
             begin_expr();
             parse_expr(PREC_COMMA, &o);
-            check_assign(fn_type[cur_fn], &o, "return");
+            check_assign(fn_type[cur_fn], &o, 199 /* "return" */, NULL);
             if (fn_type[cur_fn] == TY_CHAR)
                 to_char(&o);        /* a char function returns 0 to 255 */
             if (is_struct(fn_type[cur_fn]))
@@ -3333,7 +3366,7 @@ static void parse_statement(void)
                 rvalue(&o);
             end_expr();
         }
-        expect(';', "expected ';' after return value, not");
+        expect(';', 146 /* "expected ';' after return value, not" */);
         put(IR_RETURN, 0, -1);
         return;
     case T_INT:
@@ -3351,7 +3384,7 @@ static void parse_statement(void)
     case T_STATIC:
         next();
         if (!is_type_start())
-            error("expected a type after 'static', not", tok_desc());
+            error(147 /* "expected a type after 'static', not" */, tok_desc());
         parse_declaration(1);
         return;
     case T_KEYWORD:
@@ -3359,7 +3392,7 @@ static void parse_statement(void)
         return;
     }
     parse_expr_statement();
-    expect(';', "expected ';' after expression, not");
+    expect(';', 148 /* "expected ';' after expression, not" */);
 }
 
 /* A { } block. new_scope is 0 for a function body, whose outermost
@@ -3373,7 +3406,7 @@ static void parse_block(int new_scope)
     next();                         /* '{' */
     while (tok != '}') {
         if (tok == T_EOF)
-            error("missing '}' at end of file", NULL);
+            error(149 /* "missing '}' at end of file" */, NULL);
         parse_statement();
     }
     next();
@@ -3410,21 +3443,22 @@ static int parse_params(void)
         char name[MAX_NAME + 1];
         int type;
         if (tok == T_ELLIPSIS)
-            error("variable argument lists are not supported yet", NULL);
+            error(150 /* "variable argument lists are not supported yet" */,
+                  NULL);
         if (tok == T_KEYWORD)
             not_yet();
         if (!is_type_start())
-            error("expected a parameter type, not", tok_desc());
+            error(151 /* "expected a parameter type, not" */, tok_desc());
         type = parse_pointers(parse_base_type());
         if (unqual(type) == TY_VOID) {
             if (type == TY_VOID && n == 0 && tok == ')') {
                 next();
                 return 0;           /* (void): no parameters */
             }
-            error("a parameter can't have type void", NULL);
+            error(152 /* "a parameter can't have type void" */, NULL);
         }
         if (n >= MAX_PARAMS)
-            fatal("too many parameters", NULL);
+            fatal(153 /* "too many parameters" */, NULL);
         name[0] = '\0';             /* a prototype may leave it out */
         if (tok == T_ID) {
             strcpy(name, tok_text);
@@ -3436,7 +3470,7 @@ static int parse_params(void)
         type = parse_dims(type, 1);
         if (is_array(type))
             type = pointer_to(type_sub(type));
-        check_byval(type, "passed");
+        check_byval(type, 1);
         /* ENTER puts the parameters' words in consecutive frame words,
          * one each for a scalar (a char is then read as its low byte),
          * and a struct's words in its own layout. Parameters are the
@@ -3447,7 +3481,7 @@ static int parse_params(void)
             break;
         next();
     }
-    expect(')', "expected ')' after parameters, not");
+    expect(')', 154 /* "expected ')' after parameters, not" */);
     return n;
 }
 
@@ -3461,7 +3495,6 @@ static int parse_params(void)
  * literal, &name with any constant indexes, an array's name, casts,
  * and + or - a constant. Anything else (2 + buf, &*p) is an error. */
 
-static const char not_const[] = "initializer is not a constant ccish supports";
 
 /* An initializer's value: an integer, or an address (the start of the
  * global or string at target, in kind's space) plus val bytes. */
@@ -3488,9 +3521,12 @@ static void parse_const(int prec, Operand *e)
         parse_skipped(prec, e);
     }
     if (e->kind != K_CONST)
-        error(not_const, NULL);
+        error(206 /* "initializer is not a constant ccish supports" */,
+              NULL);
     if (e->nonice)
-        error(not_ice, "(an initializer here must be one)");
+        error_in(201 /* "a const variable's value isn't a constant"
+                      " expression in C" */,
+                 205 /* "(an initializer here must be one)" */, NULL);
 }
 
 /* Parse an address constant for an initializer into *a, or an integer
@@ -3511,7 +3547,7 @@ static void parse_addr(Init *a, int unary)
             /* A cast: of an address, to a pointer type, or of an
              * integer, to any type. */
             t = parse_pointers(parse_base_type());
-            expect(')', "expected ')' after the type in a cast, not");
+            expect(')', 59 /* "expected ')' after the type in a cast, not" */);
             parse_addr(a, 1);
             if (a->kind == 0) {
                 e.kind = K_CONST;
@@ -3520,15 +3556,17 @@ static void parse_addr(Init *a, int unary)
                 e.nonice = 0;
                 cast(&e, t);
                 if (e.kind != K_CONST)
-                    error(not_const, NULL);
+                    error(206 /* "initializer is not a constant ccish"
+                                 " supports" */, NULL);
                 a->val = e.val;
             } else if (!is_pointer(t)) {
-                error(not_const, NULL);
+                error(206 /* "initializer is not a constant ccish supports" */,
+                      NULL);
             }
             a->type = unqual(t);
         } else {
             parse_addr(a, 0);
-            expect(')', "expected ')', not");
+            expect(')', 60 /* "expected ')', not" */);
         }
     } else if (tok == T_STR) {
         a->kind = REL_STR;
@@ -3541,7 +3579,8 @@ static void parse_addr(Init *a, int unary)
         next();
         s = tok == T_ID ? find_var(tok_text) : -1;
         if (s < 0 || !var_data(s))
-            error(not_const, NULL);
+            error(206 /* "initializer is not a constant ccish supports" */,
+                  NULL);
         next();
         t = var_type[s];
         a->kind = REL_DATA;
@@ -3550,8 +3589,8 @@ static void parse_addr(Init *a, int unary)
             next();
             parse_const(PREC_COMMA, &e);
             if (is_pointer(e.type))
-                error("array subscript is not an integer", NULL);
-            expect(']', "expected ']' after an array index, not");
+                error(70 /* "array subscript is not an integer" */, NULL);
+            expect(']', 68 /* "expected ']' after an array index, not" */);
             t = type_sub(t);
             a->val += e.val * type_size(t);
         }
@@ -3573,7 +3612,8 @@ static void parse_addr(Init *a, int unary)
         next();
         parse_const(PREC_MUL, &e);
         if (is_pointer(e.type))
-            error(not_const, NULL);
+            error(206 /* "initializer is not a constant ccish supports" */,
+                  NULL);
         if (is_pointer(a->type))
             e.val *= elem_size(a->type);
         a->val = wrap16((unsigned)a->val
@@ -3602,7 +3642,7 @@ static void parse_scalar_init(int type)
     o.type = a.type;
     o.nonice = 0;
     o.is_bool = 0;
-    check_assign(type, &o, "initialization");
+    check_assign(type, &o, 198 /* "initialization" */, NULL);
     init_known = a.kind == 0;
     init_val = a.val;
     /* An address must stay within the data written so far (one past
@@ -3610,7 +3650,7 @@ static void parse_scalar_init(int type)
     if ((a.kind == REL_DATA && (a.target + a.val < 0
                                 || a.target + a.val > data_offset()))
         || (a.kind == REL_STR && (a.val < 0 || a.val > a.max)))
-        error("initializer address is out of range", NULL);
+        error(155 /* "initializer address is out of range" */, NULL);
     if (type_size(type) == 1)
         data_byte(a.val);
     else if (a.kind)
@@ -3644,8 +3684,8 @@ static void reserve(int end)
     if (end <= frame_next)
         return;
     if (end > 255)
-        error("local array doesn't fit in the 255-byte frame"
-              " (make it static or global):", quote(init_name));
+        error(115 /* "local array doesn't fit in the 255-byte frame (make "
+                     "it static or global):" */, quote(init_name));
     frame_next = end;
     if (frame_next > frame_max)
         frame_max = frame_next;
@@ -3751,7 +3791,7 @@ static void init_elem(int type, int off)
     reserve(at + type_size(type));
     begin_expr();
     parse_expr(PREC_ASSIGN, &e);
-    check_assign(type, &e, "initialization");
+    check_assign(type, &e, 198 /* "initialization" */, NULL);
     if (type == TY_CHAR && e.kind == K_CONST) {
         init_byte(off, e.val);
     } else {
@@ -3774,7 +3814,8 @@ static int init_string(int max, int off)
 {
     int i, n = tok_len;
     if (max && n > max)
-        error("initializer string is too long for", quote(init_name));
+        error(156 /* "initializer string is too long for" */,
+              quote(init_name));
     for (i = 0; i < n; i++)
         init_byte(off + i, tok_text[i]);
     if (!max || n < max) {
@@ -3799,7 +3840,8 @@ static void after_leaf(void)
     if (tok == ',')
         next();
     else if (tok != '}')
-        error("expected '}' or ',' in an initializer, not", tok_desc());
+        error(157 /* "expected '}' or ',' in an initializer, not" */,
+              tok_desc());
     init_done = tok == '}';
 }
 
@@ -3829,7 +3871,8 @@ static void init_flat(int t, int off)
             init_flat(member_type(m), off + member_off(m));
     } else {
         if (tok == '{')
-            error("nested braces in initializers are not supported yet",
+            error(158 /* "nested braces in initializers are not supported "
+                         "yet" */,
                   NULL);
         init_elem(unqual(t), off);
         init_end = off + type_size(t);
@@ -3853,17 +3896,19 @@ static int parse_aggr_init(int type, const char *name)
         init_end = init_string(type_count(type), 0);
     } else {
         expect('{', is_array(type)
-                    ? "expected '{' to start an array initializer, not"
-                    : "expected '{' to start a struct initializer, not");
+                    ? 159 /* "expected '{' to start an array initializer, "
+                             "not" */
+                    : 160 /* "expected '{' to start a struct initializer, "
+                             "not" */);
         init_done = tok == '}';
         init_flat(type, 0);
         if (!init_done)
-            error("too many initializers for", quote(name));
+            error(161 /* "too many initializers for" */, quote(name));
         next();                     /* '}' */
     }
     if (is_array(type) && type_count(type) == 0) {
         if (init_end == 0)
-            error("an array of unknown size needs initializers:",
+            error(162 /* "an array of unknown size needs initializers:" */,
                   quote(name));
         esize = type_size(type_sub(type));
         type = array_of(type_sub(type), (init_end + esize - 1) / esize);
@@ -3887,7 +3932,7 @@ static int parse_global_init(int type, const char *name)
         parse_scalar_init(type);
         if (tok == ',')
             next();
-        expect('}', "expected '}' after the initializer, not");
+        expect('}', 117 /* "expected '}' after the initializer, not" */);
     } else {
         parse_scalar_init(type);
     }
@@ -3918,7 +3963,8 @@ static void parse_globals(int base, int type, char *name)
     for (;;) {
         type = parse_var_type(type, 1);
         if (tok == '(')
-            error("declare functions separately from variables", NULL);
+            error(163 /* "declare functions separately from variables" */,
+                  NULL);
         /* In C, the name is in scope in its own initializer. */
         s = add_global(name, type);
         if (tok == '=') {
@@ -3928,7 +3974,7 @@ static void parse_globals(int base, int type, char *name)
                 set_known(s, init_val);
         } else {
             if (is_array(type) && type_count(type) == 0)
-                error("array size missing", NULL);
+                error(87 /* "array size missing" */, NULL);
             data_zero(type_size(type));
         }
         if (tok != ',')
@@ -3936,7 +3982,7 @@ static void parse_globals(int base, int type, char *name)
         next();
         type = parse_declarator(base, name);
     }
-    expect(';', "expected ';' after declaration, not");
+    expect(';', 118 /* "expected ';' after declaration, not" */);
 }
 
 /* Parse one top-level item: global variable declarations, a function
@@ -3957,12 +4003,12 @@ static void parse_toplevel(void)
     if (tok == T_STATIC) {
         next();
         if (!is_type_start())
-            error("expected a type after 'static', not", tok_desc());
+            error(147 /* "expected a type after 'static', not" */, tok_desc());
     }
     if (tok == T_KEYWORD)
         not_yet();
     if (!is_type_start())
-        error("expected a declaration or function definition, not",
+        error(164 /* "expected a declaration or function definition, not" */,
               tok_desc());
     base = parse_base_type();
     if (tok == ';' && base_tagged) {
@@ -3975,9 +4021,9 @@ static void parse_toplevel(void)
         return;
     }
     type = unqual(type);    /* const int f(void) returns an int */
-    check_byval(type, "returned");
+    check_byval(type, 0);
     if (find_var(name) >= 0)
-        error("redeclaration of", quote(name));
+        error(27 /* "redeclaration of" */, quote(name));
     check_not_id(name);
     f = find_func(name);
     if (f < 0)
@@ -3994,11 +4040,12 @@ static void parse_toplevel(void)
          * A call before any declaration assumed int, and its code
          * already depends on that. */
         if ((fn_flags[f] & (FN_DECLARED | FN_CALLED)) && fn_type[f] != type)
-            error("conflicting declaration of", quote(fname(f)));
+            error(165 /* "conflicting declaration of" */, quote(fname(f)));
         fn_type[f] = type;
         if (nparams >= 0) {
             if (nparams_of(f) >= 0 && nparams_of(f) != nparams)
-                error("conflicting parameter count for", quote(fname(f)));
+                error(166 /* "conflicting parameter count for" */,
+                      quote(fname(f)));
             set_nparams(f, nparams);
             set_param_types(f, nparams);
         }
@@ -4014,20 +4061,21 @@ static void parse_toplevel(void)
     if (nparams < 0)
         nparams = 0;
     if (tok != '{')
-        error("expected '{' or ';' after function header, not", tok_desc());
+        error(167 /* "expected '{' or ';' after function header, not" */,
+              tok_desc());
     for (i = nglobals; i < nvars; i++)
         if (var_name[i] < 0)
-            error("parameter name missing in definition of",
+            error(168 /* "parameter name missing in definition of" */,
                   quote(fname(f)));
     if (fn_flags[f] & FN_DEFINED)
-        error("redefinition of", quote(fname(f)));
+        error(104 /* "redefinition of" */, quote(fname(f)));
     if ((fn_flags[f] & (FN_DECLARED | FN_CALLED)) && fn_type[f] != type)
-        error("conflicting declaration of", quote(fname(f)));
+        error(165 /* "conflicting declaration of" */, quote(fname(f)));
     if (nparams_of(f) >= 0 && nparams_of(f) != nparams)
-        error("parameter count differs from earlier use of",
+        error(169 /* "parameter count differs from earlier use of" */,
               quote(fname(f)));
     if (!strcmp(fname(f), "main") && nparams != 0)
-        error("main with parameters is not supported yet", NULL);
+        error(170 /* "main with parameters is not supported yet" */, NULL);
     set_param_types(f, nparams);
     fn_type[f] = type;
     set_nparams(f, nparams);
@@ -4059,7 +4107,7 @@ void compile_file(const char *src, const char *base)
 {
     src_name = src;
     if (!bopen(&src_file, src, 0))
-        fatal("cannot open", src);
+        fatal(171 /* "cannot open" */, src);
     emit_open(base);
     lex_open(&src_file);
     parse_program();
@@ -4092,9 +4140,9 @@ void parse_program(void)
             continue;
         c = find_cmdsys(fname(i));
         if (c < 0)
-            error("call to undefined function", quote(fname(i)));
+            error(172 /* "call to undefined function" */, quote(fname(i)));
         if (!matches_cmdsys(i, c))
-            error("declaration doesn't match the CMDSYS function",
+            error(173 /* "declaration doesn't match the CMDSYS function" */,
                   quote(fname(i)));
     }
 }

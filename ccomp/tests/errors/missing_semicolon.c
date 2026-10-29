@@ -1,3 +1,3 @@
-// expect: :3: error: expected ';' after expression, not '}'
+// expect: :3: error 148: expected ';' after expression, not '}'
 int main() { putln()
 }

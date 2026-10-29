@@ -84,7 +84,7 @@ static void skip_blank(void)
                 for (;;) {
                     if (ch == EOF) {
                         src_line = line;
-                        error("unterminated comment", NULL);
+                        error(4 /* "unterminated comment" */, NULL);
                     }
                     if (ch == '*') {
                         getch();
@@ -112,7 +112,7 @@ static int literal_char(void)
 {
     int c = ch;
     if (c == '\n' || c == EOF)
-        error("unterminated literal", NULL);
+        error(5 /* "unterminated literal" */, NULL);
     getch();
     if (c != '\\')
         return c;
@@ -130,7 +130,7 @@ static int literal_char(void)
     case 'x': {
         int v = 0;
         if (!is_hex(ch))
-            error("\\x used with no following hex digits", NULL);
+            error(6 /* "\\x used with no following hex digits" */, NULL);
         while (is_hex(ch)) {
             v = (v * 16 + hex_val(ch)) & 0xFFF;
             getch();
@@ -147,7 +147,7 @@ static int literal_char(void)
             }
             return v & 0xFF;
         }
-        error("unknown escape sequence", NULL);
+        error(7 /* "unknown escape sequence" */, NULL);
     }
     return 0;
 }
@@ -165,7 +165,7 @@ static void lex_number(void)
             getch();
             base = 16;
             if (!is_hex(ch))
-                error("bad hexadecimal number", NULL);
+                error(8 /* "bad hexadecimal number" */, NULL);
         }
     }
     for (;;) {
@@ -177,14 +177,15 @@ static void lex_number(void)
         else
             break;
         if (d >= base)
-            error("bad digit in octal number", NULL);
+            error(9 /* "bad digit in octal number" */, NULL);
         v = v * base + d;
         if (v > 0xFFFF)
-            error("number does not fit in 16 bits", NULL);
+            error(10 /* "number does not fit in 16 bits" */, NULL);
         getch();
     }
     if (is_alpha(ch) || is_digit(ch) || ch == '.')
-        error("number suffixes and floating point are not supported", NULL);
+        error(11 /* "number suffixes and floating point are not supported" */,
+              NULL);
     tok = T_NUM;
     tok_val = (int)v;
 }
@@ -200,7 +201,7 @@ static void lex_string(void)
         while (ch != '"') {
             int c = literal_char();
             if (tok_len >= MAX_STR)
-                error("string literal too long", NULL);
+                error(12 /* "string literal too long" */, NULL);
             tok_text[tok_len++] = (char)c;
         }
         getch();
@@ -262,7 +263,7 @@ void next(void)
         return;
     }
     if (ch == '#' && at_line_start)
-        error("preprocessor directives are not supported yet", NULL);
+        error(13 /* "preprocessor directives are not supported yet" */, NULL);
     at_line_start = 0;
     if (is_digit(ch)) {
         lex_number();
@@ -279,10 +280,11 @@ void next(void)
     if (ch == '\'') {
         getch();
         if (ch == '\'')
-            error("empty character constant", NULL);
+            error(14 /* "empty character constant" */, NULL);
         tok_val = literal_char();
         if (ch != '\'')
-            error("multi-character constants are not supported", NULL);
+            error(15 /* "multi-character constants are not supported" */,
+                  NULL);
         getch();
         tok = T_NUM;
         return;
@@ -324,7 +326,8 @@ void next(void)
         if (accept('>'))
             tok = '}';          /* digraph %> */
         else if (accept(':'))
-            error("preprocessor directives are not supported yet", NULL);
+            error(13 /* "preprocessor directives are not supported yet" */,
+                  NULL);
         else
             tok = accept('=') ? T_MODEQ : '%';
         return;
@@ -334,7 +337,7 @@ void next(void)
     case '.':
         if (accept('.')) {
             if (!accept('.'))
-                error("unexpected '..'", NULL);
+                error(16 /* "unexpected '..'" */, NULL);
             tok = T_ELLIPSIS;
         } else {
             tok = '.';
@@ -345,7 +348,7 @@ void next(void)
         tok = c;
         return;
     }
-    error("unexpected character in source", NULL);
+    error(17 /* "unexpected character in source" */, NULL);
 }
 
 /* Is the token after the current one a ']' (or the digraph :>) on the

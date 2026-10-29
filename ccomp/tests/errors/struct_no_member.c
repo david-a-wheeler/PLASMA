@@ -1,4 +1,4 @@
-// expect: 'struct pt' has no member named 'z'
+// expect: no member named 'z' in 'struct pt'
 /* A member must be one of the struct's. */
 struct pt { int x, y; };
 

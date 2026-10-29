@@ -34,7 +34,7 @@ int intern(const char *s)
     if (i >= 0)
         return i;
     if (pool_used + n > MAX_POOL)
-        fatal("too many names", "(the name pool is full)");
+        fatal(18 /* "too many names" */, "(the name pool is full)");
     memcpy(pool + pool_used, s, n);
     pool_used += n;
     return pool_used - n;
@@ -84,7 +84,7 @@ static int nids;
 int id_add(int name, int kind, int val, int depth)
 {
     if (nids >= MAX_IDS)
-        fatal("too many enum constants and typedef names", NULL);
+        fatal(19 /* "too many enum constants and typedef names" */, NULL);
     id_nm[nids] = name;
     id_v[nids] = val;
     id_k[nids] = (char)kind;

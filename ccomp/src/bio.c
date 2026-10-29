@@ -49,7 +49,7 @@ int bgetw(Bfile *b)
 {
     int lo = bgetc(b), hi = bgetc(b);
     if (lo == EOF || hi == EOF)
-        fatal("unexpected end of a compiler stream file", NULL);
+        fatal(3 /* "unexpected end of a compiler stream file" */, NULL);
     return lo | (hi << 8);
 }
 

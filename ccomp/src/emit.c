@@ -64,7 +64,7 @@ static char label_placed[MAX_LABELS];
 static void open_stream(Bfile *b, const char *base, const char *suffix)
 {
     if (!bopen(b, stream_name(base, suffix), 1))
-        fatal("cannot create", stream_name(base, suffix));
+        fatal(176 /* "cannot create" */, stream_name(base, suffix));
 }
 
 /* Create the stream files written during compilation, for output name
@@ -82,7 +82,7 @@ void emit_open(const char *base)
 static void code_byte(int v)
 {
     if (nfbuf >= MAX_FUNC_CODE)
-        error("function too large:", name_of(fn_name[fn]));
+        error(177 /* "function too large:" */, name_of(fn_name[fn]));
     fbuf[nfbuf++] = (unsigned char)v;
 }
 
@@ -97,7 +97,8 @@ static void code_word(int v)
 static void add_reloc(int kind, int target)
 {
     if (nrelocs >= MAX_FUNC_RELOCS)
-        error("too many calls and data references in", name_of(fn_name[fn]));
+        error(178 /* "too many calls and data references in" */,
+              name_of(fn_name[fn]));
     relocs[nrelocs].kind = kind;
     relocs[nrelocs].at = nfbuf;
     relocs[nrelocs].target = target;
@@ -110,7 +111,7 @@ static void frame_byte(int v)
 {
     if (v == FRAME_LATER) {
         if (nframe >= MAX_RETURNS)
-            error("too many returns in", name_of(fn_name[fn]));
+            error(179 /* "too many returns in" */, name_of(fn_name[fn]));
         frame_at[nframe++] = nfbuf;
         v = 0;
     }
@@ -143,7 +144,8 @@ static void place_label(int n)
 {
     int at = label_word[n];
     if (label_placed[n])
-        fatal("internal error: label placed twice in", name_of(fn_name[fn]));
+        fatal(180 /* "internal error: label placed twice in" */,
+              name_of(fn_name[fn]));
     while (at != NO_LINK) {
         int link = fbuf[at] | (fbuf[at + 1] << 8);
         patch_word(at, nfbuf - at);
@@ -161,7 +163,7 @@ int data_string(const char *s, int len)
     /* Keep offsets well inside 16 bits; the final pass checks that the
      * whole module fits. */
     if (nstrs > 0x7FFF - len - 2)
-        error("too many string literals: over 32767 bytes", NULL);
+        error(181 /* "too many string literals: over 32767 bytes" */, NULL);
     /* [len][chars][NUL]: the C pointer is to the first character, and
      * the byte before it makes it a PLASMA string as well. A literal
      * longer than 255 has a meaningless length byte (pstr() rejects it). */
@@ -185,7 +187,7 @@ int data_offset(void)
 void data_byte(int v)
 {
     if (ndata >= 0x7FFF)
-        error("too much data: globals over 32767 bytes", NULL);
+        error(182 /* "too much data: globals over 32767 bytes" */, NULL);
     bputc(&data_out, v & 0xFF);
     ndata++;
 }
@@ -215,7 +217,7 @@ int data_zero(int n)
 {
     int first = ndata, i;
     if (ndata > 0x7FFF - n)
-        error("too much data: globals over 32767 bytes", NULL);
+        error(182 /* "too much data: globals over 32767 bytes" */, NULL);
     for (i = 0; i < n; i++)
         bputc(&data_out, 0);
     ndata += n;
@@ -234,7 +236,7 @@ static void drop_frame(void)
 {
     int i;
     if (nframe == 0 || frame_at[0] != 1 || fbuf[0] != OP_ENTER)
-        fatal("internal error: no ENTER at the start of",
+        fatal(183 /* "internal error: no ENTER at the start of" */,
               name_of(fn_name[fn]));
     for (i = 1; i < nframe; i++) {      /* frame_at[0] is the ENTER's */
         fbuf[frame_at[i] - 1] = OP_RET;
@@ -253,17 +255,18 @@ static void end_function(int frame_size)
 {
     int i;
     if (frame_size > 255)
-        error("too many parameters and locals in", name_of(fn_name[fn]));
+        error(184 /* "too many parameters and locals in" */,
+              name_of(fn_name[fn]));
     for (i = 0; i < nframe; i++)
         fbuf[frame_at[i]] = (unsigned char)frame_size;
     if (frame_size == 0)
         drop_frame();
     for (i = 0; i < MAX_LABELS; i++)
         if (!label_placed[i] && label_word[i] != NO_LINK)
-            fatal("internal error: branch to a label never placed in",
-                  name_of(fn_name[fn]));
+            fatal(185 /* "internal error: branch to a label never"
+                         " placed in" */, name_of(fn_name[fn]));
     if (ncode > 0x7FFF - nfbuf)
-        fatal("too much code", NULL);
+        fatal(186 /* "too much code" */, NULL);
     fn_code[fn] = ncode;
     bputw(&code_out, fn);
     bputw(&code_out, nfbuf);
@@ -344,7 +347,7 @@ void emit_put(Mop *m)
 static void close_stream(Bfile *b, const char *suffix)
 {
     if (bclose(b) != 0)
-        fatal("error writing", stream_name(base_name, suffix));
+        fatal(187 /* "error writing" */, stream_name(base_name, suffix));
 }
 
 /* After an error: close the streams that are still open, writing out
@@ -374,7 +377,7 @@ void emit_finish(void)
     /* stream_name() uses one static buffer, so get this name last. */
     name = stream_name(base_name, SUFFIX_SYMS);
     if (!bopen(&syms_out, name, 1))
-        fatal("cannot create", name);
+        fatal(176 /* "cannot create" */, name);
     bputc(&syms_out, 'C');
     bputc(&syms_out, 'I');
     bputc(&syms_out, 2);                         /* format version */
@@ -395,5 +398,5 @@ void emit_finish(void)
         bwrite(&syms_out, (const unsigned char *)name, n);
     }
     if (bclose(&syms_out) != 0)
-        fatal("error writing", name);
+        fatal(187 /* "error writing" */, name);
 }

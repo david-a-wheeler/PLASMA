@@ -1894,6 +1894,80 @@ command, through a driver) is easy later.
   main question, that setup (M13) may be worth bringing forward, at
   least for measuring.
 
+**C2 design: messages in a file (decided in discussion, 2026-10-29).**
+Option C2 of 18.6, in the user's form. About 7.9K of the compiler's
+10.7K of string literals is message text, which is data in memory on
+the Apple II, although at most one error is printed per run.
+- **The message file is the single source of truth:** one text file,
+  `ccish.msg`, each line `NUMBER TEXT`, sorted by number. It is the
+  table of messages. No enum and no generated files: the program just
+  records a number. To add a message, pick an unused number from the
+  file.
+- **Printing:** open the file and read lines until the matching number
+  (stopping early, since it is sorted). The host programs and the Apple
+  II both read the file; there is no in-memory copy. The number is
+  always printed before the text (`file:2: error 123: text detail`),
+  so if the file can't be opened, the number alone (`error 123:
+  detail`) still identifies the message. Only on an error or warning,
+  so speed doesn't matter (a few seconds from a floppy at worst).
+- **Fixed text, variable parts last:** a message's text is fixed, and
+  anything variable (a name, a token, a number) goes in the detail at
+  the end. The few messages built with `sprintf` are reworded so (for
+  example "no member named 'z' in 'struct pt'"). Fragments that were
+  passed down to be part of a message (`need_lvalue()`'s "left operand
+  of assignment", `check_assign()`'s "argument") become numbers too,
+  printed after the message's text (`error 31 (212)` without the
+  file). Where a helper reports only one message per caller, the caller
+  passes a whole message number instead.
+- **Readability:** each message number in the source carries its text
+  in a comment, `error(123 /* "redeclaration of" */, quote(name));`,
+  and `make test` checks that every such comment matches the file, that
+  every number used is in the file, that every number in the file is
+  used, and that the file's numbers are unique and ascending.
+- **Finding the file:** next to the program (on the host, the
+  directory of `argv[0]`; on the Apple II, the prefix, then the system
+  path), else the number alone. The reader accepts CR, LF or CRLF line
+  ends (ProDOS text files end lines with CR).
+- **Memory at the moment of an error:** `clean_up()` closes the other
+  files first. On the host the reader uses stdio; on the Apple II, the
+  M9 library's file reading must not need a big buffer of its own (or
+  reuse one that is free by then), so that printing a message costs
+  almost nothing.
+- **Duplicates are free:** identical texts share one number (C2e).
+- Saves about 7.9K of text, plus about 1K of fragments, for a small
+  reader; and `error(123, ...)` is smaller code than `error("...",
+  ...)` (a 2-byte constant instead of a 3-byte address). Messages could
+  be translated by changing the file.
+
+**C2 is done** (2026-10-29). Settled while building it:
+- A one-time script turned every literal message (and `?:` choices of
+  literals) into `NUMBER /* "text" */` and wrote `ccish.msg`, numbering
+  in order of first appearance, with identical texts sharing a number:
+  193 messages. The rest were converted by hand (messages 194-214):
+  fragments became parts (`error_in()`, `warning_in()`;
+  `need_lvalue()`, `check_assign()`, the `not_ice` details), helpers
+  that report one message per caller take its number
+  (`need_complete()`, `check_byval()`, `expect()`), and "'struct pt'
+  has no member named 'z'" became "no member named 'z' in 'struct
+  pt'".
+- `error()` and `fatal()` now call `clean_up()` before printing, so the
+  other files are closed when the message file is opened.
+- The message file is found next to the program (`msg_init(argv[0])`);
+  on the Apple II, the prefix-then-system-path rule waits for M9's
+  library, as does the reader's buffering there.
+- The error tests' expect lines were updated mechanically to include
+  the numbers (`:2: error 41: ...`); only the reworded message needed a
+  hand edit. `make test` runs `tests/check_msgs.sh` (shown to catch a
+  changed comment, an unused message, numbers out of order, and a
+  number with no comment) and checks the number-only output without
+  the file.
+- **Result, measured by self-compiling (18.5):** string literals went
+  from about 10.7K to about 2.1K (in `parse.c`, 7.5K to 0.5K). Code
+  went from about 32.9K to 33.5K, for the message reader in `diag.c`
+  and the B3a programs, now measured as files of their own; the message
+  calls themselves got smaller. What remains: the keyword table, the
+  CMDSYS names, the IR names for `-i`, and the listing's opcode names.
+
 **B3a is done** (2026-10-29). Settled while building it:
 - Three programs from the same sources: `ccish` (both passes, as before),
   `cccomp` (the compile pass: `cccomp [-i] [-k] [-o output] input.c`)

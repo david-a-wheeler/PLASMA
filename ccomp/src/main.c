@@ -48,6 +48,7 @@ int main(int argc, char **argv)
     const char *src = NULL, *outname = NULL;
     int i;
 
+    msg_init(argv[0]);
     for (i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-l"))
             opt_list = 1;

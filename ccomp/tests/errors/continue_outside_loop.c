@@ -1,2 +1,2 @@
-// expect: :2: error: 'continue' is not inside a loop
+// expect: :2: error 130: 'continue' is not inside a loop
 int main() { continue; }
