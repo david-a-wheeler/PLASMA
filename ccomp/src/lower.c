@@ -25,7 +25,8 @@ static const char *const ir_names[] = {
     "ADD", "SUB", "MUL", "DIV", "MOD", "AND", "OR", "XOR", "SHL", "SHR",
     "EQ", "NE", "LT", "GT", "LE", "GE",
     "NEG", "COMP", "NOT",
-    "LABEL", "JUMP", "BRFALSE", "BRTRUE", "BRAND", "BROR"
+    "LABEL", "JUMP", "BRFALSE", "BRTRUE", "BRAND", "BROR",
+    "SEL", "CASES", "CASEVAL", "CASETO"
 };
 
 /* PLASMA's comparison op for each IR comparison, or -1. */
@@ -51,6 +52,7 @@ static int branch_op(int op)
     case IR_BRTRUE:  return OP_BRTRU;
     case IR_BRAND:   return OP_BRAND;
     case IR_BROR:    return OP_BROR;
+    case IR_SEL:     return OP_SEL;
     }
     return -1;
 }
@@ -98,8 +100,10 @@ static void dump_ir(int op, int a, Sym *s)
                       printf(" [%d]", a); break;
     case IR_CALL:     printf(" %s nargs=%d", s->name, a); break;
     case IR_LABEL: case IR_JUMP: case IR_BRFALSE: case IR_BRTRUE:
-    case IR_BRAND: case IR_BROR:
+    case IR_BRAND: case IR_BROR: case IR_SEL: case IR_CASETO:
                       printf(" L%d", a); break;
+    case IR_CASES: case IR_CASEVAL:
+                      printf(" %d", a); break;
     }
     printf("\n");
 }
@@ -242,6 +246,11 @@ static void lower(int op, int a, Sym *s)
         break;
     case IR_LABEL:
         m.op = OP_LABEL;
+        m.a = a;
+        break;
+    case IR_CASES: case IR_CASEVAL: case IR_CASETO:
+        m.op = op == IR_CASES ? OP_CASES
+             : op == IR_CASEVAL ? OP_CASEVAL : OP_CASETO;
         m.a = a;
         break;
     case IR_RETURN:

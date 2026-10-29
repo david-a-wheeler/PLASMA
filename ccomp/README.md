@@ -1,9 +1,9 @@
 # ccish: a C-ish compiler for the PLASMA VM
 
 `ccish` compiles a growing subset of C into PLASMA REL modules. It has
-finished milestones 1 to 6 (integers, `char`, pointers, arrays,
-globals, control flow, initializers, `static`, `const`, `volatile` and
-`struct`). The design and the plan for growing it are in
+finished milestones 1 to 7 (integers, `char`, pointers, arrays,
+globals, control flow, initializers, `static`, `const`, `volatile`,
+`struct` and `switch`). The design and the plan for growing it are in
 [approach.md](approach.md). The target format is described in
 [../doc/Bytecodes.md](../doc/Bytecodes.md).
 
@@ -200,9 +200,17 @@ Hello5
 * Warnings are printed like errors (`file:line: warning: ...`), and
   compilation continues.
 * Casts between any of these types. `(void)` discards a value.
-* Statements: `return`, `if`/`else`, `while`, `do`, `for`, `break`,
-  `continue`, expression statements, empty statements and nested
-  blocks.
+* Statements: `return`, `if`/`else`, `while`, `do`, `for`, `switch`,
+  `break`, `continue`, expression statements, empty statements and
+  nested blocks.
+* `switch` compiles to PLASMA's `SEL` and a case table after the body,
+  sorted by value, 4 bytes per case. `case` and `default` labels may be
+  anywhere in the body, even inside nested blocks and loops (Duff's
+  device), and cases may be in any order. A case value is an integer
+  constant expression (`'a'`, `2 + sizeof(int)`; a `const` variable
+  isn't one, as in C). Limits: case values in one switch may span at
+  most 32767 (a 6502 VM rule for `SEL`), and at most 64 cases may be
+  in the switches open at once (`MAX_CASES`).
 * Expressions, with C's precedence and associativity:
   - integer and character constants, string literals, variables,
     function calls and parentheses;
@@ -237,9 +245,9 @@ Hello5
   line endings.
 
 Anything else, such as `extern`,
-function pointers, declarators in parentheses (`int (*p)[4]`), `switch`,
-`goto`, the comma operator, or the types `signed`, `unsigned`, `short`
-and `long`, gives a "not supported yet" error.
+function pointers, declarators in parentheses (`int (*p)[4]`), `goto`,
+`union`, `typedef`, `enum`, the comma operator, or the types `signed`,
+`unsigned`, `short` and `long`, gives a "not supported yet" error.
 
 ### Strings and `pstr()`
 

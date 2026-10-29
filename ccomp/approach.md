@@ -1577,6 +1577,78 @@ issue. In summary:
 
 ## Milestones
 
+**M7 design (decided in discussion, 2026-10-29).** `switch`, in one
+step. ccish's own source has 26 switches with 218 case labels (the
+largest has 28), so self-hosting needs it.
+- **`SEL` tables from the start**, not a compare chain first (as the
+  milestone list had it): a table entry is 4 bytes per case, a compare
+  chain about 7 (`DUP CB v BREQ L`, plus keeping the value), so about
+  650 bytes less in the self-hosted compiler, for about the same
+  compiler code (decision 15).
+- **Layout**, as PLASMA's compiler does it; the cases aren't known
+  until the body is parsed, so the table comes after it:
+
+  ```
+  switch (c) {                    LLW c  SEL Ltab
+  case 'a': x = 1; break;     La: CN 1 SLW x  BRNCH Lend
+  case 'b': case 'c':         Lb: Lc:
+      x = 2; break;               CN 2 SLW x  BRNCH Lend
+  default: x = 3;             Ld: CN 3 SLW x  BRNCH Lend
+  }                           Ltab: 3, 'a' La, 'b' Lb, 'c' Lc
+                                  BRNCH Ld       (only with a default)
+                              Lend:
+  ```
+
+  `SEL` consumes the value: no temporary, and a `return` in a case
+  leaves nothing on the stack. With no `default`, a value with no case
+  goes past the table straight to `Lend`.
+- **Parser:** a case stack of (value, label) pairs, 64 entries (256
+  bytes), shared by nested switches, each with its own base. At the
+  `}` it sorts the switch's entries (the 6502 VM needs them in
+  ascending signed order), which also makes the duplicate check a
+  comparison of neighbors, and emits the table. Requiring cases in
+  order instead would save only about 50 bytes of compiler, and would
+  break real code, which groups cases by meaning (and, with `enum`,
+  would depend on the enum's numeric order). `break` exits the switch;
+  `continue` still goes to the enclosing loop.
+- **IR:** `SEL` (the table's label), a table header (the count), and
+  one entry per case (value and label).
+- **Stage 3:** `SEL` is an unconditional jump, so code after it up to
+  the first case label is dropped as unreachable (it can't run in C
+  either). The table is never dropped as dead code.
+- **Stage 4:** encodes the table; each entry's offset is resolved by
+  the branches' fixup chains. The listing shows the table.
+- **C semantics:** case labels can be anywhere in the body, in nested
+  blocks and loops (Duff's device), since they only mark positions.
+  Errors: a duplicate case value, a second `default`, `case` or
+  `default` outside a switch, a case value that isn't an integer
+  constant expression (a `const` variable isn't one), and a switch on
+  a pointer. A switch with no cases gets a table with one dummy entry
+  leading where no match goes.
+- **Limits (errors, decision 16; rare in real code):** at most 255
+  cases in one switch (the count is a byte), case values spanning at
+  most 32767 (a 6502 VM rule), and 64 cases in all the switches open
+  at once.
+- Most of ccish's own case labels are `enum` constants, so `enum`
+  (M11) is on the self-hosting path too. Until then, tests use numbers
+  and character constants.
+
+**M7 is done** (2026-10-29). Settled while building it:
+- Duplicate case values are checked as each case is parsed, against
+  the switch's earlier cases, so the error points at the duplicate's
+  line; the sort then only sorts.
+- `MAX_CASES` (64) is below `SEL`'s 255-case limit, so that limit needs
+  no check of its own. The span check is written so that it can't
+  overflow with a 16-bit `int` (for self-hosting).
+- The listing finds each table from its `SEL`'s target and lists it as
+  `CASES`, `CASE` and `TO` lines, so a table isn't misread as code.
+- Every earlier test's code is unchanged.
+- Left for M10: a function that ends right after a switch keeps an
+  unreachable `CN 0 LEAVE` (3 bytes), because the parser can't tell
+  that nothing jumps to the switch's end label (the jump that would
+  have, at the end of the last case, was dropped by stage 3). Stage 3
+  could drop a label whose branches were all removed.
+
 **M6 is done** (2026-10-29), after three steps; step 4 (`union`) was
 dropped, below.
 
@@ -2628,12 +2700,12 @@ a proposal.
 4. **M5:** simple initializers, `sizeof`, `static` and `const`, and
    block exchange by rotation in place (4(d2)).
 5. **M6:** `struct` (done).
-6. **M7:** `switch` (as a compare chain first).
+6. **M7:** `switch`, with `SEL` tables (see "M7 design").
 7. **M8:** the built-in minimal preprocessor (3B).
 8. **M9:** a runtime library in C-ish: file I/O over FILEIO, memory
    and strings.
-9. **M10:** optimization: the `for` side buffer and
-   fused FOR opcodes, peephole patterns, and `SEL` tables.
+9. **M10:** optimization: the `for` side buffer,
+   fused FOR opcodes, and peephole patterns.
 10. **M11:** `unsigned`, varargs (`printf`), `typedef`,
     `enum`, function pointers and nested initializers.
 

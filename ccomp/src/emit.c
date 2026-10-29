@@ -295,6 +295,15 @@ void emit_put(Mop *m)
     case OP_LABEL:
         place_label(m->a);
         return;
+    case OP_CASES:                  /* a case table: no opcode byte */
+        code_byte(m->a);
+        return;
+    case OP_CASEVAL:
+        code_word(m->a);
+        return;
+    case OP_CASETO:                 /* like a branch's offset word */
+        branch_word(m->a);
+        return;
     }
     code_byte(m->op);
     switch (m->op) {
@@ -315,7 +324,7 @@ void emit_put(Mop *m)
         code_word(m->fix == FIX_NONE ? m->a : 0);
         break;
     case OP_BRNCH: case OP_BRFLS: case OP_BRTRU: case OP_BREQ:
-    case OP_BRNE: case OP_BRAND: case OP_BROR:
+    case OP_BRNE: case OP_BRAND: case OP_BROR: case OP_SEL:
         branch_word(m->a);
         break;
     case OP_ENTER:

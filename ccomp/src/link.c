@@ -166,14 +166,44 @@ static const char *reloc_note(int at, int first)
     return "";
 }
 
+/* List the case table at fbuf offset pc (code-segment offset start +
+ * pc): its count, then each case's value and where it goes. Returns its
+ * size in bytes. */
+static int list_table(int pc, int start)
+{
+    int n = fbuf[pc], i, at, w;
+    printf("  %04X  %02X        CASES %d\n", subseg + start + pc, n, n);
+    for (i = 0; i < n; i++) {
+        at = pc + 1 + 4 * i;
+        w = (short)(fbuf[at] | (fbuf[at + 1] << 8));
+        printf("  %04X  %02X %02X     CASE %d\n", subseg + start + at,
+               fbuf[at], fbuf[at + 1], w);
+        at += 2;
+        w = (short)(fbuf[at] | (fbuf[at + 1] << 8));
+        printf("  %04X  %02X %02X     TO %+d  ; to %04X\n",
+               subseg + start + at, fbuf[at], fbuf[at + 1], w,
+               subseg + start + at + w);
+    }
+    return 1 + 4 * n;
+}
+
 /* List len bytes of code (in fbuf) that start at code-segment offset
- * start; addresses are shown as loaded at subseg. */
+ * start; addresses are shown as loaded at subseg. A SEL's case table is
+ * data inside the code, so each SEL's target is noted, and the table is
+ * listed as a table when the listing reaches it. */
 static void list_code(const char *label, int len, int start, int first_reloc)
 {
-    int pc = 0, i;
+    int pc = 0, i, tables[MAX_NEST], ntables = 0;
     printf("%s:\n", label);
     while (pc < len) {
         int op = fbuf[pc], n = 1, fmt;
+        for (i = 0; i < ntables && tables[i] != pc; i++)
+            ;
+        if (i < ntables) {
+            tables[i] = tables[--ntables];
+            pc += list_table(pc, start);
+            continue;
+        }
         if (op & 1 || op >= 0xC6) {
             printf("  %04X  %02X        ???\n", subseg + start + pc, op);
             pc++;
@@ -209,6 +239,8 @@ static void list_code(const char *label, int len, int start, int first_reloc)
             /* The offset is relative to the offset word itself. */
             int off = (short)(fbuf[pc + 1] | (fbuf[pc + 2] << 8));
             printf(" %+d  ; to %04X", off, subseg + start + pc + 1 + off);
+            if (op == OP_SEL && ntables < MAX_NEST)
+                tables[ntables++] = pc + 1 + off;
             break;
         }
         case F_ENTER:

@@ -3,10 +3,11 @@
  * rewrites patterns at the end of the window, and passes ops on to the
  * emitter.
  *
- * Dead code: after an unconditional exit (LEAVE, RET, BRNCH), nothing
- * can run until the next barrier, so ops are discarded until then.
- * Barriers are the pseudo-ops: function start and end, and labels (a
- * label is where a branch can land, which makes code reachable again).
+ * Dead code: after an unconditional exit (LEAVE, RET, BRNCH, SEL),
+ * nothing can run until the next barrier, so ops are discarded until
+ * then. Barriers are the pseudo-ops: function start and end, labels (a
+ * label is where a branch can land, which makes code reachable again),
+ * and a SEL's case table (the code after it runs when no case matches).
  * This removes the implicit "return 0" the parser adds after a final
  * return statement, the jump after an if-part that ends in return, and
  * the bodies of if (0) and while (0).
@@ -70,7 +71,7 @@ void peep_flush(void)
  * follows can't run until the next label? */
 static int is_unconditional_exit(int op)
 {
-    return op == OP_LEAVE || op == OP_RET || op == OP_BRNCH;
+    return op == OP_LEAVE || op == OP_RET || op == OP_BRNCH || op == OP_SEL;
 }
 
 /* Is op a branch that pops a value and tests it for zero? */

@@ -45,6 +45,8 @@
 #define MAX_MEMBERS  128    /* struct members, in all structs */
 #define MAX_POOL     512    /* bytes of names in the name pool */
 #define MAX_BYVAL    8      /* bytes in a struct passed or returned by value */
+#define MAX_CASES    64     /* case labels in all the switches open at once;
+                             * at most 255, a SEL table's limit */
 #define BLOCK        512    /* file I/O buffer size: one ProDOS block */
 
 /* ---------- Diagnostics (main.c) ---------- */
@@ -86,6 +88,7 @@ enum {
     /* keywords supported now, in the order of keywords[] in lex.c */
     T_INT, T_VOID, T_RETURN, T_IF, T_ELSE, T_WHILE, T_DO, T_FOR, T_BREAK,
     T_CONTINUE, T_CHAR, T_SIZEOF, T_STATIC, T_CONST, T_VOLATILE, T_STRUCT,
+    T_SWITCH, T_CASE, T_DEFAULT,
     /* any other C keyword: reported as "not supported yet" */
     T_KEYWORD,
     /* multi-character operators (not all are supported by the parser yet) */
@@ -241,7 +244,12 @@ enum {
     IR_BRFALSE,     /* ( x -- ) branch if x is 0 */
     IR_BRTRUE,      /* ( x -- ) branch if x is not 0 */
     IR_BRAND,       /* ( x -- x ) branch if 0, keeping it; else ( x -- ) */
-    IR_BROR         /* ( x -- x ) branch if not 0, keeping it; else ( x -- ) */
+    IR_BROR,        /* ( x -- x ) branch if not 0, keeping it; else ( x -- ) */
+    IR_SEL,         /* ( x -- ) go to the case table at label a (a switch) */
+    /* a case table, after its label: */
+    IR_CASES,       /* a = the number of cases that follow */
+    IR_CASEVAL,     /* a = one case's value; then: */
+    IR_CASETO       /* a = the label of that case's code */
 };
 
 void ir_put(int op, int a, Sym *s);
@@ -259,7 +267,7 @@ enum {
     OP_CW = 0x2C, OP_DROP = 0x30, OP_DUP = 0x34, OP_ANDI = 0x3C,
     OP_ISEQ = 0x40, OP_ISNE = 0x42, OP_ISGT = 0x44, OP_ISLT = 0x46,
     OP_ISGE = 0x48, OP_ISLE = 0x4A, OP_BRFLS = 0x4C, OP_BRTRU = 0x4E,
-    OP_BRNCH = 0x50,
+    OP_BRNCH = 0x50, OP_SEL = 0x52,
     OP_CALL = 0x54, OP_ENTER = 0x58, OP_LEAVE = 0x5A, OP_RET = 0x5C,
     OP_CFFB = 0x5E, OP_LB = 0x60, OP_LW = 0x62, OP_LLB = 0x64,
     OP_LLW = 0x66, OP_LAB = 0x68, OP_LAW = 0x6A, OP_DLB = 0x6C,
@@ -274,7 +282,12 @@ enum {
      * the code, but emit no bytes themselves. */
     OP_FUNC_BEGIN = 0x100,  /* sym: a function starts here */
     OP_FUNC_END = 0x101,    /* a = frame size: the function ends here */
-    OP_LABEL = 0x102        /* a = label number: a branch target is here */
+    OP_LABEL = 0x102,       /* a = label number: a branch target is here */
+    /* A SEL's case table (see ../../doc/Bytecodes.md), as data in the
+     * code: */
+    OP_CASES = 0x103,       /* a = the count byte */
+    OP_CASEVAL = 0x104,     /* a = a case's value word */
+    OP_CASETO = 0x105       /* a = the label its offset word leads to */
 };
 
 /* For a branch op (BRNCH, BRFLS, ...), Mop.a is the label number; stage

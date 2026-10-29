@@ -71,10 +71,12 @@ it is lowered, so it shows the final order.
 
 ## Ops
 
-### `IR_FUNC` *sym*, *a* = parameter count
+### `IR_FUNC` *sym*, *a* = parameter words
 
-Start function *sym*. Its *a* parameters are on the evaluation stack,
-first parameter deepest.
+Start function *sym*. Its parameters' *a* words are on the evaluation
+stack, first parameter deepest: one word for each scalar, and a struct
+passed by value as the words of its bytes (approach.md, "M6 step 3
+design").
 
 - **Stack:** `( p1 … pn -- )`, at run time, on entry.
 - **Now:** a function-start marker, then `ENTER ?, n`. The frame size
@@ -481,13 +483,40 @@ one.
   branches to branches shortened. `for` loops may use a side buffer
   for the step, and PLASMA's FOR opcodes (17, P18).
 
+### `IR_SEL` *a* = label, and the case table: `IR_CASES` *a* = count, `IR_CASEVAL` *a* = value, `IR_CASETO` *a* = label
+
+A `switch` (approach.md, "M7 design"). `IR_SEL` takes the value and
+goes to the case table at label *a*. The table comes after the
+switch's body: the label, `IR_CASES` with the number of cases, then
+for each case, sorted by value, `IR_CASEVAL` (its value) and
+`IR_CASETO` (the label of its code). The code after the table runs
+when no case matches.
+
+- **Stack:** `IR_SEL`: `( x -- )`; the table ops: none (they are data).
+- **Now:** `IR_SEL` becomes `SEL`, whose operand, like a branch's, is a
+  label number until stage 4 makes it an offset. The table ops become
+  the pseudo-ops `OP_CASES`, `OP_CASEVAL` and `OP_CASETO`, which stage 4
+  writes as the table's bytes: the count byte, then each case's value
+  word and offset word. The offset is relative to its own word, so it
+  uses the branches' fixup chains.
+- **Why they differ from `SEL`:** `SEL`'s table is data inside the
+  code, which only stage 4 can lay out, and its offsets point forward
+  and back to labels (reason 3).
+- **Peephole:** `SEL` makes the following code unreachable until the
+  next label (code before a switch's first case can't run), and the
+  table ops are barriers, so the code after the table is reachable.
+- **Listing:** the final pass lists the table where a `SEL` points, as
+  `CASES`, `CASE` and `TO` lines.
+
 ### `IR_CALL` *sym*, *a* = argument count
 
 Call function *sym* with the *a* arguments on the stack, pushed left
 to right.
 
 - **Stack:** `( a1 … an -- result )` for an `int` function,
-  `( a1 … an -- )` for a `void` one.
+  `( a1 … an -- )` for a `void` one, and `( a1 … an -- w1 … wk )` for
+  one returning a struct of *k* words. A struct argument is its words
+  too, so the stack holds more words than *a* then.
 - **Now:** `CALL addr` plus a function relocation record. The final
   pass resolves it
   either to an internal function (RLD `$81`; the loader redirects it to
@@ -498,8 +527,7 @@ to right.
   - the argument count travels with the op, so later stages can track
     stack depth. The parser has already checked the count against the
     function's declaration or the CMDSYS table.
-- **Later:** indirect calls through function pointers (`ICAL`), and
-  small-struct multi-value returns (approach.md, 16).
+- **Later:** indirect calls through function pointers (`ICAL`).
 
 ### `IR_DROP`
 
@@ -546,9 +574,10 @@ opcode, its operands, and two kinds of deferred information:
   pass (`src/link.c`) fills in the address once the layout is known,
   and writes the matching RLD or ESD entries ([OBJECT.md](OBJECT.md)).
 
-Three pseudo-ops travel with them: `OP_FUNC_BEGIN`, `OP_FUNC_END` and
-`OP_LABEL`. They produce no bytes, and they are barriers for the
-peephole stage. A branch machine op's operand is a label number until
+Pseudo-ops travel with them: `OP_FUNC_BEGIN`, `OP_FUNC_END` and
+`OP_LABEL`, which produce no bytes, and a case table's `OP_CASES`,
+`OP_CASEVAL` and `OP_CASETO`, which produce its bytes but no opcode. All
+are barriers for the peephole stage. A branch machine op's operand is a label number until
 stage 4 replaces it with an offset.
 
 ## Adding ops

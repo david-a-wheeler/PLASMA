@@ -3,7 +3,7 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 5, and M6 steps 1 to 3):
+ * Language so far (milestones 1 to 7):
  *   - types int, char, void, structs, pointers to them (int *, char **,
  *     struct node *, ...), and arrays of any of these but void
  *     (int m[3][4]);
@@ -40,7 +40,8 @@
  *     its value at compile time (see parse_primary()), but that value
  *     isn't a C constant expression (Operand.nonice);
  *   - casts;
- *   - statements: return, if/else, while, do, for, break, continue,
+ *   - statements: return, if/else, while, do, for, switch (with case
+ *     and default labels anywhere in its body), break, continue,
  *     expression statements, empty statements and nested blocks;
  *   - expressions: integer and character constants, string literals,
  *     variables, function calls, parentheses, the pstr() builtin,
@@ -2824,14 +2825,16 @@ static void parse_paren_cond(int n, int on_true)
     expect(')', "expected ')' after condition, not");
 }
 
-/* The innermost loops' labels, for break and continue. */
+/* The innermost loops' and switches' labels, for break and continue.
+ * A switch's cont_label is its enclosing loop's (-1 if none), since
+ * continue in a switch goes to the loop around it. */
 static int brk_label[MAX_NEST], cont_label[MAX_NEST];
 static int nloops;
 
 static void parse_statement(void);
 
-/* Parse a loop body, with break going to label brk and continue to
- * label cont. */
+/* Parse a loop's (or switch's) body, with break going to label brk and
+ * continue to label cont. */
 static void loop_body(int brk, int cont)
 {
     if (nloops >= MAX_NEST)
@@ -2940,18 +2943,153 @@ static void parse_for(void)
     frame_next = saved_next;
 }
 
-/* break; and continue;: jump to the innermost loop's labels. */
+/* break; and continue;: jump to the innermost loop's labels (or, for
+ * break, the innermost switch's). */
 static void parse_break_continue(void)
 {
     int is_break = tok == T_BREAK;
     next();
-    if (nloops == 0)
-        error(is_break ? "'break' is not inside a loop"
-                       : "'continue' is not inside a loop", NULL);
+    if (nloops == 0 && is_break)
+        error("'break' is not inside a loop or switch", NULL);
+    if (!is_break && (nloops == 0 || cont_label[nloops - 1] < 0))
+        error("'continue' is not inside a loop", NULL);
     branch(IR_JUMP, is_break ? brk_label[nloops - 1]
                              : cont_label[nloops - 1]);
     expect(';', is_break ? "expected ';' after 'break', not"
                          : "expected ';' after 'continue', not");
+}
+
+/*
+ * The cases of the switches being parsed, innermost last (approach.md,
+ * "M7 design"). As parallel arrays: case_val[i] is a case's value, and
+ * case_label[i] the label of its code. The innermost switch's cases
+ * start at index sw_first (-1 outside any switch), and sw_default is
+ * its default's label (-1 if none yet).
+ */
+static int case_val[MAX_CASES], case_label[MAX_CASES];
+static int ncases;
+static int sw_first = -1;
+static int sw_default = -1;
+
+/* Parse the labels before a statement in a switch ("case n:" and
+ * "default:", any number), and place them, recording each in the
+ * innermost switch's cases. A case value must be an integer constant
+ * expression, not already used in this switch. */
+static void parse_case_labels(void)
+{
+    char buf[8];
+    Operand e;
+    int l, i;
+    while (tok == T_CASE || tok == T_DEFAULT) {
+        if (sw_first < 0)
+            error(tok == T_CASE ? "'case' is not inside a switch"
+                                : "'default' is not inside a switch", NULL);
+        l = new_label();
+        if (tok == T_DEFAULT) {
+            next();
+            if (sw_default >= 0)
+                error("more than one 'default' in a switch", NULL);
+            sw_default = l;
+        } else {
+            next();
+            parse_skipped(PREC_COND, &e);
+            if (e.kind != K_CONST || is_pointer(e.type))
+                error("a case label must be an integer constant", NULL);
+            if (e.nonice)
+                error(not_ice, "(a case label must be one)");
+            for (i = sw_first; i < ncases; i++)
+                if (case_val[i] == e.val) {
+                    sprintf(buf, "%d", e.val);
+                    error("duplicate case value", buf);
+                }
+            if (ncases >= MAX_CASES)
+                fatal("too many case labels in the switches open at once",
+                      NULL);
+            case_val[ncases] = e.val;
+            case_label[ncases++] = l;
+        }
+        expect(':', "expected ':' after a case label, not");
+        place_label(l);
+    }
+}
+
+/* Sort the innermost switch's cases by value, as SEL needs on the 6502
+ * VM, and check that they span at most 32767, another of its limits
+ * (approach.md, "M7 design"). (Its other limit, 255 cases, is kept by
+ * MAX_CASES.) An insertion sort: switches are small. */
+static void sort_cases(void)
+{
+    int i, j, v, l;
+    for (i = sw_first + 1; i < ncases; i++) {
+        v = case_val[i];
+        l = case_label[i];
+        for (j = i; j > sw_first && case_val[j - 1] > v; j--) {
+            case_val[j] = case_val[j - 1];
+            case_label[j] = case_label[j - 1];
+        }
+        case_val[j] = v;
+        case_label[j] = l;
+    }
+    /* Written so that it can't overflow with a 16-bit int. */
+    if (ncases > sw_first && case_val[sw_first] < 0
+        && case_val[ncases - 1] > case_val[sw_first] + 32767)
+        error("case values too far apart (more than 32767)", NULL);
+}
+
+/* One entry of a case table: value v, leading to label l. */
+static void case_entry(int v, int l)
+{
+    if (!suppress)
+        label_uses[l]++;
+    put(IR_CASEVAL, v, NULL);
+    put(IR_CASETO, l, NULL);
+}
+
+/*
+ * switch (e) s, with PLASMA's SEL and a case table after the body,
+ * since the cases aren't known until it is parsed (approach.md, "M7
+ * design"):
+ *   e SEL Ltab  s  BRNCH Lbrk  Ltab: count (value label)...  [BRNCH Ldef]
+ *   Lbrk:
+ * SEL takes the value off the stack, and goes to a case's label, or
+ * past the table if none matches: to the default, or out. A switch with
+ * no cases gets one entry, leading where no match goes, since a table
+ * can't be empty.
+ */
+static void parse_switch(void)
+{
+    Operand o;
+    int tab = new_label(), brk = new_label(), first = sw_first;
+    int def = sw_default, i;
+
+    next();                         /* "switch" */
+    expect('(', "expected '(' after 'switch', not");
+    begin_expr();
+    parse_expr(PREC_COMMA, &o);
+    if (o.kind == K_VOID || is_struct(o.type)
+        || is_pointer(value_type(o.type)))
+        error("a switch needs an integer value", NULL);
+    rvalue(&o);
+    branch(IR_SEL, tab);
+    end_expr();
+    expect(')', "expected ')' after the switch value, not");
+    sw_first = ncases;
+    sw_default = -1;
+    loop_body(brk, nloops > 0 ? cont_label[nloops - 1] : -1);
+    branch(IR_JUMP, brk);           /* the last case doesn't run the table */
+    place_label(tab);
+    sort_cases();
+    put(IR_CASES, ncases > sw_first ? ncases - sw_first : 1, NULL);
+    for (i = sw_first; i < ncases; i++)
+        case_entry(case_val[i], case_label[i]);
+    if (ncases == sw_first)
+        case_entry(0, sw_default >= 0 ? sw_default : brk);
+    if (sw_default >= 0)
+        branch(IR_JUMP, sw_default);
+    place_forward(brk);
+    ncases = sw_first;
+    sw_first = first;
+    sw_default = def;
 }
 
 /* Parse one statement (or declaration) and emit its code. */
@@ -2970,6 +3108,14 @@ static void parse_statement(void)
         return;
     case T_FOR:
         parse_for();
+        return;
+    case T_SWITCH:
+        parse_switch();
+        return;
+    case T_CASE:
+    case T_DEFAULT:
+        parse_case_labels();
+        parse_statement();          /* the statement they label */
         return;
     case T_BREAK:
     case T_CONTINUE:
