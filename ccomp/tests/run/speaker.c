@@ -8,7 +8,7 @@
  * holding 0, so ready() is 0.
  *
  * The address is written as a cast for now. Once global initializers
- * and const exist (M5 steps 2 and 5), it can be a named constant,
+ * and const exist (M5 steps 2 and 6), it can be a named constant,
  * char *const speaker = (char *)0xC030, and should give the same code. */
 // listing-has: LAB $C030
 // listing-has: LAB $C000

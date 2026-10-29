@@ -289,6 +289,71 @@ time. `*p = e` is emitted as `MARK p MARK e SWAP2 SW` and comes out as
   temporary local, and a new opcode would break compatibility with
   existing PLASMA VMs. (Since reopened as a possibility: issue 21.)
 
+**(d2) Rotation in place, with marks held by the parser (decided in
+discussion, 2026-10-29; M5 step 4).** This is a simpler way to build
+(d)'s block exchange, and it is moved up from M10.
+- **Order problems versus reuse problems.** The spills ccish has fall
+  into two kinds:
+  - *Order:* the code is right but in the wrong order. A store to a
+    computed address (`*d++ = *s++`, `a[i + 1] = x`, `*f() = x`)
+    emits the address before the value, and `i + p` emits `i` before
+    it knows `i` must be scaled. Exchanging two blocks of code fixes
+    these, with no temporary.
+  - *Reuse:* a value is needed twice. Compound assignment and `++`/`--`
+    on a computed address (`a[i] += e`, `*p++ += e`, `(*f())++`) need
+    the address for the load and again for the store. No reordering
+    can make a second copy of it, so these keep their spill. That
+    takes DUP plus SWAP, or OVER, which the VM doesn't have (issue 21).
+    The spill is already the cheapest option (4 bytes, 2 frame bytes),
+    and recomputing a pure address is larger and slower (M4 step 3
+    notes).
+- **The mechanism.** Stage 2 (`ir_put()` in `lower.c`) holds the IR
+  records of the current expression in a buffer before lowering them.
+  The parser takes marks (buffer indexes) in its own local variables.
+  No `MARK` or `SWAP2` ops go into the stream:
+  ```
+  m0 = ir_mark();  parse the lvalue;  m1 = ir_mark();  parse e;
+  if (ir_rotate(m0, m1)) emit the store;  else fall back;
+  ```
+  `ir_rotate(m0, m1)` turns `[m0, m1) [m1, end)` into
+  `[m1, end) [m0, m1)` in place, with the three-reversal method
+  (reverse each block, then reverse both together; Bentley,
+  *Programming Pearls*, column 2). It needs no extra memory, and each
+  block keeps its internal order.
+- **Why moving IR records is safe.** IR ops lower one at a time, with
+  no state carried between them, and branches name labels by number,
+  so nothing inside a moved block needs patching. The peephole stage
+  sees the final order, so its existing patterns (such as
+  `x LLA a LLW i IDXW SW`) apply as they are.
+- **Nesting.** A rotation keeps the length of its range, so marks
+  taken before it stay valid, and inner rotations finish before outer
+  ones (`a[b[i] = x] = y`).
+- **Flushing.** The buffer passes records on to lowering whenever no
+  mark is open, and always at the end of a full expression
+  (`end_expr()`). Rotation never crosses a statement.
+- **Overflow.** If the buffer fills while a mark is open, it is flushed
+  anyway, and the open marks become stale (a generation count), so
+  `ir_rotate()` returns 0. The parser then swaps after the fact with
+  two temporaries (`SLW t1 DROP SLW t2 DROP LLW t1 LLW t2`): large,
+  but rare and always correct. The buffer holds about 64 records of
+  about 5 bytes each (op, operand, symbol pointer), so about 320 bytes.
+- **Details.** `put()` writes held constants (folding) into the buffer
+  first, so a mark is taken only after they are written. Code skipped
+  by `suppress` writes nothing, so marks there are harmless.
+- **A side benefit:** `*p op= e` with a commutative `op` can evaluate
+  `e` first (`e LLW p LW ADD LLW p SW`). Both reads of `p` then follow
+  `e`, which fixes the mismatch with C noted in the M4 step 3 notes,
+  at the same size.
+- **Not covered:** the `for` increment, since the loop body has no size
+  limit. It still needs (d)'s side buffer, in M10.
+- **Related techniques.** There is no single standard name for this.
+  Small-C's staging buffer (`setstage`/`clearstage`) lets a one-pass
+  compiler rewrite recent output before it is final. Wirth's "items"
+  (*Compiler Construction*) and TCC's value stack delay simple operands
+  instead, which ccish's pending operands (`K_VAR`, `K_ELEM`) already
+  do; rotation handles the rest. Assemblers and JITs use side streams
+  (subsections, "deferred code") for code that must come later.
+
 **(e) Is avoiding SWAP worth the effort?** (This answers a question
 from the discussion.) Yes, mainly because it costs much less than it
 first appears:
@@ -319,7 +384,9 @@ first appears:
 So build it in stages. Early milestones use spills everywhere, plus
 the jump-around `for` (4(c)A). M10 adds the block exchange and the `for`
 side buffer.
-Measure before considering SWAP again.
+Measure before considering SWAP again. (Update, 2026-10-29: the block
+exchange moved up to M5 step 4, built as rotation in place; see
+(d2). The `for` side buffer stays in M10.)
 
 Other streaming items:
 - Function frame size isn't known until the function ends, so `ENTER`
@@ -1269,6 +1336,11 @@ Raised in discussion (2026-10-27): the VM might be changed after all
    (such as `i + p` scaling) with one opcode. It is also the easiest to
    argue for upstream, since it is a general stack operation that
    PLASMA once had.
+
+   (Update, 2026-10-29: rotation in place, 4(d2), now comes first, in
+   M5 step 4. It covers the stores and `i + p` with no opcode, so what
+   SWAP would still add is mainly compound assignment and `++`/`--`
+   on a computed address, which need the address twice.)
 4. **For M11's `unsigned`:** `UDIV` and `UMOD` (otherwise a runtime
    routine), and a logical shift right `USHR` (otherwise `SHR` then a
    mask, which needs a computed mask for a variable count). Three
@@ -1300,7 +1372,9 @@ issue. In summary:
 4. **No SWAP opcode.** Use spills first, then add block exchange as an
    optimization. Reconsider SWAP only if measurements justify it
    (4(e)). Issue 21 has since reopened this: SWAP would simplify the
-   compiler as well.
+   compiler as well. Block exchange comes first, as rotation in place
+   in M5 step 4 (4(d2)). It removes the spills that only fix order;
+   the spills that reuse an address stay.
 5. **Expressions:** precedence climbing (5A).
 6. **Varargs:** caller-built argument block plus count (6A), but not in
    the first milestone.
@@ -1350,13 +1424,31 @@ issue. In summary:
 
 ## Milestones
 
-**M5 design (decided in discussion, 2026-10-28).** M5 is built in five
+**M5 design (decided in discussion, 2026-10-28).** M5 is built in six
 steps, each ending with all tests passing:
 1. `sizeof`;
 2. global initializers;
 3. local array initializers;
-4. `static`;
-5. `const`, and warnings.
+4. rotation in place, replacing the spills that only fix order
+   (added in discussion, 2026-10-29; see 4(d2));
+5. `static`;
+6. `const`, and warnings.
+
+Step 4 (decided in discussion, 2026-10-29):
+- Stage 2 gets the expression buffer, `ir_mark()` and `ir_rotate()`
+  of 4(d2), with the two-temporary fallback when it overflows.
+- A store to a computed address (`*d++ = *s++`, `a[i + 1] = x`,
+  `*f() = x`) becomes `e addr SW`, with no temporary. When its value
+  is used (`y = *f() = x`), the value is kept with `DUP` before the
+  address (and masked to a byte for a `char`), instead of being read
+  back through a saved address.
+- `i + p` becomes `p i` scaled, then `ADD`, with no temporary.
+- `*p op= e` with a commutative `op` evaluates `e` first, which fixes
+  the mismatch with C noted in the M4 step 3 notes.
+- Compound assignment and `++`/`--` on a computed address keep their
+  spill: they need the address twice.
+- Tests whose listings get better are updated, and new tests cover
+  nested rotation and the overflow fallback.
 
 Decided:
 - **Global initializers are computed at compile time** (decision 10).
@@ -1491,7 +1583,8 @@ building it (open for review):
   the data limit.
 - **A `char` initialized with a too-big constant** keeps the low byte
   silently (`char wrap = 300;` is 44), as a cast would. gcc warns; a
-  warning could come with step 5.
+  warning could come with step 6 (renumbered from 5 when rotation
+  became step 4).
 - **The speaker test** (`tests/run/speaker.c`) still uses a cast:
   `char *speaker = (char *)0xC030;` now works, but reads through it
   are `LAW speaker LB`, not `LAB $C030`, until `const` folding (step
@@ -1968,13 +2061,14 @@ a proposal.
    only meet after lowering.
 3. **M4:** `char`, pointers, arrays, `&` and `*`, and globals.
    Stores through pointers, using spills (4(e)).
-4. **M5:** simple initializers, `sizeof`, `static` and `const`.
+4. **M5:** simple initializers, `sizeof`, `static` and `const`, and
+   block exchange by rotation in place (4(d2)).
 5. **M6:** `struct`.
 6. **M7:** `switch` (as a compare chain first).
 7. **M8:** the built-in minimal preprocessor (3B).
 8. **M9:** a runtime library in C-ish: file I/O over FILEIO, memory
    and strings.
-9. **M10:** optimization: block exchange, the `for` side buffer and
+9. **M10:** optimization: the `for` side buffer and
    fused FOR opcodes, peephole patterns, and `SEL` tables.
 10. **M11:** `unsigned`, `union`, varargs (`printf`), `typedef`,
     `enum`, function pointers and nested initializers.
