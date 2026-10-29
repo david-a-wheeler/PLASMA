@@ -41,6 +41,12 @@
  * pointer, and an array element, are pending the same way, so that
  * a[i] = x needs no temporary; see the Operand kinds below.
  *
+ * Reordering: when an address has been emitted before the parser sees
+ * that it is stored into (*d++ = *s++), the value's code is emitted
+ * after it, and then the two blocks are exchanged in stage 2's buffer
+ * (ir_rotate(), approach.md 4(d2)). The parser marks where blocks start
+ * with ir_here(). i + p is reordered the same way, to scale i after p.
+ *
  * Constant folding works the same way. A constant is a *pending
  * constant* until its value is needed on the stack, so unary operators
  * on it, and binary operators with two of them, are computed at compile
@@ -518,12 +524,22 @@ static void place_forward(int n)
  *
  * An object reached through any other address (*f(), a[i + 1]) is
  * K_DEREF, with the address on the stack. Storing into it needs the
- * value first and the address on top, and there is no SWAP, so before
- * a store the address is saved in a temporary local (spill()), and it
+ * value first and the address on top, and there is no SWAP. So for
+ * *f() = e, the parser emits e after the address, then exchanges the
+ * two blocks of code while they are still in stage 2's buffer
+ * (ir_rotate(), approach.md 4(d2)): "e addr SW", with no temporary.
+ * Until it sees whether the assignment's value is used, the result is
+ * K_STORE: the address, then the value, are the last code emitted, and
+ * the rotation and the store wait. If the value is used, a DUP goes
+ * after the value first, so the value stays below the store.
+ *
+ * Compound assignment and ++/-- need the address twice (for the load
+ * and the store), which no reordering can provide. For those, a
+ * K_DEREF's address is saved in a temporary local (spill()), and it
  * becomes a K_ELEM based on that temporary (approach.md 4(e)). A
  * compound assignment to an indexed K_ELEM (a[i] += e) is spilled too,
- * so its address is computed once. A SWAP opcode would make spills
- * unnecessary: addr e SWAP SW (approach.md issue 21).
+ * so its address is computed once. A SWAP opcode would make these
+ * spills unnecessary: addr DUP LW e ADD SWAP SW (approach.md issue 21).
  *
  * A place of array type is the array object. Used as a value, it is a
  * pointer to its first element (rvalue()); value_type() gives that
@@ -536,7 +552,9 @@ enum {
     K_CONST,        /* a constant, not emitted yet (val = value) */
     K_VAR,          /* a variable, not loaded yet (off, global) */
     K_DEREF,        /* the object at the address on the stack */
-    K_ELEM          /* the object at base + index * scale + disp */
+    K_ELEM,         /* the object at base + index * scale + disp */
+    K_STORE         /* an assignment through an address, whose store
+                     * waits (m0, m1, mend, stype, vmask) */
 };
 
 typedef struct {
@@ -559,6 +577,13 @@ typedef struct {
     int idx_char;   /* the index variable is a char */
     int scale;      /* bytes per step of the index */
     int disp;       /* a constant number of bytes added */
+    /* K_STORE only. The address's code is from IR position m0 to m1,
+     * and the value's from m1 to mend. is_bool says whether the value
+     * is 1 or 0. */
+    int m0, m1, mend;
+    int stype;      /* the type of the object stored into */
+    int vmask;      /* the value needs ANDI 255 to be what was stored
+                     * (an int stored into a char) */
 } Operand;
 
 /* C precedence levels (higher binds tighter). */
@@ -574,7 +599,8 @@ static void parse_postfix(Operand *o);
 static void parse_sizeof(Operand *o);
 static int parse_dims(int t, int may_omit);
 static int parse_local_array_init(int type, const char *name, int base);
-static void binary(Operand *o, Operand *r, int op);
+static void binary(Operand *o, Operand *r, int op, int lstart, int mid);
+static void finish_store(Operand *o, int keep);
 
 /* Push the variable at off, a data offset if global, else a frame
  * offset: a word, or a byte if is_char. */
@@ -717,6 +743,9 @@ static void rvalue(Operand *o)
         put(load_op(o->type), 0, NULL);
         o->is_bool = 0;
         break;
+    case K_STORE:
+        finish_store(o, 1);
+        break;
     }
     o->kind = K_VALUE;
 }
@@ -744,9 +773,11 @@ static void begin_expr(void)
     temp_mark = frame_next;
 }
 
-/* End a full expression: its temporaries' frame space is free again. */
+/* End a full expression: its code can't be reordered any more, so stage
+ * 2 can lower it, and its temporaries' frame space is free again. */
 static void end_expr(void)
 {
+    ir_flush();
     frame_next = temp_mark;
 }
 
@@ -761,6 +792,49 @@ static void spill(Operand *o)
     put(IR_SETLOCAL, off, NULL);
     put(IR_DROP, 0, NULL);
     make_elem(o, off, 0, 0);
+}
+
+/* Where the code of an operand starts, given the IR position and the
+ * number of held constants when its parsing began. The first op it put
+ * wrote those constants (which belong to the code before it) ahead of
+ * its own, so its code starts after them, if it emitted any. */
+static int code_start(int mark, int h)
+{
+    return ir_here() > mark ? mark + h : mark;
+}
+
+/* Emit the store that the K_STORE operand o waits for: the value's code
+ * moves ahead of the address's, giving "e addr SW". If keep is set, the
+ * value (the stored value: its low byte, for a char) stays on the
+ * stack. If the buffer overflowed and the address's code is gone, swap
+ * after the fact with two temporaries instead. */
+static void finish_store(Operand *o, int keep)
+{
+    int t1 = -1, t2;
+    if (ir_here() != o->mend || nheld != 0)
+        fatal("internal error: code after a pending store", NULL);
+    if (ir_holds(o->m0)) {
+        if (keep)
+            put(IR_DUP, 0, NULL);   /* it ends up below the address */
+        ir_rotate(o->m0, o->m1);
+    } else {
+        t1 = new_temp();
+        t2 = new_temp();
+        put(IR_SETLOCAL, t1, NULL);
+        put(IR_DROP, 0, NULL);
+        put(IR_SETLOCAL, t2, NULL);
+        put(IR_DROP, 0, NULL);
+        put(IR_LOCAL, t1, NULL);
+        put(IR_LOCAL, t2, NULL);
+    }
+    put(store_op(o->stype), 0, NULL);
+    if (keep && t1 >= 0)
+        put(IR_LOCAL, t1, NULL);
+    if (keep && o->vmask) {
+        put(IR_CONST, 0xFF, NULL);
+        put(IR_AND, 0, NULL);
+    }
+    o->kind = keep ? K_VALUE : K_VOID;
 }
 
 /* Report an error unless o is an lvalue that can be assigned to (an
@@ -797,6 +871,8 @@ static void assign_to(Operand *o)
  * done, since it may read I/O (such as the Apple II's $C010). */
 static void discard(Operand *o)
 {
+    if (o->kind == K_STORE)
+        finish_store(o, 0);
     if (o->kind == K_DEREF || (o->kind == K_ELEM && !o->assigned))
         rvalue(o);
     if (o->kind == K_VALUE)
@@ -966,6 +1042,10 @@ static int assign_op(int *ir_op)
     return 0;
 }
 
+/* Calls emitted so far. A compound assignment compares it before and
+ * after its right side, to see whether that has a call. */
+static int ncalls;
+
 /* Parse a call to fn, starting at '(': emit the arguments, check their
  * count (and their types, if fn's parameter types are known), then
  * emit the call. */
@@ -997,6 +1077,8 @@ static void parse_call(Sym *fn, Operand *o)
         error("wrong number of arguments in call to", quote(fn->name));
     }
     fn->called = 1;
+    if (!suppress)
+        ncalls++;
     put(IR_CALL, nargs, fn);
     o->kind = fn->type != TY_VOID ? K_VALUE : K_VOID;
     o->type = fn->type;
@@ -1212,7 +1294,7 @@ static void parse_index(Operand *o)
             error("subscripted value is neither array nor pointer", NULL);
         if (is_pointer(o->type) && is_pointer(value_type(r.type)))
             error("array subscript is not an integer", NULL);
-        binary(o, &r, IR_ADD);
+        binary(o, &r, IR_ADD, -1, -1);
         deref(o);
         return;
     }
@@ -1567,8 +1649,10 @@ static void compare_pointers(Operand *o, Operand *r, int op)
  * constant), and r has been parsed. Check the operand types, scale
  * pointer arithmetic by the element size, and emit the op. The result
  * replaces *o. Pointer arithmetic is p + i, i + p, p - i and p - q.
+ * o's code is from IR position lstart to mid (lstart is -1 if
+ * unknown), and r's code follows it.
  */
-static void binary(Operand *o, Operand *r, int op)
+static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
 {
     int lt = o->type, rt = value_type(r->type), n, t;
     int result = TY_INT;
@@ -1584,11 +1668,16 @@ static void binary(Operand *o, Operand *r, int op)
         push_scaled(r, lt);         /* p + i, p - i */
         result = lt;
     } else if (!is_pointer(lt) && op == IR_ADD) {
-        /* i + p: i is already below p, so it is scaled with p saved in
-         * a temporary (approach.md 4(b)). */
+        /* i + p: i is already below p. If i's code can still move, it
+         * goes after p's and is scaled there ("p i IDXW"). Otherwise it
+         * is scaled with p saved in a temporary (approach.md 4(b)). */
         n = elem_size(rt);
         rvalue(r);
-        if (n != 1) {
+        if (n != 1 && lstart >= 0 && ir_holds(lstart)) {
+            ir_rotate(lstart, mid);
+            put(IR_CONST, n, NULL);
+            put(IR_MUL, 0, NULL);
+        } else if (n != 1) {
             t = new_temp();
             put(IR_SETLOCAL, t, NULL);
             put(IR_DROP, 0, NULL);
@@ -1624,6 +1713,150 @@ static void binary(Operand *o, Operand *r, int op)
     o->is_bool = is_compare(op);
 }
 
+/* Parse the right side of *f() = e, where o is the K_DEREF, its
+ * address's code starting at IR position start. Its value and the
+ * store wait (K_STORE) until the parser sees whether the value is
+ * used; see finish_store(). */
+static void start_store(Operand *o, int start)
+{
+    Operand r;
+    int mid = ir_here();
+    parse_expr(PREC_ASSIGN, &r);
+    check_assign(o->type, &r, "assignment");
+    rvalue(&r);
+    o->kind = K_STORE;
+    o->m0 = start;
+    o->m1 = mid;
+    o->mend = ir_here();
+    o->stype = o->type;
+    o->vmask = o->type == TY_CHAR && r.type != TY_CHAR && !r.is_bool;
+    o->is_bool = r.is_bool;
+    o->assigned = 0;
+}
+
+/* Compute x op e after e's code, with e's value (on the stack) below
+ * x's: the operator applied with its operands reversed. ADD and the
+ * other commutative ops need nothing more; x - e is -(e - x); the rest
+ * need e saved in a temporary first. For a pointer x (+= and -= only),
+ * e is scaled first. x becomes the result. */
+static void reversed_op(Operand *x, int op)
+{
+    int t = -1;
+    if (is_pointer(x->type) && elem_size(x->type) != 1) {
+        put(IR_CONST, elem_size(x->type), NULL);
+        put(IR_MUL, 0, NULL);
+    }
+    if (swapped_op(op) != op && op != IR_SUB) {
+        t = new_temp();
+        put(IR_SETLOCAL, t, NULL);
+        put(IR_DROP, 0, NULL);
+    }
+    rvalue(x);
+    if (t >= 0)
+        put(IR_LOCAL, t, NULL);
+    put(op, 0, NULL);
+    if (t < 0 && op == IR_SUB)
+        put(IR_NEG, 0, NULL);
+    if (!is_pointer(x->type))
+        x->type = TY_INT;           /* a char operand is promoted */
+    x->kind = K_VALUE;
+    x->is_bool = 0;
+}
+
+/*
+ * x op= e, for x a non-indexed pending element (*p, p[3], *gp), whose
+ * address is computed twice: for the load and for the store. C says x
+ * is evaluated once, and a call in e runs entirely before or entirely
+ * after it (C11 6.5.2.2p10, 6.5.16.2p3), so if e calls a function that
+ * changes p, the load and the store must still use the same object
+ * (approach.md 4(d2)). So x isn't loaded until e is parsed:
+ *   - if e emitted no code (a constant or a variable), the load comes
+ *     first, as usual: "LLW p LW CN 1 ADD" becomes INCR;
+ *   - if e has a call, the load comes after it, so both addresses
+ *     follow the call, and the operator is applied reversed
+ *     (reversed_op());
+ *   - otherwise e can't change p (except with undefined behavior), and
+ *     the load is moved ahead of e's code, if it can still move.
+ * x is the element; r receives e; the result is left in x.
+ */
+static void compound_elem(Operand *x, Operand *r, int op)
+{
+    int mid = ir_here(), h = nheld, calls = ncalls, start, xm;
+    parse_expr(PREC_ASSIGN, r);
+    if (r->kind == K_CONST && !suppress)
+        check_right_const(op, r->val);
+    start = code_start(mid, h);
+    if (ir_here() == mid) {
+        rvalue(x);
+        binary(x, r, op, -1, -1);
+        return;
+    }
+    rvalue(r);
+    if (is_pointer(value_type(r->type))
+        || (is_pointer(x->type) && op != IR_ADD && op != IR_SUB)) {
+        /* An error (int op= pointer, pointer *= ...): binary() says so. */
+        rvalue(x);
+        binary(x, r, op, -1, -1);
+        return;
+    }
+    if (ncalls == calls && ir_holds(start)) {
+        xm = ir_here();
+        rvalue(x);
+        ir_rotate(start, xm);       /* x's load goes before e */
+        binary(x, r, op, -1, -1);
+        return;
+    }
+    reversed_op(x, op);
+}
+
+/* Parse an assignment after its operator (ir_op, -1 for '='), with o
+ * the lvalue, whose parsing began at IR position m0 with h0 constants
+ * held. o becomes the result. */
+static void parse_assign(Operand *o, int ir_op, int m0, int h0)
+{
+    Operand r, x;
+
+    if (ir_op < 0 && o->kind == K_DEREF) {
+        start_store(o, code_start(m0, h0));
+        return;
+    }
+    if (ir_op >= 0 && o->kind == K_ELEM && o->idx >= 0) {
+        /* x op= e loads x, then stores into it after e. Saving an
+         * indexed element's address (spill()) is 1 byte smaller than
+         * computing it twice, and stays right if e changes the index
+         * through a pointer. With a SWAP opcode, neither would be
+         * needed: addr DUP LW e op SWAP SW (approach.md issue 21). */
+        push_address(o);
+        o->kind = K_DEREF;
+    }
+    if (ir_op >= 0 && o->kind == K_ELEM) {
+        /* Its address is computed twice; see compound_elem(). */
+        x = *o;
+        compound_elem(&x, &r, ir_op);
+        r = x;
+    } else if (ir_op >= 0) {
+        /* x op= e with x's address computed once (a variable, or a
+         * spilled address): compute x op e, then store it as for
+         * x = e. Loading x before e runs is one of the orders C
+         * allows. */
+        spill(o);
+        x = *o;
+        rvalue(&x);
+        parse_expr(PREC_ASSIGN, &r);
+        if (r.kind == K_CONST && !suppress)
+            check_right_const(ir_op, r.val);
+        binary(&x, &r, ir_op, -1, -1);
+        r = x;
+    } else {
+        spill(o);
+        parse_expr(PREC_ASSIGN, &r);
+    }
+    check_assign(o->type, &r, "assignment");
+    rvalue(&r);
+    assign_to(o);
+    o->is_bool = ir_op < 0 && r.is_bool && o->kind == K_VALUE;
+}
+
 /*
  * Precedence climbing: parse an expression whose operators all have
  * precedence min_prec or higher. The result is left in *o, possibly
@@ -1631,7 +1864,7 @@ static void binary(Operand *o, Operand *r, int op)
  */
 static void parse_expr(int min_prec, Operand *o)
 {
-    int ir_op, supported, prec;
+    int ir_op, supported, prec, m0 = ir_here(), h0 = nheld, lstart, mid;
     Operand r;
 
     enter_nest();
@@ -1644,36 +1877,12 @@ static void parse_expr(int min_prec, Operand *o)
             error("lvalue required as", "left operand of assignment");
         need_lvalue(o, "left operand of assignment");
         next();
-        if (ir_op >= 0 && o->kind == K_ELEM && o->idx >= 0) {
-            /* x op= e loads x, then stores into it after e. Saving an
-             * indexed element's address (spill()) is 1 byte smaller than
-             * computing it twice, and stays right if e changes the index
-             * through a pointer. With a SWAP opcode, neither would be
-             * needed: addr DUP LW e op SWAP SW (approach.md issue 21). */
-            push_address(o);
-            o->kind = K_DEREF;
-        }
-        spill(o);
-        if (ir_op >= 0) {
-            /* x op= e: compute x op e, then store it as for x = e. */
-            Operand x = *o;
-            rvalue(&x);
-            parse_expr(PREC_ASSIGN, &r);
-            if (r.kind == K_CONST && !suppress)
-                check_right_const(ir_op, r.val);
-            binary(&x, &r, ir_op);
-            r = x;
-        } else {
-            parse_expr(PREC_ASSIGN, &r);
-        }
-        check_assign(o->type, &r, "assignment");
-        rvalue(&r);
-        assign_to(o);
-        o->is_bool = ir_op < 0 && r.is_bool && o->kind == K_VALUE;
+        parse_assign(o, ir_op, m0, h0);
     }
 
     for (;;) {
         int mark = -1;
+        lstart = -1;
         if (assign_op(&ir_op))
             error("lvalue required as", "left operand of assignment");
         prec = binary_prec(&ir_op, &supported);
@@ -1699,7 +1908,10 @@ static void parse_expr(int min_prec, Operand *o)
             rvalue(o);
             if (is_pointer(o->type) && is_relational(ir_op))
                 flip_sign();        /* see compare_pointers() */
+            /* All the code since this call began is the left operand. */
+            lstart = code_start(m0, h0);
         }
+        mid = ir_here();
         next();
         parse_expr(prec + 1, &r);   /* all binary ops are left-assoc */
         if (r.kind == K_CONST && !suppress)
@@ -1739,7 +1951,7 @@ static void parse_expr(int min_prec, Operand *o)
         }
         /* Otherwise the left value is (or, via put(), will be) on the
          * stack below the right one. */
-        binary(o, &r, ir_op);
+        binary(o, &r, ir_op, lstart, mid);
     }
     nest--;
 }

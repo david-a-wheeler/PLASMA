@@ -199,6 +199,10 @@ enum {
 };
 
 void ir_put(int op, int a, Sym *s);
+void ir_flush(void);
+int ir_here(void);
+int ir_holds(int pos);
+void ir_rotate(int m0, int m1);
 
 /* ---------- Stage 2 -> 3 -> 4: machine ops ---------- */
 

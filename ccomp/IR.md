@@ -46,12 +46,28 @@ reasons:
    meanings stay in the IR, so the parser never has to work around VM
    quirks. Lowering maps them safely (approach.md, issues 7 and 17).
    `IR_NOT` is the first such op.
-5. **Reordering.** PLASMA has no SWAP, so a store through a pointer,
-   which needs the value below the address, is arranged by the parser:
-   it saves an address in a temporary local when it must (see
-   `IR_STORE`). Later IR may include pseudo-ops (`MARK`, `SWAP2`, …)
-   that tell lowering to reorder code instead (approach.md, 4(d) and
-   4(e)).
+5. **Reordering.** PLASMA has no SWAP, so a store through a computed
+   address, which needs the value below the address, is arranged by
+   the parser. It emits the address, then the value, as C reads them,
+   and then exchanges the two blocks of IR while they are still in
+   stage 2's buffer (`ir_rotate()`; see `IR_STORE`, and approach.md
+   4(d2)). No pseudo-ops are needed: the parser keeps IR positions in
+   its own variables (`ir_here()`). Compound assignment and `++`/`--`
+   on a computed address need the address twice, so they still save
+   it in a temporary local (4(e)).
+
+## Stage 2's buffer
+
+`ir_put()` doesn't lower an op at once. It holds up to 64 ops, so that
+the parser can still exchange two adjacent blocks of them
+(`ir_rotate(m0, m1)` turns `[m0, m1) [m1, end)` into
+`[m1, end) [m0, m1)` in place, by three reversals). Moving IR ops is
+safe because each one lowers on its own, and branches name labels by
+number. The buffer is lowered at the end of each full expression
+(`ir_flush()`), at the end of each function, and when it is full.
+After that, `ir_holds()` tells the parser that the code can't move,
+and the parser falls back to temporaries. `ccish -i` prints each op as
+it is lowered, so it shows the final order.
 
 ## Ops
 
@@ -264,24 +280,45 @@ when it sees `=`, but the store needs the value first:
   fixed offset: `a[2] = v` is `v SETLOCAL a+4` (`SETGLOBAL a+4`, which
   becomes `SAW`). A row of a two-dimensional array takes a constant
   index the same way (`m[1][i]`, `m[i][2]`).
-- Otherwise the address is on the stack. It is saved in a temporary
-  local (`SETLOCAL t DROP`, which becomes `SLW t`), and `*e = v` is
-  `e SETLOCAL t DROP v LOCAL t STORE` (approach.md 4(e)). Temporaries
-  are freed at the end of each full expression.
+- Otherwise the address is on the stack: its code (`e`) has been
+  emitted. The parser emits `v` after it, then exchanges the two
+  blocks, so `*e = v` is `v e STORE` with no temporary (approach.md
+  4(d2)). For example, `*d++ = *s++` is
+  `s++ LOADB d++ STOREB`, and `a[i + 1] = v` is
+  `v LOCALADDR a LOCAL i CONST 1 ADD CONST 2 MUL ADD STORE`. The
+  exchange and the store wait until the parser sees whether the
+  assignment's value is used; if it is, a `DUP` goes after `v` first,
+  so the value stays below the address: `v DUP e STORE`.
+- If the expression was too long for stage 2's buffer, so that `e`'s
+  code has already been lowered, the parser swaps after the fact with
+  two temporary locals: `e v SETLOCAL t1 DROP SETLOCAL t2 DROP LOCAL
+  t1 LOCAL t2 STORE`. Temporaries are freed at the end of each full
+  expression.
 
 An assignment's value is the object's new value. For a local it is
-kept on the stack (`DLW`). For an object reached through a pointer, it
-is read back (`LOCAL p LOAD`) only if the value is used, so `*p = v;`
-as a statement costs nothing extra. Compound assignment and `++`/`--`
+kept on the stack (`DLW`). For an object reached through a pending
+address (`*p`, `a[i]`), it is read back (`LOCAL p LOAD`) only if the
+value is used, so `*p = v;` as a statement costs nothing extra. For one
+reached through a computed address, it is the `DUP` above, with `CONST
+255 AND` when an `int` is stored into a `char`. Compound assignment and
+`++`/`--`
 load through the same address before the store, as in
 `LOCAL p LOAD CONST 1 ADD LOCAL p STORE` for `++*p`. For a pending
 array element, `++`/`--` compute its address twice. A compound
 assignment to an element with an index variable saves the address in a
 temporary instead, so it is computed once: `a[i] += v` becomes
 `LLA a LLW i IDXW DLW t LW v ADD LLW t SW`. That is 1 byte smaller, and
-it stays right if `v` changes `i` through a pointer. (With a SWAP
-opcode, neither the second copy nor the temporary would be needed:
-approach.md issue 21.)
+it stays right if `v` changes `i` through a pointer. A compound
+assignment to a pending element without an index variable (`*p op= v`,
+`p[3] op= v`) computes the address twice. C evaluates the lvalue once,
+so if `v` has a call (which may change `p`), the load comes after the
+call, and both addresses follow it. The operator is then applied with
+its operands reversed: `*p += f()` is `f() LOCAL p LOAD ADD LOCAL p
+STORE`; `-=` ends `SUB NEG`; and `/=`, `%=`, `<<=` and `>>=` save
+`f()`'s value in a temporary first. Without a call, the load comes
+first, as usual (approach.md, "M5 step 4 is done"). (With a SWAP opcode,
+neither the second copy nor the temporary would be needed: approach.md
+issue 21.)
 
 A load through a pointer whose value is unused (`*p;` or `(void)*p;`)
 is still done, since on an Apple II reading some addresses (such as
@@ -322,8 +359,11 @@ that matters.
   parser with plain ops, since it knows the operand types:
   - `p + i` and `p - i` multiply `i` by the element size first
     (`CONST n MUL`; for a constant `i`, at compile time). For `i + p`,
-    `i` is already below `p`, so `p` is saved in a temporary local
-    while `i` is scaled (approach.md 4(b)).
+    `i` is already below `p`, so `i`'s code is moved after `p`'s and
+    scaled there: `p i CONST 2 MUL ADD`, which becomes `p i IDXW`
+    (approach.md 4(d2)). If `i`'s code was too long for stage 2's
+    buffer, `p` is saved in a temporary local while `i` is scaled
+    (4(b)).
   - `p - q` subtracts, then divides by the element size (`CONST 1
     SHR` for 2-byte elements).
   - `unsigned` operands (M11) will need different `/`, `%`, `>>` and
@@ -513,9 +553,9 @@ stage 4 replaces it with an offset.
 
 ## Adding ops
 
-New IR ops arrive with the milestones that need them. Expected next:
-- typed loads and stores, and addresses of variables (M4);
-- the reordering pseudo-ops (M10).
+New IR ops arrive with the milestones that need them. Reordering
+needs none: it is done by exchanging blocks in stage 2's buffer (M5
+step 4). The `for` increment's side buffer (M10) may add some.
 
 Each new op gets an entry here with the same headings: stack effect,
 current lowering, why it differs from PLASMA, and what it may become

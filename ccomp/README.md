@@ -209,18 +209,19 @@ function returns exactly one.
   for tests such as `x == 0`, `x != y` and `!x`. A function with no
   parameters, locals or temporaries has no frame: no `ENTER`, and `RET`
   instead of `LEAVE`.
-* A store through a pointer that isn't a plain variable, such as
-  `*p++ = x` or `*f() = x`, first saves the address in a hidden local
-  (2 bytes of the 255-byte frame, for that statement only), because
-  PLASMA has no SWAP. So does `i + p` with an `int *` `p`. A store
-  into an array element doesn't, when the array is an array or pointer
-  variable (local or global) and the index is a variable or a constant
-  (`a[i] = x`,
-  `p[3] = x`, `m[1][j] = x`). A more complex index (`a[i + 1] = x`,
-  `a[f()] = x`) or two variable indexes (`m[i][j] = x`) do. So does a
-  compound assignment to an element with a variable index
-  (`a[i] += x`), which is 1 byte smaller than computing the address
-  twice and computes it once, as C requires.
+* Stores need no hidden locals, although PLASMA has no SWAP: for a
+  store through a computed address (`*p++ = x`, `*f() = x`,
+  `a[i + 1] = x`), the compiler moves the value's code ahead of the
+  address's before emitting it. `i + p` is reordered the same way.
+  (In an expression too long for the compiler's 64-op buffer, these
+  fall back to hidden locals.)
+* Compound assignment and `++`/`--` on an object reached through a
+  computed address (`*p++ += x`, `(*f())++`), and compound assignment
+  to an element with a variable index (`a[i] += x`), need the address
+  twice. They save it in
+  a hidden local (2 bytes of the 255-byte frame, for that statement
+  only), which is 1 byte smaller than computing the address twice and
+  computes it once, as C requires.
 * A `for` loop with a step clause jumps around the step's code, which
   costs two extra branches per loop (approach.md, issue 17, plans a
   fix).

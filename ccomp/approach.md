@@ -340,10 +340,11 @@ discussion, 2026-10-29; M5 step 4).** This is a simpler way to build
 - **Details.** `put()` writes held constants (folding) into the buffer
   first, so a mark is taken only after they are written. Code skipped
   by `suppress` writes nothing, so marks there are harmless.
-- **A side benefit:** `*p op= e` with a commutative `op` can evaluate
-  `e` first (`e LLW p LW ADD LLW p SW`). Both reads of `p` then follow
-  `e`, which fixes the mismatch with C noted in the M4 step 3 notes,
-  at the same size.
+- **A side benefit:** `*p op= e` can evaluate `e` first
+  (`e LLW p LW ADD LLW p SW`). Both reads of `p` then follow `e`,
+  which fixes the mismatch with C noted in the M4 step 3 notes. (As
+  built, this needs no rotation, and covers every operator: see the
+  "M5 step 4 is done" notes.)
 - **Not covered:** the `for` increment, since the loop body has no size
   limit. It still needs (d)'s side buffer, in M10.
 - **Related techniques.** There is no single standard name for this.
@@ -1443,8 +1444,9 @@ Step 4 (decided in discussion, 2026-10-29):
   address (and masked to a byte for a `char`), instead of being read
   back through a saved address.
 - `i + p` becomes `p i` scaled, then `ADD`, with no temporary.
-- `*p op= e` with a commutative `op` evaluates `e` first, which fixes
-  the mismatch with C noted in the M4 step 3 notes.
+- `*p op= e` evaluates `e` first when `e` has a call, which fixes the
+  mismatch with C noted in the M4 step 3 notes. (Planned for
+  commutative ops only; built for all of them.)
 - Compound assignment and `++`/`--` on a computed address keep their
   spill: they need the address twice.
 - Tests whose listings get better are updated, and new tests cover
@@ -1546,6 +1548,83 @@ Decided:
 - **Not in M5:** nested brace lists, exporting globals, and `extern`
   (wanted later). (`volatile` was here until 2026-10-29; it is now
   accepted in step 6, as above.)
+
+**M5 step 4 (rotation in place) is done.** Chosen while building it
+(open for review):
+- **The buffer** is in `ir_put()` (`lower.c`): 64 IR records (op,
+  operand, symbol). It is lowered at the end of each full expression
+  (`end_expr()` calls `ir_flush()`), at the end of each function, and
+  when it is full. Statement-level ops (labels, branches) simply wait
+  in it until the next flush.
+- **Marks are plain IR positions** (`ir_here()`), counted from the
+  last flush at the end of an expression, so the parser needs no
+  open/close bookkeeping. A flush of a full buffer keeps counting, so
+  `ir_holds(pos)` can tell that code before it is gone.
+- **A store through a computed address waits** (a new operand kind,
+  `K_STORE`) until the parser sees whether its value is used. Then
+  `finish_store()` adds a `DUP` after the value if it is used, rotates,
+  and emits the store. Doing the rotation at `=` would have meant always
+  emitting the `DUP` and removing it with a peephole rule. That rule
+  would fail on an address that contains a store (`*d++` is
+  `LLW d DUP INCR SLW d`), or one longer than its window. The parser
+  checks that nothing was emitted after the value in the meantime
+  (an internal error otherwise).
+- **Its value is the `DUP`'d value**, masked with `ANDI 255` when an
+  `int` is stored into a `char`, not a read back through the address.
+  That is C's value, and it reads no memory, which matters for I/O.
+  (Pending elements, `*p = v` and `a[i] = v`, still read back.)
+- **Held constants.** A constant held for folding (the `5` in
+  `5 - (a[i + 1] = 2)`) is written by the first op of the lvalue's
+  code, but belongs before it. `code_start()` skips them, using the
+  count held when the operand's parsing began.
+- **`i + p`** rotates when `i`'s code is still in the buffer:
+  `LLW p LLW i IDXW`. `c + p`, with a constant `c` and a `p` that
+  emits code (`2 + f()`), and `i[p]`, still use a temporary: both are
+  rare, and the constant's position is harder to find.
+- **Compound assignment to a non-indexed pending element** (`*p`,
+  `p[3]`, `*gp`), whose address is computed twice, is now correct C
+  for every operator (decided in discussion: correct C first, where
+  that is reasonable). The element isn't loaded until the right side
+  `e` is parsed (`compound_elem()`):
+  - `e` emitted no code (a constant or variable): load first, as
+    before, so that `CN 1 ADD` → `INCR` and the like still apply.
+  - `e` has a call (counted by `parse_call()`): load after it, so both
+    addresses follow the call. No rotation is needed, so this is right
+    even if the buffer overflowed. The operator is applied reversed:
+    commutative ops as they are (`bump() LAW gp LW ADD LAW gp SW`),
+    `-=` as `SUB NEG` (1 more byte), and `/= %= <<= >>=` with `e`
+    saved in a temporary first (4 more bytes, 2 frame bytes). A
+    pointer's `e` is scaled before the load.
+  - otherwise `e` can't change the pointer without undefined behavior,
+    so the load is rotated ahead of `e`, keeping the usual order (`*gp
+    += i * 2` is `LAW gp LW LLW i IDXW …`). On overflow, the reversed
+    form is used; it is correct, just bigger.
+  `tests/run/compound_call.c` covers every operator, a pointer and a
+  `char`.
+- **Why only calls matter** (C11): a function call is indeterminately
+  sequenced with everything else in the calling expression (6.5.2.2p10),
+  and a compound assignment evaluates its lvalue once and is a single
+  evaluation with respect to such a call (6.5.16.2p3). So if `f()`
+  changes `p`, `*p -= f()` must act on the old `*p` throughout or the
+  new one throughout; it is unspecified which, but not undefined.
+  Changing `p` directly in the right side (`*p += (p = q) != 0`) is
+  unsequenced with the read of `p` on the left, so undefined (6.5p2,
+  6.5.16p3), and needs no care. The other cases were already right:
+  a variable (`x -= f()` loads `x` before the call, which C allows),
+  and a spilled address (computed once, before the call).
+- **Overflow fallbacks:** a store swaps with two temporaries; `i + p`
+  uses its old temporary; compound assignment uses the reversed form.
+  `tests/run/rotate_overflow.c` covers the first two.
+- **`ccish -i`** now prints each IR op as it is lowered, so it shows
+  the order after rotation.
+- **Effect on the tests:** no listing checks needed changing. Frames
+  shrank where temporaries went away: `fill()` in `pointers.c` from 8
+  to 6 bytes, `sort()` in `arrays.c` from 12 to 10, and `copy()` in
+  the new `rotate.c` (`while ((*d++ = *s++) != 0);`) has only its
+  parameters. Its loop is `s++ LB DUP d++ SB` and a branch.
+- **Still spilled, as planned:** compound assignment and `++`/`--` on a
+  computed address, and compound assignment to an element with an
+  index variable. Each needs the address twice (4(d2)).
 
 **M5 step 3 (local array initializers) is done.** Chosen while
 building it (open for review):
@@ -1819,7 +1898,8 @@ review):
   - **Still computed twice:** `*p op= e`, `p[3] op= e` and an element
     with a constant index, where a spill would cost code. So they keep
     the issue if `e` changes `p` through a pointer, which needs `&p` to
-    escape. Step 2's `*p += f()` has always behaved this way. `++`/`--`
+    escape. (Fixed in M5 step 4: when `e` has a call, the load comes
+    after it.) Step 2's `*p += f()` has always behaved this way. `++`/`--`
     also compute the address twice, which is always correct because
     there is no right side.
   - Plain `=` is fine, since C doesn't say whether the address or the

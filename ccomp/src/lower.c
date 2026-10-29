@@ -1,8 +1,18 @@
 /*
  * Stage 2: lowering. Turns IR ops into PLASMA machine ops and chooses
- * their encodings. For now this is mostly a 1:1 translation; later it
- * becomes the expression-sized delay buffer of approach.md 4(d).
- * Each IR op is described in ../IR.md.
+ * their encodings, mostly 1:1. Each IR op is described in ../IR.md.
+ *
+ * IR ops first wait in a small buffer, so that the parser can still
+ * reorder the code of the current expression (approach.md 4(d2)). The
+ * parser notes positions in the IR stream (ir_here()), and
+ * ir_rotate() exchanges two adjacent blocks of ops that are still in
+ * the buffer: *d++ = *s++ is parsed address first, but needs the value
+ * first, since PLASMA's stores take the address on top and there is no
+ * SWAP. Moving ops is safe because each lowers on its own and branches
+ * name labels by number. The buffer is flushed at the end of each full
+ * expression and of each function, and when it is full; then
+ * ir_holds() tells the parser that code before the flush can no longer
+ * move.
  */
 #include <string.h>
 #include "ccish.h"
@@ -141,9 +151,8 @@ static void put_simple(int op)
     peep_put(&m);
 }
 
-/* Stage 2's entry: lower one IR op to machine ops and pass them to the
- * peephole stage. */
-void ir_put(int op, int a, Sym *s)
+/* Lower one IR op to machine ops and pass them to the peephole stage. */
+static void lower(int op, int a, Sym *s)
 {
     Mop m;
 
@@ -253,4 +262,88 @@ void ir_put(int op, int a, Sym *s)
     peep_put(&m);
     if (op == IR_ENDFUNC)
         peep_flush();
+}
+
+/* The IR ops waiting to be lowered. 64 is far more than a typical
+ * statement needs (*d++ = *s++ is 9); see approach.md 4(d2). */
+#define IR_BUF 64
+
+typedef struct {
+    int op, a;
+    Sym *s;
+} IrOp;
+
+static IrOp buf[IR_BUF];
+static int nbuf;
+static int base;            /* the IR position of buf[0] */
+
+/* Lower every buffered op, oldest first. Positions keep counting from
+ * where they were, so that a mark taken before this is seen as gone. */
+static void lower_all(void)
+{
+    int i;
+    for (i = 0; i < nbuf; i++)
+        lower(buf[i].op, buf[i].a, buf[i].s);
+    base += nbuf;
+    nbuf = 0;
+}
+
+/* End of a full expression (or a function): lower every buffered op.
+ * No mark can be in use, so positions start again from 0. */
+void ir_flush(void)
+{
+    lower_all();
+    base = 0;
+}
+
+/* The IR position just after the last op put: where the next op will
+ * go. */
+int ir_here(void)
+{
+    return base + nbuf;
+}
+
+/* Is the op at IR position pos (or the position itself, if nothing has
+ * been put there yet) still in the buffer, so that it can be moved? */
+int ir_holds(int pos)
+{
+    return pos >= base;
+}
+
+/* Reverse the buffered ops from index i up to (not including) j. */
+static void reverse(int i, int j)
+{
+    IrOp t;
+    while (i < --j) {
+        t = buf[i];
+        buf[i++] = buf[j];
+        buf[j] = t;
+    }
+}
+
+/* Exchange the block of ops from position m0 to m1 with the block from
+ * m1 to the end, by reversing each, then both together (Bentley,
+ * Programming Pearls, column 2). The caller checks ir_holds(m0). */
+void ir_rotate(int m0, int m1)
+{
+    int i = m0 - base, j = m1 - base;
+    if (i < 0 || i > j || j > nbuf)
+        fatal("internal error: bad IR rotation", NULL);
+    reverse(i, j);
+    reverse(j, nbuf);
+    reverse(i, nbuf);
+}
+
+/* Stage 2's entry: buffer one IR op. A full buffer is lowered first,
+ * and the end of a function flushes everything. */
+void ir_put(int op, int a, Sym *s)
+{
+    if (nbuf == IR_BUF)
+        lower_all();
+    buf[nbuf].op = op;
+    buf[nbuf].a = a;
+    buf[nbuf].s = s;
+    nbuf++;
+    if (op == IR_ENDFUNC)
+        ir_flush();
 }
