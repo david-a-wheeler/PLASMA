@@ -9,7 +9,8 @@
  *
  * The address is written as a cast for now. Once global initializers
  * and const exist (M5 steps 2 and 6), it can be a named constant,
- * char *const speaker = (char *)0xC030, and should give the same code. */
+ * volatile char *const SPEAKER = (volatile char *)0xC030, and should
+ * give the same code (approach.md, "volatile is accepted"). */
 // listing-has: LAB $C030
 // listing-has: LAB $C000
 // listing-lacks: ENTER

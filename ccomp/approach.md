@@ -1513,8 +1513,39 @@ Decided:
   constant initializer folds to the constant (`const int N = 10;`
   makes `x < N` use `CB 10`), but `&N` still works, and, as in C, `N`
   can't size an array, so ccish programs stay valid C.
-- **Not in M5:** nested brace lists, `volatile`, exporting globals,
-  and `extern` (wanted later).
+  - **Pointers fold too** (decided in discussion, 2026-10-29). A
+    pointer is a scalar, so a `const` pointer whose initializer is an
+    integer constant cast to a pointer folds the same way:
+    `char *const SPEAKER = (char *)0xC030;` makes `*SPEAKER` be
+    `CW $C030 LB`, which the peephole stage turns into `LAB $C030`,
+    the same code as `*(char *)0xC030`. Without the `const`, it is an
+    ordinary global, and `*SPEAKER` costs two loads
+    (`LAW SPEAKER LB`).
+- **`volatile` is accepted and otherwise ignored** (decided in
+  discussion, 2026-10-29; step 6). Real C needs it for memory-mapped
+  I/O: an optimizing compiler such as gcc may delete
+  `*SPEAKER;` unless `SPEAKER` points to `volatile char`. Accepting it
+  lets ccish programs for the Apple II be correct C as well:
+  ```
+  volatile char *const SPEAKER = (volatile char *)0xC030;
+  void click(void) { *SPEAKER; }
+  ```
+  - It is allowed wherever `const` is (declarations, casts, type names
+    in `sizeof`), in either order with `const`.
+  - It changes no code. ccish never drops or merges loads through
+    pointers (M4 step 2 notes), so every access already happens as
+    written.
+  - **Limitation:** it isn't part of the type yet, so converting
+    `volatile char *` to `char *` gives no warning (gcc warns).
+  - The M10 optimizations of issue 17 that change loads (byte
+    narrowing, duplicate loads) must honour `volatile`, so it has to
+    become part of the type before they are built.
+  - When step 6 is done, `tests/run/speaker.c` changes to the form
+    above, with `SPEAKER` and a `KEYBOARD` constant for `$C000`, and
+    its listing checks stay the same (`LAB $C030`, no `CW $C0`).
+- **Not in M5:** nested brace lists, exporting globals, and `extern`
+  (wanted later). (`volatile` was here until 2026-10-29; it is now
+  accepted in step 6, as above.)
 
 **M5 step 3 (local array initializers) is done.** Chosen while
 building it (open for review):
