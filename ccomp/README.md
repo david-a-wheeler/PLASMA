@@ -1,11 +1,28 @@
 # ccish: a C-ish compiler for the PLASMA VM
 
 `ccish` compiles a growing subset of C into PLASMA REL modules. It has
-finished **milestone 3** (integer expressions, local variables and
-control flow, compiled end to end) and is partway through milestone 4
-(so far, `char`, casts and pointers). The design
-and the plan for growing it are in [approach.md](approach.md). The
-target format is described in [../doc/Bytecodes.md](../doc/Bytecodes.md).
+finished milestones 1 to 5 (integers, `char`, pointers, arrays,
+globals, control flow, initializers, `static`, `const` and `volatile`)
+and is partway through milestone 6 (`struct`). The design and the plan
+for growing it are in [approach.md](approach.md). The target format is
+described in [../doc/Bytecodes.md](../doc/Bytecodes.md).
+
+**ccish and C.** ccish is a subset of C by design (approach.md,
+decision 16):
+* What it supports generally behaves as C says, so the same source
+  compiles with gcc and means the same thing. Where C leaves a choice
+  to the implementation, ccish's choices are listed below (`int` is 16
+  bits, `char` is unsigned, and so on).
+* Some of C is left out on purpose: parts that are hard to implement,
+  or costly in space on a 64K machine, and not needed for ccish to
+  compile itself. Examples are floating point, `long`, bitfields, and
+  structs over 8 bytes passed or returned by value. Using one is a
+  compile-time error.
+* Strict compatibility may have to give way so the compiler fits in
+  64K. Then the goal is incompatibilities that are documented and
+  unlikely to affect real code. One known difference so far: until
+  `unsigned` exists, a hex constant such as `0x8000` is the `int`
+  -32768, not an `unsigned`.
 
 ## Building and testing
 
@@ -47,8 +64,8 @@ Hello5
   `char **`, `void *`, `struct node *`, ...), and arrays (`int a[10]`,
   `char *names[4]`, `int m[3][4]`, `struct pt pts[8]`).
 * Function definitions and prototypes returning any of these but an
-  array or a struct, with parameters of any type but `void` or a struct
-  (a pointer to a struct is fine). An array parameter
+  array, with parameters of any type but `void`. A struct parameter or
+  return value must be at most 8 bytes (see below). An array parameter
   is a pointer, as in C: `int a[]` and `int a[10]` are `int *a`, and
   `int m[][4]` points to arrays of 4 ints. A prototype and a definition must
   agree on the return and parameter types. `main` takes no parameters.
@@ -130,9 +147,19 @@ Hello5
   - Initializers: a flat brace list over the scalar members, as for an
     array (below), and a local may also be initialized from another
     struct (`struct pt b = a;`).
-  - Not yet: passing and returning structs (M6 step 3), `union`
-    (step 4), and `typedef` (M11). `==` on structs is an error, as in
-    C.
+  - A struct of up to 8 bytes can be passed and returned by value,
+    as the words of its bytes (first word deepest). A parameter lands
+    in the callee's frame in its own layout, with no copy, and a
+    returned struct is a PLASMA multi-value return: `struct qr { int
+    q, r; }` matches PLASMA's `divmod()#2`. A returned struct is
+    stored straight into the variable it is assigned to, and passed or
+    returned on with no code (`return swap(p);`); `f().x` saves it to
+    a temporary first. Passing a struct needs a prototype.
+  - A bigger struct can't be passed or returned by value, which is an
+    error (a deliberate limit, to keep the compiler small: pass a
+    pointer instead).
+  - Not yet: `union` (M6 step 4) and `typedef` (M11). `==` on structs
+    is an error, as in C.
 * `char` is one byte and unsigned (0–255). A value is converted to
   `char` by keeping its low byte when it is stored into a `char`,
   passed as a `char` parameter, returned from a `char` function, or

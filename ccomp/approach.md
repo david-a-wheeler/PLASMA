@@ -765,7 +765,10 @@ returned **small struct** as a multi-value return.
 
 - A struct of up to **4** scalar members is returned as that many
   values on the evaluation stack, first member deepest. Larger structs
-  use a hidden pointer.
+  use a hidden pointer. (Changed in M6 step 3: a struct of up to 8
+  bytes is returned, and passed, as the words of its bytes, which is
+  the same thing for `int` and pointer members; a bigger one is an
+  error, not a hidden pointer. See "M6 step 3".)
 - Pros:
   - It's standard C, so gcc compiles the same source. New syntax such
     as `return a, b;` would clash with the comma operator.
@@ -1496,9 +1499,10 @@ issue. In summary:
     - Address constants in the data segment need relocation (RLD)
       entries.
     - Local initializers compile as ordinary assignments.
-11. **Multiple returns:** a returned struct of up to 4 scalar members is
-    a PLASMA multi-value return (issue 16). Larger structs use a
-    hidden pointer. This lands with `struct` (M6).
+11. **Multiple returns:** a returned struct of up to 8 bytes is a
+    PLASMA multi-value return, one value per word (issue 16; changed in
+    M6 step 3 from "4 scalar members"). A larger struct can't be passed
+    or returned by value (decision 16).
 12. **Streamed output, a separate final pass, and fixup chains**
     (issue 18.1 and 18.2):
     - The compiler writes a data stream, a code stream (each function's
@@ -1535,6 +1539,32 @@ issue. In summary:
       whose fields variables don't use. Splitting it into function and
       variable tables of parallel arrays is planned as its own step
       after M5 step 6. M12 (issue 18.4) then measures what is left.
+16. **Generally compatible with C; a subset by design** (decided in
+    discussion, 2026-10-29). ccish can't reasonably implement all of C
+    on a 64K machine, so:
+    - **What ccish supports generally behaves as C says** (C89, with
+      some C99), so the same source compiles with gcc and means the
+      same thing. Where C leaves a choice to the implementation, ccish
+      makes one and documents it: `int` is 16 bits, `char` is unsigned,
+      `>>` of a negative value is arithmetic.
+    - **Some of C is left out on purpose:** parts that are hard to
+      implement, or costly in space, and not needed to self-host the
+      compiler. Examples: floating point, `long`, bitfields, and structs
+      over 8 bytes passed or returned by value. A supported feature may
+      also be limited the same way (planned: `unsigned` `/` and `%`
+      only by powers of two). Using a left-out feature is a
+      compile-time error ("not supported yet" for one planned for a
+      later milestone, or a message naming the limit).
+    - **Strict compatibility may have to give way so the compiler
+      fits.** When it does, the goal is incompatibilities that are
+      documented and unlikely to affect real code, and that are caught
+      at compile time where that is cheap.
+    - **Known differences:** a hex constant that doesn't fit in `int`,
+      such as `0x8000`, is the `int` -32768, while in C it is
+      `unsigned` (to be fixed when `unsigned` arrives, M11).
+    - The CMDSYS functions that programs call today (`puts`, `memset`,
+      ...) keep PLASMA's meanings; they are library names, not the
+      language, and are replaced by a C library in M9 (issue 12).
 
 
 ## Milestones
@@ -1555,7 +1585,9 @@ steps, each ending with all tests passing:
 3. pass and return by value (issue 16): up to 4 scalar members return
    as a PLASMA multi-value return, larger structs through a hidden
    pointer. How to pass `char` members, since frame slots are words,
-   is decided at the start of the step;
+   is decided at the start of the step (decided then: see "M6 step 3
+   design" below; by the words of the struct's bytes, up to 8 bytes,
+   and no larger structs);
 4. `union` (moved from M11): every member at offset 0, the size of
    the largest.
 
@@ -1653,6 +1685,47 @@ building it:
   test's listing is unchanged. A local may also be initialized from a
   struct expression (a copy); a global or static can't, since its
   initializer must be constant.
+
+**M6 step 3 design (decided in discussion, 2026-10-29).**
+- A struct of up to 8 bytes (`MAX_BYVAL`) is passed and returned as
+  the words of its bytes: word 0 is bytes 0-1, and so on, first word
+  deepest, with a last odd byte alone as a word. `ENTER` stores
+  parameter words in consecutive frame words, so a struct parameter
+  lands in its own layout, `char` members still packed, and is an
+  ordinary local with no copy. For structs of `int`s and pointers this
+  is issue 16's one value per member, so `struct qr { int q, r; }`
+  still matches PLASMA's `divmod()#2`. The limit is 8 bytes, not "4
+  scalar members": `{ char a, b, c, d, e; }` qualifies (3 words), and so
+  do small arrays in structs.
+- **A bigger struct can't be passed or returned by value:** that is an
+  error, which says to use a pointer: a part of C left out on purpose
+  (decision 16).
+  ccish's own source never passes or returns a struct by value, and C
+  code rarely does for anything bigger than a couple of words; on a
+  6502 it would be slow and use frame space. Leaving it out saves a
+  third of the step: caller temporaries and a hidden result pointer,
+  callee prologue copies, and the copy at `return`. The design is known
+  if a program ever needs it: the caller passes the address of a
+  temporary as a hidden first argument for a result, and a callee
+  copies a big parameter into its frame from a passed address.
+- A small struct result on the stack (`K_VALUE` with a struct type) is
+  stored straight into the variable or element it is assigned to, last
+  word first; passed or returned on as it is (`return swap(p);` is just
+  the call); dropped word by word if unused; and saved to frame
+  temporaries (`materialize()`) for anything else, such as `f().x` or
+  `*f() = g()`. A member of it is readable but isn't an lvalue.
+- Passing a struct needs a prototype, since the caller must know the
+  parameter is a struct.
+
+**M6 step 3 is done.** Notes:
+- `ENTER` takes the parameters' words, not the C parameter count; the
+  `.syms` summary still records the C count.
+- A function that falls off its end, or a bare `return;` (C89), pushes
+  as many zero words as it returns, so the stack stays balanced.
+- A struct passed from an address on the stack (`f(a[i + 1])`) is
+  spilled first, unless it is a single word.
+- A function returning an incomplete struct type is an error even in a
+  prototype, which C allows; it is rare, and simpler to check once.
 
 **M5 design (decided in discussion, 2026-10-28).** M5 is built in six
 steps, each ending with all tests passing:
@@ -2543,6 +2616,24 @@ a proposal.
    fused FOR opcodes, peephole patterns, and `SEL` tables.
 10. **M11:** `unsigned`, varargs (`printf`), `typedef`,
     `enum`, function pointers and nested initializers.
+
+    Notes for `unsigned` (from discussion, 2026-10-29), to design then:
+    - Support may be limited, since unsigned is slower in PLASMA: `/`
+      and `%` only by powers of two (shifts and masks), and an error
+      otherwise. `>>` needs a mask after `SHR`, which is arithmetic.
+      `< > <= >=` use the pointer comparisons' sign flip, folded for a
+      constant side. Everything else is the same bits as `int`.
+    - C converts `int` to `unsigned` silently when they meet in a binary
+      operator (the usual arithmetic conversions), so `-1 < 1u` is
+      false. A warning when that makes a comparison or division
+      unsigned (like gcc's `-Wsign-compare`) would show the cost.
+      `char` promotes to `int`, so it never makes an expression
+      unsigned.
+    - With a 16-bit `int`, an unsuffixed hex constant that doesn't fit
+      in `int` is `unsigned` (`0x8000`), and a decimal one is `long`
+      (`40000`, and so `-32768`). C has no suffix for a signed `int`:
+      write `~0x7FFF` or `-32767 - 1`. ccish treats `0x8000` as the
+      `int` -32768 until `unsigned` exists.
 11. **M12:** self-hosting under `plvm` (the bootstrap test in issue
     15), then fitting it into the 64K budget. Since plvm's memory is
     64K too, the fitting can't wait until after self-hosting: see the

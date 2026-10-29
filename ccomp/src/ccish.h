@@ -44,6 +44,7 @@
 #define MAX_TAGS     24     /* struct tags, including hidden ones */
 #define MAX_MEMBERS  128    /* struct members, in all structs */
 #define MAX_POOL     512    /* bytes of names in the name pool */
+#define MAX_BYVAL    8      /* bytes in a struct passed or returned by value */
 #define BLOCK        512    /* file I/O buffer size: one ProDOS block */
 
 /* ---------- Diagnostics (main.c) ---------- */

@@ -3,7 +3,7 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 5, and M6 steps 1 and 2):
+ * Language so far (milestones 1 to 5, and M6 steps 1 to 3):
  *   - types int, char, void, structs, pointers to them (int *, char **,
  *     struct node *, ...), and arrays of any of these but void
  *     (int m[3][4]);
@@ -15,8 +15,10 @@
  *     elements. A struct assignment copies its bytes (copy_struct()),
  *     and the result is the object assigned to, not an lvalue
  *     (Operand.assigned). Struct and array initializers are flat lists
- *     over their scalar members and elements (init_flat()). Passing
- *     and returning structs come in a later step;
+ *     over their scalar members and elements (init_flat()). A struct
+ *     of up to MAX_BYVAL bytes can be passed and returned by value,
+ *     as the words of its bytes (see push_struct_words()); a bigger
+ *     one is an error, so pass a pointer instead;
  *   - function definitions and prototypes returning int, char, void or
  *     a pointer, with parameters of any of these but void; an array
  *     parameter (int a[], int m[][4]) is a pointer, as in C;
@@ -654,7 +656,8 @@ static void place_forward(int n)
  * can still see the array.
  */
 enum {
-    K_VALUE,        /* its value is on the stack */
+    K_VALUE,        /* its value is on the stack (a struct's: its words,
+                     * first word deepest; see push_struct_words()) */
     K_VOID,         /* a void call: nothing on the stack */
     K_CONST,        /* a constant, not emitted yet (val = value) */
     K_VAR,          /* a variable, not loaded yet (off, global) */
@@ -718,6 +721,7 @@ static int parse_local_init(int type, const char *name, int base);
 static int parse_global_init(int type, const char *name);
 static void binary(Operand *o, Operand *r, int op, int lstart, int mid);
 static void finish_store(Operand *o, int keep);
+static void offset_place(Operand *o, int off);
 
 /* Push the variable at off, a data offset if global, else a frame
  * offset: a word, or a byte if is_char. */
@@ -1005,16 +1009,29 @@ static void assign_to(Operand *o)
     o->assigned = 1;
 }
 
+/* The number of words a struct of type t takes on the stack. */
+static int struct_words(int t)
+{
+    return (type_size(t) + 1) / 2;
+}
+
 /* Discard the value of an expression used as a statement. A pending
  * variable or constant ("x;") emits nothing, nor does the result of an
  * assignment through a pointer. A load through a pointer is still
  * done, since it may read I/O (such as the Apple II's $C010). A struct
- * isn't loaded (*p; evaluates p). */
+ * isn't loaded (*p; evaluates p), and one on the stack is dropped. */
 static void discard(Operand *o)
 {
+    int k;
     if (is_struct(o->type) && is_place(o)) {
         if (o->kind == K_DEREF)
             put(IR_DROP, 0, NULL);  /* its address */
+        o->kind = K_VOID;
+        return;
+    }
+    if (is_struct(o->type) && o->kind == K_VALUE) {
+        for (k = 0; k < struct_words(o->type); k++)
+            put(IR_DROP, 0, NULL);  /* a call's result */
         o->kind = K_VOID;
         return;
     }
@@ -1228,6 +1245,76 @@ static int assign_op(int *ir_op)
     return 0;
 }
 
+/*
+ * Push the struct o by value (approach.md, "M6 design"): the words of
+ * its bytes, first word deepest; a last odd byte alone, as a word. As
+ * parameters, ENTER stores them in consecutive frame words, so they
+ * land in the struct's own layout: the parameter is an ordinary local
+ * struct, with no copy. A struct that is already on the stack (a call's
+ * result) needs nothing. One reached through an address on the stack
+ * is spilled first, unless it is a single word.
+ */
+static void push_struct_words(Operand *o)
+{
+    Operand v;
+    int n = type_size(o->type), k;
+    if (o->kind == K_VALUE)
+        return;
+    if (o->kind == K_DEREF && n > 2)
+        spill(o);
+    for (k = 0; k < n; k += 2) {
+        v = *o;
+        offset_place(&v, k);
+        v.type = n - k == 1 ? TY_CHAR : TY_INT;
+        rvalue(&v);
+    }
+    o->kind = K_VALUE;
+}
+
+/* Store the struct on the stack (o, a K_VALUE) into frame temporaries,
+ * last word first, so that it can be used as an object: o becomes a
+ * variable, but not an lvalue (f().x is readable, not assignable). */
+static void materialize(Operand *o)
+{
+    int k, w = struct_words(o->type), t = new_temp();
+    for (k = 1; k < w; k++)
+        new_temp();                 /* the next words, right after t */
+    for (k = w - 1; k >= 0; k--) {
+        put(IR_SETLOCAL, t + 2 * k, NULL);
+        put(IR_DROP, 0, NULL);
+    }
+    o->kind = K_VAR;
+    o->off = t;
+    o->global = 0;
+    o->assigned = 1;
+}
+
+/* Push zero for a function of return type t that ends without a value:
+ * as many words as it returns, so that the stack stays balanced. */
+static void push_zero_result(int t)
+{
+    int k, w = is_struct(t) ? struct_words(t) : 1;
+    for (k = 0; k < w; k++)
+        put(IR_CONST, 0, NULL);
+}
+
+/* Report an error if t is a struct too big to pass or return by value
+ * (MAX_BYVAL bytes), or an incomplete one; what is "passed" or
+ * "returned". */
+static void check_byval(int t, const char *what)
+{
+    char msg[64];
+    if (!is_struct(t))
+        return;
+    need_complete(t, *what == 'p' ? "a parameter" : "a return value");
+    if (type_size(t) > MAX_BYVAL) {
+        sprintf(msg, "a struct over %d bytes can't be %s by value:",
+                MAX_BYVAL, what);
+        error(msg, *what == 'p' ? "use a pointer to it"
+                               : "return it through a pointer parameter");
+    }
+}
+
 /* Calls emitted so far. A compound assignment compares it before and
  * after its right side, to see whether that has a call. */
 static int ncalls;
@@ -1249,7 +1336,14 @@ static void parse_call(Sym *fn, Operand *o)
                         quote(fn->name));
                 check_assign(param_types[fn->ptypes + nargs], &a, where);
             }
-            rvalue(&a);
+            if (is_struct(a.type)) {
+                if (fn->ptypes < 0)
+                    error("passing a struct needs a prototype for",
+                          quote(fn->name));
+                push_struct_words(&a);
+            } else {
+                rvalue(&a);
+            }
             nargs++;
             if (tok != ',')
                 break;
@@ -1267,7 +1361,7 @@ static void parse_call(Sym *fn, Operand *o)
         ncalls++;
     put(IR_CALL, nargs, fn);
     o->kind = fn->type != TY_VOID ? K_VALUE : K_VOID;
-    o->type = fn->type;
+    o->type = fn->type;         /* a struct: its words are on the stack */
 }
 
 /* pstr("literal"): the address of the literal's PLASMA (length-prefixed)
@@ -1598,8 +1692,8 @@ static void parse_member(Operand *o, int arrow)
         error("'->' needs a pointer to a struct", NULL);
     if (!arrow && !is_struct(t))
         error("'.' needs a struct", NULL);
-    if (!arrow && !is_place(o))
-        error("a member of a struct value is not supported yet", NULL);
+    if (!arrow && o->kind == K_VALUE)
+        materialize(o);             /* f().x */
     tag = struct_tag(arrow ? type_sub(t) : t);
     if (tok != T_ID)
         error("expected a member name, not", tok_desc());
@@ -2171,8 +2265,9 @@ static Sym *copy_func(void)
  * than calling memcpy; otherwise memcpy(dst, src, n) is called, with
  * dst's address first. If r's address was already emitted and o's
  * wasn't, the two are exchanged in stage 2's buffer, as for a store
- * (finish_store()). o becomes the result: the object assigned to, not
- * an lvalue (for a K_DEREF, its address was kept with DUP).
+ * (finish_store()). A struct on the stack (a call's result) is stored
+ * word by word, last first. o becomes the result: the object assigned
+ * to, not an lvalue (for a K_DEREF, its address was kept with DUP).
  */
 static void copy_struct(Operand *o, Operand *r, int start)
 {
@@ -2180,8 +2275,25 @@ static void copy_struct(Operand *o, Operand *r, int start)
     Sym *fn;
     int n = type_size(o->type), k, cost = 0, mid, t;
 
-    if (!is_place(r))
-        error("this struct value is not supported yet", NULL);
+    if (r->kind == K_VALUE && o->kind != K_DEREF) {
+        /* Its words are on the stack: store them, last word first. */
+        for (k = struct_words(o->type) - 1; k >= 0; k--) {
+            d = *o;
+            offset_place(&d, 2 * k);
+            d.type = n - 2 * k == 1 ? TY_CHAR : TY_INT;
+            if (d.kind == K_VAR) {
+                store_var(&d);
+                put(IR_DROP, 0, NULL);
+            } else {
+                push_address(&d);
+                put(store_op(d.type), 0, NULL);
+            }
+        }
+        o->assigned = 1;
+        return;
+    }
+    if (r->kind == K_VALUE)
+        materialize(r);             /* the address is below it: *f() = g() */
     if (o->kind != K_DEREF && r->kind != K_DEREF) {
         for (k = 0; k < n; k += 2)
             cost += access_cost(o, k) + access_cost(r, k);
@@ -2876,7 +2988,7 @@ static void parse_statement(void)
         next();
         if (tok == ';') {
             if (cur_fn->type != TY_VOID)
-                put(IR_CONST, 0, NULL);  /* C89 allows this */
+                push_zero_result(cur_fn->type);  /* C89 allows this */
         } else {
             if (cur_fn->type == TY_VOID)
                 error("void function returns a value:", quote(cur_fn->name));
@@ -2885,7 +2997,10 @@ static void parse_statement(void)
             check_assign(cur_fn->type, &o, "return");
             if (cur_fn->type == TY_CHAR)
                 to_char(&o);        /* a char function returns 0 to 255 */
-            rvalue(&o);
+            if (is_struct(cur_fn->type))
+                push_struct_words(&o);  /* returned as its words */
+            else
+                rvalue(&o);
             end_expr();
         }
         expect(';', "expected ';' after return value, not");
@@ -2985,12 +3100,12 @@ static int parse_params(void)
         type = parse_dims(type, 1);
         if (is_array(type))
             type = pointer_to(type_sub(type));
-        if (is_struct(type))
-            error("passing a struct by value is not supported yet", NULL);
-        /* ENTER puts parameter n at offset 2n, as a word even for a
-         * char (which is then read as its low byte). Parameters are the
+        check_byval(type, "passed");
+        /* ENTER puts the parameters' words in consecutive frame words,
+         * one each for a scalar (a char is then read as its low byte),
+         * and a struct's words in its own layout. Parameters are the
          * first variables allocated, so add_local puts them there. */
-        add_local(name, type, 2);
+        add_local(name, type, is_struct(type) ? 2 * struct_words(type) : 2);
         n++;
         if (tok != ',')
             break;
@@ -3497,7 +3612,7 @@ static void parse_globals(int base, int type, char *name)
  * nothing yet (approach.md, "M5 design"). */
 static void parse_toplevel(void)
 {
-    int base, type, nparams, i;
+    int base, type, nparams, pwords, i;
     char name[MAX_NAME + 1];
     Sym *fn;
 
@@ -3523,8 +3638,7 @@ static void parse_toplevel(void)
         return;
     }
     type = unqual(type);    /* const int f(void) returns an int */
-    if (is_struct(type))
-        error("returning a struct is not supported yet", NULL);
+    check_byval(type, "returned");
     if (find_global(name))
         error("redeclaration of", quote(name));
     fn = find_func(name);
@@ -3535,6 +3649,7 @@ static void parse_toplevel(void)
     in_params = 1;
     nparams = parse_params();
     in_params = 0;
+    pwords = frame_next / 2;
     if (tok == ';') {
         /* A prototype. "()" leaves the parameter count unspecified.
          * A call before any declaration assumed int, and its code
@@ -3578,13 +3693,13 @@ static void parse_toplevel(void)
     fn->defined = 1;
 
     nlabels = 0;
-    put(IR_FUNC, nparams, fn);
+    put(IR_FUNC, pwords, fn);       /* ENTER takes the parameters' words */
     parse_block(0);
     /* Falling off the end of an int or char function returns 0. If the
      * last statement was a return, the peephole stage drops this as
      * dead code. */
     if (type != TY_VOID)
-        put(IR_CONST, 0, NULL);
+        push_zero_result(type);
     put(IR_RETURN, 0, NULL);
     put(IR_ENDFUNC, frame_max, fn);
     cur_fn = NULL;
