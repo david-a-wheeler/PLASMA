@@ -52,10 +52,11 @@ static void remove_streams(void)
     }
 }
 
-/* Remove partial output after an error. (On ProDOS, open files will
- * need closing first; on the host, removing an open file is fine.) */
+/* Remove partial output after an error, closing the open streams
+ * first (which ProDOS needs, and which completes them for -k). */
 static void clean_up(void)
 {
+    emit_abort();
     remove_streams();
     if (module_name)
         remove(module_name);

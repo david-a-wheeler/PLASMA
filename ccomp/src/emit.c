@@ -344,6 +344,17 @@ static void close_stream(Bfile *b, const char *suffix)
         fatal("error writing", stream_name(base_name, suffix));
 }
 
+/* After an error: close the streams that are still open, writing out
+ * what is buffered, so that a kept stream (-k) is complete up to the
+ * error, and so that ProDOS can remove the files. */
+void emit_abort(void)
+{
+    bclose(&data_out);
+    bclose(&drel_out);
+    bclose(&strs_out);
+    bclose(&code_out);
+}
+
 /* Close the streams written during compilation, and write the symbol
  * summary. */
 void emit_finish(void)

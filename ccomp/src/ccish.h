@@ -350,6 +350,7 @@ void data_word(int v);
 void data_addr(int kind, int target);       /* a relocated word */
 int  data_zero(int n);                      /* returns offset of n 0 bytes */
 void emit_finish(void);
+void emit_abort(void);                      /* after an error */
 
 /* ---------- Final pass (link.c) ---------- */
 

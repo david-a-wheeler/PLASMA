@@ -1125,6 +1125,9 @@ library (M9).
 
 #### 18.4 Smaller items (with the 64K fitting work, M12)
 
+(The options for fitting are gathered in 18.6; this section keeps the
+details of overlays, native code and symbol tables.)
+
 - **Overlays: what PLASMA actually supports.** Not classic overlays
   (swapping code in and out of a fixed region while the program
   runs). What it has is `cmdsys:modexec("NAME")` (`execmod` in
@@ -1263,7 +1266,9 @@ With gcc's preprocessor standing in for M8 (empty system headers),
 `peep.c` completely; only linking fails, on a function from another
 file. Its 267 lines of code (not counting comments and blank lines)
 are **2,019 bytes** of bytecode in 15 functions, about 7.6 bytes per
-line, with no M10 optimization yet. At that rate the compiler's 5,008
+line, with no M10 optimization yet. (Corrected by the measurement
+below: 2,110 bytes. The stream kept after the link error was missing
+its last partial block, a `-k` bug since fixed.) At that rate the compiler's 5,008
 lines of code would be about **37K** of bytecode, above the 25-35K
 guess, with `parse.c` alone (3,014 lines) about 22K. One file is a
 small sample (`peep.c` is pattern matching, with many array-of-struct
@@ -1278,6 +1283,154 @@ and multi-file linking (every file, from `ccish.h`), `unsigned`, then
 the library (`NULL`, `printf`, stdio, `string.h`). `link.c`'s globals
 alone exceed the 32767-byte data limit (its relocation and symbol
 tables).
+
+**All files measured (2026-10-29, option E2 of 18.6).** A script
+(kept outside the repository) preprocesses each file with gcc and
+small stand-in system headers, then works around what ccish lacks:
+`extern` declarations become definitions (or are dropped where the
+file defines the name), `unsigned`, `long` and `short` become `int`,
+number suffixes are dropped, the `printf` family becomes nothing, the
+512-byte local `Bfile`s become static, nested initializer braces are
+flattened, `main(argc, argv)` is renamed, and one struct `?:` becomes
+an `if`. Every file then compiles; only linking fails, as before.
+Bytecode, not counting comments and blank lines:
+
+| File | Lines | Bytecode | Per line | Strings |
+|---|---|---|---|---|
+| `parse.c` | 3,014 | 19,874 | 6.6 | 7,655 |
+| `link.c` | 395 | 2,815 | 7.1 | 866 |
+| `lex.c` | 353 | 2,278 | 6.5 | 840 |
+| `peep.c` | 267 | 2,110 | 7.9 | 0 |
+| `emit.c` | 286 | 2,010 | 7.0 | 512 |
+| `lower.c` | 282 | 1,464 | 5.2 | 406 |
+| `type.c` | 165 | 869 | 5.3 | 95 |
+| `main.c` | 114 | 593 | 5.2 | 152 |
+| `bio.c` | 67 | 429 | 6.4 | 50 |
+| `name.c` | 73 | 404 | 5.5 | 84 |
+| **Total** | **5,016** | **32,846** | **6.5** | **10,660** |
+
+- **Code: about 33K**, below the 37K extrapolation. Split by pass, the
+  compiler (everything but `link.c`) is about 30.0K plus 9.8K of
+  strings, and the final pass (`link.c` and `bio.c`) about 3.2K plus
+  0.9K. `parse.c` alone is 60% of the code and 72% of the strings.
+- **Not counted:** the C library ccish's source calls (`printf`,
+  stdio, `string.h`; M9), the removed `printf` calls (31, perhaps 300
+  bytes), and extra code that real `unsigned` operations would need.
+- **Strings: about 10.7K**, almost all messages, as data.
+- **Also found:** ccish's own source uses a struct `?:` (`parse.c`),
+  `main(argc, argv)`, `short` (a cast in `link.c`), `u` suffixes, and
+  `size_t`, none supported yet; and two 512-byte local `Bfile`s that
+  don't fit a frame (they must be static, or the buffers smaller).
+
+
+#### 18.6 Options for fitting in 64K (listed in discussion, 2026-10-29)
+
+A set of options, not a plan; any fitting will combine several. Where
+the memory goes today (16-bit sizes): code about 37K (extrapolated from
+`peep.c`, 18.5), tables about 66K, and about 11K of string literals,
+mostly messages (8K in `parse.c`), against "well under 40K" free on a
+64K Apple II (issue 1, not yet measured).
+
+**A. Names.**
+- **A1. Interned pool (today):** each distinct name once, in full;
+  tables hold a 2-byte offset. Exact, as C requires, but costs the total
+  length of all distinct names (several K for ccish's own).
+- **A2. Forth-style keys:** length plus the first *k* characters
+  (fig-Forth used 3) as a fixed key, no pool. 4-8 bytes per name, fast
+  compares. But different names can share a key (`tok_text` and
+  `tok_type` with length + 3): a confusing "redeclaration" in one
+  scope, and **silently wrong code** across scopes (a local hiding an
+  unrelated global).
+- **A3. Forth key plus a hash of the whole name** (e.g. length, 3
+  characters, 16-bit hash: 6 bytes). Collisions become rare, but are
+  still silent unless checked some cheaper way.
+- **A4. Fewer significant characters** (e.g. 8 or 12, not 31), still in
+  the pool. C89 itself guarantees only 6 for external names, so this
+  is a documented, C-sanctioned kind of limit; programs must keep names
+  distinct that far.
+- **A5. Free names no longer needed** (members and enum constants at a
+  file's end; locals already go at each function's end).
+
+**B. Tables.**
+- **B1. The `Sym` split** (decision 15): function and variable tables
+  of parallel arrays with `char` fields and name keys; about 29K to
+  perhaps 4-5K. The largest data saving, but a broad parser edit.
+- **B2. Limits sized to ccish's largest file** (functions, globals,
+  locals, labels, parameter types, types), not round numbers. Easy and
+  measurable; bigger programs get a clear error.
+- **B3. The final pass as its own module** (load, run, free; 18.1, 18.4):
+  its 22K of tables and about 3K of code never share memory with the
+  parser's.
+- **B4. Stream relocations instead of holding them:** read the input
+  twice instead of keeping 2,048 relocations (12K). Slower on floppies.
+- **B5. Smaller or no code buffers:** two 4K function buffers to 2K (a
+  function-size limit; ccish's largest so far is about 1K), or write
+  code straight to disk and patch it by seeking (slower).
+- **B6. Fewer open files:** ProDOS needs a 1K buffer per open file, and
+  today a compilation has the source and 4-5 stream files open (5-6K).
+  One combined stream file makes it 2K, but changes OBJECT.md.
+
+**C. The compiler's code.**
+- **C1. Two builds from one source** (`#if`, after M8): the cross build
+  (gcc) keeps all checking; the self-hosted build drops checks that
+  don't change generated code, since its input is checked by the cross
+  build and by gcc (decision 16). Candidates: `const` and qualifier
+  checks and warnings, strict pointer-compatibility errors,
+  redeclaration and duplicate checks, the listing (`-l`) and IR dump
+  (`-i`). Possibly 15-25% of `parse.c` and much of the messages. But the
+  self-hosted compiler then accepts some invalid programs, perhaps
+  miscompiling them silently, and there are two builds to test.
+- **C2. Smaller messages:** shorter text (11K to perhaps 5K), or error
+  numbers with the text in a disk file read only on an error (to about
+  1K), or numbers only, explained in the documentation.
+- **C3. Drop C semantics that cost compiler code**, with "not
+  supported" (or a simpler accepted form) instead. Candidates:
+  block-scope tags, typedefs and enum constants (file scope only);
+  implicit function declarations (require prototypes); the exact
+  compound-assignment ordering (`compound_elem`, `reversed_op`);
+  rotation in place (`K_STORE`, stage 2's buffer; this makes generated
+  code bigger); pending-constant folding beyond what constant
+  expressions need; `const`-variable folding (`has_val`); the
+  address-constant parser for global initializers (just strings and
+  `&name`); struct by value (ccish doesn't use it; struct assignment
+  stays, since it does); C99 `for` declarations; digraphs; `sizeof` on
+  expressions (only `sizeof(type)` and `sizeof variable`). Each is code
+  simply gone, but real C hits more "not supported" errors, and some
+  make the generated code (the compiler's own too) bigger.
+- **C4. Optimize the generated code (M10):** fused opcodes (`ADDLW`,
+  `IDXLW`, ...), peephole patterns, shared sequences. Shrinks every
+  program, the compiler too; gain unknown (perhaps 10-20%), and the
+  optimizer is more code.
+- **C5. Restructure ccish's own source for size:** smaller functions,
+  table-driven code instead of `switch` chains, `ccish.h` split by
+  stage. No language change; gains hard to predict.
+
+**D. Program structure.**
+- **D1. One program** (the preference in issue 1): simple and fast, but
+  needs aggressive versions of A-C, and may not be reachable.
+- **D2. Compiler plus final pass as two modules** (B3): little work,
+  already planned.
+- **D3. More passes:** preprocessor to a temporary file, parser to an IR
+  file, then a backend. Each fits easily, as in many small-machine C
+  compilers, but floppy I/O makes it much slower.
+- **D4. Overlays** (18.4's three approaches): one logical program, but
+  relies on undocumented loader behavior to test on 6502 VMs.
+- **D5. Fall back to 128K** (issue 1, option A): bytecode in auxiliary
+  memory; probably fits with modest work, but gives up the 64K II+.
+
+**E. Measure first.**
+- **E1.** Measure the real free memory on a 64K PLASMA system (open
+  since issue 1). It sets how much of the above is needed.
+- **E2.** Measure every file's code size with the same workaround as
+  `peep.c` (18.5), instead of extrapolating from one file. Done
+  (2026-10-29; results in 18.5): about 33K of code (30K for the
+  compiler, 3K for the final pass) and 10.7K of strings.
+
+View when listed (not a decision): E1 and E2 first, since they set the
+target; then the biggest levers look like B1 (`Sym` split), B3 (final
+pass as its own module), C2 (message text out of memory), and C1 (a
+lean self-hosted build). A2/A3 are attractive but risky without
+collision detection; A4 is the C89-sanctioned form.
 
 ### 19. Target application: a small Unix-like command set (possible, not committed)
 
