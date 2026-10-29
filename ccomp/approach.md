@@ -1484,15 +1484,15 @@ issue. In summary:
    a REL module that runs under `plvm`. Each later milestone adds a
    little and keeps everything working. See "Milestones" below.
 10. **Wanted in the language, at different milestones:**
-    - `struct` and `union` (M6), `switch` and simple initializers.
-      Simple initializers are needed for real-world use. "Simple"
-      means:
+    - `struct` (M6), `switch` and simple initializers. Simple
+      initializers are needed for real-world use. "Simple" means:
       - scalars and pointers (`int n = 5;`, `char *s = "hi";`,
         `int *p = &x;`);
       - `char` arrays from string literals;
       - one-level brace lists (`int t[] = {1, 2, 3};`).
     - Later: `unsigned`, varargs, `typedef`, `enum`, function
       pointers and nested initializers.
+    - Later still, if a program needs it: `union` (decision 17).
 
     Implementation notes on initializers:
     - Global initializers are folded at compile time.
@@ -1565,9 +1565,20 @@ issue. In summary:
     - The CMDSYS functions that programs call today (`puts`, `memset`,
       ...) keep PLASMA's meanings; they are library names, not the
       language, and are replaced by a C library in M9 (issue 12).
+17. **What self-hosting needs comes first; goodies come later**
+    (decided in discussion, 2026-10-29). The concern is that even
+    optimized, the compiler may not fit in 64K, so each feature's cost
+    in the self-hosted compiler counts. Build the features ccish's own
+    source needs first (the census in 18.5), then fit it (M12), then
+    add features it doesn't need ("goodies", such as `union`) only as
+    room and real programs allow. A feature that is cheap to add is
+    still not free: it costs compiler code and tables on the Apple II.
 
 
 ## Milestones
+
+**M6 is done** (2026-10-29), after three steps; step 4 (`union`) was
+dropped, below.
 
 **M6 design (decided in discussion, 2026-10-29).** M6 is built in four
 steps, each ending with all tests passing:
@@ -1589,7 +1600,16 @@ steps, each ending with all tests passing:
    design" below; by the words of the struct's bytes, up to 8 bytes,
    and no larger structs);
 4. `union` (moved from M11): every member at offset 0, the size of
-   the largest.
+   the largest. **Dropped** (decided in discussion, 2026-10-29, before
+   building it): ccish's own source has no unions (18.5), and even a
+   cheap feature costs code and table space in the self-hosted
+   compiler, which may not fit 64K (decision 17). `union` stays a "not
+   supported yet" error, and is in the "later, if needed" list under
+   Milestones. The design stands: the struct code with every member
+   at offset 0, a union flag per tag (struct and union tags share one
+   namespace in C, so the wrong kind is an error), the size of the
+   largest member, and an initializer for the first member only, with
+   the rest of the union zeroed.
 
 Decided with it:
 - **Layout:** members in order, with no padding (the 6502 has no
@@ -2607,7 +2627,7 @@ a proposal.
    Stores through pointers, using spills (4(e)).
 4. **M5:** simple initializers, `sizeof`, `static` and `const`, and
    block exchange by rotation in place (4(d2)).
-5. **M6:** `struct` and `union`.
+5. **M6:** `struct` (done).
 6. **M7:** `switch` (as a compare chain first).
 7. **M8:** the built-in minimal preprocessor (3B).
 8. **M9:** a runtime library in C-ish: file I/O over FILEIO, memory
@@ -2616,6 +2636,10 @@ a proposal.
    fused FOR opcodes, peephole patterns, and `SEL` tables.
 10. **M11:** `unsigned`, varargs (`printf`), `typedef`,
     `enum`, function pointers and nested initializers.
+
+    **Later, if needed** (decision 17): features ccish's own source
+    doesn't use, added after self-hosting fits, if programs need them
+    and there is room: `union` (designed in "M6 design", step 4).
 
     Notes for `unsigned` (from discussion, 2026-10-29), to design then:
     - Support may be limited, since unsigned is slower in PLASMA: `/`

@@ -1,11 +1,11 @@
 # ccish: a C-ish compiler for the PLASMA VM
 
 `ccish` compiles a growing subset of C into PLASMA REL modules. It has
-finished milestones 1 to 5 (integers, `char`, pointers, arrays,
-globals, control flow, initializers, `static`, `const` and `volatile`)
-and is partway through milestone 6 (`struct`). The design and the plan
-for growing it are in [approach.md](approach.md). The target format is
-described in [../doc/Bytecodes.md](../doc/Bytecodes.md).
+finished milestones 1 to 6 (integers, `char`, pointers, arrays,
+globals, control flow, initializers, `static`, `const`, `volatile` and
+`struct`). The design and the plan for growing it are in
+[approach.md](approach.md). The target format is described in
+[../doc/Bytecodes.md](../doc/Bytecodes.md).
 
 **ccish and C.** ccish is a subset of C by design (approach.md,
 decision 16):
@@ -158,8 +158,8 @@ Hello5
   - A bigger struct can't be passed or returned by value, which is an
     error (a deliberate limit, to keep the compiler small: pass a
     pointer instead).
-  - Not yet: `union` (M6 step 4) and `typedef` (M11). `==` on structs
-    is an error, as in C.
+  - Not yet: `typedef` (M11), and `union` (later, if needed). `==` on
+    structs is an error, as in C.
 * `char` is one byte and unsigned (0–255). A value is converted to
   `char` by keeping its low byte when it is stored into a `char`,
   passed as a `char` parameter, returned from a `char` function, or
