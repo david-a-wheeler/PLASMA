@@ -626,19 +626,36 @@ int load_mod(M6502 *mpu, byte *mod)
 /*
  * Native CMDSYS routines
  */
+/*
+ * Load and run a module, as CMD's execmod does on the Apple II
+ * (src/vmsrc/apple/cmd.pla): when its init returns, the module (and any
+ * modules it loaded) is freed, by restoring the heap and the symbol
+ * table, unless init returned modkeep or more. The result is 0, or the
+ * negative value init returned for an error.
+ */
+#define MODKEEP 0x2000
 void sysexecmod(M6502 *mpu)
 {
-    uword modstr;
+    uword modstr, saveheap;
     char modfile[128];
     byte dci[128];
-    int result;
+    byte *savesym;
+    word result;
 
     PULL_ESTK(modstr);
     memcpy(modfile, mem_6502 + modstr + 1, mem_6502[modstr]);
     modfile[mem_6502[modstr]] = '\0';
     stodci(modfile, dci);
-    result = load_mod(mpu, dci);
-    PUSH_ESTK(result);
+    saveheap = mark_heap();
+    savesym  = lastsym;
+    result   = (word)load_mod(mpu, dci);
+    if (result < MODKEEP)
+    {
+        release_heap(saveheap);
+        lastsym  = savesym;
+        *lastsym = 0;
+    }
+    PUSH_ESTK(result < 0 ? result : 0);
 }
 void syslookuptbl(M6502 *mpu)
 {
