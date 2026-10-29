@@ -3,7 +3,7 @@
 `ccish` compiles a growing subset of C into PLASMA REL modules. It has
 finished milestones 1 to 7 (integers, `char`, pointers, arrays,
 globals, control flow, initializers, `static`, `const`, `volatile`,
-`struct` and `switch`). The design and the plan for growing it are in
+`struct` and `switch`), and `enum` and `typedef` from milestone 11. The design and the plan for growing it are in
 [approach.md](approach.md). The target format is described in
 [../doc/Bytecodes.md](../doc/Bytecodes.md).
 
@@ -20,9 +20,11 @@ decision 16):
   compile-time error.
 * Strict compatibility may have to give way so the compiler fits in
   64K. Then the goal is incompatibilities that are documented and
-  unlikely to affect real code. One known difference so far: until
-  `unsigned` exists, a hex constant such as `0x8000` is the `int`
-  -32768, not an `unsigned`.
+  unlikely to affect real code. Known differences so far:
+  - until `unsigned` exists, a hex constant such as `0x8000` is the
+    `int` -32768, not an `unsigned`;
+  - `enum tag` isn't checked against a definition, so ccish accepts
+    some wrong programs (a variable of an enum type never defined).
 
 ## Building and testing
 
@@ -158,8 +160,19 @@ Hello5
   - A bigger struct can't be passed or returned by value, which is an
     error (a deliberate limit, to keep the compiler small: pass a
     pointer instead).
-  - Not yet: `typedef` (M11), and `union` (later, if needed). `==` on
-    structs is an error, as in C.
+  - Not yet: `union` (later, if needed). `==` on structs is an error,
+    as in C.
+* `enum`: `enum [tag] { A, B = 5, C, };`. A constant is an `int`
+  constant expression, so it works in `case` labels, array sizes and
+  global initializers; it is one more than the one before unless given
+  a value, and must fit in an `int`. An enum type is `int`.
+* `typedef`, with `*`s, array sizes and qualifiers
+  (`typedef struct node *NodeP;`, `typedef int Vec[3];`,
+  `typedef const char *str;`). A typedef name can be used wherever a
+  built-in type can. Typedefs of function types aren't supported.
+* Enum constants and typedef names have block scope, as in C: one
+  declared in a block hides a variable of the same name declared
+  outside it, and the other way around.
 * `char` is one byte and unsigned (0–255). A value is converted to
   `char` by keeping its low byte when it is stored into a `char`,
   passed as a `char` parameter, returned from a `char` function, or
@@ -246,7 +259,7 @@ Hello5
 
 Anything else, such as `extern`,
 function pointers, declarators in parentheses (`int (*p)[4]`), `goto`,
-`union`, `typedef`, `enum`, the comma operator, or the types `signed`,
+`union`, the comma operator, or the types `signed`,
 `unsigned`, `short` and `long`, gives a "not supported yet" error.
 
 ### Strings and `pstr()`
@@ -304,9 +317,10 @@ function returns exactly one.
   `MAX_LABELS` in `src/ccish.h`). Each `if`, loop, `&&`, `||` and `?:`
   uses one to four labels.
 * A program may have at most 24 struct tags (counting those in blocks
-  that have ended), 128 struct members in all, and 512 bytes of
-  distinct tag and member names, each with a NUL (`MAX_TAGS`,
-  `MAX_MEMBERS`, `MAX_POOL`).
+  that have ended), 128 struct members in all, 256 enum constants and
+  typedef names visible at once, and 2048 bytes of distinct tag,
+  member, enum constant and typedef names, each with a NUL
+  (`MAX_TAGS`, `MAX_MEMBERS`, `MAX_IDS`, `MAX_POOL`).
 * Only a few peephole optimizations so far (see `src/peep.c`): removal
   of unreachable code, plain stores for assignments whose value is
   unused, folded negative constants, adding 0, `INCR`/`DECR`, `ANDI`,

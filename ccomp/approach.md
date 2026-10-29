@@ -1257,6 +1257,28 @@ not measured), and the PLASMA system itself.
   (after M9 or so), compile each one and record its code size, to
   replace the estimate above.
 
+**First measurement (2026-10-29, after M7 and `enum`/`typedef`).**
+With gcc's preprocessor standing in for M8 (empty system headers),
+`extern` removed and `unsigned` written as `int`, ccish compiles
+`peep.c` completely; only linking fails, on a function from another
+file. Its 267 lines of code (not counting comments and blank lines)
+are **2,019 bytes** of bytecode in 15 functions, about 7.6 bytes per
+line, with no M10 optimization yet. At that rate the compiler's 5,008
+lines of code would be about **37K** of bytecode, above the 25-35K
+guess, with `parse.c` alone (3,014 lines) about 22K. One file is a
+small sample (`peep.c` is pattern matching, with many array-of-struct
+accesses), so this is a first data point, not a budget. With the
+tables (about 66K at 16-bit sizes, above) and PLASMA itself, the
+compiler as one program can't fit in 64K, which confirms that the
+passes must be separate modules (18.1, 18.4), the tables must shrink,
+and code size matters.
+
+The other files stop on what is still missing, in this order: `extern`
+and multi-file linking (every file, from `ccish.h`), `unsigned`, then
+the library (`NULL`, `printf`, stdio, `string.h`). `link.c`'s globals
+alone exceed the 32767-byte data limit (its relocation and symbol
+tables).
+
 ### 19. Target application: a small Unix-like command set (possible, not committed)
 
 Once the compiler works well, use it to build a small toybox-style
@@ -1490,8 +1512,8 @@ issue. In summary:
         `int *p = &x;`);
       - `char` arrays from string literals;
       - one-level brace lists (`int t[] = {1, 2, 3};`).
-    - Later: `unsigned`, varargs, `typedef`, `enum`, function
-      pointers and nested initializers.
+    - Then `enum` and `typedef` (after M7), and later `unsigned`,
+      varargs, function pointers and nested initializers.
     - Later still, if a program needs it: `union` (decision 17).
 
     Implementation notes on initializers:
@@ -1632,6 +1654,60 @@ largest has 28), so self-hosting needs it.
 - Most of ccish's own case labels are `enum` constants, so `enum`
   (M11) is on the self-hosting path too. Until then, tests use numbers
   and character constants.
+
+**`enum` and `typedef` design (pulled forward from M11; decided in
+discussion, 2026-10-29).** Built right after M7, before M8, so that
+ccish can compile some of its own files early and code sizes can be
+measured instead of guessed (18.5). ccish's own source uses them
+simply: anonymous `enum { A, B = 5, ... };` lists (211 distinct
+constants, about 1.7K of names), and seven `typedef struct ... Name;`.
+- **One compact table** for the ordinary identifiers that aren't
+  variables or functions: enum constants and typedef names. Parallel
+  arrays (decision 15): name (a name pool offset), value (a constant's
+  value, or a typedef's type handle), and kind and block depth, about
+  6 bytes per entry; 256 entries (`MAX_IDS`), about 1.5K.
+- **Scope as in C:** a name declared deeper hides one declared less
+  deep, whatever their kinds (`typedef int T; void f() { int T; }`
+  works), found by comparing depths with the variables'. Names declared
+  in a block are hidden at its end, like struct tags.
+- **The name pool grows from 512 bytes to 2K:** the enum names alone
+  need about 1.7K. Each `.c` file is compiled separately, and once
+  `ccish.h` is split by stage (parse.c doesn't need the opcodes), each
+  needs much less. The `Sym` split budgets the pool again.
+- **`enum`:** `enum [tag] { A, B = 5, C, };` with integer constant
+  expression values (which may use earlier constants) that fit in an
+  `int`, and an optional trailing comma. A constant is an integer
+  constant expression, so it works in case labels, array sizes and
+  global initializers. An enum type is `int`, which C allows. **Known
+  difference (decision 16):** `enum tag` isn't checked against a
+  definition, so ccish accepts some wrong programs (a variable of an
+  enum type never defined); it never miscompiles a right one. ccish's
+  source has no enum tags.
+- **`typedef`:** at file and block scope, with `*`, array sizes and
+  qualifiers (`typedef struct node *NodeP;`, `typedef int Vec[3];`,
+  `typedef const char *str;`). A typedef name starts a declaration, a
+  cast or a sizeof type wherever a built-in type does, so `T * p;`
+  declares `p`, as in C. Redefining one with the same type is allowed
+  (C11). Not supported: typedefs of function types (no function
+  pointers), or of arrays of unknown size.
+- **Later, for self-hosting:** split `ccish.h` by stage so that each
+  file reads fewer enum names (a change to ccish's source, not the
+  language), before M12's measurements.
+
+**`enum` and `typedef` are done** (2026-10-29). Settled while building
+them:
+- The table is in `name.c` with the name pool. Entries hidden at a
+  block's end are freed when they are the last ones (no type refers to
+  them, unlike struct tags), so block-scope names don't use it up.
+- Lookup (`find_id()`) compares an entry's depth with the innermost
+  variable of the same name; the deeper one wins. A redeclaration in
+  the same scope is an error whatever the kinds (`int n; typedef int
+  n;`), checked where variables, functions, constants and typedefs are
+  added.
+- `parse_base_type()` now applies qualifiers with `qualify()`, so
+  `const Vec v` for `typedef int Vec[3]` makes the elements const, as
+  in C.
+- Every earlier test's code is unchanged.
 
 **M7 is done** (2026-10-29). Settled while building it:
 - Duplicate case values are checked as each case is parsed, against
@@ -2706,8 +2782,9 @@ a proposal.
    and strings.
 9. **M10:** optimization: the `for` side buffer,
    fused FOR opcodes, and peephole patterns.
-10. **M11:** `unsigned`, varargs (`printf`), `typedef`,
-    `enum`, function pointers and nested initializers.
+10. **M11:** `unsigned`, varargs (`printf`), function pointers and
+    nested initializers. (`enum` and `typedef` moved up, to right
+    after M7; see "`enum` and `typedef` design".)
 
     **Later, if needed** (decision 17): features ccish's own source
     doesn't use, added after self-hosting fits, if programs need them

@@ -3,7 +3,7 @@
  * statements, precedence climbing for expressions (approach.md, issue
  * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 7):
+ * Language so far (milestones 1 to 7, and enum and typedef):
  *   - types int, char, void, structs, pointers to them (int *, char **,
  *     struct node *, ...), and arrays of any of these but void
  *     (int m[3][4]);
@@ -32,6 +32,8 @@
  *     global is (S_GLOBAL), with block scope, and a global's kind of
  *     initializer; on a global or a function, static changes nothing
  *     yet, since nothing is exported;
+ *   - enum constants, which are int constants, and typedef names, both
+ *     with block scope (see find_id()); an enum type is int;
  *   - const and volatile, as part of the type (bits in the type handle;
  *     see type.c). Operands carry unqualified types, and a place keeps
  *     its object's qualifiers in Operand.quals. A const object can't be
@@ -236,6 +238,41 @@ static Sym *find_var(const char *name)
     return s ? s : find_global(name);
 }
 
+/* The visible enum constant or typedef named name, or -1. One hides a
+ * variable or function declared less deep, and is hidden by one
+ * declared deeper (typedef int T; void f() { int T; } makes T a
+ * variable inside f). They can't be at the same depth: that is a
+ * redeclaration. */
+static int find_id(const char *name)
+{
+    int i = id_find(name_find(name));
+    Sym *s;
+    if (i < 0)
+        return -1;
+    s = find_var(name);
+    if (s && s->depth >= id_depth(i))
+        return -1;
+    return i;
+}
+
+/* The type a visible typedef named name stands for, or -1 if name
+ * isn't one. */
+static int typedef_type(const char *name)
+{
+    int i = find_id(name);
+    return i >= 0 && id_kind(i) == ID_TYPEDEF ? id_val(i) : -1;
+}
+
+/* Report a redeclaration if an enum constant or typedef named name was
+ * declared at the current depth (where a variable, function or another
+ * of them named name is about to be). */
+static void check_not_id(const char *name)
+{
+    int i = id_find(name_find(name));
+    if (i >= 0 && id_depth(i) == depth)
+        error("redeclaration of", quote(name));
+}
+
 /* Declare a global variable of the given type, at the next data
  * offset. The caller then writes its bytes to the data stream: its
  * initial value, or zeros. */
@@ -244,6 +281,7 @@ static Sym *add_global(const char *name, int type)
     Sym *s;
     if (find_global(name) || find_func(name))
         error("redeclaration of", quote(name));
+    check_not_id(name);
     if (nglobals >= MAX_GLOBALS)
         fatal("too many global variables", NULL);
     s = &globals[nglobals++];
@@ -263,6 +301,8 @@ static Sym *add_local(const char *name, int type, int size)
     Sym *s = find_local(name);
     if (name[0] && s && s->depth == depth)
         error("redeclaration of", quote(name));
+    if (name[0])
+        check_not_id(name);
     if (nlocals >= MAX_LOCALS)
         fatal("too many variables in scope", NULL);
     if (frame_next + size > 255)
@@ -290,6 +330,7 @@ static Sym *add_static_local(const char *name, int type)
     Sym *s = find_local(name);
     if (s && s->depth == depth)
         error("redeclaration of", quote(name));
+    check_not_id(name);
     if (nlocals >= MAX_LOCALS)
         fatal("too many variables in scope", NULL);
     s = &locals[nlocals++];
@@ -328,11 +369,13 @@ static void set_param_types(Sym *fn, int n)
         param_types[nparam_types++] = unqual(locals[i].type);
 }
 
-/* Is t a token that starts a type name? */
-static int is_type_start(int t)
+/* Does the current token start a type name: a type keyword, a
+ * qualifier, or a visible typedef name? */
+static int is_type_start(void)
 {
-    return t == T_INT || t == T_CHAR || t == T_VOID || t == T_CONST
-           || t == T_VOLATILE || t == T_STRUCT;
+    return tok == T_INT || tok == T_CHAR || tok == T_VOID || tok == T_CONST
+           || tok == T_VOLATILE || tok == T_STRUCT || tok == T_ENUM
+           || (tok == T_ID && typedef_type(tok_text) >= 0);
 }
 
 /* Describe tag for a message: 'struct name', or an unnamed struct. The
@@ -369,25 +412,37 @@ static int parse_quals(void)
 }
 
 static int parse_struct(void);
+static int parse_enum(void);
+static void parse_typedef(void);
 
-/* Parse a basic type name (int, char, void, or a struct type), with any
- * qualifiers before or after it (const char, char const), and return
- * its type. */
+/* Set by parse_base_type(): the type was a struct or enum, which a
+ * declaration may declare with no declarators (struct pt { ... };). */
+static int base_tagged;
+
+/* Parse a basic type name (int, char, void, a struct or enum type, or
+ * a typedef name), with any qualifiers before or after it (const char,
+ * char const), and return its type. */
 static int parse_base_type(void)
 {
     int q = parse_quals(), t = TY_INT;
+    int tagged = tok == T_STRUCT || tok == T_ENUM;  /* after the quals */
     if (tok == T_STRUCT) {
         t = parse_struct();
+    } else if (tok == T_ENUM) {
+        t = parse_enum();
     } else {
         if (tok == T_CHAR)
             t = TY_CHAR;
         else if (tok == T_VOID)
             t = TY_VOID;
+        else if (tok == T_ID && typedef_type(tok_text) >= 0)
+            t = typedef_type(tok_text);
         else if (tok != T_INT)
             error("expected a type, not", tok_desc());
         next();
     }
-    return t | q | parse_quals();
+    base_tagged = tagged;           /* after any members' own types */
+    return qualify(t, q | parse_quals());
 }
 
 /* Parse any '*'s after a base type t: each makes a pointer to the type
@@ -1434,7 +1489,7 @@ static void parse_primary(Operand *o)
     case '(':
         enter_nest();
         next();
-        if (is_type_start(tok)) {
+        if (is_type_start()) {
             /* A cast: (type) unary-expression. */
             c = parse_pointers(parse_base_type());
             expect(')', "expected ')' after the type in a cast, not");
@@ -1451,6 +1506,16 @@ static void parse_primary(Operand *o)
     case T_ID:
         strcpy(name, tok_text);
         next();
+        c = find_id(name);
+        if (c >= 0) {
+            if (id_kind(c) == ID_TYPEDEF)
+                error("a type name can't be used as a value:", quote(name));
+            if (tok == '(')
+                error("called object is not a function:", quote(name));
+            o->kind = K_CONST;      /* an enum constant */
+            o->val = id_val(c);
+            return;
+        }
         if (tok == '(') {
             if (!strcmp(name, "pstr")) {
                 parse_pstr();
@@ -1811,7 +1876,7 @@ static void parse_sizeof(Operand *o)
     in_sizeof++;
     if (tok == '(') {
         next();
-        if (is_type_start(tok)) {
+        if (is_type_start()) {
             /* A type name: a base type, '*'s and array sizes. */
             t = parse_dims(parse_pointers(parse_base_type()), 0);
             expect(')', "expected ')' after the type in sizeof, not");
@@ -2593,7 +2658,7 @@ static void parse_members(int tag)
     while (tok != '}') {
         if (tok == T_KEYWORD)
             not_yet();
-        if (!is_type_start(tok))
+        if (!is_type_start())
             error("expected a struct member, not", tok_desc());
         base = parse_base_type();
         for (;;) {
@@ -2661,6 +2726,98 @@ static int parse_struct(void)
     return struct_type(tag);
 }
 
+/*
+ * Parse an enum type after "enum", and return it: an enum type is int,
+ * which C allows (approach.md, "enum and typedef design"). A list
+ * declares its constants in the current block: each is the given value
+ * (an integer constant expression, which may use earlier constants), or
+ * one more than the one before, starting at 0, and must fit in an int.
+ * The tag isn't recorded, so enum e isn't checked against a definition
+ * (a known difference from C: ccish accepts some wrong programs).
+ */
+static int parse_enum(void)
+{
+    Operand e;
+    int v = 0, full = 0, name;
+
+    next();                         /* enum */
+    if (tok == T_ID)
+        next();                     /* the tag */
+    else if (tok != '{')
+        error("expected an enum name or '{' after 'enum', not", tok_desc());
+    if (tok != '{')
+        return TY_INT;
+    next();
+    if (tok == '}')
+        error("an enum needs at least one constant", NULL);
+    while (tok != '}') {
+        if (tok != T_ID)
+            error("expected an enum constant, not", tok_desc());
+        if (find_local(tok_text) && find_local(tok_text)->depth == depth)
+            error("redeclaration of", quote(tok_text));
+        if (depth == 0 && (find_global(tok_text) || find_func(tok_text)))
+            error("redeclaration of", quote(tok_text));
+        check_not_id(tok_text);
+        name = intern(tok_text);
+        next();
+        if (tok == '=') {
+            next();
+            parse_skipped(PREC_COND, &e);
+            if (e.kind != K_CONST || is_pointer(e.type))
+                error("an enum value must be an integer constant", NULL);
+            if (e.nonice)
+                error(not_ice, "(an enum value must be one)");
+            v = e.val;
+            full = 0;
+        } else if (full) {
+            error("enum value too large for an int (over 32767)", NULL);
+        }
+        id_add(name, ID_CONST, v, depth);
+        full = v == 0x7FFF;
+        v = wrap16((unsigned)v + 1u);
+        if (tok != ',')
+            break;
+        next();
+    }
+    expect('}', "expected ',' or '}' in an enum, not");
+    return TY_INT;
+}
+
+/* typedef type name, ...; declares each name (with its own '*'s and
+ * array sizes) as a name for its type, in the current block. A typedef
+ * may be repeated with the same type, as C11 allows. */
+static void parse_typedef(void)
+{
+    char name[MAX_NAME + 1];
+    int base, t, i;
+
+    next();                         /* typedef */
+    if (!is_type_start())
+        error("expected a type after 'typedef', not", tok_desc());
+    base = parse_base_type();
+    for (;;) {
+        t = parse_declarator(base, name);
+        if (tok == '(')
+            error("typedefs of function types are not supported", NULL);
+        t = parse_dims(t, 0);
+        i = id_find(name_find(name));
+        if (i >= 0 && id_depth(i) == depth) {
+            if (id_kind(i) != ID_TYPEDEF || id_val(i) != t)
+                error("redeclaration of", quote(name));
+        } else {
+            if (find_local(name) && find_local(name)->depth == depth)
+                error("redeclaration of", quote(name));
+            if (depth == 0 && (find_global(name) || find_func(name)))
+                error("redeclaration of", quote(name));
+            id_add(intern(name), ID_TYPEDEF, t, depth);
+        }
+        if (tok != ',')
+            break;
+        next();
+    }
+    expect(';', "expected ';' after a typedef, not");
+}
+
 /* Initialize the local struct s from a struct expression (after the
  * '='), as C allows for a local: struct pt b = a; It is a struct
  * copy into s. */
@@ -2699,14 +2856,14 @@ static void set_known(Sym *s, int v)
 
 /* A declaration: a base type, then declarators, each a name with any
  * '*'s before it, any array sizes after it, and an optional
- * initializer: int a = 1, *p = &a, v[10]; A struct type may have no
- * declarators (struct pt { int x, y; };). If is_static is set (after
+ * initializer: int a = 1, *p = &a, v[10]; A struct or enum type may
+ * have no declarators (struct pt { int x, y; };). If is_static is set (after
  * "static"), the variables are static locals: in the data segment, with
  * constant initializers applied once, when the module loads. */
 static void parse_declaration(int is_static)
 {
     int base = parse_base_type();
-    if (tok == ';' && is_struct(base)) {
+    if (tok == ';' && base_tagged) {
         next();                     /* struct pt { ... }; declares only */
         return;
     }
@@ -2911,7 +3068,7 @@ static void parse_for(void)
     depth++;
     if (tok == T_STATIC)
         error("a 'for' loop can't declare a static variable", NULL);
-    if (is_type_start(tok)) {
+    if (is_type_start()) {
         parse_declaration(0);       /* includes the ';' */
     } else {
         if (tok != ';')
@@ -3096,6 +3253,10 @@ static void parse_switch(void)
 static void parse_statement(void)
 {
     Operand o;
+    if (tok == T_ID && typedef_type(tok_text) >= 0) {
+        parse_declaration(0);       /* T x; with a typedef name T */
+        return;
+    }
     switch (tok) {
     case T_IF:
         parse_if();
@@ -3158,11 +3319,15 @@ static void parse_statement(void)
     case T_CONST:
     case T_VOLATILE:
     case T_STRUCT:
+    case T_ENUM:
         parse_declaration(0);
+        return;
+    case T_TYPEDEF:
+        parse_typedef();
         return;
     case T_STATIC:
         next();
-        if (!is_type_start(tok))
+        if (!is_type_start())
             error("expected a type after 'static', not", tok_desc());
         parse_declaration(1);
         return;
@@ -3196,6 +3361,7 @@ static void parse_block(int new_scope)
         nlocals = saved_nlocals;
         frame_next = saved_next;
         tag_hide(depth);
+        id_hide(depth);
     }
     nest--;
 }
@@ -3223,7 +3389,7 @@ static int parse_params(void)
             error("variable argument lists are not supported yet", NULL);
         if (tok == T_KEYWORD)
             not_yet();
-        if (!is_type_start(tok))
+        if (!is_type_start())
             error("expected a parameter type, not", tok_desc());
         type = parse_pointers(parse_base_type());
         if (unqual(type) == TY_VOID) {
@@ -3317,7 +3483,7 @@ static void parse_addr(Init *a, int unary)
     a->kind = a->target = a->val = 0;
     if (tok == '(') {
         next();
-        if (is_type_start(tok)) {
+        if (is_type_start()) {
             /* A cast: of an address, to a pointer type, or of an
              * integer, to any type. */
             t = parse_pointers(parse_base_type());
@@ -3762,19 +3928,23 @@ static void parse_toplevel(void)
     char name[MAX_NAME + 1];
     Sym *fn;
 
-    depth = 0;                      /* file scope, for struct tags */
+    depth = 0;                      /* file scope, for tags and names */
+    if (tok == T_TYPEDEF) {
+        parse_typedef();
+        return;
+    }
     if (tok == T_STATIC) {
         next();
-        if (!is_type_start(tok))
+        if (!is_type_start())
             error("expected a type after 'static', not", tok_desc());
     }
     if (tok == T_KEYWORD)
         not_yet();
-    if (!is_type_start(tok))
+    if (!is_type_start())
         error("expected a declaration or function definition, not",
               tok_desc());
     base = parse_base_type();
-    if (tok == ';' && is_struct(base)) {
+    if (tok == ';' && base_tagged) {
         next();                     /* struct pt { ... }; declares only */
         return;
     }
@@ -3787,6 +3957,7 @@ static void parse_toplevel(void)
     check_byval(type, "returned");
     if (find_global(name))
         error("redeclaration of", quote(name));
+    check_not_id(name);
     fn = find_func(name);
     if (!fn)
         fn = add_func(name);
@@ -3813,6 +3984,7 @@ static void parse_toplevel(void)
         next();
         cur_fn = NULL;
         tag_hide(0);                /* tags declared in the parameters */
+        id_hide(0);
         return;
     }
     if (nparams < 0)
@@ -3851,6 +4023,7 @@ static void parse_toplevel(void)
     cur_fn = NULL;
     nlocals = 0;
     tag_hide(0);
+    id_hide(0);
 }
 
 /* Stage 1's entry: parse the whole source file, then check that every

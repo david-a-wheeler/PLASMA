@@ -43,7 +43,8 @@
 #define MAX_PARAM_TYPES 512 /* parameter types of all declared functions */
 #define MAX_TAGS     24     /* struct tags, including hidden ones */
 #define MAX_MEMBERS  128    /* struct members, in all structs */
-#define MAX_POOL     512    /* bytes of names in the name pool */
+#define MAX_POOL     2048   /* bytes of names in the name pool */
+#define MAX_IDS      256    /* enum constants and typedef names */
 #define MAX_BYVAL    8      /* bytes in a struct passed or returned by value */
 #define MAX_CASES    64     /* case labels in all the switches open at once;
                              * at most 255, a SEL table's limit */
@@ -88,7 +89,7 @@ enum {
     /* keywords supported now, in the order of keywords[] in lex.c */
     T_INT, T_VOID, T_RETURN, T_IF, T_ELSE, T_WHILE, T_DO, T_FOR, T_BREAK,
     T_CONTINUE, T_CHAR, T_SIZEOF, T_STATIC, T_CONST, T_VOLATILE, T_STRUCT,
-    T_SWITCH, T_CASE, T_DEFAULT,
+    T_SWITCH, T_CASE, T_DEFAULT, T_TYPEDEF, T_ENUM,
     /* any other C keyword: reported as "not supported yet" */
     T_KEYWORD,
     /* multi-character operators (not all are supported by the parser yet) */
@@ -115,6 +116,18 @@ const char *tok_desc(void);         /* the current token, for messages */
 int name_find(const char *s);       /* its offset, or -1 if not there */
 int intern(const char *s);          /* its offset, added if needed */
 const char *name_of(int n);
+
+/* Enum constants and typedef names: the ordinary identifiers that
+ * aren't variables or functions. Each has a value (a constant's value,
+ * or a typedef's type handle) and the block depth it was declared at
+ * (0: file scope), and is visible until that block ends. */
+enum { ID_CONST, ID_TYPEDEF };
+int id_add(int name, int kind, int val, int depth);
+int id_find(int name);              /* the innermost visible, or -1 */
+int id_kind(int i);
+int id_val(int i);
+int id_depth(int i);
+void id_hide(int depth);            /* hide those declared deeper */
 
 /* ---------- Types (type.c) ----------
  * A type is a handle: an int whose low 8 bits index the type table,
