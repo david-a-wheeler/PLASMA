@@ -84,11 +84,11 @@ static int simple_op(int op)
 }
 
 /* Print one IR op, for -i. */
-static void dump_ir(int op, int a, Sym *s)
+static void dump_ir(int op, int a, int f)
 {
     printf("IR %-8s", ir_names[op]);
     switch (op) {
-    case IR_FUNC:     printf(" %s", s->name); break;
+    case IR_FUNC:     printf(" %s", name_of(fn_name[f])); break;
     case IR_ENDFUNC:  printf(" frame=%d", a); break;
     case IR_CONST:    printf(" %d", a); break;
     case IR_DATAADDR: case IR_GLOBAL: case IR_SETGLOBAL:
@@ -98,7 +98,7 @@ static void dump_ir(int op, int a, Sym *s)
     case IR_LOCAL: case IR_SETLOCAL:
     case IR_LOCALB: case IR_SETLOCALB: case IR_LOCALADDR:
                       printf(" [%d]", a); break;
-    case IR_CALL:     printf(" %s nargs=%d", s->name, a); break;
+    case IR_CALL:     printf(" %s nargs=%d", name_of(fn_name[f]), a); break;
     case IR_LABEL: case IR_JUMP: case IR_BRFALSE: case IR_BRTRUE:
     case IR_BRAND: case IR_BROR: case IR_SEL: case IR_CASETO:
                       printf(" L%d", a); break;
@@ -156,12 +156,12 @@ static void put_simple(int op)
 }
 
 /* Lower one IR op to machine ops and pass them to the peephole stage. */
-static void lower(int op, int a, Sym *s)
+static void lower(int op, int a, int f)
 {
     Mop m;
 
     if (opt_ir)
-        dump_ir(op, a, s);
+        dump_ir(op, a, f);
     if (simple_op(op) >= 0) {
         put_simple(simple_op(op));
         return;
@@ -184,7 +184,7 @@ static void lower(int op, int a, Sym *s)
     switch (op) {
     case IR_FUNC:
         m.op = OP_FUNC_BEGIN;
-        m.sym = s;
+        m.fn = f;
         peep_put(&m);
         memset(&m, 0, sizeof(m));
         m.op = OP_ENTER;
@@ -194,7 +194,7 @@ static void lower(int op, int a, Sym *s)
     case IR_ENDFUNC:
         m.op = OP_FUNC_END;
         m.a = a;
-        m.sym = s;
+        m.fn = f;
         break;
     case IR_CONST:
         mop_const(&m, a);
@@ -242,7 +242,7 @@ static void lower(int op, int a, Sym *s)
     case IR_CALL:
         m.op = OP_CALL;
         m.fix = FIX_FUNC;
-        m.sym = s;
+        m.fn = f;
         break;
     case IR_LABEL:
         m.op = OP_LABEL;
@@ -279,7 +279,7 @@ static void lower(int op, int a, Sym *s)
 
 typedef struct {
     int op, a;
-    Sym *s;
+    int f;          /* a function, or -1 */
 } IrOp;
 
 static IrOp buf[IR_BUF];
@@ -292,7 +292,7 @@ static void lower_all(void)
 {
     int i;
     for (i = 0; i < nbuf; i++)
-        lower(buf[i].op, buf[i].a, buf[i].s);
+        lower(buf[i].op, buf[i].a, buf[i].f);
     base += nbuf;
     nbuf = 0;
 }
@@ -345,13 +345,13 @@ void ir_rotate(int m0, int m1)
 
 /* Stage 2's entry: buffer one IR op. A full buffer is lowered first,
  * and the end of a function flushes everything. */
-void ir_put(int op, int a, Sym *s)
+void ir_put(int op, int a, int f)
 {
     if (nbuf == IR_BUF)
         lower_all();
     buf[nbuf].op = op;
     buf[nbuf].a = a;
-    buf[nbuf].s = s;
+    buf[nbuf].f = f;
     nbuf++;
     if (op == IR_ENDFUNC)
         ir_flush();

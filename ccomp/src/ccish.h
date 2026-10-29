@@ -29,10 +29,10 @@
 
 #define MAX_NAME     31     /* significant characters in an identifier */
 #define MAX_STR      512    /* bytes in one string literal */
-#define MAX_SYMS     256    /* functions */
-#define MAX_GLOBALS  128    /* global variables */
+#define MAX_FUNCS    272    /* functions (ccish's own parse.c: 245) */
+#define MAX_VARS     72     /* globals, plus the parameters and locals
+                             * visible at once (ccish's parse.c: 59) */
 #define MAX_PARAMS   16
-#define MAX_LOCALS   128    /* parameters and locals visible at once */
 #define MAX_FUNC_CODE 4096  /* bytecode in one function */
 #define MAX_FUNC_RELOCS 256 /* relocations in one function */
 #define MAX_RETURNS  128    /* frame-size bytes (ENTER, LEAVEs) in one function */
@@ -43,7 +43,8 @@
 #define MAX_PARAM_TYPES 512 /* parameter types of all declared functions */
 #define MAX_TAGS     24     /* struct tags, including hidden ones */
 #define MAX_MEMBERS  128    /* struct members, in all structs */
-#define MAX_POOL     2048   /* bytes of names in the name pool */
+#define MAX_POOL     5632   /* bytes of names in the name pool (ccish's
+                             * parse.c: about 5,100) */
 #define MAX_IDS      256    /* enum constants and typedef names */
 #define MAX_BYVAL    8      /* bytes in a struct passed or returned by value */
 #define MAX_CASES    64     /* case labels in all the switches open at once;
@@ -116,6 +117,8 @@ const char *tok_desc(void);         /* the current token, for messages */
 int name_find(const char *s);       /* its offset, or -1 if not there */
 int intern(const char *s);          /* its offset, added if needed */
 const char *name_of(int n);
+int pool_mark(void);                /* before a function's own names */
+void pool_release(int mark);        /* after it: keeps function names */
 
 /* Enum constants and typedef names: the ordinary identifiers that
  * aren't variables or functions. Each has a value (a constant's value,
@@ -187,31 +190,21 @@ int member_off(int m);
 
 /* ---------- Symbols (parse.c) ---------- */
 
-enum { S_FUNC, S_LOCAL, S_GLOBAL };
-
-typedef struct Sym Sym;
-struct Sym {
-    char name[MAX_NAME + 1];
-    int kind;
-    int type;           /* a variable's type; S_FUNC: the return type */
-    int offset;         /* S_LOCAL: frame offset; S_GLOBAL: data offset */
-    int depth;          /* S_LOCAL: block nesting depth (parameters: 1) */
-    /* A const scalar with a constant integer initializer, not volatile:
-     * reading it gives val, at compile time. */
-    int has_val;
-    int val;
-    /* S_FUNC: */
-    int ptypes;         /* index of the parameter types in param_types[]
-                         * (parse.c), or -1 until a declaration gives them */
-    int nparams;        /* -1 until known from a declaration or first call */
-    int declared;       /* has a prototype or definition */
-    int defined;        /* has a body */
-    int code_off;       /* start of its bytecode in the code segment */
-    int called;
-};
-
-extern Sym syms[MAX_SYMS];
-extern int nsyms;
+/* Functions: declared, defined or called. A function is an index into
+ * these parallel arrays (approach.md, "Sym split design"), each
+ * MAX_FUNCS long. */
+enum { FN_DECLARED = 1, FN_DEFINED = 2, FN_CALLED = 4, FN_COUNTED = 8 };
+extern int fn_name[MAX_FUNCS];      /* its name: a name pool offset */
+extern int fn_type[MAX_FUNCS];      /* its return type */
+extern int fn_ptypes[MAX_FUNCS];    /* its parameter types' index in
+                                     * param_types[] (parse.c), or -1
+                                     * until a declaration gives them */
+extern char fn_nparams[MAX_FUNCS];  /* its parameter count, once known
+                                     * (FN_COUNTED) */
+extern char fn_flags[MAX_FUNCS];    /* FN_* */
+extern int fn_code[MAX_FUNCS];      /* once defined: the start of its
+                                     * bytecode in the code segment */
+extern int nfuncs;
 
 void parse_program(void);
 
@@ -219,7 +212,7 @@ void parse_program(void);
  * Each op's meaning, and why it differs from PLASMA's, is in ../IR.md. */
 
 enum {
-    IR_FUNC,        /* sym: start a function */
+    IR_FUNC,        /* f: start a function */
     IR_ENDFUNC,     /* a = frame size: end the current function */
     IR_CONST,       /* a = value: push a constant */
     IR_DATAADDR,    /* a = data offset: push the address of data */
@@ -239,7 +232,7 @@ enum {
     IR_LOADB,       /* ( addr -- byte ) load a byte (a char) */
     IR_STORE,       /* ( val addr -- ) store a word */
     IR_STOREB,      /* ( val addr -- ) store val's low byte */
-    IR_CALL,        /* sym, a = argument count: call, push the result */
+    IR_CALL,        /* f, a = argument count: call, push the result */
     IR_DROP,        /* discard the top value */
     IR_DUP,         /* duplicate the top value */
     IR_RETURN,      /* return the top value from the current function */
@@ -265,7 +258,7 @@ enum {
     IR_CASETO       /* a = the label of that case's code */
 };
 
-void ir_put(int op, int a, Sym *s);
+void ir_put(int op, int a, int f);   /* f: a function, or -1 */
 void ir_flush(void);
 int ir_here(void);
 int ir_holds(int pos);
@@ -293,7 +286,7 @@ enum {
     OP_BROR = 0xAE,
     /* Pseudo-ops: markers that travel through stages 2-4 in order with
      * the code, but emit no bytes themselves. */
-    OP_FUNC_BEGIN = 0x100,  /* sym: a function starts here */
+    OP_FUNC_BEGIN = 0x100,  /* fn: a function starts here */
     OP_FUNC_END = 0x101,    /* a = frame size: the function ends here */
     OP_LABEL = 0x102,       /* a = label number: a branch target is here */
     /* A SEL's case table (see ../../doc/Bytecodes.md), as data in the
@@ -318,7 +311,7 @@ typedef struct {
     int a;          /* first operand (byte or word), or data offset */
     int b;          /* second operand (ENTER's parameter count) */
     int fix;        /* FIX_* for a word operand */
-    Sym *sym;       /* FIX_FUNC target */
+    int fn;         /* FIX_FUNC target; OP_FUNC_BEGIN's function */
 } Mop;
 
 void mop_const(Mop *m, int v);         /* lower.c: make m push v */

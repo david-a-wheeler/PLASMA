@@ -316,11 +316,16 @@ function returns exactly one.
   data references, and 256 labels (`MAX_FUNC_CODE`, `MAX_FUNC_RELOCS`,
   `MAX_LABELS` in `src/ccish.h`). Each `if`, loop, `&&`, `||` and `?:`
   uses one to four labels.
-* A program may have at most 24 struct tags (counting those in blocks
-  that have ended), 128 struct members in all, 256 enum constants and
-  typedef names visible at once, and 2048 bytes of distinct tag,
-  member, enum constant and typedef names, each with a NUL
-  (`MAX_TAGS`, `MAX_MEMBERS`, `MAX_IDS`, `MAX_POOL`).
+* A file may have at most 272 functions (declared, defined or called),
+  72 variables visible at once (globals, plus the parameters and
+  locals in scope), 24 struct tags (counting those in blocks that have
+  ended), 128 struct members in all, 256 enum constants and typedef
+  names visible at once, and 5632 bytes of distinct names, each with a
+  NUL, not counting those of the current function's parameters and
+  locals after it ends (`MAX_FUNCS`, `MAX_VARS`, `MAX_TAGS`,
+  `MAX_MEMBERS`, `MAX_IDS`, `MAX_POOL`). The function, variable and
+  name limits are sized to just above what ccish's own source needs
+  (approach.md, "`Sym` split design").
 * Only a few peephole optimizations so far (see `src/peep.c`): removal
   of unreachable code, plain stores for assignments whose value is
   unused, folded negative constants, adding 0, `INCR`/`DECR`, `ANDI`,
@@ -355,8 +360,7 @@ function returns exactly one.
 * Globals without initializers are zero bytes in the module file,
   since PLASMA modules have no uninitialized-data segment, so
   `char buf[4096];` adds 4K to the file. Globals are limited to 32767
-  bytes, string literals to another 32767, and a file to 128 globals
-  (`MAX_GLOBALS`).
+  bytes, and string literals to another 32767.
 * The listing shows a global by its data offset (`; data+4`), not its
   name.
 * Nothing checks evaluation stack depth. Deeply nested calls can

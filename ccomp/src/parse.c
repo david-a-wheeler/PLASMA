@@ -29,7 +29,7 @@
  *     between functions, with optional initializers, computed at compile
  *     time (see "Global initializers" below);
  *   - static: a static local is a variable in the data segment, as a
- *     global is (S_GLOBAL), with block scope, and a global's kind of
+ *     global is (V_DATA), with block scope, and a global's kind of
  *     initializer; on a global or a function, static changes nothing
  *     yet, since nothing is exported;
  *   - enum constants, which are int constants, and typedef names, both
@@ -100,15 +100,19 @@
 #include <string.h>
 #include "ccish.h"
 
-Sym syms[MAX_SYMS];         /* functions */
-int nsyms;
+/* Functions: see ccish.h. */
+int fn_name[MAX_FUNCS];
+int fn_type[MAX_FUNCS];
+int fn_ptypes[MAX_FUNCS];
+char fn_nparams[MAX_FUNCS];
+char fn_flags[MAX_FUNCS];
+int fn_code[MAX_FUNCS];
+int nfuncs;
 
-static Sym locals[MAX_LOCALS];  /* parameters and locals in scope */
-static int nlocals;
 static int depth;           /* block depth; parameters are at depth 1 */
 static int frame_next;      /* next free frame offset */
 static int frame_max;       /* frame size needed so far */
-static Sym *cur_fn;
+static int cur_fn = -1;     /* the function being parsed, or -1 */
 static int in_params;       /* parsing a function's parameter list */
 static int nest;            /* current nesting depth, to limit recursion */
 
@@ -147,31 +151,50 @@ static void enter_nest(void)
         fatal("nesting too deep", NULL);
 }
 
-/* The function symbol named name, or NULL. */
-static Sym *find_func(const char *name)
+/* The function named name, or -1. */
+static int find_func(const char *name)
 {
-    int i;
-    for (i = 0; i < nsyms; i++)
-        if (!strcmp(syms[i].name, name))
-            return &syms[i];
-    return NULL;
+    int n = name_find(name), f;
+    for (f = 0; f < nfuncs; f++)
+        if (fn_name[f] == n)
+            return f;
+    return -1;
 }
 
-/* Add a function symbol, not yet declared or defined, with an unknown
- * parameter count. */
-static Sym *add_func(const char *name)
+/* Add a function, not yet declared or defined, with an unknown
+ * parameter count, and return it. */
+static int add_func(const char *name)
 {
-    Sym *s;
-    if (nsyms >= MAX_SYMS)
+    if (nfuncs >= MAX_FUNCS)
         fatal("too many functions", NULL);
-    s = &syms[nsyms++];
-    memset(s, 0, sizeof(*s));
-    strcpy(s->name, name);
-    s->kind = S_FUNC;
-    s->type = TY_INT;       /* C89 implicit declarations return int */
-    s->ptypes = -1;
-    s->nparams = -1;
-    return s;
+    fn_name[nfuncs] = intern(name);
+    fn_type[nfuncs] = TY_INT;   /* C89 implicit declarations return int */
+    fn_ptypes[nfuncs] = -1;
+    fn_flags[nfuncs] = 0;
+    fn_code[nfuncs] = 0;
+    return nfuncs++;
+}
+
+/* The name of function f. */
+static const char *fname(int f)
+{
+    return name_of(fn_name[f]);
+}
+
+/* Function f's parameter count, or -1 if it isn't known yet. */
+static int nparams_of(int f)
+{
+    return fn_flags[f] & FN_COUNTED ? fn_nparams[f] : -1;
+}
+
+/* Record that function f has n parameters (none if n is -1: still
+ * unknown). */
+static void set_nparams(int f, int n)
+{
+    if (n < 0)
+        return;
+    fn_nparams[f] = (char)n;
+    fn_flags[f] |= FN_COUNTED;
 }
 
 /*
@@ -206,36 +229,50 @@ static int find_cmdsys(const char *name)
     return -1;
 }
 
-/* Innermost visible local with this name, or NULL. */
-static Sym *find_local(const char *name)
+/*
+ * Variables: one scope stack of parallel arrays, each MAX_VARS long
+ * (approach.md, "Sym split design"). The globals are at the bottom,
+ * from 0 to nglobals; a function's parameters and locals are above
+ * them, up to nvars, innermost last, and are popped when it ends (no
+ * locals exist while globals are declared). Variable v has name
+ * var_name[v] (a name pool offset, or -1 for an unnamed prototype
+ * parameter), type var_type[v], offset var_off[v] (a frame offset, or
+ * with V_DATA a data offset), and flags var_flags[v]: the block depth it
+ * was declared at (V_DEPTH; 0 for a global), V_DATA if it is in the data
+ * segment (a global or a static local), and V_KNOWN if reading it gives
+ * var_val[v] at compile time (a const scalar with a constant
+ * initializer, not volatile).
+ */
+enum { V_DEPTH = 0x3F, V_DATA = 0x40, V_KNOWN = 0x80 };
+static int var_name[MAX_VARS];
+static int var_type[MAX_VARS];
+static int var_off[MAX_VARS];
+static char var_flags[MAX_VARS];
+static int var_val[MAX_VARS];
+static int nvars, nglobals;
+
+/* The innermost visible variable named name, or -1. */
+static int find_var(const char *name)
 {
-    int i;
-    for (i = nlocals - 1; i >= 0; i--)
-        if (!strcmp(locals[i].name, name))
-            return &locals[i];
-    return NULL;
+    int n = name_find(name), v;
+    if (n < 0)
+        return -1;
+    for (v = nvars - 1; v >= 0; v--)
+        if (var_name[v] == n)
+            return v;
+    return -1;
 }
 
-/* Global variables, in declaration order. */
-static Sym globals[MAX_GLOBALS];
-static int nglobals;
-
-/* The global variable with this name, or NULL. */
-static Sym *find_global(const char *name)
+/* The block depth variable v was declared at (0 for a global). */
+static int var_depth(int v)
 {
-    int i;
-    for (i = 0; i < nglobals; i++)
-        if (!strcmp(globals[i].name, name))
-            return &globals[i];
-    return NULL;
+    return var_flags[v] & V_DEPTH;
 }
 
-/* The variable a name refers to here: the innermost local, else a
- * global, else NULL. */
-static Sym *find_var(const char *name)
+/* Is variable v in the data segment (a global or a static local)? */
+static int var_data(int v)
 {
-    Sym *s = find_local(name);
-    return s ? s : find_global(name);
+    return (var_flags[v] & V_DATA) != 0;
 }
 
 /* The visible enum constant or typedef named name, or -1. One hides a
@@ -245,12 +282,11 @@ static Sym *find_var(const char *name)
  * redeclaration. */
 static int find_id(const char *name)
 {
-    int i = id_find(name_find(name));
-    Sym *s;
+    int i = id_find(name_find(name)), v;
     if (i < 0)
         return -1;
-    s = find_var(name);
-    if (s && s->depth >= id_depth(i))
+    v = find_var(name);
+    if (v >= 0 && var_depth(v) >= id_depth(i))
         return -1;
     return i;
 }
@@ -273,100 +309,96 @@ static void check_not_id(const char *name)
         error("redeclaration of", quote(name));
 }
 
+/* Report a redeclaration if a variable named name was declared at
+ * the current depth, or, at file scope, a function. */
+static void check_not_var(const char *name)
+{
+    int v = find_var(name);
+    if (v >= 0 && var_depth(v) == depth)
+        error("redeclaration of", quote(name));
+    if (depth == 0 && find_func(name) >= 0)
+        error("redeclaration of", quote(name));
+}
+
+/* Push a variable named name ("" for an unnamed prototype parameter)
+ * of type type at the current depth, at offset off, with flags (V_DATA
+ * or 0), and return it. */
+static int push_var(const char *name, int type, int off, int flags)
+{
+    if (name[0]) {
+        check_not_var(name);
+        check_not_id(name);
+    }
+    if (nvars >= MAX_VARS)
+        fatal("too many variables", NULL);
+    var_name[nvars] = name[0] ? intern(name) : -1;
+    var_type[nvars] = type;
+    var_off[nvars] = off;
+    var_flags[nvars] = (char)(depth | flags);
+    return nvars++;
+}
+
 /* Declare a global variable of the given type, at the next data
  * offset. The caller then writes its bytes to the data stream: its
  * initial value, or zeros. */
-static Sym *add_global(const char *name, int type)
+static int add_global(const char *name, int type)
 {
-    Sym *s;
-    if (find_global(name) || find_func(name))
-        error("redeclaration of", quote(name));
-    check_not_id(name);
-    if (nglobals >= MAX_GLOBALS)
-        fatal("too many global variables", NULL);
-    s = &globals[nglobals++];
-    memset(s, 0, sizeof(*s));
-    strcpy(s->name, name);
-    s->kind = S_GLOBAL;
-    s->type = type;
-    s->offset = data_offset();
-    return s;
+    if (nvars != nglobals)
+        fatal("internal error: a global declared among locals", NULL);
+    nglobals++;
+    return push_var(name, type, data_offset(), V_DATA);
 }
 
 /* Declare a local (or parameter) of the given type at the current
  * depth, and give it a frame slot of size bytes. An unnamed prototype
  * parameter has the name "". */
-static Sym *add_local(const char *name, int type, int size)
+static int add_local(const char *name, int type, int size)
 {
-    Sym *s = find_local(name);
-    if (name[0] && s && s->depth == depth)
-        error("redeclaration of", quote(name));
-    if (name[0])
-        check_not_id(name);
-    if (nlocals >= MAX_LOCALS)
-        fatal("too many variables in scope", NULL);
+    int v = push_var(name, type, frame_next, 0);
     if (frame_next + size > 255)
-        error("too many local variables in", quote(cur_fn->name));
-    s = &locals[nlocals++];
-    memset(s, 0, sizeof(*s));
-    strcpy(s->name, name);
-    s->kind = S_LOCAL;
-    s->type = type;
-    s->depth = depth;
-    s->offset = frame_next;
+        error("too many local variables in", quote(fname(cur_fn)));
     frame_next += size;
     if (frame_next > frame_max)
         frame_max = frame_next;
-    return s;
+    return v;
 }
 
 /* Declare a static local of the given type at the current depth. It has
  * block scope, like any local, but lives in the data segment like a
- * global (S_GLOBAL, at the next data offset), so it keeps its value
+ * global (V_DATA, at the next data offset), so it keeps its value
  * between calls and takes no frame space. The caller then writes its
  * bytes to the data stream: its initial value, or zeros. */
-static Sym *add_static_local(const char *name, int type)
+static int add_static_local(const char *name, int type)
 {
-    Sym *s = find_local(name);
-    if (s && s->depth == depth)
-        error("redeclaration of", quote(name));
-    check_not_id(name);
-    if (nlocals >= MAX_LOCALS)
-        fatal("too many variables in scope", NULL);
-    s = &locals[nlocals++];
-    memset(s, 0, sizeof(*s));
-    strcpy(s->name, name);
-    s->kind = S_GLOBAL;
-    s->type = type;
-    s->depth = depth;
-    s->offset = data_offset();
-    return s;
+    return push_var(name, type, data_offset(), V_DATA);
 }
 
-/* Parameter types of declared functions, n at a time; Sym.ptypes says
+/* Parameter types of declared functions, n at a time; fn_ptypes[] says
  * where a function's start. */
 static int param_types[MAX_PARAM_TYPES];
 static int nparam_types;
 
-/* Record that fn's n parameters have the types of locals[0..n-1] (the
+/* Record that f's n parameters have the types of its first n
+ * variables above the globals (the
  * parameters just parsed), or check them against the types an earlier
  * declaration gave. The caller has already checked the count. A
  * parameter's own qualifiers don't count, as in C: f(const int n) and
  * f(int n) are the same function type. */
-static void set_param_types(Sym *fn, int n)
+static void set_param_types(int f, int n)
 {
     int i;
-    if (fn->ptypes >= 0) {
+    if (fn_ptypes[f] >= 0) {
         for (i = 0; i < n; i++)
-            if (param_types[fn->ptypes + i] != unqual(locals[i].type))
-                error("conflicting parameter types for", quote(fn->name));
+            if (param_types[fn_ptypes[f] + i]
+                != unqual(var_type[nglobals + i]))
+                error("conflicting parameter types for", quote(fname(f)));
         return;
     }
     if (nparam_types + n > MAX_PARAM_TYPES)
         fatal("too many function parameters in all", NULL);
-    fn->ptypes = nparam_types;
+    fn_ptypes[f] = nparam_types;
     for (i = 0; i < n; i++)
-        param_types[nparam_types++] = unqual(locals[i].type);
+        param_types[nparam_types++] = unqual(var_type[nglobals + i]);
 }
 
 /* Does the current token start a type name: a type keyword, a
@@ -474,32 +506,32 @@ static int sig_type(char c)
     return TY_INT;
 }
 
-/* Declare fn as CMDSYS function c of cmdsys_funcs[], with its types. */
-static void declare_cmdsys(Sym *fn, int c)
+/* Declare f as CMDSYS function c of cmdsys_funcs[], with its types. */
+static void declare_cmdsys(int f, int c)
 {
     const char *sig = cmdsys_funcs[c].sig;
     int i, n = (int)strlen(sig) - 1;
     if (nparam_types + n > MAX_PARAM_TYPES)
         fatal("too many function parameters in all", NULL);
-    fn->type = sig_type(sig[0]);
-    fn->nparams = n;
-    fn->ptypes = nparam_types;
+    fn_type[f] = sig_type(sig[0]);
+    set_nparams(f, n);
+    fn_ptypes[f] = nparam_types;
     for (i = 0; i < n; i++)
         param_types[nparam_types++] = sig_type(sig[i + 1]);
-    fn->declared = 1;
+    fn_flags[f] |= FN_DECLARED;
 }
 
-/* Does fn's declaration match CMDSYS function c's types? Parameter
+/* Does f's declaration match CMDSYS function c's types? Parameter
  * types that were never declared (an implicit declaration) match. */
-static int matches_cmdsys(Sym *fn, int c)
+static int matches_cmdsys(int f, int c)
 {
     const char *sig = cmdsys_funcs[c].sig;
     int i, n = (int)strlen(sig) - 1;
-    if (fn->type != sig_type(sig[0]) || fn->nparams != n)
+    if (fn_type[f] != sig_type(sig[0]) || nparams_of(f) != n)
         return 0;
-    if (fn->ptypes >= 0)
+    if (fn_ptypes[f] >= 0)
         for (i = 0; i < n; i++)
-            if (param_types[fn->ptypes + i] != sig_type(sig[i + 1]))
+            if (param_types[fn_ptypes[f] + i] != sig_type(sig[i + 1]))
                 return 0;
     return 1;
 }
@@ -528,17 +560,17 @@ static int suppress;
  * covers). */
 static int in_sizeof;
 
-/* Emit an IR op, after any held constants. All of the parser's IR goes
- * through here. */
-static void put(int op, int a, Sym *s)
+/* Emit an IR op (with function f, or -1), after any held constants. All
+ * of the parser's IR goes through here. */
+static void put(int op, int a, int f)
 {
     int i;
     if (suppress)
         return;
     for (i = 0; i < nheld; i++)
-        ir_put(IR_CONST, held[i], NULL);
+        ir_put(IR_CONST, held[i], -1);
     nheld = 0;
-    ir_put(op, a, s);
+    ir_put(op, a, f);
 }
 
 /* The low 16 bits of u, as a signed 16-bit int. Unsigned arithmetic is
@@ -639,7 +671,7 @@ static int label_uses[MAX_LABELS];  /* branches to each label so far */
 static int new_label(void)
 {
     if (nlabels >= MAX_LABELS)
-        error("too many branches in", quote(cur_fn->name));
+        error("too many branches in", quote(fname(cur_fn)));
     label_uses[nlabels] = 0;
     return nlabels++;
 }
@@ -649,13 +681,13 @@ static void branch(int op, int n)
 {
     if (!suppress)
         label_uses[n]++;
-    put(op, n, NULL);
+    put(op, n, -1);
 }
 
 /* Place label n, which backward branches will use (a loop's top). */
 static void place_label(int n)
 {
-    put(IR_LABEL, n, NULL);
+    put(IR_LABEL, n, -1);
 }
 
 /* Place label n, whose branches all came before it. If there were none,
@@ -784,15 +816,15 @@ static void offset_place(Operand *o, int off);
 static void load_var(int off, int global, int is_char)
 {
     if (global)
-        put(is_char ? IR_GLOBALB : IR_GLOBAL, off, NULL);
+        put(is_char ? IR_GLOBALB : IR_GLOBAL, off, -1);
     else
-        put(is_char ? IR_LOCALB : IR_LOCAL, off, NULL);
+        put(is_char ? IR_LOCALB : IR_LOCAL, off, -1);
 }
 
 /* Push the address of the variable at off (a global's or a local's). */
 static void push_var_addr(int off, int global)
 {
-    put(global ? IR_DATAADDR : IR_LOCALADDR, off, NULL);
+    put(global ? IR_DATAADDR : IR_LOCALADDR, off, -1);
 }
 
 /* Store the top value into the variable o (a K_VAR), keeping the stored
@@ -801,9 +833,9 @@ static void store_var(Operand *o)
 {
     int c = o->type == TY_CHAR;
     if (o->global)
-        put(c ? IR_SETGLOBALB : IR_SETGLOBAL, o->off, NULL);
+        put(c ? IR_SETGLOBALB : IR_SETGLOBAL, o->off, -1);
     else
-        put(c ? IR_SETLOCALB : IR_SETLOCAL, o->off, NULL);
+        put(c ? IR_SETLOCALB : IR_SETLOCAL, o->off, -1);
 }
 
 /* The highest offset a variable can have: 255 in the frame, and 32767
@@ -876,14 +908,14 @@ static void push_address(Operand *o)
     if (o->idx >= 0) {
         load_var(o->idx, o->idx_global, o->idx_char);
         if (o->scale != 1) {
-            put(IR_CONST, o->scale, NULL);
-            put(IR_MUL, 0, NULL);   /* a word index becomes IDXW */
+            put(IR_CONST, o->scale, -1);
+            put(IR_MUL, 0, -1);   /* a word index becomes IDXW */
         }
-        put(IR_ADD, 0, NULL);
+        put(IR_ADD, 0, -1);
     }
     if (d != 0) {
-        put(IR_CONST, d, NULL);
-        put(IR_ADD, 0, NULL);
+        put(IR_CONST, d, -1);
+        put(IR_ADD, 0, -1);
     }
 }
 
@@ -908,7 +940,7 @@ static void rvalue(Operand *o)
         error("void value used in an expression", NULL);
         break;
     case K_CONST:
-        put(IR_CONST, o->val, NULL);
+        put(IR_CONST, o->val, -1);
         o->is_bool = o->val == 0 || o->val == 1;
         break;
     case K_VAR:
@@ -919,7 +951,7 @@ static void rvalue(Operand *o)
         push_address(o);
         /* fall through */
     case K_DEREF:
-        put(load_op(o->type), 0, NULL);
+        put(load_op(o->type), 0, -1);
         o->is_bool = 0;
         break;
     case K_STORE:
@@ -935,7 +967,7 @@ static int new_temp(void)
 {
     int off = frame_next;
     if (frame_next + 2 > 255)
-        error("too many local variables in", quote(cur_fn->name));
+        error("too many local variables in", quote(fname(cur_fn)));
     frame_next += 2;
     if (frame_next > frame_max)
         frame_max = frame_next;
@@ -968,8 +1000,8 @@ static void spill(Operand *o)
     if (o->kind != K_DEREF)
         return;
     off = new_temp();
-    put(IR_SETLOCAL, off, NULL);
-    put(IR_DROP, 0, NULL);
+    put(IR_SETLOCAL, off, -1);
+    put(IR_DROP, 0, -1);
     make_elem(o, off, 0, 0);
 }
 
@@ -994,24 +1026,24 @@ static void finish_store(Operand *o, int keep)
         fatal("internal error: code after a pending store", NULL);
     if (ir_holds(o->m0)) {
         if (keep)
-            put(IR_DUP, 0, NULL);   /* it ends up below the address */
+            put(IR_DUP, 0, -1);   /* it ends up below the address */
         ir_rotate(o->m0, o->m1);
     } else {
         t1 = new_temp();
         t2 = new_temp();
-        put(IR_SETLOCAL, t1, NULL);
-        put(IR_DROP, 0, NULL);
-        put(IR_SETLOCAL, t2, NULL);
-        put(IR_DROP, 0, NULL);
-        put(IR_LOCAL, t1, NULL);
-        put(IR_LOCAL, t2, NULL);
+        put(IR_SETLOCAL, t1, -1);
+        put(IR_DROP, 0, -1);
+        put(IR_SETLOCAL, t2, -1);
+        put(IR_DROP, 0, -1);
+        put(IR_LOCAL, t1, -1);
+        put(IR_LOCAL, t2, -1);
     }
-    put(store_op(o->stype), 0, NULL);
+    put(store_op(o->stype), 0, -1);
     if (keep && t1 >= 0)
-        put(IR_LOCAL, t1, NULL);
+        put(IR_LOCAL, t1, -1);
     if (keep && o->vmask) {
-        put(IR_CONST, 0xFF, NULL);
-        put(IR_AND, 0, NULL);
+        put(IR_CONST, 0xFF, -1);
+        put(IR_AND, 0, -1);
     }
     o->kind = keep ? K_VALUE : K_VOID;
 }
@@ -1061,7 +1093,7 @@ static void assign_to(Operand *o)
         return;
     }
     push_address(o);
-    put(store_op(o->type), 0, NULL);
+    put(store_op(o->type), 0, -1);
     o->assigned = 1;
 }
 
@@ -1081,13 +1113,13 @@ static void discard(Operand *o)
     int k;
     if (is_struct(o->type) && is_place(o)) {
         if (o->kind == K_DEREF)
-            put(IR_DROP, 0, NULL);  /* its address */
+            put(IR_DROP, 0, -1);  /* its address */
         o->kind = K_VOID;
         return;
     }
     if (is_struct(o->type) && o->kind == K_VALUE) {
         for (k = 0; k < struct_words(o->type); k++)
-            put(IR_DROP, 0, NULL);  /* a call's result */
+            put(IR_DROP, 0, -1);  /* a call's result */
         o->kind = K_VOID;
         return;
     }
@@ -1096,7 +1128,7 @@ static void discard(Operand *o)
     if (o->kind == K_DEREF || (o->kind == K_ELEM && !o->assigned))
         rvalue(o);
     if (o->kind == K_VALUE)
-        put(IR_DROP, 0, NULL);
+        put(IR_DROP, 0, -1);
 }
 
 /* Is o a null pointer constant: an integer constant expression 0? (A
@@ -1189,8 +1221,8 @@ static void to_bool(Operand *o)
     }
     rvalue(o);
     if (!o->is_bool) {
-        put(IR_CONST, 0, NULL);
-        put(IR_NE, 0, NULL);
+        put(IR_CONST, 0, -1);
+        put(IR_NE, 0, -1);
         o->is_bool = 1;
     }
     o->type = TY_INT;
@@ -1206,8 +1238,8 @@ static void to_char(Operand *o)
     } else {
         rvalue(o);
         if (o->type != TY_CHAR && !o->is_bool) {
-            put(IR_CONST, 0xFF, NULL);
-            put(IR_AND, 0, NULL);
+            put(IR_CONST, 0xFF, -1);
+            put(IR_AND, 0, -1);
         }
     }
     o->type = TY_CHAR;
@@ -1336,8 +1368,8 @@ static void materialize(Operand *o)
     for (k = 1; k < w; k++)
         new_temp();                 /* the next words, right after t */
     for (k = w - 1; k >= 0; k--) {
-        put(IR_SETLOCAL, t + 2 * k, NULL);
-        put(IR_DROP, 0, NULL);
+        put(IR_SETLOCAL, t + 2 * k, -1);
+        put(IR_DROP, 0, -1);
     }
     o->kind = K_VAR;
     o->off = t;
@@ -1351,7 +1383,7 @@ static void push_zero_result(int t)
 {
     int k, w = is_struct(t) ? struct_words(t) : 1;
     for (k = 0; k < w; k++)
-        put(IR_CONST, 0, NULL);
+        put(IR_CONST, 0, -1);
 }
 
 /* Report an error if t is a struct too big to pass or return by value
@@ -1378,7 +1410,7 @@ static int ncalls;
 /* Parse a call to fn, starting at '(': emit the arguments, check their
  * count (and their types, if fn's parameter types are known), then
  * emit the call. */
-static void parse_call(Sym *fn, Operand *o)
+static void parse_call(int f, Operand *o)
 {
     char where[MAX_NAME + 32];
     Operand a;
@@ -1387,15 +1419,15 @@ static void parse_call(Sym *fn, Operand *o)
     if (tok != ')') {
         for (;;) {
             parse_expr(PREC_ASSIGN, &a);
-            if (fn->ptypes >= 0 && nargs < fn->nparams) {
+            if (fn_ptypes[f] >= 0 && nargs < nparams_of(f)) {
                 sprintf(where, "argument %d of %s", nargs + 1,
-                        quote(fn->name));
-                check_assign(param_types[fn->ptypes + nargs], &a, where);
+                        quote(fname(f)));
+                check_assign(param_types[fn_ptypes[f] + nargs], &a, where);
             }
             if (is_struct(a.type)) {
-                if (fn->ptypes < 0)
+                if (fn_ptypes[f] < 0)
                     error("passing a struct needs a prototype for",
-                          quote(fn->name));
+                          quote(fname(f)));
                 push_struct_words(&a);
             } else {
                 rvalue(&a);
@@ -1407,17 +1439,16 @@ static void parse_call(Sym *fn, Operand *o)
         }
     }
     expect(')', "expected ')' after arguments, not");
-    if (fn->nparams < 0) {
-        fn->nparams = nargs;        /* first use fixes the count */
-    } else if (fn->nparams != nargs) {
-        error("wrong number of arguments in call to", quote(fn->name));
-    }
-    fn->called = 1;
+    if (nparams_of(f) < 0)
+        set_nparams(f, nargs);      /* first use fixes the count */
+    else if (nparams_of(f) != nargs)
+        error("wrong number of arguments in call to", quote(fname(f)));
+    fn_flags[f] |= FN_CALLED;
     if (!suppress)
         ncalls++;
-    put(IR_CALL, nargs, fn);
-    o->kind = fn->type != TY_VOID ? K_VALUE : K_VOID;
-    o->type = fn->type;         /* a struct: its words are on the stack */
+    put(IR_CALL, nargs, f);
+    o->kind = fn_type[f] != TY_VOID ? K_VALUE : K_VOID;
+    o->type = fn_type[f];       /* a struct: its words are on the stack */
 }
 
 /* pstr("literal"): the address of the literal's PLASMA (length-prefixed)
@@ -1433,7 +1464,7 @@ static void parse_pstr(void)
     off = suppress ? 1 : data_string(tok_text, tok_len);
     next();
     expect(')', "expected ')' after pstr argument, not");
-    put(IR_STRADDR, off - 1, NULL);
+    put(IR_STRADDR, off - 1, -1);
 }
 
 /* Set while parsing the operand of prefix &, ++ or --, which must stay a
@@ -1446,14 +1477,13 @@ static int want_place;
  * cast is parsed here too, since it also starts with '('.
  *
  * Reading a const variable with a constant initializer gives its value
- * at compile time (Sym.has_val), a K_CONST, so const int N = 10; makes
+ * at compile time (V_KNOWN), a K_CONST, so const int N = 10; makes
  * x < N use CB 10. Not when it is a place: assigned to (an error, made
  * by need_lvalue()), incremented, or the operand of &, so &N works. */
 static void parse_primary(Operand *o)
 {
     char name[MAX_NAME + 1];
-    Sym *s;
-    int c, place = want_place;
+    int c, f, v, place = want_place;
 
     if (tok != '(')
         want_place = 0;
@@ -1482,7 +1512,7 @@ static void parse_primary(Operand *o)
         }
         /* A literal in code that can never run takes no data space. */
         put(IR_STRADDR, suppress ? 0 : data_string(tok_text, tok_len),
-            NULL);
+            -1);
         o->type = pointer_to(TY_CHAR);
         next();
         return;
@@ -1522,38 +1552,38 @@ static void parse_primary(Operand *o)
                 o->type = pointer_to(TY_CHAR);
                 return;
             }
-            if (find_var(name))
+            if (find_var(name) >= 0)
                 error("called object is not a function:", quote(name));
-            s = find_func(name);
-            if (!s) {
-                s = add_func(name);
+            f = find_func(name);
+            if (f < 0) {
+                f = add_func(name);
                 c = find_cmdsys(name);
                 if (c >= 0)
-                    declare_cmdsys(s, c);   /* by the CMDSYS table */
+                    declare_cmdsys(f, c);   /* by the CMDSYS table */
                 /* Otherwise an implicit declaration: returns int, and
                  * this call fixes the parameter count. */
             }
-            parse_call(s, o);
+            parse_call(f, o);
             return;
         }
-        s = find_var(name);
-        if (s && s->has_val && !place && !assign_op(&c)
+        v = find_var(name);
+        if (v >= 0 && (var_flags[v] & V_KNOWN) && !place && !assign_op(&c)
             && tok != T_INC && tok != T_DEC) {
             o->kind = K_CONST;      /* a const variable's known value */
-            o->type = unqual(s->type);
-            o->val = s->val;
+            o->type = unqual(var_type[v]);
+            o->val = var_val[v];
             o->nonice = 1;
             return;
         }
-        if (s) {
+        if (v >= 0) {
             o->kind = K_VAR;        /* load it later, if needed */
-            o->type = unqual(s->type);
-            o->quals = s->type & Q_ALL;
-            o->off = s->offset;
-            o->global = s->kind == S_GLOBAL;
+            o->type = unqual(var_type[v]);
+            o->quals = var_type[v] & Q_ALL;
+            o->off = var_off[v];
+            o->global = var_data(v);
             return;
         }
-        if (find_func(name))
+        if (find_func(name) >= 0)
             error("function pointers are not supported yet:", quote(name));
         error("undeclared identifier", quote(name));
         return;
@@ -1580,8 +1610,8 @@ static int start_incdec(Operand *o)
 /* ++x / --x: x = x + 1, and the value is the new x. */
 static void pre_incdec(Operand *o, int ir_op)
 {
-    put(IR_CONST, start_incdec(o), NULL);
-    put(ir_op, 0, NULL);
+    put(IR_CONST, start_incdec(o), -1);
+    put(ir_op, 0, -1);
     assign_to(o);
     o->is_bool = 0;
 }
@@ -1592,9 +1622,9 @@ static void pre_incdec(Operand *o, int ir_op)
 static void post_incdec(Operand *o, int ir_op)
 {
     int step = start_incdec(o);
-    put(IR_DUP, 0, NULL);
-    put(IR_CONST, step, NULL);
-    put(ir_op, 0, NULL);
+    put(IR_DUP, 0, -1);
+    put(IR_CONST, step, -1);
+    put(ir_op, 0, -1);
     assign_to(o);
     discard(o);                     /* the new value */
     o->kind = K_VALUE;
@@ -1736,8 +1766,8 @@ static void offset_place(Operand *o, int off)
     } else if (o->kind == K_ELEM) {
         o->disp = wrap16((unsigned)o->disp + (unsigned)off);
     } else if (off != 0) {          /* K_DEREF: the address is on the stack */
-        put(IR_CONST, off, NULL);
-        put(IR_ADD, 0, NULL);
+        put(IR_CONST, off, -1);
+        put(IR_ADD, 0, -1);
     }
 }
 
@@ -1807,11 +1837,11 @@ static void parse_unary(Operand *o)
         rvalue(o);
         o->type = TY_INT;           /* a char operand is promoted */
         if (t == '-')
-            put(IR_NEG, 0, NULL);
+            put(IR_NEG, 0, -1);
         else if (t == '~')
-            put(IR_COMP, 0, NULL);
+            put(IR_COMP, 0, -1);
         else if (t == '!')
-            put(IR_NOT, 0, NULL);
+            put(IR_NOT, 0, -1);
         if (t != '+')
             o->is_bool = t == '!';
         return;
@@ -2064,8 +2094,8 @@ static const char *op_name(int op)
  * only has signed comparisons (approach.md, "M4 design"). */
 static void flip_sign(void)
 {
-    put(IR_CONST, -32768, NULL);
-    put(IR_XOR, 0, NULL);
+    put(IR_CONST, -32768, -1);
+    put(IR_XOR, 0, -1);
 }
 
 /* Push integer operand i scaled by the size of what pointer type p
@@ -2080,8 +2110,8 @@ static void push_scaled(Operand *i, int p)
     }
     rvalue(i);
     if (n != 1) {
-        put(IR_CONST, n, NULL);
-        put(IR_MUL, 0, NULL);
+        put(IR_CONST, n, -1);
+        put(IR_MUL, 0, -1);
     }
 }
 
@@ -2140,15 +2170,15 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
         rvalue(r);
         if (n != 1 && lstart >= 0 && ir_holds(lstart)) {
             ir_rotate(lstart, mid);
-            put(IR_CONST, n, NULL);
-            put(IR_MUL, 0, NULL);
+            put(IR_CONST, n, -1);
+            put(IR_MUL, 0, -1);
         } else if (n != 1) {
             t = new_temp();
-            put(IR_SETLOCAL, t, NULL);
-            put(IR_DROP, 0, NULL);
-            put(IR_CONST, n, NULL);
-            put(IR_MUL, 0, NULL);
-            put(IR_LOCAL, t, NULL);
+            put(IR_SETLOCAL, t, -1);
+            put(IR_DROP, 0, -1);
+            put(IR_CONST, n, -1);
+            put(IR_MUL, 0, -1);
+            put(IR_LOCAL, t, -1);
         }
         result = rt;
     } else if (is_pointer(lt) && is_pointer(rt) && op == IR_SUB) {
@@ -2157,13 +2187,13 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
             error("incompatible pointer types in", "subtraction");
         n = elem_size(lt);
         rvalue(r);
-        put(IR_SUB, 0, NULL);
+        put(IR_SUB, 0, -1);
         if (n == 2) {
-            put(IR_CONST, 1, NULL);
-            put(IR_SHR, 0, NULL);
+            put(IR_CONST, 1, -1);
+            put(IR_SHR, 0, -1);
         } else if (n != 1) {
-            put(IR_CONST, n, NULL);
-            put(IR_DIV, 0, NULL);
+            put(IR_CONST, n, -1);
+            put(IR_DIV, 0, -1);
         }
         o->kind = K_VALUE;
         o->type = TY_INT;
@@ -2172,7 +2202,7 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
     } else {
         error("invalid operands to binary", op_name(op));
     }
-    put(op, 0, NULL);
+    put(op, 0, -1);
     o->kind = K_VALUE;
     o->type = result;
     o->is_bool = is_compare(op);
@@ -2208,20 +2238,20 @@ static void reversed_op(Operand *x, int op)
 {
     int t = -1;
     if (is_pointer(x->type) && elem_size(x->type) != 1) {
-        put(IR_CONST, elem_size(x->type), NULL);
-        put(IR_MUL, 0, NULL);
+        put(IR_CONST, elem_size(x->type), -1);
+        put(IR_MUL, 0, -1);
     }
     if (swapped_op(op) != op && op != IR_SUB) {
         t = new_temp();
-        put(IR_SETLOCAL, t, NULL);
-        put(IR_DROP, 0, NULL);
+        put(IR_SETLOCAL, t, -1);
+        put(IR_DROP, 0, -1);
     }
     rvalue(x);
     if (t >= 0)
-        put(IR_LOCAL, t, NULL);
-    put(op, 0, NULL);
+        put(IR_LOCAL, t, -1);
+    put(op, 0, -1);
     if (t < 0 && op == IR_SUB)
-        put(IR_NEG, 0, NULL);
+        put(IR_NEG, 0, -1);
     if (!is_pointer(x->type))
         x->type = TY_INT;           /* a char operand is promoted */
     x->kind = K_VALUE;
@@ -2308,19 +2338,19 @@ static void push_place_addr(Operand *o)
 /* The function a struct copy calls: memcpy(dst, src, n), from CMDSYS
  * unless the program declares its own, which must take C's arguments
  * in C's order. A value it returns is dropped. */
-static Sym *copy_func(void)
+static int copy_func(void)
 {
-    Sym *s = find_func("memcpy");
-    if (!s) {
-        s = add_func("memcpy");
-        declare_cmdsys(s, find_cmdsys("memcpy"));
-    } else if (s->nparams != 3) {
+    int f = find_func("memcpy");
+    if (f < 0) {
+        f = add_func("memcpy");
+        declare_cmdsys(f, find_cmdsys("memcpy"));
+    } else if (nparams_of(f) != 3) {
         error("a struct copy calls memcpy(dst, src, n), but this program"
               " declares memcpy differently", NULL);
     }
     if (!suppress)
-        s->called = 1;
-    return s;
+        fn_flags[f] |= FN_CALLED;
+    return f;
 }
 
 /*
@@ -2338,8 +2368,7 @@ static Sym *copy_func(void)
 static void copy_struct(Operand *o, Operand *r, int start)
 {
     Operand d, v;
-    Sym *fn;
-    int n = type_size(o->type), k, cost = 0, mid, t;
+    int n = type_size(o->type), k, cost = 0, mid, t, fn;
 
     if (r->kind == K_VALUE && o->kind != K_DEREF) {
         /* Its words are on the stack: store them, last word first. */
@@ -2349,10 +2378,10 @@ static void copy_struct(Operand *o, Operand *r, int start)
             d.type = n - 2 * k == 1 ? TY_CHAR : TY_INT;
             if (d.kind == K_VAR) {
                 store_var(&d);
-                put(IR_DROP, 0, NULL);
+                put(IR_DROP, 0, -1);
             } else {
                 push_address(&d);
-                put(store_op(d.type), 0, NULL);
+                put(store_op(d.type), 0, -1);
             }
         }
         o->assigned = 1;
@@ -2373,10 +2402,10 @@ static void copy_struct(Operand *o, Operand *r, int start)
                 rvalue(&v);
                 if (d.kind == K_VAR) {
                     store_var(&d);
-                    put(IR_DROP, 0, NULL);
+                    put(IR_DROP, 0, -1);
                 } else {
                     push_address(&d);
-                    put(store_op(d.type), 0, NULL);
+                    put(store_op(d.type), 0, -1);
                 }
             }
             o->assigned = 1;
@@ -2393,15 +2422,15 @@ static void copy_struct(Operand *o, Operand *r, int start)
         ir_rotate(start, mid);
     } else {
         t = new_temp();
-        put(IR_SETLOCAL, t, NULL);
-        put(IR_DROP, 0, NULL);
+        put(IR_SETLOCAL, t, -1);
+        put(IR_DROP, 0, -1);
         push_place_addr(o);
-        put(IR_LOCAL, t, NULL);
+        put(IR_LOCAL, t, -1);
     }
-    put(IR_CONST, n, NULL);
+    put(IR_CONST, n, -1);
     put(IR_CALL, 3, fn);
-    if (fn->type != TY_VOID)
-        put(IR_DROP, 0, NULL);
+    if (fn_type[fn] != TY_VOID)
+        put(IR_DROP, 0, -1);
     if (o->kind != K_DEREF)
         o->assigned = 1;
 }
@@ -2413,7 +2442,7 @@ static void struct_assign(Operand *o)
     Operand r;
     int mark, h;
     if (o->kind == K_DEREF)
-        put(IR_DUP, 0, NULL);       /* the address, kept for the result */
+        put(IR_DUP, 0, -1);       /* the address, kept for the result */
     mark = ir_here();
     h = nheld;
     parse_expr(PREC_ASSIGN, &r);
@@ -2542,7 +2571,7 @@ static void parse_expr(int min_prec, Operand *o)
                     nheld--;
                     rvalue(&r);
                     push_scaled(&c, r.type);
-                    put(IR_ADD, 0, NULL);
+                    put(IR_ADD, 0, -1);
                     *o = r;
                     continue;
                 }
@@ -2558,8 +2587,8 @@ static void parse_expr(int min_prec, Operand *o)
                  * constant right before the op (1+x: INCR). */
                 nheld--;
                 rvalue(&r);
-                put(IR_CONST, o->val, NULL);
-                put(swapped_op(ir_op), 0, NULL);
+                put(IR_CONST, o->val, -1);
+                put(swapped_op(ir_op), 0, -1);
                 o->kind = K_VALUE;
                 o->type = TY_INT;
                 o->is_bool = is_compare(ir_op);
@@ -2753,10 +2782,7 @@ static int parse_enum(void)
     while (tok != '}') {
         if (tok != T_ID)
             error("expected an enum constant, not", tok_desc());
-        if (find_local(tok_text) && find_local(tok_text)->depth == depth)
-            error("redeclaration of", quote(tok_text));
-        if (depth == 0 && (find_global(tok_text) || find_func(tok_text)))
-            error("redeclaration of", quote(tok_text));
+        check_not_var(tok_text);
         check_not_id(tok_text);
         name = intern(tok_text);
         next();
@@ -2805,10 +2831,7 @@ static void parse_typedef(void)
             if (id_kind(i) != ID_TYPEDEF || id_val(i) != t)
                 error("redeclaration of", quote(name));
         } else {
-            if (find_local(name) && find_local(name)->depth == depth)
-                error("redeclaration of", quote(name));
-            if (depth == 0 && (find_global(name) || find_func(name)))
-                error("redeclaration of", quote(name));
+            check_not_var(name);
             id_add(intern(name), ID_TYPEDEF, t, depth);
         }
         if (tok != ',')
@@ -2821,15 +2844,15 @@ static void parse_typedef(void)
 /* Initialize the local struct s from a struct expression (after the
  * '='), as C allows for a local: struct pt b = a; It is a struct
  * copy into s. */
-static void init_struct_copy(Sym *s)
+static void init_struct_copy(int s)
 {
     Operand v, e;
     int mark, h;
     begin_expr();
     v.kind = K_VAR;
-    v.type = unqual(s->type);
+    v.type = unqual(var_type[s]);
     v.quals = 0;
-    v.off = s->offset;
+    v.off = var_off[s];
     v.global = 0;
     v.assigned = 0;
     v.is_bool = 0;
@@ -2845,13 +2868,13 @@ static void init_struct_copy(Sym *s)
  * give v at compile time: it is a const scalar (an int, char or
  * pointer, not an array or struct) and not volatile. A char keeps the
  * low byte, as stored. */
-static void set_known(Sym *s, int v)
+static void set_known(int s, int v)
 {
-    if ((s->type & Q_ALL) != Q_CONST || is_array(s->type)
-        || is_struct(s->type))
+    if ((var_type[s] & Q_ALL) != Q_CONST || is_array(var_type[s])
+        || is_struct(var_type[s]))
         return;
-    s->has_val = 1;
-    s->val = unqual(s->type) == TY_CHAR ? v & 0xFF : v;
+    var_flags[s] |= V_KNOWN;
+    var_val[s] = unqual(var_type[s]) == TY_CHAR ? v & 0xFF : v;
 }
 
 /* A declaration: a base type, then declarators, each a name with any
@@ -2869,7 +2892,7 @@ static void parse_declaration(int is_static)
     }
     for (;;) {
         Operand v, e;
-        Sym *s;
+        int s;
         char name[MAX_NAME + 1];
         int type = parse_var_type(parse_declarator(base, name), 1), braced;
         if (tok == '(')
@@ -2881,7 +2904,7 @@ static void parse_declaration(int is_static)
             s = add_static_local(name, type);
             if (tok == '=') {
                 next();
-                s->type = parse_global_init(type, name);
+                var_type[s] = parse_global_init(type, name);
                 if (init_known)
                     set_known(s, init_val);
             } else {
@@ -2907,7 +2930,7 @@ static void parse_declaration(int is_static)
             if (is_struct(type) && tok != '{')
                 init_struct_copy(s);    /* struct pt b = a; */
             else
-                s->type = parse_local_init(type, name, s->offset);
+                var_type[s] = parse_local_init(type, name, var_off[s]);
         } else if (tok == '=') {
             next();
             braced = tok == '{';        /* int x = {5}; is valid C */
@@ -2921,10 +2944,10 @@ static void parse_declaration(int is_static)
             rvalue(&e);
             v.kind = K_VAR;
             v.type = unqual(type);
-            v.off = s->offset;
+            v.off = var_off[s];
             v.global = 0;
             store_var(&v);
-            put(IR_DROP, 0, NULL);
+            put(IR_DROP, 0, -1);
             end_expr();
             if (braced) {
                 if (tok == ',')
@@ -3060,7 +3083,7 @@ static void parse_do(void)
  */
 static void parse_for(void)
 {
-    int saved_nlocals = nlocals, saved_next = frame_next;
+    int saved_nvars = nvars, saved_next = frame_next;
     int top, brk, cont, body;
 
     next();                         /* "for" */
@@ -3096,7 +3119,7 @@ static void parse_for(void)
     branch(IR_JUMP, cont);
     place_forward(brk);
     depth--;
-    nlocals = saved_nlocals;
+    nvars = saved_nvars;
     frame_next = saved_next;
 }
 
@@ -3198,8 +3221,8 @@ static void case_entry(int v, int l)
 {
     if (!suppress)
         label_uses[l]++;
-    put(IR_CASEVAL, v, NULL);
-    put(IR_CASETO, l, NULL);
+    put(IR_CASEVAL, v, -1);
+    put(IR_CASETO, l, -1);
 }
 
 /*
@@ -3236,7 +3259,7 @@ static void parse_switch(void)
     branch(IR_JUMP, brk);           /* the last case doesn't run the table */
     place_label(tab);
     sort_cases();
-    put(IR_CASES, ncases > sw_first ? ncases - sw_first : 1, NULL);
+    put(IR_CASES, ncases > sw_first ? ncases - sw_first : 1, -1);
     for (i = sw_first; i < ncases; i++)
         case_entry(case_val[i], case_label[i]);
     if (ncases == sw_first)
@@ -3294,24 +3317,24 @@ static void parse_statement(void)
     case T_RETURN:
         next();
         if (tok == ';') {
-            if (cur_fn->type != TY_VOID)
-                push_zero_result(cur_fn->type);  /* C89 allows this */
+            if (fn_type[cur_fn] != TY_VOID)
+                push_zero_result(fn_type[cur_fn]);  /* C89 allows this */
         } else {
-            if (cur_fn->type == TY_VOID)
-                error("void function returns a value:", quote(cur_fn->name));
+            if (fn_type[cur_fn] == TY_VOID)
+                error("void function returns a value:", quote(fname(cur_fn)));
             begin_expr();
             parse_expr(PREC_COMMA, &o);
-            check_assign(cur_fn->type, &o, "return");
-            if (cur_fn->type == TY_CHAR)
+            check_assign(fn_type[cur_fn], &o, "return");
+            if (fn_type[cur_fn] == TY_CHAR)
                 to_char(&o);        /* a char function returns 0 to 255 */
-            if (is_struct(cur_fn->type))
+            if (is_struct(fn_type[cur_fn]))
                 push_struct_words(&o);  /* returned as its words */
             else
                 rvalue(&o);
             end_expr();
         }
         expect(';', "expected ';' after return value, not");
-        put(IR_RETURN, 0, NULL);
+        put(IR_RETURN, 0, -1);
         return;
     case T_INT:
     case T_CHAR:
@@ -3343,7 +3366,7 @@ static void parse_statement(void)
  * block shares the parameters' scope, as in C. */
 static void parse_block(int new_scope)
 {
-    int saved_nlocals = nlocals, saved_next = frame_next;
+    int saved_nvars = nvars, saved_next = frame_next;
     enter_nest();
     if (new_scope)
         depth++;
@@ -3358,7 +3381,7 @@ static void parse_block(int new_scope)
         /* The block's variables and struct tags go out of scope, and
          * the variables' frame slots can be reused by later blocks. */
         depth--;
-        nlocals = saved_nlocals;
+        nvars = saved_nvars;
         frame_next = saved_next;
         tag_hide(depth);
         id_hide(depth);
@@ -3370,11 +3393,12 @@ static void parse_block(int new_scope)
 
 /* Parse a parameter list starting at '('. Returns the parameter count,
  * or -1 for "()" (unspecified in a prototype, none in a definition).
- * Names go into locals[]; unnamed parameters get an empty name. */
+ * They are pushed as variables above the globals; an unnamed one
+ * (allowed in a prototype) has no name. */
 static int parse_params(void)
 {
     int n = 0;
-    nlocals = 0;
+    nvars = nglobals;
     frame_next = frame_max = 0;
     depth = 1;
     next();                         /* '(' */
@@ -3476,7 +3500,7 @@ static void parse_const(int prec, Operand *e)
 static void parse_addr(Init *a, int unary)
 {
     Operand e;
-    Sym *s = tok == T_ID ? find_var(tok_text) : NULL;
+    int s = tok == T_ID ? find_var(tok_text) : -1;
     int t, op;
 
     enter_nest();
@@ -3515,13 +3539,13 @@ static void parse_addr(Init *a, int unary)
     } else if (tok == '&') {
         /* &name, then any constant indexes: &m[1][2]. */
         next();
-        s = tok == T_ID ? find_var(tok_text) : NULL;
-        if (!s || s->kind != S_GLOBAL)
+        s = tok == T_ID ? find_var(tok_text) : -1;
+        if (s < 0 || !var_data(s))
             error(not_const, NULL);
         next();
-        t = s->type;
+        t = var_type[s];
         a->kind = REL_DATA;
-        a->target = s->offset;
+        a->target = var_off[s];
         while (tok == '[' && is_array(t)) {
             next();
             parse_const(PREC_COMMA, &e);
@@ -3532,11 +3556,11 @@ static void parse_addr(Init *a, int unary)
             a->val += e.val * type_size(t);
         }
         a->type = pointer_to(t);
-    } else if (s && s->kind == S_GLOBAL && is_array(s->type)) {
+    } else if (s >= 0 && var_data(s) && is_array(var_type[s])) {
         /* An array's name: the address of its first element. */
         a->kind = REL_DATA;
-        a->target = s->offset;
-        a->type = value_type(s->type);
+        a->target = var_off[s];
+        a->type = value_type(var_type[s]);
         next();
     } else {
         /* An integer, or a pointer from a cast of one. */
@@ -3632,9 +3656,9 @@ static void flush_char(void)
 {
     if (held_char < 0)
         return;
-    put(IR_CONST, held_char, NULL);
-    put(IR_SETLOCALB, held_at, NULL);
-    put(IR_DROP, 0, NULL);
+    put(IR_CONST, held_char, -1);
+    put(IR_SETLOCALB, held_at, -1);
+    put(IR_DROP, 0, -1);
     held_char = -1;
 }
 
@@ -3651,9 +3675,9 @@ static void init_byte(int off, int v)
     reserve(at + 1);
     v &= 0xFF;
     if (held_char >= 0 && held_at == at - 1) {
-        put(IR_CONST, held_char | (v << 8), NULL);
-        put(IR_SETLOCAL, held_at, NULL);
-        put(IR_DROP, 0, NULL);
+        put(IR_CONST, held_char | (v << 8), -1);
+        put(IR_SETLOCAL, held_at, -1);
+        put(IR_DROP, 0, -1);
         held_char = -1;
         return;
     }
@@ -3663,18 +3687,17 @@ static void init_byte(int off, int v)
 }
 
 /* The CMDSYS function memset, declared from the CMDSYS table if the
- * program hasn't used it yet; or NULL if the program has its own. */
-static Sym *cmdsys_memset(void)
+ * program hasn't used it yet; or -1 if the program has its own. */
+static int cmdsys_memset(void)
 {
-    Sym *s = find_func("memset");
-    int c = find_cmdsys("memset");
-    if (!s) {
-        s = add_func("memset");
-        declare_cmdsys(s, c);
-    } else if (s->defined || !matches_cmdsys(s, c)) {
-        return NULL;
+    int f = find_func("memset"), c = find_cmdsys("memset");
+    if (f < 0) {
+        f = add_func("memset");
+        declare_cmdsys(f, c);
+    } else if ((fn_flags[f] & FN_DEFINED) || !matches_cmdsys(f, c)) {
+        return -1;
     }
-    return s;
+    return f;
 }
 
 /* Initialize n bytes at offset off of the array to 0: write them to the
@@ -3683,8 +3706,7 @@ static Sym *cmdsys_memset(void)
  * LLA CN 0 CB n CALL memset (7 or 8 bytes). */
 static void init_zero(int n, int off)
 {
-    int at = init_base + off, words = n / 2, i;
-    Sym *s;
+    int at = init_base + off, words = n / 2, i, f;
     if (!init_local) {
         data_zero(n);
         return;
@@ -3699,20 +3721,20 @@ static void init_zero(int n, int off)
         n++;
         words = n / 2;
     }
-    if (words + n % 2 > 3 && (s = cmdsys_memset()) != NULL) {
-        put(IR_LOCALADDR, at, NULL);
-        put(IR_CONST, 0, NULL);
-        put(IR_CONST, n, NULL);
-        s->called = 1;
-        put(IR_CALL, 3, s);
+    if (words + n % 2 > 3 && (f = cmdsys_memset()) >= 0) {
+        put(IR_LOCALADDR, at, -1);
+        put(IR_CONST, 0, -1);
+        put(IR_CONST, n, -1);
+        fn_flags[f] |= FN_CALLED;
+        put(IR_CALL, 3, f);
         return;
     }
-    put(IR_CONST, 0, NULL);
+    put(IR_CONST, 0, -1);
     for (i = 0; i < words; i++)
-        put(IR_SETLOCAL, at + 2 * i, NULL);
+        put(IR_SETLOCAL, at + 2 * i, -1);
     if (n % 2)
-        put(IR_SETLOCALB, at + n - 1, NULL);
-    put(IR_DROP, 0, NULL);
+        put(IR_SETLOCALB, at + n - 1, -1);
+    put(IR_DROP, 0, -1);
 }
 
 /* Parse the initializer of one scalar element of type type, at offset
@@ -3739,7 +3761,7 @@ static void init_elem(int type, int off)
         v.off = at;
         v.global = 0;
         store_var(&v);
-        put(IR_DROP, 0, NULL);
+        put(IR_DROP, 0, -1);
     }
     end_expr();
 }
@@ -3892,7 +3914,7 @@ static int parse_local_init(int type, const char *name, int base)
  * A global without an initializer is zero when the module loads. */
 static void parse_globals(int base, int type, char *name)
 {
-    Sym *s;
+    int s;
     for (;;) {
         type = parse_var_type(type, 1);
         if (tok == '(')
@@ -3901,7 +3923,7 @@ static void parse_globals(int base, int type, char *name)
         s = add_global(name, type);
         if (tok == '=') {
             next();
-            s->type = parse_global_init(type, name);
+            var_type[s] = parse_global_init(type, name);
             if (init_known)
                 set_known(s, init_val);
         } else {
@@ -3924,9 +3946,8 @@ static void parse_globals(int base, int type, char *name)
  * nothing yet (approach.md, "M5 design"). */
 static void parse_toplevel(void)
 {
-    int base, type, nparams, pwords, i;
+    int base, type, nparams, pwords, i, f, mark;
     char name[MAX_NAME + 1];
-    Sym *fn;
 
     depth = 0;                      /* file scope, for tags and names */
     if (tok == T_TYPEDEF) {
@@ -3955,14 +3976,15 @@ static void parse_toplevel(void)
     }
     type = unqual(type);    /* const int f(void) returns an int */
     check_byval(type, "returned");
-    if (find_global(name))
+    if (find_var(name) >= 0)
         error("redeclaration of", quote(name));
     check_not_id(name);
-    fn = find_func(name);
-    if (!fn)
-        fn = add_func(name);
+    f = find_func(name);
+    if (f < 0)
+        f = add_func(name);
+    mark = pool_mark();             /* its own names are released after */
 
-    cur_fn = fn;                    /* for messages about its variables */
+    cur_fn = f;                     /* for messages about its variables */
     in_params = 1;
     nparams = parse_params();
     in_params = 0;
@@ -3971,59 +3993,61 @@ static void parse_toplevel(void)
         /* A prototype. "()" leaves the parameter count unspecified.
          * A call before any declaration assumed int, and its code
          * already depends on that. */
-        if ((fn->declared || fn->called) && fn->type != type)
-            error("conflicting declaration of", quote(fn->name));
-        fn->type = type;
+        if ((fn_flags[f] & (FN_DECLARED | FN_CALLED)) && fn_type[f] != type)
+            error("conflicting declaration of", quote(fname(f)));
+        fn_type[f] = type;
         if (nparams >= 0) {
-            if (fn->nparams >= 0 && fn->nparams != nparams)
-                error("conflicting parameter count for", quote(fn->name));
-            fn->nparams = nparams;
-            set_param_types(fn, nparams);
+            if (nparams_of(f) >= 0 && nparams_of(f) != nparams)
+                error("conflicting parameter count for", quote(fname(f)));
+            set_nparams(f, nparams);
+            set_param_types(f, nparams);
         }
-        fn->declared = 1;
+        fn_flags[f] |= FN_DECLARED;
         next();
-        cur_fn = NULL;
+        cur_fn = -1;
+        nvars = nglobals;
         tag_hide(0);                /* tags declared in the parameters */
         id_hide(0);
+        pool_release(mark);
         return;
     }
     if (nparams < 0)
         nparams = 0;
     if (tok != '{')
         error("expected '{' or ';' after function header, not", tok_desc());
-    for (i = 0; i < nlocals; i++)
-        if (!locals[i].name[0])
+    for (i = nglobals; i < nvars; i++)
+        if (var_name[i] < 0)
             error("parameter name missing in definition of",
-                  quote(fn->name));
-    if (fn->defined)
-        error("redefinition of", quote(fn->name));
-    if ((fn->declared || fn->called) && fn->type != type)
-        error("conflicting declaration of", quote(fn->name));
-    if (fn->nparams >= 0 && fn->nparams != nparams)
+                  quote(fname(f)));
+    if (fn_flags[f] & FN_DEFINED)
+        error("redefinition of", quote(fname(f)));
+    if ((fn_flags[f] & (FN_DECLARED | FN_CALLED)) && fn_type[f] != type)
+        error("conflicting declaration of", quote(fname(f)));
+    if (nparams_of(f) >= 0 && nparams_of(f) != nparams)
         error("parameter count differs from earlier use of",
-              quote(fn->name));
-    if (!strcmp(fn->name, "main") && nparams != 0)
+              quote(fname(f)));
+    if (!strcmp(fname(f), "main") && nparams != 0)
         error("main with parameters is not supported yet", NULL);
-    set_param_types(fn, nparams);
-    fn->type = type;
-    fn->nparams = nparams;
-    fn->declared = 1;
-    fn->defined = 1;
+    set_param_types(f, nparams);
+    fn_type[f] = type;
+    set_nparams(f, nparams);
+    fn_flags[f] |= FN_DECLARED | FN_DEFINED;
 
     nlabels = 0;
-    put(IR_FUNC, pwords, fn);       /* ENTER takes the parameters' words */
+    put(IR_FUNC, pwords, f);        /* ENTER takes the parameters' words */
     parse_block(0);
     /* Falling off the end of an int or char function returns 0. If the
      * last statement was a return, the peephole stage drops this as
      * dead code. */
     if (type != TY_VOID)
         push_zero_result(type);
-    put(IR_RETURN, 0, NULL);
-    put(IR_ENDFUNC, frame_max, fn);
-    cur_fn = NULL;
-    nlocals = 0;
+    put(IR_RETURN, 0, -1);
+    put(IR_ENDFUNC, frame_max, f);
+    cur_fn = -1;
+    nvars = nglobals;
     tag_hide(0);
     id_hide(0);
+    pool_release(mark);
 }
 
 /* Stage 1's entry: parse the whole source file, then check that every
@@ -4037,15 +4061,14 @@ void parse_program(void)
     /* Every function called but not defined here must come from
      * CMDSYS, with the signature CMDSYS has. */
     src_line = 0;
-    for (i = 0; i < nsyms; i++) {
-        Sym *s = &syms[i];
-        if (s->defined || !s->called)
+    for (i = 0; i < nfuncs; i++) {
+        if ((fn_flags[i] & FN_DEFINED) || !(fn_flags[i] & FN_CALLED))
             continue;
-        c = find_cmdsys(s->name);
+        c = find_cmdsys(fname(i));
         if (c < 0)
-            error("call to undefined function", quote(s->name));
-        if (!matches_cmdsys(s, c))
+            error("call to undefined function", quote(fname(i)));
+        if (!matches_cmdsys(i, c))
             error("declaration doesn't match the CMDSYS function",
-                  quote(s->name));
+                  quote(fname(i)));
     }
 }

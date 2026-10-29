@@ -40,6 +40,32 @@ int intern(const char *s)
     return pool_used - n;
 }
 
+/* Where the pool ends now: a mark, taken before a function's
+ * parameters and locals add their names (approach.md, "Sym split
+ * design"). */
+int pool_mark(void)
+{
+    return pool_used;
+}
+
+/* At the end of a function, release the names added since mark: its
+ * parameters', locals' and block-scope names, which nothing uses any
+ * more (their tags and enum constants are hidden). The names of
+ * functions first seen inside it (called before being declared) must
+ * stay, so they are moved down to mark, in order. */
+void pool_release(int mark)
+{
+    int f, n;
+    for (f = 0; f < nfuncs; f++)
+        if (fn_name[f] >= mark) {
+            n = (int)strlen(pool + fn_name[f]) + 1;
+            memmove(pool + mark, pool + fn_name[f], n);
+            fn_name[f] = mark;
+            mark += n;
+        }
+    pool_used = mark;
+}
+
 /* The name at offset n of the pool. */
 const char *name_of(int n)
 {

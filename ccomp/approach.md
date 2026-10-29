@@ -1808,6 +1808,62 @@ largest has 28), so self-hosting needs it.
   (M11) is on the self-hosting path too. Until then, tests use numbers
   and character constants.
 
+**`Sym` split design (decided in discussion, 2026-10-29; option B1 of
+18.6).** Today every symbol is a 56-byte `Sym` (a 32-byte name and 12
+`int`s) in three arrays of 512 entries in all: 28.7K, the largest
+table. Functions and variables use mostly different fields. Split into
+two tables of parallel arrays (decision 15):
+- **Functions,** 10 bytes each: name (a name pool offset), return
+  type, `ptypes` index, `nparams` (a `char`), a flags byte (declared,
+  defined, called), and `code_off`.
+- **Variables,** 9 bytes each, in one table used as a scope stack:
+  globals at the bottom; a function's parameters and locals pushed
+  above them and popped at its end (no locals exist while globals are
+  declared). Name, type, offset, a byte holding the block depth plus
+  bits for "in the data segment" (a global or static) and "has a known
+  value", and the known value. **`has_val` stays** (`const` folding).
+- **Names: the interned pool (A1), with local release.** Names first
+  interned inside a function are released at its end, so the pool
+  holds mainly file-scope names. A name that must outlive the function
+  (such as a function first called there, an implicit declaration)
+  must not be lost: the release has to keep it (to work out while
+  building). Lookups compare pool offsets instead of `strcmp`.
+- **Limits sized to slightly exceed ccish's own needs,** measured on
+  its files (18.5), rather than round numbers.
+- IR and machine ops carry a function index instead of a `Sym *`; the
+  `.syms` format doesn't change.
+- Built in three steps, each leaving every test's code unchanged: the
+  functions table, the variables table, then names into the pool with
+  local release.
+
+**The `Sym` split is done** (2026-10-29), in two steps (functions,
+then variables with their names). Settled while building it:
+- The limits come from measuring ccish's own files with an instrumented
+  copy of the compiler: at most 245 functions, 59 variables visible at
+  once (52 globals), and about 5,100 bytes of names, all in `parse.c`.
+  So `MAX_FUNCS` is 272, `MAX_VARS` 72 and `MAX_POOL` 5632. At 16-bit
+  sizes the symbol tables and pool go from 30.7K (28.7K of `Sym`s and a
+  2K pool) to 8.9K (2.7K of functions, 0.6K of variables and the 5.5K
+  pool). The pool is now most of it: every file pays about 2.5K for
+  `ccish.h`'s names, which splitting the header by stage would cut.
+- Releasing a function's names (`pool_release()`) moves the names of
+  functions first seen inside it (implicit declarations, or `memset`
+  and `memcpy` declared for initializers and struct copies) down to
+  the mark, in order, and frees the rest. Its block-scope tags and enum
+  constants are hidden by then; a hidden tag keeps its released name
+  offset, which is harmless since nothing looks up a hidden tag. The
+  test `names.c` checks it.
+- A variable's depth and its two flags share a byte (`V_DEPTH`,
+  `V_DATA`, `V_KNOWN`). An unnamed prototype parameter has name -1,
+  which a lookup never matches, since `find_var()` returns early for a
+  name not in the pool.
+- `frame_too_big.c` reached the 255-byte frame with 128 `int`s, which
+  `MAX_VARS` no longer allows; it now uses an array and three `int`s.
+- `link.c`'s symbol table is sized by `MAX_FUNCS` too, and its own
+  count of defined functions is `ndefs`.
+- Every earlier test's code is unchanged, and the self-compiled code
+  is about the same size (32.9K).
+
 **`enum` and `typedef` design (pulled forward from M11; decided in
 discussion, 2026-10-29).** Built right after M7, before M8, so that
 ccish can compile some of its own files early and code sizes can be

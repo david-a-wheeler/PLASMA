@@ -3,7 +3,7 @@
  * into a PLASMA REL module (../../doc/Bytecodes.md), and print the
  * listing (-l), since only this pass knows the final addresses.
  *
- * It uses none of the compiler's tables (syms[] and so on), only the
+ * It uses none of the compiler's tables (fn_name[] and so on), only the
  * streams, so it can become a separate program later: on an Apple II,
  * a module loaded after the compiler has finished (approach.md 18.1),
  * and a linker for several files (issue 11).
@@ -29,7 +29,7 @@ typedef struct {
     int import_idx;     /* ESD index if imported, else -1 */
 } Lsym;
 
-static Lsym lsyms[MAX_SYMS];
+static Lsym lsyms[MAX_FUNCS];
 static int nlsyms;
 static int data_size, strs_size, code_size;
 
@@ -47,8 +47,8 @@ static Lreloc relocs[MAX_RELOCS];
 static int nrelocs;
 
 /* Code-segment offsets of the functions, in code order, for the RLD. */
-static int func_at[MAX_SYMS];
-static int nfuncs;
+static int func_at[MAX_FUNCS];
+static int ndefs;
 
 static unsigned char fbuf[MAX_FUNC_CODE];
 
@@ -77,7 +77,7 @@ static void read_summary(const char *base)
     strs_size = bgetw(&in);
     code_size = bgetw(&in);
     nlsyms = bgetw(&in);
-    if (nlsyms > MAX_SYMS)
+    if (nlsyms > MAX_FUNCS)
         fatal("too many functions", NULL);
     for (i = 0; i < nlsyms; i++) {
         Lsym *s = &lsyms[i];
@@ -362,7 +362,7 @@ static void copy_code(const char *base)
         len = bgetw(&in);
         if (idx >= nlsyms || !(lsyms[idx].flags & SYM_DEFINED)
             || lsyms[idx].code_off != at || len > MAX_FUNC_CODE
-            || nfuncs >= MAX_SYMS)
+            || ndefs >= MAX_FUNCS)
             damaged(name);
         for (i = 0; i < len; i++) {
             if ((c = bgetc(&in)) == EOF)
@@ -382,7 +382,7 @@ static void copy_code(const char *base)
         if (opt_list)
             list_code(lsyms[idx].name, len, at, first);
         bwrite(&out, fbuf, len);
-        func_at[nfuncs++] = at;
+        func_at[ndefs++] = at;
         at += len;
     }
     if (at != code_size)
@@ -478,7 +478,7 @@ void link_module(const char *base, const char *path)
 
     /* Step 4. RLD: function entries first (in code order, init
      * excluded), then the relocations. */
-    for (i = 0; i < nfuncs; i++) {
+    for (i = 0; i < ndefs; i++) {
         bputc(&out, 0x02);
         bputw(&out, subseg + func_at[i]);
         bputc(&out, 0);

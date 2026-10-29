@@ -28,8 +28,9 @@ static int ndata;               /* bytes written to the data stream */
 static int nstrs;               /* bytes written to the string pool */
 static int ncode;               /* bytes written to the code stream so far */
 
-/* The function being built. */
-static Sym *fn;
+/* The function being built (an index into fn_name[] and the other
+ * function arrays), or -1. */
+static int fn = -1;
 static unsigned char fbuf[MAX_FUNC_CODE];
 static int nfbuf;
 
@@ -80,7 +81,7 @@ void emit_open(const char *base)
 static void code_byte(int v)
 {
     if (nfbuf >= MAX_FUNC_CODE)
-        error("function too large:", fn->name);
+        error("function too large:", name_of(fn_name[fn]));
     fbuf[nfbuf++] = (unsigned char)v;
 }
 
@@ -95,7 +96,7 @@ static void code_word(int v)
 static void add_reloc(int kind, int target)
 {
     if (nrelocs >= MAX_FUNC_RELOCS)
-        error("too many calls and data references in", fn->name);
+        error("too many calls and data references in", name_of(fn_name[fn]));
     relocs[nrelocs].kind = kind;
     relocs[nrelocs].at = nfbuf;
     relocs[nrelocs].target = target;
@@ -108,7 +109,7 @@ static void frame_byte(int v)
 {
     if (v == FRAME_LATER) {
         if (nframe >= MAX_RETURNS)
-            error("too many returns in", fn->name);
+            error("too many returns in", name_of(fn_name[fn]));
         frame_at[nframe++] = nfbuf;
         v = 0;
     }
@@ -141,7 +142,7 @@ static void place_label(int n)
 {
     int at = label_word[n];
     if (label_placed[n])
-        fatal("internal error: label placed twice in", fn->name);
+        fatal("internal error: label placed twice in", name_of(fn_name[fn]));
     while (at != NO_LINK) {
         int link = fbuf[at] | (fbuf[at + 1] << 8);
         patch_word(at, nfbuf - at);
@@ -232,7 +233,8 @@ static void drop_frame(void)
 {
     int i;
     if (nframe == 0 || frame_at[0] != 1 || fbuf[0] != OP_ENTER)
-        fatal("internal error: no ENTER at the start of", fn->name);
+        fatal("internal error: no ENTER at the start of",
+              name_of(fn_name[fn]));
     for (i = 1; i < nframe; i++) {      /* frame_at[0] is the ENTER's */
         fbuf[frame_at[i] - 1] = OP_RET;
         fbuf[frame_at[i]] = OP_RET;
@@ -250,7 +252,7 @@ static void end_function(int frame_size)
 {
     int i;
     if (frame_size > 255)
-        error("too many parameters and locals in", fn->name);
+        error("too many parameters and locals in", name_of(fn_name[fn]));
     for (i = 0; i < nframe; i++)
         fbuf[frame_at[i]] = (unsigned char)frame_size;
     if (frame_size == 0)
@@ -258,11 +260,11 @@ static void end_function(int frame_size)
     for (i = 0; i < MAX_LABELS; i++)
         if (!label_placed[i] && label_word[i] != NO_LINK)
             fatal("internal error: branch to a label never placed in",
-                  fn->name);
+                  name_of(fn_name[fn]));
     if (ncode > 0x7FFF - nfbuf)
         fatal("too much code", NULL);
-    fn->code_off = ncode;
-    bputw(&code_out, (int)(fn - syms));
+    fn_code[fn] = ncode;
+    bputw(&code_out, fn);
     bputw(&code_out, nfbuf);
     bwrite(&code_out, fbuf, nfbuf);
     bputw(&code_out, nrelocs);
@@ -272,7 +274,7 @@ static void end_function(int frame_size)
         bputw(&code_out, relocs[i].target);
     }
     ncode += nfbuf;
-    fn = NULL;
+    fn = -1;
 }
 
 /* Stage 4's entry: encode one machine op into the function buffer. The
@@ -282,7 +284,7 @@ void emit_put(Mop *m)
     int i;
     switch (m->op) {
     case OP_FUNC_BEGIN:
-        fn = m->sym;
+        fn = m->fn;
         nfbuf = nrelocs = nframe = 0;
         for (i = 0; i < MAX_LABELS; i++) {
             label_word[i] = NO_LINK;
@@ -320,7 +322,7 @@ void emit_put(Mop *m)
         else if (m->fix == FIX_STR)
             add_reloc(REL_STR, m->a);
         else if (m->fix == FIX_FUNC)
-            add_reloc(REL_FUNC, (int)(m->sym - syms));
+            add_reloc(REL_FUNC, m->fn);
         code_word(m->fix == FIX_NONE ? m->a : 0);
         break;
     case OP_BRNCH: case OP_BRFLS: case OP_BRTRU: case OP_BREQ:
@@ -378,17 +380,18 @@ void emit_finish(void)
     bputw(&out, ndata);
     bputw(&out, nstrs);
     bputw(&out, ncode);
-    bputw(&out, nsyms);
-    for (i = 0; i < nsyms; i++) {
-        Sym *s = &syms[i];
-        bputc(&out, (s->defined ? SYM_DEFINED : 0)
-                    | (s->called ? SYM_CALLED : 0)
-                    | (s->type != TY_VOID ? SYM_RETURNS : 0));
-        bputc(&out, s->nparams < 0 ? 255 : s->nparams);
-        bputw(&out, s->defined ? s->code_off : 0);
-        n = (int)strlen(s->name);
+    bputw(&out, nfuncs);
+    for (i = 0; i < nfuncs; i++) {
+        int defined = fn_flags[i] & FN_DEFINED;
+        bputc(&out, (defined ? SYM_DEFINED : 0)
+                    | (fn_flags[i] & FN_CALLED ? SYM_CALLED : 0)
+                    | (fn_type[i] != TY_VOID ? SYM_RETURNS : 0));
+        bputc(&out, fn_flags[i] & FN_COUNTED ? fn_nparams[i] : 255);
+        bputw(&out, defined ? fn_code[i] : 0);
+        name = name_of(fn_name[i]);
+        n = (int)strlen(name);
         bputc(&out, n);
-        bwrite(&out, (const unsigned char *)s->name, n);
+        bwrite(&out, (const unsigned char *)name, n);
     }
     if (bclose(&out) != 0)
         fatal("error writing", name);
