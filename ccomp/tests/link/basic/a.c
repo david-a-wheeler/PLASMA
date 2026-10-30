@@ -6,6 +6,7 @@
 // listing-has: object tests/out/link/basic_a:
 // listing-has: object tests/out/link/basic_b:
 // listing-has: ; add
+// listing-has: ; shared names: 12 of 509 slots, 74 of 6144 name bytes
 extern int total;                   /* defined in b.c */
 extern int squares[];               /* b.c gives the size */
 int add(int n);                     /* b.c */

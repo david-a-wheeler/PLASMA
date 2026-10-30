@@ -12,7 +12,7 @@
  * The files are read in order, with no seeking, and only one at a time
  * (approach.md 18.6 B6a):
  *   1. every object's symbol summary, to lay out the module and to
- *      build one table of the names shared between objects (gsyms[]),
+ *      build one table of the names shared between objects (g_name[]...),
  *      where duplicates, conflicting types and undefined names are
  *      found;
  *   2. the header and dependencies are written; then each object's
@@ -30,7 +30,7 @@
 #include "ccish.h"
 
 #define MAX_OBJS    32      /* objects in one link */
-#define MAX_GSYMS   512     /* names shared between objects */
+#define MAX_GSYMS   509     /* names shared between objects (a prime) */
 #define MAX_GNAMES  6144    /* bytes of those names, with their NULs */
 
 /* A symbol summary entry of the object being read: a function's, or
@@ -61,33 +61,34 @@ static int nobjs;
 static int obj_data[MAX_OBJS + 1], obj_strs[MAX_OBJS + 1];
 static int obj_code[MAX_OBJS + 1];
 
-/* A name shared between objects: a non-local function or global. Its
- * description is the most complete one met so far (approach.md issue
- * 11, "Step 3"), from object desc_obj. */
-typedef struct {
-  int name;           /* offset of its name in gnames[] */
-  char data;          /* 1 for a global variable, 0 for a function */
-  char refs;          /* G_* */
-  int returns;        /* functions: SYM_RETURNS or 0 */
-  int nparams;        /* functions: 255 if unknown */
-  int hash;           /* 0 if unknown */
-  int size;           /* data: bytes, 0 if unknown */
-  int desc_obj;       /* the object its description came from */
-  int def_obj;        /* the object that defines it, or -1 */
-  int off;            /* offset in that object's code or data */
-  int import_idx;     /* ESD index if imported, else -1 */
-} Gsym;
+/* The names shared between objects (non-local functions and globals),
+ * as parallel arrays, MAX_GSYMS slots each, with open addressing: a name
+ * is in the slot gsym_start() picks or a later one, wrapping around
+ * (approach.md issue 11, "Fitting the linker's tables"). Its description
+ * is the most complete one met so far, from object g_desc[]. */
+static int g_name[MAX_GSYMS];   /* offset in gnames[], or -1: slot empty */
+static int g_hash[MAX_GSYMS];   /* type hash, 0 if unknown */
+static int g_count[MAX_GSYMS];  /* a function's parameter count (255 if
+                                 * unknown), or a global's size (0) */
+static int g_off[MAX_GSYMS];    /* if defined: offset in its object's
+                                 * code or data; if imported: ESD index */
+static unsigned char g_def[MAX_GSYMS];  /* defining object, or NO_OBJ */
+static unsigned char g_desc[MAX_GSYMS]; /* object of the description */
+static char g_flags[MAX_GSYMS];         /* G_* */
 
-/* What a name's entries say, over all the objects: it is used; some
- * entry isn't a CMDSYS function; some is a CMDSYS name declared
- * differently. */
-enum { G_USED = 1, G_PLAIN = 2, G_BADCMDSYS = 4 };
+#define NO_OBJ 255
 
-static Gsym gsyms[MAX_GSYMS];
-static int ngsyms;
+/* A name's flags. The first three are what its entries say, over all
+ * the objects: it is used; some entry isn't a CMDSYS function; some is a
+ * CMDSYS name declared differently. Then: it is a global variable, not a
+ * function; the function returns a value; it is imported. */
+enum { G_USED = 1, G_PLAIN = 2, G_BADCMDSYS = 4, G_DATA = 8,
+       G_RETURNS = 16, G_IMPORT = 32 };
+
+static int ngsyms;          /* slots in use */
 static char gnames[MAX_GNAMES];
 static int gnames_len;
-static int main_sym = -1;   /* the gsyms[] entry of main, or -1 */
+static int main_sym = -1;   /* the slot of main, or -1 */
 static int nimports, ndefined;
 
 /* The object being read in steps 2 and 3, mapped: each function symbol
@@ -239,14 +240,50 @@ static void close_syms(const char *name)
   bclose(&in);
 }
 
-/* The gsyms[] entry named name, or -1 if there is none. */
+/* The slot where the search for name starts; name may be in a later
+ * one. The hash is h = (h + h) ^ c, cheap in the VM (approach.md issue
+ * 11, "Fitting the linker's tables"); masking each step keeps a 32-bit
+ * host from overflowing, and gives the same slots. */
+static int gsym_start(const char *name)
+{
+  int h = 0;
+  while (*name)
+    h = ((h + h) ^ *name++) & 0x7FFF;
+  return h % MAX_GSYMS;
+}
+
+/* The slot actually holding name, or -1 if it isn't in the table. */
 static int gsym_find(const char *name)
 {
-  int i;
-  for (i = 0; i < ngsyms; i++)
-    if (!strcmp(gnames + gsyms[i].name, name))
-      return i;
+  int g = gsym_start(name), n;
+  for (n = 0; n < MAX_GSYMS && g_name[g] >= 0; n++) {
+    if (!strcmp(gnames + g_name[g], name))
+      return g;
+    if (++g == MAX_GSYMS)
+      g = 0;
+  }
   return -1;
+}
+
+/* Put name, which isn't in the table, in the first empty slot from its
+ * starting slot, with no description or definition yet; returns the
+ * slot. Stops at once if the table or its names are full. */
+static int gsym_add(const char *name)
+{
+  int n = (int)strlen(name) + 1, g;
+  if (ngsyms >= MAX_GSYMS || gnames_len + n > MAX_GNAMES)
+    fatal(222 /* "too many names shared between objects" */, NULL);
+  for (g = gsym_start(name); g_name[g] >= 0; )
+    if (++g == MAX_GSYMS)
+      g = 0;
+  ngsyms++;
+  g_name[g] = gnames_len;
+  memcpy(gnames + gnames_len, name, n);
+  gnames_len += n;
+  g_flags[g] = 0;
+  g_def[g] = NO_OBJ;
+  g_desc[g] = NO_OBJ;
+  return g;
 }
 
 /* Add symbol s (a global variable if data, else a function) of the
@@ -255,58 +292,45 @@ static int gsym_find(const char *name)
  * a more complete description replaces it. */
 static void add_global(Lsym *s, int data)
 {
-  int g = gsym_find(s->name), n;
-  Gsym *e;
-  if (g < 0) {
-    n = (int)strlen(s->name) + 1;
-    if (ngsyms >= MAX_GSYMS || gnames_len + n > MAX_GNAMES)
-      fatal(222 /* "too many names shared between objects" */, NULL);
-    e = &gsyms[ngsyms++];
-    e->name = gnames_len;
-    memcpy(gnames + gnames_len, s->name, n);
-    gnames_len += n;
-    e->data = (char)data;
-    e->refs = 0;
-    e->returns = s->flags & SYM_RETURNS;
-    e->nparams = s->nparams;
-    e->hash = s->hash;
-    e->size = s->size;
-    e->desc_obj = cur;
-    e->def_obj = -1;
-    e->import_idx = -1;
+  int g = gsym_find(s->name);
+  int count = data ? s->size : s->nparams, none = data ? 0 : 255;
+  int kind = (data ? G_DATA : 0) | (s->flags & SYM_RETURNS ? G_RETURNS : 0);
+  if (g < 0)
+    g = gsym_add(s->name);
+  if (g_desc[g] == NO_OBJ) {
+    g_flags[g] = (char)kind;
+    g_count[g] = count;
+    g_hash[g] = s->hash;
+    g_desc[g] = (unsigned char)cur;
   } else {
-    e = &gsyms[g];
-    if ((s->flags & SYM_DEFINED) && e->def_obj >= 0)
-      between(220 /* "multiple definition of" */, s->name, e->def_obj, cur);
-    if (e->data != data || e->returns != (s->flags & SYM_RETURNS)
-        || (s->nparams != 255 && e->nparams != 255
-            && s->nparams != e->nparams)
-        || (s->hash && e->hash && s->hash != e->hash)
-        || (s->size && e->size && s->size != e->size))
-      between(221 /* "conflicting types for" */, s->name, e->desc_obj, cur);
-    if ((s->nparams != 255 && e->nparams == 255) || (s->hash && !e->hash)
-        || (s->size && !e->size)) {
-      e->nparams = s->nparams;
-      e->hash = s->hash;
-      e->size = s->size;
-      e->desc_obj = cur;
+    if ((s->flags & SYM_DEFINED) && g_def[g] != NO_OBJ)
+      between(220 /* "multiple definition of" */, s->name, g_def[g], cur);
+    if ((g_flags[g] & (G_DATA | G_RETURNS)) != kind
+        || (count != none && g_count[g] != none && count != g_count[g])
+        || (s->hash && g_hash[g] && s->hash != g_hash[g]))
+      between(221 /* "conflicting types for" */, s->name, g_desc[g], cur);
+    if ((count != none && g_count[g] == none) || (s->hash && !g_hash[g])) {
+      g_count[g] = count;
+      g_hash[g] = s->hash;
+      g_desc[g] = (unsigned char)cur;
     }
   }
   if (s->flags & SYM_DEFINED) {
-    e->def_obj = cur;
-    e->off = s->off;
+    g_def[g] = (unsigned char)cur;
+    g_off[g] = s->off;
   }
   if (s->flags & SYM_CALLED)
-    e->refs |= G_USED;
+    g_flags[g] |= G_USED;
   if (s->flags & SYM_NOTCMDSYS)
-    e->refs |= G_BADCMDSYS;
+    g_flags[g] |= G_BADCMDSYS;
   else if (!(s->flags & SYM_CMDSYS))
-    e->refs |= G_PLAIN;
+    g_flags[g] |= G_PLAIN;
 }
 
 /* Step 1 for object k: read its symbol summary, lay it out after the
- * objects before it, and add its non-local symbols to gsyms[]. A local
- * symbol that is used but not defined is an undefined reference. */
+ * objects before it, and add its non-local symbols to the table of
+ * shared names. A local symbol that is used but not defined is an
+ * undefined reference. */
 static void read_summary(int k)
 {
   const char *name = open_syms(k);
@@ -333,22 +357,25 @@ static void read_summary(int k)
  * becomes the entry point. */
 static void resolve(void)
 {
-  int i;
-  for (i = 0; i < ngsyms; i++) {
-    Gsym *e = &gsyms[i];
-    const char *name = gnames + e->name;
-    if (e->def_obj >= 0) {
-      if (!e->data && !strcmp(name, "main"))
-        main_sym = i;
-    } else if (e->refs & G_USED) {
-      if (e->refs & G_BADCMDSYS)
+  int g;
+  for (g = 0; g < MAX_GSYMS; g++) {
+    const char *name;
+    if (g_name[g] < 0)
+      continue;
+    name = gnames + g_name[g];
+    if (g_def[g] != NO_OBJ) {
+      if (!(g_flags[g] & G_DATA) && !strcmp(name, "main"))
+        main_sym = g;
+    } else if (g_flags[g] & G_USED) {
+      if (g_flags[g] & G_BADCMDSYS)
         undefined(173 /* "declaration doesn't match the CMDSYS"
                          " function" */, name);
-      if (e->data || (e->refs & G_PLAIN))
+      if (g_flags[g] & (G_DATA | G_PLAIN))
         undefined(172 /* "undefined reference to" */, name);
       if (nimports >= 255)
         fatal(190 /* "too many imported functions" */, NULL);
-      e->import_idx = nimports++;
+      g_flags[g] |= G_IMPORT;
+      g_off[g] = nimports++;
     }
   }
 }
@@ -359,7 +386,6 @@ static void map_object(int k)
 {
   const char *name = open_syms(k);
   Lsym s;
-  Gsym *e;
   int i, g, v;
 
   for (i = 0; i < nfsyms + ndsyms; i++) {
@@ -373,11 +399,10 @@ static void map_object(int k)
     } else if (!(s.flags & SYM_LOCAL)) {
       if ((g = gsym_find(s.name)) < 0)
         damaged(name);
-      e = &gsyms[g];
-      if (e->def_obj >= 0)
-        v = e->off + (data ? obj_data[e->def_obj] : obj_code[e->def_obj]);
-      else if (e->import_idx >= 0)
-        v = -2 - e->import_idx;
+      if (g_def[g] != NO_OBJ)
+        v = g_off[g] + (data ? obj_data[g_def[g]] : obj_code[g_def[g]]);
+      else if (g_flags[g] & G_IMPORT)
+        v = -2 - g_off[g];
     }
     if (data)
       dmap[i - nfsyms] = v;
@@ -773,13 +798,12 @@ static void copy_code(int k)
  * the module" flags. Init must be the last bytecode. */
 static int init_code(int init_off)
 {
-  Gsym *m = &gsyms[main_sym];
-  int n = 0, v = subseg + obj_code[m->def_obj] + m->off;
+  int n = 0, v = subseg + obj_code[g_def[main_sym]] + g_off[main_sym];
   keep_reloc(REL_FUNC, subseg + init_off + 1, -1, -1);
   fbuf[n++] = OP_CALL;
   fbuf[n++] = (unsigned char)v;
   fbuf[n++] = (unsigned char)(v >> 8);
-  if (m->returns)
+  if (g_flags[main_sym] & G_RETURNS)
     fbuf[n++] = OP_DROP;
   fbuf[n++] = OP_CN;
   fbuf[n++] = OP_RET;
@@ -790,7 +814,7 @@ static int init_code(int init_off)
  * no main. */
 static int init_size(void)
 {
-  return main_sym < 0 ? 0 : 6 - !gsyms[main_sym].returns;
+  return main_sym < 0 ? 0 : 6 - !(g_flags[main_sym] & G_RETURNS);
 }
 
 /* Run the final pass: link the n objects whose output names (as given
@@ -806,6 +830,8 @@ void link_module(int n, const char **bases, const char *path)
   if (n > MAX_OBJS)
     fatal(223 /* "too many objects to link" */, NULL);
   nobjs = n;
+  for (i = 0; i < MAX_GSYMS; i++)
+    g_name[i] = -1;
   for (k = 0; k < n; k++) {
     obj_name[k] = bases[k];
     read_summary(k);
@@ -875,15 +901,19 @@ void link_module(int n, const char **bases, const char *path)
   }
   bputc(&out, 0);
 
-  /* ESD: imports, in import order. */
-  for (i = 0; i < ngsyms; i++)
-    if (gsyms[i].import_idx >= 0) {
-      out_dci(gnames + gsyms[i].name);
+  /* ESD: imports, in import order (slot order). */
+  for (i = 0; i < MAX_GSYMS; i++)
+    if (g_name[i] >= 0 && (g_flags[i] & G_IMPORT)) {
+      out_dci(gnames + g_name[i]);
       bputc(&out, 0x10);
-      bputw(&out, gsyms[i].import_idx);
+      bputw(&out, g_off[i]);
     }
   bputc(&out, 0);
 
   if (bclose(&out) != 0)
     fatal(193 /* "error writing output file" */, path);
+  /* How full the shared-name table is, to see a limit coming. */
+  if (opt_list)
+    printf("; shared names: %d of %d slots, %d of %d name bytes\n",
+           ngsyms, MAX_GSYMS, gnames_len, MAX_GNAMES);
 }

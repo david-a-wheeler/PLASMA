@@ -318,6 +318,48 @@ for dir in tests/link/*/; do
         rm -f "$obj.obj" "$obj.syms"
     done
 done
+# The shared-name table full (approach.md issue 11, "Fitting the
+# linker's tables"): 509 names fill all 509 slots and link, and b's use
+# of a's g0 is found in the full table; one more name stops the link.
+# The objects are generated, mostly unused declarations, which are
+# shared names too: full_a defines g0 and declares g1..g254, full_b
+# declares g255..g507 and defines use (which calls g0), and full_c
+# declares g255..g509, one too many.
+gen_decls() {
+    i=$2
+    while [ "$i" -le "$3" ]; do
+        echo "void g$i(void);"
+        i=$((i + 1))
+    done >"$1"
+}
+gen_decls "$OUT/link/full_a.c" 1 254
+echo 'void g0(void) {}' >>"$OUT/link/full_a.c"
+gen_decls "$OUT/link/full_b.c" 255 507
+echo 'void g0(void); void use(void) { g0(); }' >>"$OUT/link/full_b.c"
+gen_decls "$OUT/link/full_c.c" 255 509
+if ./cccomp -o "$OUT/link/full_a" "$OUT/link/full_a.c" \
+   && ./cccomp -o "$OUT/link/full_b" "$OUT/link/full_b.c" \
+   && ./ccrel -l -o "$OUT/link/full" "$OUT/link/full_a" "$OUT/link/full_b" \
+      >"$OUT/link/full.lst" 2>"$OUT/link/full.err" \
+   && grep -qF "; shared names: 509 of 509 slots" "$OUT/link/full.lst"; then
+    pass=$((pass + 1))
+else
+    echo "FAIL ccrel: 509 shared names don't fill the table and link"
+    sed 's/^/    /' "$OUT/link/full.err"
+    fail=$((fail + 1))
+fi
+if ./cccomp -o "$OUT/link/full_c" "$OUT/link/full_c.c" \
+   && ! ./ccrel -o "$OUT/link/full_over" "$OUT/link/full_a" \
+        "$OUT/link/full_c" 2>"$OUT/link/full_over.err" \
+   && grep -qF "too many names shared between objects" \
+        "$OUT/link/full_over.err"; then
+    pass=$((pass + 1))
+else
+    echo "FAIL ccrel: 510 shared names, wanted 'too many names', got:"
+    sed 's/^/    /' "$OUT/link/full_over.err"
+    fail=$((fail + 1))
+fi
+rm -f "$OUT"/link/full_[abc].obj "$OUT"/link/full_[abc].syms
 # Linking several objects needs a module name.
 if ./ccrel "$OUT/a" "$OUT/b" 2>"$OUT/link/noname.err"; then
     echo "FAIL ccrel: linked several objects without -o"

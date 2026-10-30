@@ -423,9 +423,10 @@ file is used, and that the file's numbers ascend.
   - A string literal: 256 characters (`MAX_STR`).
   - The module: 2432 relocations (calls and address references) in
     the final pass (`MAX_RELOCS`).
-  - A link: 32 objects, and 512 names shared between them, with 6144
+  - A link: 32 objects, and 509 names shared between them, with 6144
     bytes of those names, each with a NUL (`MAX_OBJS`, `MAX_GSYMS`,
-    `MAX_GNAMES` in `src/link.c`). Each object must also fit the
+    `MAX_GNAMES` in `src/link.c`). `ccrel -l` ends its listing with
+    how much of the last two is used. Each object must also fit the
     one-file limits.
 * Only a few peephole optimizations so far (see `src/peep.c`): removal
   of unreachable code, plain stores for assignments whose value is

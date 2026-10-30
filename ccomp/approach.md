@@ -961,7 +961,8 @@ while building it, open for review:
   declaration; 172 for a function, a global, and another object's
   `static`; 173. Also `ccrel` without `-o` for two objects.
 
-**Fitting the linker's tables (discussed 2026-10-30; not built yet).**
+**Fitting the linker's tables (discussed 2026-10-30; items 2 and 3
+built, see "The shared-name table is done" below).**
 At 512 shared names, step 3's tables come to about 31K with a 16-bit
 `int`, not counting the relocations (19K, which B4 removes): `lsyms[]`
 11.4K (each function's 32-byte name), `gsyms[]` 10K (20 bytes an
@@ -1087,6 +1088,43 @@ Apple II, and 32 objects and 512 names are too few anyway. Options:
 
 The limits themselves (names, name bytes) are to be set once B4
 measures what memory is free.
+
+**The shared-name table is done** (items 2 and 3, 2026-10-30; 258
+tests). Choices made while building it, open for review:
+- `MAX_GSYMS` is 509, the prime below the old 512. The table takes
+  5.6K (11 bytes a slot), down from 10K.
+- The type hash keeps its own array; a function's parameter count and
+  a global's size share `g_count[]` (255 or 0 if unknown, by kind).
+  The data and returns bits and a new "imported" bit join the old
+  flags in `g_flags[]`, and an import's ESD index is kept in
+  `g_off[]`.
+- Object numbers are `unsigned char`, with 255 (`NO_OBJ`) for none, so
+  `MAX_OBJS` can go up to 254. A new entry's description object is
+  `NO_OBJ` until `add_global()` fills it in. (ccish doesn't accept
+  `unsigned` yet; `link.c` already used it for `fbuf[]`.)
+- `add_global()` calls `gsym_find()` first and `gsym_add()` only for a
+  name not there, so a table that is exactly full still finds the
+  names in it; `gsym_add()` checks the count (and the name bytes)
+  before probing, and then needs no `strcmp`.
+- The hash masks with `0x7FFF` at every character, not just at the
+  end: on a 32-bit host, `h + h` over 31 characters would overflow
+  (undefined behavior). The slots are the same, since higher bits never
+  reach lower ones; it costs about 2 more VM ops a character.
+- The listing ends `; shared names: N of 509 slots, B of 6144 name
+  bytes`, after the ESD is written, for single-file `ccish -l` too.
+- Every module's ESD now lists its imports in slot order; the
+  programs' output is unchanged.
+- Tests: `tests/link/probe` (names chosen to collide at slot 508, the
+  last, so that they wrap to slots 0 and 1, and names pushed past
+  them; a new `MAX_GSYMS` needs new names), the usage line in `basic`
+  and `probe`, and two generated links in `run.sh`: 509 names filling
+  every slot (a name then found in the full table), and 510 names
+  (222).
+- **Found while testing (step 3's bug, not fixed here):** the whole
+  module may define at most `MAX_FUNCS` (272) functions, since
+  `func_at[]`, the RLD's list of function entries, has that size; the
+  273rd is reported as a damaged stream file. ccish itself has about
+  385 functions.
 
 ### 12. Standard library
 

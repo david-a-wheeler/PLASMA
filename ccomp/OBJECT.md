@@ -194,7 +194,9 @@ module. It has at most one input file open at a time, and the module.
 
 1. Read every object's `NAME.syms`, laying out each object's data,
    strings and code after the objects before it. Put each symbol
-   without flag 8 into one table of shared names, where a second
+   without flag 8 into one table of shared names (a hash table with
+   linear probing, so imports are numbered in its slot order, not the
+   order met; approach.md issue 11), where a second
    definition is "multiple definition of" (220), and a declaration
    that disagrees with the most complete one kept so far is
    "conflicting types for" (221): a function's parameter count (unless
@@ -217,7 +219,9 @@ module. It has at most one input file open at a time, and the module.
    `object NAME:` line). Then add the init function, which calls
    `main`.
 4. Write the RLD (function entries in code order, then the kept
-   relocations, those in the data first) and the ESD (imports).
+   relocations, those in the data first) and the ESD (imports). With
+   `-l`, end the listing with how full the shared-name table is:
+   `; shared names: N of M slots, B of C name bytes`.
 
 A kind 1 or 3 target is offset by where its object's data or strings
 start; a kind 4 relocation becomes a kind 1 relocation to the symbol's
