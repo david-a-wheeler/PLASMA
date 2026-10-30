@@ -1,6 +1,6 @@
 /*
  * Diagnostics and other support shared by ccish's programs: ccish
- * (both passes), cccomp (the compile pass) and cclink (the final pass;
+ * (both passes), cccomp (the compile pass) and ccrel (the final pass;
  * approach.md, "B3"). Each program supplies clean_up(), which closes
  * and removes its partial output after an error.
  */

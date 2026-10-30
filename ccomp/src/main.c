@@ -2,7 +2,7 @@
  * ccish: compile one .c file into a PLASMA module, running both passes:
  * the compile pass writes the stream files, and the final pass
  * (link.c) turns them into the module. The passes are also programs of
- * their own, cccomp and cclink, so that on the Apple II each can have
+ * their own, cccomp and ccrel, so that on the Apple II each can have
  * nearly all of memory (approach.md, "B3").
  *
  * Usage: ccish [-l] [-i] [-k] [-o output] input.c

@@ -1,9 +1,9 @@
 /*
- * cclink: ccish's final pass as a program of its own (approach.md,
+ * ccrel: ccish's final pass as a program of its own (approach.md,
  * "B3"). It reads the stream files that cccomp wrote, writes the
  * module, and then removes the stream files.
  *
- * Usage: cclink [-l] [-k] [-o module] output
+ * Usage: ccrel [-l] [-k] [-o module] output
  *   output  the stream files' output name, as given to cccomp
  *   -l      print a listing of the module's bytecode
  *   -k      keep the stream files
@@ -31,7 +31,7 @@ void clean_up(void)
 /* Print the command-line syntax and exit. */
 static void usage(void)
 {
-    fprintf(stderr, "usage: cclink [-l] [-k] [-o module] output\n");
+    fprintf(stderr, "usage: ccrel [-l] [-k] [-o module] output\n");
     exit(2);
 }
 

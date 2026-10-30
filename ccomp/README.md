@@ -67,7 +67,7 @@ nearly all of memory (approach.md, "B3"):
 
 ```
 cccomp [-i] [-k] [-o output] input.c     the compile pass: writes the stream files
-cclink [-l] [-k] [-o module] output      the final pass: writes the module, and
+ccrel [-l] [-k] [-o module] output       the final pass: writes the module, and
                                           removes the stream files
 ```
 
@@ -306,7 +306,7 @@ function returns exactly one.
 | Path | Contents |
 |------|----------|
 | `src/main.c` | `ccish`: the command line, then both passes |
-| `src/cccomp.c`, `src/cclink.c` | The compile pass and the final pass as programs of their own |
+| `src/cccomp.c`, `src/ccrel.c` | The compile pass and the final pass as programs of their own |
 | `src/diag.c` | Error messages and stream files, shared by all three programs |
 | `ccish.msg` | The text of every error and warning, by number (see "Messages") |
 | `src/bio.c` | File I/O through 512-byte block buffers |

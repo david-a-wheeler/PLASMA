@@ -1,7 +1,7 @@
 # Build the ccish compiler and run its tests.
 #
 #   make        build ccish, and its two passes as programs of their own:
-#               cccomp (the compile pass) and cclink (the final pass)
+#               cccomp (the compile pass) and ccrel (the final pass)
 #   make test   build them and plvm, then run the tests
 
 CC ?= cc
@@ -13,7 +13,7 @@ COMPILE = src/lex.c src/name.c src/type.c src/parse.c src/lower.c \
 LINK    = src/link.c
 PLVM = ../src/plvm
 
-all: ccish cccomp cclink
+all: ccish cccomp ccrel
 
 ccish: src/main.c $(COMMON) $(COMPILE) $(LINK) src/ccish.h
 	$(CC) $(CFLAGS) -o $@ src/main.c $(COMMON) $(COMPILE) $(LINK)
@@ -21,8 +21,8 @@ ccish: src/main.c $(COMMON) $(COMPILE) $(LINK) src/ccish.h
 cccomp: src/cccomp.c $(COMMON) $(COMPILE) src/ccish.h
 	$(CC) $(CFLAGS) -o $@ src/cccomp.c $(COMMON) $(COMPILE)
 
-cclink: src/cclink.c $(COMMON) $(LINK) src/ccish.h
-	$(CC) $(CFLAGS) -o $@ src/cclink.c $(COMMON) $(LINK)
+ccrel: src/ccrel.c $(COMMON) $(LINK) src/ccish.h
+	$(CC) $(CFLAGS) -o $@ src/ccrel.c $(COMMON) $(LINK)
 
 $(PLVM):
 	$(MAKE) -C ../src plvm
@@ -31,7 +31,7 @@ test: all $(PLVM)
 	./tests/run.sh
 
 clean:
-	rm -f ccish cccomp cclink
+	rm -f ccish cccomp ccrel
 	rm -rf tests/out
 
 .PHONY: all test clean

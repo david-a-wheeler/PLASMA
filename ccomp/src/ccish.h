@@ -59,7 +59,7 @@
 
 /* ---------- Diagnostics and program support (diag.c) ----------
  * Shared by the programs ccish (both passes), cccomp (the compile
- * pass) and cclink (the final pass); see approach.md, "B3". */
+ * pass) and ccrel (the final pass); see approach.md, "B3". */
 
 extern const char *src_name;
 extern int src_line;

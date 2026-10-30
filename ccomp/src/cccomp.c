@@ -1,8 +1,8 @@
 /*
  * cccomp: ccish's compile pass as a program of its own (approach.md,
  * "B3"). It compiles one .c file into the stream files, and leaves
- * them for cclink, the final pass, to turn into a module. On the Apple
- * II, a small driver runs cccomp and then cclink, and each is freed
+ * them for ccrel, the final pass, to turn into a module. On the Apple
+ * II, a small driver runs cccomp and then ccrel, and each is freed
  * when it ends, so each has nearly all of memory.
  *
  * Usage: cccomp [-i] [-k] [-o output] input.c

@@ -142,6 +142,47 @@ minimal preprocessor (3B) is then built into the lexer. A separate
 preprocessor program remains an option only for large programs, if
 memory forces it. See "Milestones" below (M8).
 
+**Revised (decided in discussion, 2026-10-29): the preprocessor will be
+a separate program,** because memory now forces it: even without one,
+the compiler had to be split into a compile pass and a final pass (18.6
+B3). On the Apple II a build runs three programs, one at a time, each
+loaded, run and freed by `modexec` from the `CCISH` driver:
+1. **the preprocessor** (tentatively `ccpp`): `FOO.C` to `FOO.I`;
+2. **the compile pass**, `cccomp`: `FOO.I` to the stream files;
+3. **the final pass**, `ccrel`: the stream files to the REL module.
+
+Why separate:
+- **Memory.** The macro table, the `#if` stack and include handling
+  never compete with the compile pass's tables (issue 2, option B), and
+  the compile pass loses the preprocessor's code.
+- **Open files.** PLASMA's Apple II file library allows only 4 open
+  files (decision 18). Each nested `#include` holds a file open; in a
+  separate program, the source, its includes and the one output file
+  have all 4 to themselves, while the compile pass needs one input.
+- **A simpler lexer** in the compile pass, and the same shape as on the
+  host today, where `gcc -E` stands in for the preprocessor.
+
+**The `.i` file is made small, to save disk space** (18.6 E3, F): the
+preprocessor strips comments and unneeded spaces (indentation, runs of
+blanks, blank lines), keeping only what separates tokens, and writes a
+`#line` directive wherever its output would otherwise drift from the
+source's line numbers (after a dropped run of lines, and on entering
+or leaving an included file). So the compile pass reports errors at
+the right file and line of the original source, which answers F2's
+objection, and the `.i` file is about the "Neither" column of E3's
+table (parse.c: 145K source, about 62K, plus the stripped headers).
+Costs and limits, open for review:
+- An extra pass over the source, and an extra temporary file on disk
+  while the preprocessor runs (the source and the `.i` at once); then
+  the compile pass needs only the `.i` and the streams. parse.c's
+  source alone still doesn't fit a floppy, so F remains open for the
+  source itself.
+- The compile pass must understand `#line` (and, on the host while
+  `gcc -E` stands in, gcc's `# N "file"` markers).
+- With 4 open files, includes can nest at most 2 deep (source, include,
+  nested include, `.i`), unless the preprocessor closes and reopens a
+  file to free its slot.
+
 ### 3. Preprocessor
 
 The approach doesn't mention it, but existing C programs (and the
@@ -165,7 +206,8 @@ depend on `#ifdef`.
 Suggest A, then B, then C, as a separate program (issue 2). Write the
 compiler's own source so it needs only B.
 
-Answer: B.
+Answer: B. Revised 2026-10-29: as a separate program that writes a
+compact `.i` file (see issue 2, "Revised").
 
 ### 4. Streaming code generation for a stack machine
 
@@ -1498,6 +1540,10 @@ is the main problem. Splitting it is one way, but not the only one:
   But what the Apple compiles is no longer the source people read, and
   error line numbers then refer to the copy, unless the tool keeps
   lines (blank comment lines and all, which keeps less of the saving).
+  Partly adopted (2026-10-29): the separate preprocessor's `.i` file
+  is such a stripped copy, made on every build, with `#line` keeping
+  the line numbers right (issue 2, "Revised"). It shrinks what the
+  compile pass reads, but not the source on disk.
 - **F3. Tabs for indentation:** 8 spaces to a tab saves about 8% of
   parse.c (145K to 133K). Simple, and the source is unchanged
   otherwise, but alone it's not enough, and it changes the project's
@@ -1726,10 +1772,13 @@ issue. In summary:
 
 1. **Self-host on a 64K Apple II**, as one program (no multi-pass).
    Fit it in through careful design and by dropping hard features
-   (issues 1, 2).
-2. **Preprocessor:** none at first; then the minimal one (3B), built
-   in. A separate preprocessor program only if large programs need it
-   (issues 2, 3).
+   (issues 1, 2). Since revised: memory forced separate programs run
+   one at a time (18.6 B3, and decision 2).
+2. **Preprocessor:** none at first; then the minimal one (3B), as a
+   separate program that writes a compact `.i` file (no comments, few
+   spaces, `#line` to keep line numbers), because of memory limits
+   (revised 2026-10-29; issues 2, 3). So a build is three programs:
+   preprocessor, `cccomp`, `ccrel`.
 3. **Architecture:** the four-stage op-stream pipeline (4A), with
    stages as push-style functions in one program.
 4. **No SWAP opcode.** Use spills first, then add block exchange as an
@@ -1952,7 +2001,7 @@ command, through a driver) is easy later.
   compile pass failed.
 - **The driver:** about 30 lines of PLASMA: read its arguments, write
   `CCCOMP FOO.C` into the command line buffer and `modexec` it, stop
-  on failure, then write `CCLINK FOO` and `modexec` that. The driver is
+  on failure, then write `CCREL FOO` and `modexec` that. The driver is
   named `CCISH`, so that the command is the same as on the host. It is PLASMA
   because ccish can't call through CMDSYS's table yet (function
   pointers, M11); it can become C later.
@@ -2068,8 +2117,12 @@ the Apple II, although at most one error is printed per run.
 **B3a is done** (2026-10-29). Settled while building it:
 - Three programs from the same sources: `ccish` (both passes, as before),
   `cccomp` (the compile pass: `cccomp [-i] [-k] [-o output] input.c`)
-  and `cclink` (the final pass: `cclink [-l] [-k] [-o module] output`).
-  On the Apple II, the passes are the modules `CCCOMP` and `CCLINK`.
+  and `ccrel` (the final pass: `ccrel [-l] [-k] [-o module] output`).
+  On the Apple II, the passes are the modules `CCCOMP` and `CCREL`.
+  (The final pass was first named `cclink`; renamed `ccrel` on
+  2026-10-29, decided in discussion, because it makes one REL module
+  and links nothing across modules; PLASMA's loader does that. The
+  name "link" stays free for a real linker, if one is ever needed.)
 - `diag.c` holds what all three share: diagnostics, stream naming and
   removal, and the default output name. Each program defines
   `clean_up()`, which closes its open files and removes its partial
@@ -2079,9 +2132,9 @@ the Apple II, although at most one error is printed per run.
   static, so that an error can close them, and so that their 512-byte
   buffers take no frame space: two of the self-compile workarounds of
   18.5 are no longer needed.
-- `make test` also checks that `cccomp` then `cclink` write exactly
+- `make test` also checks that `cccomp` then `ccrel` write exactly
   `ccish`'s module for every run test, that `cccomp` leaves the stream
-  files and `cclink` removes them, and that a compile error leaves no
+  files and `ccrel` removes them, and that a compile error leaves no
   stream files.
 
 **Table sizes (2026-10-29; decided in discussion: "slightly exceed
@@ -3267,7 +3320,8 @@ a proposal.
    block exchange by rotation in place (4(d2)).
 5. **M6:** `struct` (done).
 6. **M7:** `switch`, with `SEL` tables (see "M7 design").
-7. **M8:** the built-in minimal preprocessor (3B).
+7. **M8:** the minimal preprocessor (3B), as a separate program
+   writing a compact `.i` file (issue 2, "Revised").
 8. **M9:** a runtime library in C-ish: file I/O over FILEIO, memory
    and strings.
 9. **M10:** optimization: the `for` side buffer,
