@@ -17,6 +17,8 @@
 #include <string.h>
 #include "ccish.h"
 
+#ifdef CCISH_LISTING
+/* Each IR op's name, for -i. */
 static const char *const ir_names[] = {
   "FUNC", "ENDFUNC", "CONST", "DATAADDR", "STRADDR", "LOCAL", "SETLOCAL",
   "LOCALB", "SETLOCALB", "LOCALADDR", "GLOBAL", "SETGLOBAL", "GLOBALB",
@@ -28,6 +30,7 @@ static const char *const ir_names[] = {
   "LABEL", "JUMP", "BRFALSE", "BRTRUE", "JOIN",
   "SEL", "CASES", "CASEVAL", "CASETO"
 };
+#endif
 
 /* PLASMA's comparison op for each IR comparison, or -1. */
 static int compare_op(int op)
@@ -81,6 +84,7 @@ static int simple_op(int op)
   return -1;
 }
 
+#ifdef CCISH_LISTING
 /* Print one IR op, for -i. */
 static void dump_ir(int op, int a, int f)
 {
@@ -110,6 +114,7 @@ static void dump_ir(int op, int a, int f)
   }
   printf("\n");
 }
+#endif
 
 /* The fixup for a global op's address: a data offset (f is -1), or
  * extern global f plus the addend in m->a, which m->fn then names. */
@@ -171,8 +176,10 @@ static void lower(int op, int a, int f)
 {
   Mop m;
 
+#ifdef CCISH_LISTING
   if (opt_ir)
     dump_ir(op, a, f);
+#endif
   if (simple_op(op) >= 0) {
     put_simple(simple_op(op));
     return;

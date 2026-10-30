@@ -17,7 +17,9 @@
 # Afterward, no stream files may be left over, and -k must keep them.
 # The passes as programs of their own, cccomp then ccrel, must write
 # the same module as ccish for every run test. The message file must
-# agree with the sources (tests/check_msgs.sh).
+# agree with the sources (tests/check_msgs.sh). The small build
+# (cccomp-small, ccrel-small) must write the same objects and modules
+# as the full build, for every run test and link test.
 
 set -u
 CCISH=./ccish
@@ -184,6 +186,30 @@ if [ $split_bad -eq 0 ]; then
 else
     fail=$((fail + 1))
 fi
+# The small build (approach.md decision 21) must write the same objects
+# and modules as the full build, for every run test.
+small_bad=0
+for src in tests/run/*.c; do
+    name=$(basename "$src" .c)
+    mod=$(echo "$name" | tr 'A-Z' 'a-z')
+    if ! ./cccomp -o "$OUT/full_$mod" "$src" 2>/dev/null \
+       || ! ./cccomp-small -o "$OUT/small_$mod" "$src" 2>/dev/null \
+       || ! cmp -s "$OUT/full_$mod.obj" "$OUT/small_$mod.obj" \
+       || ! cmp -s "$OUT/full_$mod.syms" "$OUT/small_$mod.syms" \
+       || ! ./ccrel-small "$OUT/small_$mod" 2>/dev/null \
+       || ! cmp -s "$OUT/small_$mod" "$OUT/$mod"; then
+        echo "FAIL $src: the small build doesn't write the full build's" \
+             "object and module"
+        small_bad=1
+    fi
+    rm -f "$OUT/full_$mod.obj" "$OUT/full_$mod.syms" \
+          "$OUT/small_$mod.obj" "$OUT/small_$mod.syms"
+done
+if [ $small_bad -eq 0 ]; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+fi
 # cccomp leaves the stream file and symbol summary for ccrel, and ccrel
 # keeps them, as a linker keeps its objects.
 if ./cccomp -o "$OUT/split_streams" tests/run/hello.c \
@@ -342,6 +368,45 @@ for dir in tests/link/*/; do
         rm -f "$obj.obj" "$obj.syms"
     done
 done
+# The small build links the same: for each link test that links, the
+# small cccomp and ccrel must write the full build's objects and module.
+small_bad=0
+for dir in tests/link/*/; do
+    [ -f "$dir/expect-error" ] && continue
+    name=$(basename "$dir")
+    full="" small=""
+    for src in "$dir"*.c; do
+        b=$(basename "$src" .c)
+        if ! ./cccomp -o "$OUT/link/f_${name}_$b" "$src" 2>/dev/null \
+           || ! ./cccomp-small -o "$OUT/link/s_${name}_$b" "$src" \
+                2>/dev/null \
+           || ! cmp -s "$OUT/link/f_${name}_$b.obj" \
+                "$OUT/link/s_${name}_$b.obj" \
+           || ! cmp -s "$OUT/link/f_${name}_$b.syms" \
+                "$OUT/link/s_${name}_$b.syms"; then
+            echo "FAIL $src: the small build doesn't write the full" \
+                 "build's object"
+            small_bad=1
+        fi
+        full="$full $OUT/link/f_${name}_$b"
+        small="$small $OUT/link/s_${name}_$b"
+    done
+    if ! ./ccrel -o "$OUT/link/f_$name" $full 2>/dev/null \
+       || ! ./ccrel-small -o "$OUT/link/s_$name" $small 2>/dev/null \
+       || ! cmp -s "$OUT/link/f_$name" "$OUT/link/s_$name"; then
+        echo "FAIL $dir: the small build doesn't link the full build's" \
+             "module"
+        small_bad=1
+    fi
+    for obj in $full $small; do
+        rm -f "$obj.obj" "$obj.syms"
+    done
+done
+if [ $small_bad -eq 0 ]; then
+    pass=$((pass + 1))
+else
+    fail=$((fail + 1))
+fi
 # The shared-name table full (approach.md issue 11, "Fitting the
 # linker's tables"): 149 names fill all 149 slots and link, and b's use
 # of a's g0 is found in the full table; one more name stops the link.

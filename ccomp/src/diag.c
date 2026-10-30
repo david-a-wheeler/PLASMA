@@ -11,8 +11,10 @@
 
 const char *src_name = "";
 int src_line;
+#ifdef CCISH_LISTING
 int opt_list;
 int opt_ir;
+#endif
 int opt_keep;
 
 /* Return base followed by suffix, in a static buffer that the next

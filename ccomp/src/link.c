@@ -100,6 +100,7 @@ static int nimports, ndefined;
 static int fmap[MAX_FUNCS];
 static int dmap[MAX_VARS];
 
+#ifdef CCISH_LISTING
 /* For the listing (-l), each function symbol's name as an offset in
  * gnames[], or -1 if it has none there. A shared name is already in
  * the table; a static function's name is added after the shared names,
@@ -108,12 +109,14 @@ static int dmap[MAX_VARS];
  * the linker's local names"). */
 static int fname[MAX_FUNCS];
 static int lnames_len;
+#endif
 
 /* Load addresses: of the module, of the data segment, the string pool
  * after it, and the code segment after that. */
 #define MODULE_BASE 0x1000
 static int data_base, strs_base, subseg;
 
+#ifdef CCISH_LISTING
 /* The relocations of the function being listed (-l), as parallel
  * arrays: each word's load address; its kind, REL_DATA, REL_STR or
  * REL_FUNC (a REL_DSYM is kept as the REL_DATA it resolves to); and
@@ -124,6 +127,7 @@ static int lr_at[MAX_FUNC_RELOCS];
 static char lr_kind[MAX_FUNC_RELOCS];
 static int lr_target[MAX_FUNC_RELOCS];
 static int nlr;
+#endif
 
 static unsigned char fbuf[MAX_FUNC_CODE];
 
@@ -389,6 +393,7 @@ static void resolve(void)
   }
 }
 
+#ifdef CCISH_LISTING
 /* For the listing: where function symbol s of the current object
  * (summary file name) has its name in gnames[], adding a static one
  * after the shared names if it fits; or -1. */
@@ -408,6 +413,7 @@ static int list_name(Lsym *s, const char *name)
   lnames_len += n;
   return at;
 }
+#endif
 
 /* Steps 2 and 3: read object k's symbol summary again, into fmap[] and
  * dmap[], and fname[] if listing. */
@@ -417,7 +423,9 @@ static void map_object(int k)
   Lsym s;
   int i, g, v;
 
+#ifdef CCISH_LISTING
   lnames_len = gnames_len;
+#endif
   for (i = 0; i < nfsyms + ndsyms; i++) {
     int data = i >= nfsyms;
     read_sym(&s, data, name);
@@ -436,14 +444,17 @@ static void map_object(int k)
       dmap[i - nfsyms] = v;
     } else {
       fmap[i] = v;
+#ifdef CCISH_LISTING
       if (opt_list)
         fname[i] = list_name(&s, name);
+#endif
     }
   }
   close_syms(name);
 }
 
 /* ---------- Listing ---------- */
+#ifdef CCISH_LISTING
 
 /* Operand formats for the disassembler. */
 enum { F_NONE, F_BYTE, F_WORD, F_REL, F_ENTER, F_STR };
@@ -612,6 +623,20 @@ static void list_code(const char *label, int len, int start)
     pc += n;
   }
 }
+
+/* Keep a relocation of the word at load address at for the listing
+ * (lr_at[] and the rest). */
+static void keep_reloc(int kind, int at, int target)
+{
+  if (nlr < MAX_FUNC_RELOCS) {
+    lr_at[nlr] = at;
+    lr_kind[nlr] = (char)kind;
+    lr_target[nlr] = target;
+    nlr++;
+  }
+}
+#endif /* CCISH_LISTING */
+
 /* ---------- Steps 2-4: the module ---------- */
 
 /* Write a name in DCI form: uppercase, high bit set on every character
@@ -626,18 +651,6 @@ static void out_dci(const char *name)
     if (c >= 'a' && c <= 'z')
       c -= 'a' - 'A';
     bputc(&out, i < n - 1 ? c | 0x80 : c);
-  }
-}
-
-/* Keep a relocation of the word at load address at for the listing
- * (lr_at[] and the rest). */
-static void keep_reloc(int kind, int at, int target)
-{
-  if (nlr < MAX_FUNC_RELOCS) {
-    lr_at[nlr] = at;
-    lr_kind[nlr] = (char)kind;
-    lr_target[nlr] = target;
-    nlr++;
   }
 }
 
@@ -666,8 +679,13 @@ static int add_reloc(int kind, int at, int target, int add, int list)
   } else if (kind != REL_FUNC || target >= nfsyms || fmap[target] == -1) {
     bad_obj();
   }
+#ifdef CCISH_LISTING
   if (list)
     keep_reloc(kind, at, target);
+#else
+  (void)at;
+  (void)list;
+#endif
   if (kind == REL_DATA)
     return data_base + target;
   if (kind == REL_STR)
@@ -793,8 +811,10 @@ static void copy_code(int k)
   int at = 0, idx, len, n, i, c, start;
 
   map_object(k);
+#ifdef CCISH_LISTING
   if (opt_list && nobjs > 1)
     printf("object %s:\n", obj_name[k]);
+#endif
   open_obj(k);
   while (next_record(func_tags) != EOF) {
     idx = bgetw(&in);
@@ -808,7 +828,9 @@ static void copy_code(int k)
       fbuf[i] = (unsigned char)c;
     }
     start = obj_code[k] + at;
+#ifdef CCISH_LISTING
     nlr = 0;
+#endif
     if ((n = bgetw(&in)) > MAX_FUNC_RELOCS)
       bad_obj();
     for (i = 0; i < n; i++) {
@@ -821,8 +843,10 @@ static void copy_code(int k)
       fbuf[off] = (unsigned char)v;
       fbuf[off + 1] = (unsigned char)(v >> 8);
     }
+#ifdef CCISH_LISTING
     if (opt_list)
       list_code(func_label(idx), len, start);
+#endif
     bwrite(&out, fbuf, len);
     at += len;
   }
@@ -921,8 +945,12 @@ static void reloc_entries(int k)
 static int init_code(int init_off)
 {
   int n = 0, v = subseg + obj_code[g_def[main_sym]] + g_off[main_sym];
+#ifdef CCISH_LISTING
   nlr = 0;
   keep_reloc(REL_FUNC, subseg + init_off + 1, -1);
+#else
+  (void)init_off;
+#endif
   fbuf[n++] = OP_CALL;
   fbuf[n++] = (unsigned char)v;
   fbuf[n++] = (unsigned char)(v >> 8);
@@ -997,8 +1025,10 @@ void link_module(int n, const char **bases, const char *path)
     copy_code(k);
   if (main_sym >= 0) {
     int len = init_code(init_off);
+#ifdef CCISH_LISTING
     if (opt_list)
       list_code("(init)", len, init_off);
+#endif
     bwrite(&out, fbuf, len);
   }
 
@@ -1024,8 +1054,10 @@ void link_module(int n, const char **bases, const char *path)
 
   if (bclose(&out) != 0)
     fatal(193 /* "error writing output file" */, path);
+#ifdef CCISH_LISTING
   /* How full the shared-name table is, to see a limit coming. */
   if (opt_list)
     printf("; shared names: %d of %d slots, %d of %d name bytes\n",
            ngsyms, MAX_GSYMS, gnames_len, MAX_GNAMES);
+#endif
 }

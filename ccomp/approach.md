@@ -2054,6 +2054,84 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
   (`-i`). Possibly 15-25% of `parse.c` and much of the messages. But the
   self-hosted compiler then accepts some invalid programs, perhaps
   miscompiling them silently, and there are two builds to test.
+
+  **Two builds: the plan** (decided in discussion 2026-10-30; decision
+  21). More aggressive than the C1 sketch above:
+  - **Macros.** One switch, `CCISH_SMALL`, given on the command line
+    (`-DCCISH_SMALL`). `ccish.h` turns its absence into feature
+    macros, which the code tests: `CCISH_LISTING` (`-i`, `-l` and
+    everything only they use) and `CCISH_CHECKS` (diagnostics a valid
+    program never triggers). Each can be turned off alone, to measure
+    or debug it. The full build is the default.
+  - **The premise:** what the small build compiles has already been
+    checked by the full build, or by gcc. So it may silently accept
+    some invalid programs (a type error may compile into wrong code);
+    it must never mishandle a valid one.
+  - **Kept in the small build:** undefined identifiers, and undefined
+    functions and globals at link time (required); syntax errors (the
+    parser must stop); "not supported" constructs (else ccish would
+    quietly compile something different); table overflows and
+    function-size limits (the compiler's own memory safety); the
+    damaged-object checks that bound array indexes in `ccrel`; file
+    errors.
+  - **Dropped (`CCISH_CHECKS`):** type compatibility (pointer and
+    integer mismatches, incompatible pointers: `check_assign`,
+    `compatible`); `const` and qualifier enforcement and all warnings;
+    redeclaration consistency (conflicting prototypes, duplicate
+    definitions in a file); link-time type checking (`type_hash`, and
+    `ccrel`'s conflicting-types checks: a hash of 0 already means
+    "unknown"); lvalue and similar misuse checks, where the code
+    generator can't be hurt by them; internal-error checks.
+  - **Dropped (`CCISH_LISTING`):** `-i` (about 0.5K in cccomp) and
+    `-l` (about 3K in `ccrel`), and with them every `printf` and
+    `sprintf` use, so the small build needs no `printf` at all.
+  - **Same limits in both builds,** so the full build reports what
+    would overflow on the Apple II.
+  - **Tests:** every run test is compiled by both builds, and their
+    objects and modules must be byte-identical (the main guard against
+    an `#ifdef` that drops too much); error tests whose check the small
+    build drops are marked, and run only with the full build.
+    `make measure` measures the small build.
+  - **Preprocessor:** until ccpp (M8) exists, gcc's preprocessor makes
+    the small build (`measure.py` already uses it). ccpp must handle
+    `#define`, `#ifdef`, `#ifndef`, `#else`, `#endif`, and probably
+    simple function-like macros.
+  - **Style:** whole check functions go under `#ifdef`, with empty
+    stand-ins in the small build; `#ifdef` blocks at call sites only
+    where a check is inline.
+  - **Order:** (1) `CCISH_LISTING` with the two-build test harness; (2)
+    `CCISH_CHECKS`; each measured, each its own commit. (3) Then split
+    `parse.c` in two: its peaks set `MAX_FUNCS`, `MAX_POOL` and
+    `MAX_PARAM_TYPES`, so a split may let those limits (and cccomp's
+    tables) shrink, and it helps the floppy-space problem (E3).
+
+  **Step 1 (`CCISH_LISTING`) is done** (2026-10-30). Choices, open for
+  review:
+  - In the small build, `opt_list` and `opt_ir` are the constant 0
+    (`ccish.h`), so code that only passes them on (`add_reloc()`'s
+    `list`) needs no `#ifdef`; code that calls a listing function or
+    `printf` has one. Parameters only the listing uses are marked
+    `(void)` in the small build (no code).
+  - Gone from the small build: the IR dump (`dump_ir()`, `ir_names`)
+    and `-i`; the listing (`list_code()`, `list_table()`,
+    `reloc_note()`, `func_label()`, `list_name()`, `keep_reloc()`,
+    `opinfo`, `fname[]`, `lr_*[]`) and `-l`; and their usage text.
+  - The Makefile builds `cccomp-small` and `ccrel-small` for the host
+    (`make small`, part of `make test`). `run.sh` compiles every run
+    test and every link test that links with both builds, and wants
+    byte-identical objects, summaries and modules (checked to fail on a
+    one-byte difference). `make measure` now measures the small build
+    (`tools/measure.py -full` the full one).
+  - **Measured** (small vs full): cccomp 51,802 bytes vs 52,425 (623
+    less: code 180, data 104, strings 339); ccrel 13,627 vs 16,820
+    (3,193 less: code 896, data 1,711, strings 586), and its module file
+    16,509 vs 20,422. Both builds' figures leave out the `printf` calls'
+    arguments (`measure.py` makes them 0), so the real savings are a
+    little larger.
+  - **Not yet:** diagnostics still use `fprintf` (diag.c, usage) and
+    `sprintf` (four error details in parse.c). Removing them (`fputs`,
+    `strcat` and a small number-to-text helper, in both builds) is
+    next, so that the small build needs nothing of the `printf` family.
 - **C2. Smaller messages:** shorter text (11K to perhaps 5K), or error
   numbers with the text in a disk file read only on an error (to about
   1K), or numbers only, explained in the documentation.
@@ -2628,6 +2706,14 @@ issue. In summary:
     (data symbols, `static` kept local, a type hash); `ccrel` links any
     number of objects into one module, later also into one object, and
     later from archives.
+21. **Two builds from one source: full and small** (decided in
+    discussion, 2026-10-30; 18.6 C1, "Two builds: the plan"). The full
+    build (the default; Linux, the tests) keeps everything; the small
+    build (`-DCCISH_SMALL`, for the 64K Apple II) drops `-i`, `-l` and
+    the diagnostics a valid program never triggers. Both have the same
+    limits, and generate the same code for valid programs. The user:
+    "Loss of error-detection is sad, but never working on correct code
+    is worse."
 
 
 ## Milestones

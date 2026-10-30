@@ -33,7 +33,11 @@ void clean_up(void)
 /* Print the command-line syntax and exit. */
 static void usage(void)
 {
+#ifdef CCISH_LISTING
   fprintf(stderr, "usage: ccrel [-l] [-o module] output...\n");
+#else
+  fprintf(stderr, "usage: ccrel [-o module] output...\n");
+#endif
   exit(2);
 }
 
@@ -45,9 +49,12 @@ int main(int argc, char **argv)
 
   msg_init(argv[0]);
   for (i = 1; i < argc; i++) {
+#ifdef CCISH_LISTING
     if (!strcmp(argv[i], "-l"))
       opt_list = 1;
-    else if (!strcmp(argv[i], "-o") && i + 1 < argc)
+    else
+#endif
+    if (!strcmp(argv[i], "-o") && i + 1 < argc)
       modname = argv[++i];
     else if (argv[i][0] == '-' || n >= 256)
       usage();

@@ -26,6 +26,18 @@
 
 #include <stdio.h>
 
+/* ---------- Builds ----------
+ * The full build (the default) has everything. The small build, for
+ * the 64K Apple II, is made with -DCCISH_SMALL, and leaves out what a
+ * valid program doesn't need (approach.md decision 21 and 18.6 C1,
+ * "Two builds: the plan"). Code tests these feature macros, never
+ * CCISH_SMALL itself:
+ *   CCISH_LISTING  -i and -l, and what only they use
+ */
+#ifndef CCISH_SMALL
+#define CCISH_LISTING
+#endif
+
 /* ---------- Limits ----------
  * Sized just above what ccish's own source needs (approach.md, "Table
  * sizes"), since every byte counts on a 64K machine; the peak each
@@ -62,8 +74,13 @@
 
 extern const char *src_name;
 extern int src_line;
+#ifdef CCISH_LISTING
 extern int opt_list;        /* -l: print a listing of the generated code */
 extern int opt_ir;          /* -i: print the IR stream */
+#else
+#define opt_list 0          /* no listing in the small build */
+#define opt_ir 0
+#endif
 extern int opt_keep;        /* -k: keep the stream files */
 
 /* Diagnostics take a message number: its text is in the message file,

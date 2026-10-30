@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Measure ccish by compiling its own source with itself.
 
-Usage: tools/measure.py   (after `make`; writes tools/out/)
+Usage: tools/measure.py [-full]   (after `make`; writes tools/out/)
 
 Each file in src/ is preprocessed by gcc with the stand-in headers in
-tools/inc/, worked around where ccish still lacks something, and
-compiled with cccomp. Then each of the three programs (ccish, cccomp,
-ccrel) is linked with ccrel, with tools/libstub.c standing in for the
-C library. The report gives each file's code, data and string sizes
+tools/inc/, as the small build (-DCCISH_SMALL, approach.md decision
+21; or the full build, with -full), worked around where ccish still
+lacks something, and compiled with cccomp. Then each of the Apple II
+programs (cccomp, ccrel) is linked with ccrel, with tools/libstub.c
+standing in for the C library. The report gives each file's code, data and string sizes
 (from its .syms header) and each program's totals and link workload
 (from ccrel's listing). See approach.md 18.5 and 18.6 E2.
 
@@ -32,6 +33,7 @@ import sys
 CCOMP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(CCOMP, "tools")
 OUT = os.path.join(TOOLS, "out")
+FULL = "-full" in sys.argv[1:]      # measure the full build instead
 
 COMMON = ["diag", "bio"]
 COMPILE = ["lex", "name", "type", "parse", "lower", "peep", "emit"]
@@ -83,8 +85,9 @@ def flatten_braces(text):
 def prepare(name):
     """Preprocess and work around src/NAME.c; return the new file."""
     text = subprocess.run(
-        ["gcc", "-E", "-P", "-nostdinc", "-I", os.path.join(TOOLS, "inc"),
-         os.path.join(CCOMP, "src", name + ".c")],
+        ["gcc", "-E", "-P", "-nostdinc", "-I", os.path.join(TOOLS, "inc")]
+        + ([] if FULL else ["-DCCISH_SMALL"])
+        + [os.path.join(CCOMP, "src", name + ".c")],
         check=True, capture_output=True, text=True).stdout
     text = re.sub(r"\bunsigned (char|int)\b", r"\1", text)
     text = re.sub(r"\bunsigned\b", "int", text)
@@ -151,6 +154,7 @@ def summary(name):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
+    print("The %s build:" % ("full" if FULL else "small"))
     names = sorted({n for _, files in PROGRAMS for n in files})
     sizes, failed, big, over = {}, False, None, {}
 

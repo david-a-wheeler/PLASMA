@@ -38,7 +38,11 @@ void clean_up(void)
 /* Print the command-line syntax and exit. */
 static void usage(void)
 {
+#ifdef CCISH_LISTING
   fprintf(stderr, "usage: ccish [-l] [-i] [-k] [-o output] input.c\n");
+#else
+  fprintf(stderr, "usage: ccish [-k] [-o output] input.c\n");
+#endif
   exit(2);
 }
 
@@ -50,11 +54,14 @@ int main(int argc, char **argv)
 
   msg_init(argv[0]);
   for (i = 1; i < argc; i++) {
+#ifdef CCISH_LISTING
     if (!strcmp(argv[i], "-l"))
       opt_list = 1;
     else if (!strcmp(argv[i], "-i"))
       opt_ir = 1;
-    else if (!strcmp(argv[i], "-k"))
+    else
+#endif
+    if (!strcmp(argv[i], "-k"))
       opt_keep = 1;
     else if (!strcmp(argv[i], "-o") && i + 1 < argc)
       outname = argv[++i];
