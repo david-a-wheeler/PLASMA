@@ -122,6 +122,9 @@ def build_big():
             for limit, value in BIG_LIMITS.items():
                 text = re.sub(r"(#define %s\s+)\d+" % limit,
                               r"\g<1>%d" % value, text)
+        if name == "link.c":
+            # Room for every static name, so the listing names them all.
+            text = re.sub(r"(#define MAX_GNAMES\s+)\d+", r"\g<1>32000", text)
         with open(os.path.join(big, os.path.basename(name)), "w") as f:
             f.write(text)
     src = lambda names: [os.path.join(big, n + ".c") for n in names]
@@ -130,6 +133,237 @@ def build_big():
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccrel")]
                    + src(["ccrel"] + COMMON + ["link"]), check=True)
     return big
+
+
+FRAME_OPS = {"LLB", "LLW", "SLB", "SLW", "DLB", "DLW", "LLA", "ADDLB",
+             "ADDLW", "IDXLB", "IDXLW"}
+
+
+def parse_listing(text):
+    """The functions in a ccrel -l listing: name -> dict with frame
+    (bytes, 0 if no ENTER), params, calls (set of names), indirect
+    (ICAL count), frame_ops (accesses to the frame) and leaves."""
+    funcs, cur = {}, None
+    for line in text.splitlines():
+        if line.startswith("object ") or line.startswith(";"):
+            continue
+        m = re.match(r"^(\S[^:]*):$", line)
+        if m:
+            cur = funcs.setdefault(m.group(1), {
+                "frame": 0, "params": 0, "calls": set(), "indirect": 0,
+                "frame_ops": 0, "leaves": 0, "first": True})
+            continue
+        m = re.match(r"^  [0-9A-F]{4}  (?:[0-9A-F]{2} )+\s*(\S+)\s*(.*)",
+                     line)
+        if not m or cur is None:
+            continue
+        op, rest = m.group(1), m.group(2)
+        if cur["first"]:
+            cur["first"] = False
+            e = re.match(r"(\d+),(\d+)", rest)
+            if op == "ENTER" and e:
+                cur["frame"], cur["params"] = int(e.group(1)), int(e.group(2))
+        if op == "CALL":
+            c = re.search(r";\s*(.*)$", rest)
+            if c and not c.group(1).endswith("(import)"):
+                cur["calls"].add(c.group(1).strip())
+        elif op == "ICAL":
+            cur["indirect"] += 1
+        elif op == "LEAVE":
+            cur["leaves"] += 1
+        if op in FRAME_OPS:
+            cur["frame_ops"] += 1
+    return funcs
+
+
+def nest_counting():
+    """The parser functions that count a nesting level (call
+    enter_nest()), and MAX_NEST, read from the sources."""
+    names, cur = set(), None
+    with open(os.path.join(CCOMP, "src", "parse.c")) as f:
+        for line in f:
+            m = re.match(r"^[a-z][^;=]*?\b(\w+)\(", line)
+            if m and not line.rstrip().endswith(";"):
+                cur = m.group(1)
+            if "enter_nest();" in line and cur != "enter_nest":
+                names.add(cur)
+    with open(os.path.join(CCOMP, "src", "ccish.h")) as f:
+        max_nest = int(re.search(r"#define MAX_NEST\s+(\d+)",
+                                 f.read()).group(1))
+    return names, max_nest
+
+
+def sccs(nodes, edges):
+    """Tarjan's strongly connected components: a list of sets."""
+    index, low, stack, on, out = {}, {}, [], set(), []
+    for root in nodes:
+        if root in index:
+            continue
+        work = [(root, iter(sorted(edges.get(root, ()))))]
+        index[root] = low[root] = len(index)
+        stack.append(root)
+        on.add(root)
+        while work:
+            v, it = work[-1]
+            w = next((w for w in it if w in nodes), None)
+            if w is not None:
+                if w not in index:
+                    index[w] = low[w] = len(index)
+                    stack.append(w)
+                    on.add(w)
+                    work.append((w, iter(sorted(edges.get(w, ())))))
+                elif w in on:
+                    low[v] = min(low[v], index[w])
+                continue
+            work.pop()
+            if work:
+                low[work[-1][0]] = min(low[work[-1][0]], low[v])
+            if low[v] == index[v]:
+                comp = set()
+                while True:
+                    w = stack.pop()
+                    on.discard(w)
+                    comp.add(w)
+                    if w == v:
+                        break
+                out.append(comp)
+    return out
+
+
+def longest(nodes, edges, weight):
+    """Longest weighted path starting at each node of a DAG (edges kept
+    within nodes): node -> total weight."""
+    memo = {}
+
+    def go(v):
+        if v not in memo:
+            memo[v] = 0     # a cycle here would be a bug; stops loops
+            memo[v] = weight(v) + max(
+                [go(w) for w in edges.get(v, ()) if w in nodes] or [0])
+        return memo[v]
+    for v in nodes:
+        go(v)
+    return memo
+
+
+def stack_report(funcs):
+    """Print the worst-case frame stack and 6502 stack from (init), with
+    recursion bounded by MAX_NEST."""
+    edges = {f: {c for c in d["calls"] if c in funcs}
+             for f, d in funcs.items()}
+    nest, max_nest = nest_counting()
+    comps = sccs(set(funcs), edges)
+    comp_of = {v: i for i, c in enumerate(comps) for v in c}
+    metrics = {"frame": lambda v: funcs[v]["frame"], "calls": lambda v: 1}
+    bound, unbounded, groups = {}, [], []
+    for i, comp in enumerate(comps):
+        cyclic = len(comp) > 1 or any(v in edges[v] for v in comp)
+        if not cyclic:
+            v = next(iter(comp))
+            bound[i] = {k: f(v) for k, f in metrics.items()}
+            continue
+        # Each trip around a cycle that passes a nest-counting function
+        # uses up a nesting level. A cycle in the rest of the group has
+        # no such bound: it is reported, and collapsed into one node
+        # that counts as one trip, so the figures are lower bounds there.
+        rest = comp - nest
+        rcomps = sccs(rest, edges)
+        loops = [c for c in rcomps
+                 if len(c) > 1 or any(v in edges[v] for v in c)]
+        unbounded += loops
+        rof = {v: j for j, c in enumerate(rcomps) for v in c}
+        redges = {}
+        for v in rest:
+            for w in edges[v]:
+                if w in rest and rof[w] != rof[v]:
+                    redges.setdefault(rof[v], set()).add(rof[w])
+        b, trip = {}, {}
+        for k, f in metrics.items():
+            lp = longest(set(range(len(rcomps))), redges,
+                         lambda j, f=f: sum(f(v) for v in rcomps[j]))
+            trip[k] = max([f(n) + max([lp[rof[s]] for s in edges[n]
+                                       if s in rest] or [0])
+                           for n in comp & nest] or [0])
+            b[k] = max_nest * trip[k] + max(lp.values() or [0])
+        bound[i] = b
+        groups.append((comp, trip, bool(loops)))
+
+    cedges = {}
+    for v, ws in edges.items():
+        for w in ws:
+            if comp_of[w] != comp_of[v]:
+                cedges.setdefault(comp_of[v], set()).add(comp_of[w])
+    root = "(init)" if "(init)" in funcs else "main"
+    total = {}
+    for k in metrics:
+        t = longest(set(range(len(comps))), cedges,
+                    lambda c, k=k: bound[c][k])
+        total[k] = t[comp_of[root]]
+    print("  stack, worst case from %s (recursion that counts nesting"
+          " bounded by MAX_NEST, %d trips):" % (root, max_nest))
+    print("    frame stack %s%d bytes; 6502 stack %s%d calls x 4 = %d"
+          " bytes" % ("at least " if unbounded else "", total["frame"],
+                      "at least " if unbounded else "", total["calls"],
+                      4 * total["calls"]))
+    for comp, trip, has_loops in groups:
+        if not comp & nest:
+            continue
+        names = sorted(comp & nest)
+        print("    recursion through %s: one trip <= %d frame bytes, %d"
+              " calls%s" % (", ".join(names), trip["frame"], trip["calls"],
+                           " (more with the unbounded recursion below)"
+                           if has_loops else ""))
+    for loop in unbounded:
+        print("    unbounded recursion (no nest count; counted once"
+              " above): %s" % ", ".join(sorted(loop)))
+    big = sorted(funcs, key=lambda v: -funcs[v]["frame"])[:5]
+    print("    largest frames: " + ", ".join(
+        "%s %d" % (v, funcs[v]["frame"]) for v in big))
+    return comps, edges
+
+
+def static_report(funcs, comps, edges):
+    """Print what static locals would save: for leaf functions, and for
+    a compiled stack (every function that can't recurse), with today's
+    opcodes (LAW/SAW: 1 byte more an access) and with new 2-byte ones."""
+    recursive = {v for c in comps
+                 if len(c) > 1 or any(v in edges[v] for v in c) for v in c}
+    framed = {v for v, d in funcs.items() if d["frame"] > 0}
+
+    def saving(vs, new_ops):
+        # ENTER (3 bytes) goes; each LEAVE (2) becomes RET (1). Today's
+        # opcodes: each frame access 1 byte more, each parameter a SAW
+        # (3); new ones: one 2-byte op stores the parameters.
+        total = 0
+        for v in vs:
+            d = funcs[v]
+            s = 3 + d["leaves"]
+            if new_ops:
+                s -= 2 if d["params"] else 0
+            else:
+                s -= d["frame_ops"] + 3 * d["params"]
+            total += s
+        return total
+
+    leaf = {v for v in framed - recursive
+            if not funcs[v]["calls"] and not funcs[v]["indirect"]}
+    nonrec = {v for v in framed - recursive if not funcs[v]["indirect"]}
+    # A compiled stack overlays frames: its size is the heaviest chain of
+    # frames among functions that can't recurse.
+    region = longest(nonrec, edges, lambda v: funcs[v]["frame"])
+    print("  static locals (bytes saved; per call, about 45 cycles saved"
+          " with new opcodes):")
+    for label, vs in (("leaf functions", leaf),
+                      ("compiled stack (all non-recursive)", nonrec)):
+        print("    %s: %d of %d framed functions, %d frame accesses;"
+              " saves %d bytes with new opcodes, %d with LAW/SAW"
+              % (label, len(vs), len(framed),
+                 sum(funcs[v]["frame_ops"] for v in vs),
+                 saving(vs, True), saving(vs, False)))
+    print("    leaf region %d bytes (largest leaf frame); compiled stack"
+          " region %d bytes" % (max([funcs[v]["frame"] for v in leaf]
+                                    or [0]),
+                                max(region.values() or [0])))
 
 
 def module_rld(path):
@@ -221,6 +455,18 @@ def main():
         if raised:
             print("  (linked by a ccrel with raised limits, for %s)"
                   % ", ".join(raised))
+        # Link again with a ccrel that has room for every static name,
+        # for the call graph.
+        big = big or build_big()
+        named = os.path.join(OUT, prog + "-named")
+        ok, msg = run([os.path.join(big, "ccrel"), "-l", "-o", named]
+                      + objs)
+        if os.path.exists(named):
+            os.remove(named)
+        if ok:
+            funcs = parse_listing(msg)
+            comps, edges = stack_report(funcs)
+            static_report(funcs, comps, edges)
     return 1 if failed else 0
 
 

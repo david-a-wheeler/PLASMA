@@ -1950,6 +1950,52 @@ Findings:
   whose generated code calls it. The stand-in `string.h` declares them
   CMDSYS's way. M9's library must settle this.
 
+**Stack and static locals, from the listing (2026-10-30;
+`tools/measure.py`, small build).** The script relinks each program
+with a `ccrel` that has room for every static name, and reads each
+function's frame (`ENTER`), parameters, calls, frame accesses and
+`LEAVE`s from the listing. The functions that count nesting (call
+`enter_nest()`) are read from parse.c, and `MAX_NEST` from `ccish.h`.
+- **Two stacks on the Apple II VM** (`plvm02.s`): `ENTER` takes its
+  frame from PLASMA's frame stack (`IFP`); and every bytecode call holds
+  **4 bytes of the 6502's own 256-byte stack** until it returns (`CALL`
+  pushes the caller's IP, then `JSR`s; the interpreter entry pops only
+  the stub's own return address). So call depth, not frame size, is
+  the tight limit: about 50-60 levels at most, less what ProDOS and the
+  system use.
+- **cccomp's worst case** from `(init)`, each nest-counting cycle taken
+  32 times: at least 14,288 frame bytes and 472 calls (1,888 bytes of
+  6502 stack). A loose upper bound (the heaviest path each time), but
+  even the bounded part is too deep: one level of expression nesting
+  is about 4 calls, so `MAX_NEST`'s 32 levels allow about 128 calls,
+  512 bytes of 6502 stack. **The nesting limit the Apple II can afford
+  is set by the 6502 stack, and is far below 32.**
+- **Recursion with no nesting count** (no bound but the input): prefix
+  operators (`parse_unary`, as in `!!!!x`); statements (`parse_statement`,
+  `parse_if`, the loops, `parse_switch`: an `else if` chain nests as deep
+  as it is long; `loop_body()` counts loops but not `if`); `init_flat`,
+  `holds_const`; and recursion over types (`type_size`, `qualify`,
+  `type_hash`), bounded by the type table. The cycles through the
+  error path (`fatal`, `stop`, `clean_up`) and the stage pipeline
+  (`put`, `ir_put`, `lower`, `peep_put`, `emit_put`, ...) are in the call
+  graph but not real recursion.
+- **Next (proposed):** measure the real depth: build the host cccomp
+  with call tracing and compile ccish's own source, recording the
+  deepest call chain and its frames (the host runs the same code); then
+  set `MAX_NEST` (and count nesting in `parse_unary` and in statements)
+  from that, as the other limits were set.
+- **Static locals** (the idea in 18.6 C1, "Static locals for leaf
+  functions"): in cccomp, 85 of 317 framed functions are leaves (286
+  frame accesses; a 10-byte region would do); with new opcodes they
+  would save 262 bytes, with `LAW`/`SAW` they would cost 217. A
+  compiled stack covers 271 functions (2,442 accesses; a 382-byte
+  region): 844 bytes saved with new opcodes, 2,319 lost with
+  `LAW`/`SAW`. Plus about 45 cycles a call each, with new opcodes. So:
+  worth it for speed, modest for size (under 3% of cccomp's code), and
+  only with new opcodes. Static locals don't reduce the 6502 stack (the
+  4 bytes a call remain). In ccrel: 160 bytes saved (all 75 framed
+  functions), with new opcodes.
+
 **Then (2026-10-30, decided in discussion):** ccish's four limits were
 raised 10% above those peaks ("Table sizes", below), and ccrel's
 shared-name table cut to 10% above linking's use: `MAX_GSYMS` 509 to
