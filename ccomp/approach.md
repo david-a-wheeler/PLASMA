@@ -2138,6 +2138,48 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
     `printf` for the listing. `num_text()`'s buffer is static, and the
     diagnostics use it too, so a caller copies it before passing it as
     a detail. New test `tests/errors/case_duplicate_negative.c`.
+  - **Direction after measuring (discussed 2026-10-30):** the user
+    wants to *add* to cccomp (at least `unsigned`), and it is already
+    too big. Most of what it does, ccish's own source needs (structs,
+    initializers, `switch`, `enum`/`typedef`), so dropping features
+    would block self-hosting. **Agreed: move the back end (lower.c,
+    peep.c, emit.c: about 6.3K code and 3.6K data) into a program of
+    its own**, so the pipeline is ccpp, front end, back end, ccrel
+    (D3); the front end writes its IR stream to a file. Design to come,
+    after steps 2 and 3; measure the IR file's size for parse.c first
+    (disk). Also planned: per-stage headers, since every file pays
+    about 2.5K of name pool for `ccish.h`'s declarations.
+  - **Static locals for leaf functions (discussed 2026-10-30; an idea
+    for later, possibly with new VM opcodes):** leaf (or near-leaf)
+    functions that don't recurse keep their locals in a small fixed
+    region instead of a frame, so they need no `ENTER` and end in
+    `RET`: about 45 cycles and 4 bytes saved a call (`ENTER n,0` about
+    30 cycles and 3 bytes, `LEAVE` about 20 and 2, against `RET`'s 6
+    and 1).
+    - **With today's opcodes** (`LAW`/`SAW`/`DAW`): each access costs
+      more. In the Apple II VM (`plvm02.s`) `LLW` and `LAW` both load
+      indirect-indexed (`LDA (IFP),Y`, `LDA (TMP),Y`), but `LAW` first
+      copies its 2-byte operand to `TMP`: about 53 cycles against 40,
+      3 bytes against 2 (plus a 4-byte RLD entry each, in the module
+      file only). Break-even is about 4 accesses (size) and 3-4 a call
+      (speed); parameters would each need a `SAW` (about 53 cycles, 3
+      bytes) instead of `ENTER`'s copy loop (about 29 cycles each). A
+      win only for functions that touch their locals a few times.
+    - **With new opcodes** (2-byte loads and stores with a 1-byte
+      offset into a fixed region, `LDA REGION,Y`: 4 cycles, not 5): no
+      cost per access, so the saving per call is clear; one more op
+      could store a function's parameters into the region. But every
+      PLASMA VM (6502, C, JIT) would need them: an upstream question,
+      like SWAP (issue 21).
+    - **Generalized,** this is a "compiled stack" (as in C compilers
+      for the 8051 and PIC): every function that can't recurse (and
+      isn't called through a pointer) gets static locals, and
+      functions never active at once share the same bytes. That needs
+      the whole program's call graph, so it belongs in `ccrel`, which
+      sees every call as a relocation. It also bounds the stack.
+    - **Next:** measure the benefit from the listing (leaf and
+      near-leaf functions with locals, and how often they touch them),
+      with the stack estimate, which needs the same call graph.
   - **Measured after it:** small cccomp 52,272, ccrel 13,966; full
     52,900 and 17,164. These are higher than above (51,802 and
     13,627), but only because `measure.py` had made every `printf`
