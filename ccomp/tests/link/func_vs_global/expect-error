@@ -1,0 +1,1 @@
+error 221: conflicting types for 'g' (in tests/out/link/func_vs_global_a and tests/out/link/func_vs_global_b)

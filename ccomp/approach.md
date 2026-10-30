@@ -866,6 +866,228 @@ gave. Choices made while building it, open for review:
   for messages 79, 165, 172 (a global and a static function), 216, 217
   (a global and a function), 218 and 219.
 
+**Step 3, linking several objects, in detail (decided in discussion,
+2026-10-30).**
+- **Command line:** `ccrel [-l] [-o module] output...`, one or more
+  objects (base names as given to `cccomp`), linked in that order; `-o`
+  is required with more than one. `ccrel` no longer removes its inputs
+  (a linker that deletes its objects defeats separate compilation), so
+  `-k` moves to `ccish`, which removes the objects it made itself.
+  `ccish` still compiles one file; several files go through `cccomp`
+  and `ccrel`.
+- **Layout:** every object's data, then every object's string pool,
+  the pad byte, every object's code, then init. With one object, that
+  is the layout of before, so every run test's module and listing
+  stays byte for byte the same.
+- **Pass 1** reads each `.syms` in turn: it records each object's data,
+  string and code bases, and puts each non-local symbol in one global
+  table (name, function or data, flags, parameter count, hash, size,
+  defining object and offset), with its own limits, not `MAX_FUNCS` or
+  `MAX_VARS`, and a linear search for now.
+  - A second definition of a non-local name (two functions, two
+    globals, a function and a global, two `main`s) is message 220,
+    "multiple definition of", as `'x' (in a and b)`.
+  - Each entry keeps the most complete description met so far (a known
+    hash replaces 0, a known count replaces 255); each later
+    declaration or definition is compared with it: parameter count,
+    return flag, hash when both are nonzero, and for data the size when
+    both are nonzero. Comparing everything with one kept description
+    finds any disagreement between two files. Unused declarations are
+    compared too. A mismatch is message 221, "conflicting types for",
+    as `'x' (in a and b)`.
+  - After all the objects: a name used and defined somewhere links to
+    that definition. A program's own definition wins over CMDSYS (it
+    may supply its own `puts`, if the types agree). A name defined
+    nowhere is a CMDSYS import if every reference has flag 16, else
+    173 (flag 32) or 172. A local symbol never enters the table; one
+    used and not defined is 172 when its object is read. The entry
+    point is the global `main`; imports are numbered across all the
+    objects. As in the compiler, the first error stops.
+- **Pass 2** is as before, object by object. For the data and again
+  for the code, each object's `.syms` is reread to map its function
+  symbols to a final code address or import, and its data symbols to a
+  final data offset; then its records are copied, with kind 1 and 3
+  targets offset by the object's bases and kind 4 resolved through the
+  map. Only one object's map is in memory. Relocations stay in memory
+  until B4 (step 4).
+- **Listing:** `data+`*n* and `string+`*n* are module offsets; function
+  names come from the object being copied. With several objects, each
+  object's code starts with an `object `*name*`:` line.
+- **Relinkable output (`-r`), step 3b, a commit of its own:** the same
+  records in the same order, kind 1 and 3 targets rebased, kind 4 kept
+  with the merged data symbol number, and a merged `.syms` with one
+  entry per global name and each object's local symbols kept as local
+  entries of their own. Undefined names stay undefined; duplicates and
+  conflicting types are still checked. No init, no RLD.
+- **Tests:** `tests/link/NAME/` holds `.c` files compiled and linked in
+  name order, and `expected` (the run output) or `expect-error` (the
+  message text). No `#include` yet, so each file writes its own
+  declarations, which also makes mismatches easy to test.
+
+**Step 3 is done** (2026-10-30; 255 tests). Every earlier run test's
+module and listing is byte for byte what step 2 gave. Choices made
+while building it, open for review:
+- `link_module()` takes the objects' output names; `ccish` passes its
+  one. `ccrel` has no `-k`, and stops with its usage line for several
+  objects without `-o`.
+- The limits are `MAX_OBJS` 32, `MAX_GSYMS` 512 and `MAX_GNAMES` 6144,
+  in `link.c` (not `ccish.h`, since only the linker uses them). A
+  shared name's entry (`Gsym`, functions and globals alike) is 20
+  bytes with a 16-bit `int`, so the table and its names take 16K: fine
+  on the host, but to be sized down for the Apple II with B4 (ccish
+  itself has about 300 shared names). Each object must still fit
+  `MAX_FUNCS` and `MAX_VARS`, which step 3b's merged objects may not:
+  they will need limits of their own.
+- `lsyms[]` now holds only the current object's function symbols
+  (names for the listing); the maps are `fmap[]` (code offset, or
+  -2 - import number) and `dmap[]` (data offset), rebuilt for each
+  object in the data pass and again in the code pass.
+- Messages 220 and 221 name both objects, `'x' (in a and b)`: for 221,
+  the object of the description kept, which may not be the first to
+  declare it. 222 and 223 are the new limits. Messages from `ccrel`
+  still begin `ccish:`, as all three programs' do.
+- Undefined names are checked in table order (the first object's
+  functions, then its globals, then the next object's new names), and
+  only the first is reported, as everywhere.
+- The damaged-file message now names the object's stream file
+  (`NAME.obj`), not just the suffix.
+- Tests: `tests/link/basic` (functions and globals both ways,
+  addresses in another object's array in data and code, same-named
+  `static` functions and globals) and `main_second` (main in the
+  second object, a program's own `toupper`, a `()` declaration), and
+  14 error directories: 220 for two functions, two globals, two
+  `main`s, and a function and a global; 221 for a function against a
+  global, parameter count, return, type hash, size, and an unused
+  declaration; 172 for a function, a global, and another object's
+  `static`; 173. Also `ccrel` without `-o` for two objects.
+
+**Fitting the linker's tables (discussed 2026-10-30; not built yet).**
+At 512 shared names, step 3's tables come to about 31K with a 16-bit
+`int`, not counting the relocations (19K, which B4 removes): `lsyms[]`
+11.4K (each function's 32-byte name), `gsyms[]` 10K (20 bytes an
+entry), `gnames[]` 6K, and about 3.5K more. That doesn't fit the
+Apple II, and 32 objects and 512 names are too few anyway. Options:
+1. **Drop the names from `lsyms[]`** (about 10.9K saved): linking
+   needs only `fmap[]`; the listing's names would be offsets into
+   `gnames[]`, with the current object's local and import names added
+   at its end and released after the object. The damaged-file checks
+   in `copy_code()` would use `fmap[]` (module offsets). *Not decided
+   yet*; it may wait for step 4.
+2. **Decided: the shared-name table as parallel arrays**, 11 bytes an
+   entry, not a 20-byte struct: name offset (2), type hash (2),
+   parameter count or size (2: a function has no size, a global no
+   parameter count), offset or import number (2: an import has no
+   offset), defining object (1), object of the kept description (1),
+   flags (1: data, used, returns, CMDSYS bits). Byte-sized object
+   numbers allow up to 255 objects.
+3. **Decided: open addressing over those parallel arrays**, for lookup
+   speed (linking ccish is about 4,000 lookups; a linear search over
+   ~300 names would take on the order of a minute or two in the VM),
+   with no extra memory (chaining would need 2 bytes an entry and the
+   bucket heads). A name goes in the slot its hash picks, or the next
+   free one, wrapping from the last slot to the first; a count of used
+   slots says when the table is full, which is only at 100%, so no
+   headroom is needed (a nearly full table is slower, not wrong). No
+   entry is ever deleted. Entries are then in hash order, not the
+   order met, so imports are numbered, and the ESD written, in hash
+   order, and every run test's module changes once: accepted as a
+   one-time cost (the expected outputs don't change, only the module
+   bytes, so the byte-for-byte comparison with the previous commit
+   doesn't apply to that commit). Which undefined name is reported
+   first also follows hash order.
+   The name's hash is used only to pick the starting slot; it isn't
+   stored (the `hash` already in the table is the *type* hash). Three
+   routines:
+   - `gsym_start(name)`: only the starting slot, from the name hash
+     (below). Moving to the next slot on a collision needs no `%`:
+     add 1, and go back to 0 past the last slot.
+   - `gsym_find(name)`: the slot actually holding the name, which may
+     not be the starting slot, or -1. It probes from the starting slot
+     to the name or an empty slot, and gives up after `MAX_GSYMS`
+     probes (a completely full table has no empty slot to stop at).
+   - `gsym_add()`: first checks the count of used slots, and stops at
+     once with an error if the table is full; otherwise it probes to the
+     name or the first empty slot, which must exist.
+   An empty slot has name offset -1 (offset 0 is a valid name). The
+   listing (`-l`) ends with the slots used and the total, and the name
+   bytes used and the total, to show when a limit is getting close.
+
+   **Decided: the name hash is `h = (h + h) ^ c` over the whole name,
+   the starting slot is `(h & 0x7FFF) % MAX_GSYMS`, and `MAX_GSYMS` is
+   a prime** (discussed 2026-10-30). The hash must be cheap in the VM,
+   where `MUL` is a 16-step loop and `SHL` loops once per bit, and must
+   spread names evenly, so that a name usually lands in its starting
+   slot. A power-of-two size (wrapping by a mask) was rejected: with
+   little memory, rounding the table up to a power of two can waste
+   nearly half of it. A single `%` per lookup costs about as much as a
+   dozen VM ops (`_DIV` is one 16-step shift-and-subtract loop), small
+   next to the loop over the name. Masking with `0x7FFF` (`CW $7FFF
+   AND`) keeps the hash non-negative for the signed `%`; it is cheaper
+   than a rotation, and the VM has no logical right shift (`SHR` is
+   arithmetic).
+
+   *Measurements.* A script filled a linear-probing table with each
+   candidate hash, using the starting slot above, for two sets of real
+   names: A, the 139 shared names declared in `ccish.h`; B, those plus
+   every function name in `src/*.c` (385 names). Each result is averaged
+   over 21 nearby table sizes, since one size gives noisy results.
+   Cells are average probes per successful lookup / share of names in
+   their starting slot, for set B:
+
+   | Hash (per character `c`) | VM work per character | 75% full | 90% full |
+   |---|---|---|---|
+   | ideal (random) | - | 2.50 | 5.58 |
+   | `h = (h + h) ^ c` | `DUP ADD`, `XOR` | 2.77 / 60% | 6.20 / 53% |
+   | `h = (h << 3) + h + c` (×9) | `SHL` (3 loops), 2 `ADD` | 2.62 / 62% | 5.54 / 55% |
+   | `h = (h << 5) + h + c` (×33) | `SHL` (5 loops), 2 `ADD` | 2.47 / 62% | 5.11 / 54% |
+   | rotate left 3, then `^ c` | `SHL`, `SHR`, `AND`, `OR`, `XOR` | 2.56 / 62% | 5.99 / 55% |
+   | `h = (h << 3) + c` | `SHL` (3 loops), `ADD` | 5.69 / 44% | 9.59 / 41% |
+   | sum of characters | `ADD` | 7.22 / 53% | 17.36 / 38% |
+   | first 4 characters + length | none (no loop) | 4.04 / 49% | 7.31 / 44% |
+   | first 3 + last 2 characters + length | none (no loop) | 2.47 / 62% | 5.00 / 55% |
+
+   Set A is too small to separate the good hashes (most came within
+   noise of each other there, even the plain sum), but it also showed
+   the prefix-and-length hash and plain shift-and-add as the worst.
+   What the table shows:
+   - A plain sum is cheapest but fails as the table grows: identifier
+     sums cluster near 110 times the length, so they can't fill a
+     500-slot table.
+   - Plain shift-and-add loses the early characters out of the top of
+     the 16 bits (`emit_finish` and `link_finish` collide).
+   - A prefix and the length do poorly, because C names share prefixes
+     (`parse_`, `emit_`, `fn_`, `var_`).
+   - `(h + h) ^ c` is close to ideal at the lowest cost: three trivial
+     ops a character, no `MUL` and no `SHL` loop. ×9 and ×33 spread
+     slightly better but cost a looping `SHL` each character, and the
+     rotation needs an extra `AND` (`SHR` is arithmetic) without
+     spreading better.
+   - Prefix, suffix and length together do as well as the best, in
+     constant time, and the length is free (names are length-prefixed
+     in the summary, `read_name()`). But `read_name()` already calls
+     `bgetc()` for every character, far more than `DUP ADD XOR`, and a
+     successful lookup `strcmp`s the whole name anyway, so hashing only
+     part of the name saves little, for more code. Worth another look
+     only if the length were kept with each name.
+
+   The table size should be odd, preferably prime: with `(h + h) ^ c`
+   the hash's low bit is the last character's low bit, so an even size
+   skews the slots a little. Over primes only near 75% full, set B gave
+   2.55 probes (ideal 2.50). Needing an odd size wastes at most one
+   slot. One weakness: only the last 15 bits remain, so names longer
+   than about 22 characters that differ only at the start collide.
+   With `MAX_NAME` 31 that is rare, and costs only extra probes, never
+   a wrong result. If the spread ever matters more than the cost per
+   character, ×33 as `(h << 5) + h + c` is the alternative.
+4. **Many objects, through a list file**: the Apple II's 81-character
+   command line can't name even 10 objects, so `ccrel -o prog @objs`,
+   reading `objs` (one object per line) again in each pass rather than
+   storing the names (4 files may be open; ccrel uses 2). About 8 bytes
+   an object. *Not decided yet*; likely with step 4.
+
+The limits themselves (names, name bytes) are to be set once B4
+measures what memory is free.
+
 ### 12. Standard library
 
 Existing programs need at least parts of `stdio.h` (`printf`, `fopen`,
@@ -2207,7 +2429,9 @@ command, through a driver) is easy later.
      both in sequence, for convenience and for the tests.
   2. In the split, the compile pass leaves the stream files and the
      final pass removes them after success; `-k` and `-l` are
-     final-pass options, `-i` a compile-pass one.
+     final-pass options, `-i` a compile-pass one. (Changed by issue
+     11's step 3: `ccrel` keeps its inputs, as a linker keeps its
+     objects, and `-k` is `ccish`'s alone.)
   3. Arguments short enough for the 81-character command line.
   4. Each pass closes all its files on every exit path (ProDOS needs
      it, and `modexec` doesn't do it; the shell does, after a command).

@@ -217,3 +217,7 @@
 217 static declaration follows a non-static declaration of
 218 expected a type after 'extern', not
 219 'extern' in a block is not supported: declare it at file scope
+220 multiple definition of
+221 conflicting types for
+222 too many names shared between objects
+223 too many objects to link

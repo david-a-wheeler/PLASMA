@@ -1,0 +1,1 @@
+error 220: multiple definition of 'f' (in tests/out/link/dup_func_a and tests/out/link/dup_func_b)

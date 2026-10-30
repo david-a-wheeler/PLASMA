@@ -1,43 +1,101 @@
 /*
- * The final pass: turn the compiler's stream file and symbol summary
- * (../OBJECT.md) into a PLASMA REL module (../../doc/Bytecodes.md), and
- * print the listing (-l), since only this pass knows the final
- * addresses.
+ * The final pass, a static linker: turn the stream files and symbol
+ * summaries of one or more compiled files, its objects (../OBJECT.md),
+ * into one PLASMA REL module (../../doc/Bytecodes.md), and print the
+ * listing (-l), since only this pass knows the final addresses.
  *
  * It uses none of the compiler's tables (fn_name[] and so on), only the
- * files, so it is a program of its own, ccrel (approach.md, "B3"), and
- * can become a linker for several files (issue 11).
+ * files, so it is a program of its own, ccrel (approach.md, "B3").
+ * The module exports nothing and imports only CMDSYS functions, so C
+ * names never meet PLASMA's symbol table (approach.md issue 11).
  *
  * The files are read in order, with no seeking, and only one at a time
  * (approach.md 18.6 B6a):
- *   1. the symbol summary, so that every address can be computed;
- *   2. the header and dependencies are written; then the stream is read
- *      for its data records, with the data relocations applied (and
- *      kept for the RLD), and again for its strings, the string pool;
- *   3. the stream is read a third time for its functions, each copied
+ *   1. every object's symbol summary, to lay out the module and to
+ *      build one table of the names shared between objects (gsyms[]),
+ *      where duplicates, conflicting types and undefined names are
+ *      found;
+ *   2. the header and dependencies are written; then each object's
+ *      stream is read for its data records, with the data relocations
+ *      applied (and kept for the RLD), and each again for its strings;
+ *   3. each stream is read a third time for its functions, each copied
  *      with its relocations applied and kept for the RLD; then the init
  *      function is added;
  *   4. the RLD and ESD are written.
+ * In steps 2 and 3, each object's summary is read again just before
+ * its stream, to map its own symbol numbers to final addresses, so only
+ * one object's map is in memory.
  */
 #include <string.h>
 #include "ccish.h"
 
+#define MAX_OBJS    32      /* objects in one link */
+#define MAX_GSYMS   512     /* names shared between objects */
+#define MAX_GNAMES  6144    /* bytes of those names, with their NULs */
+
+/* A symbol summary entry of the object being read: a function's, or
+ * a global variable's (which has a size and no parameter count). */
 typedef struct {
   char name[MAX_NAME + 1];
   int flags;          /* SYM_* */
-  int nparams;        /* 255 if unknown */
-  int code_off;       /* defined functions: offset in the code segment */
-  int import_idx;     /* ESD index if imported, else -1 */
+  int nparams;        /* functions: 255 if unknown */
+  int size;           /* data: bytes, 0 if unknown */
+  int off;            /* if defined: offset in the object's code or data */
+  int hash;           /* type hash, 0 if unknown */
 } Lsym;
 
+/* The function symbols of the object being copied (step 3 lists their
+ * names), and how many it has of each kind of symbol. */
 static Lsym lsyms[MAX_FUNCS];
-static int nlsyms;
+static int nfsyms, ndsyms;
+
+/* The object being read (an index in obj_name[]), and its sizes. */
+static int cur;
 static int data_size, strs_size, code_size;
 
-/* Data symbols (global variables): each one's data offset, or -1 if it
- * isn't defined in this file (an extern global nothing refers to). */
-static int dsym_off[MAX_VARS];
-static int ndsyms;
+/* The objects, by output name as given to cccomp, and where each one's
+ * data, strings and code start in the module's (as offsets from the
+ * start of each). Entry nobjs holds the totals. */
+static const char *obj_name[MAX_OBJS];
+static int nobjs;
+static int obj_data[MAX_OBJS + 1], obj_strs[MAX_OBJS + 1];
+static int obj_code[MAX_OBJS + 1];
+
+/* A name shared between objects: a non-local function or global. Its
+ * description is the most complete one met so far (approach.md issue
+ * 11, "Step 3"), from object desc_obj. */
+typedef struct {
+  int name;           /* offset of its name in gnames[] */
+  char data;          /* 1 for a global variable, 0 for a function */
+  char refs;          /* G_* */
+  int returns;        /* functions: SYM_RETURNS or 0 */
+  int nparams;        /* functions: 255 if unknown */
+  int hash;           /* 0 if unknown */
+  int size;           /* data: bytes, 0 if unknown */
+  int desc_obj;       /* the object its description came from */
+  int def_obj;        /* the object that defines it, or -1 */
+  int off;            /* offset in that object's code or data */
+  int import_idx;     /* ESD index if imported, else -1 */
+} Gsym;
+
+/* What a name's entries say, over all the objects: it is used; some
+ * entry isn't a CMDSYS function; some is a CMDSYS name declared
+ * differently. */
+enum { G_USED = 1, G_PLAIN = 2, G_BADCMDSYS = 4 };
+
+static Gsym gsyms[MAX_GSYMS];
+static int ngsyms;
+static char gnames[MAX_GNAMES];
+static int gnames_len;
+static int main_sym = -1;   /* the gsyms[] entry of main, or -1 */
+static int nimports, ndefined;
+
+/* The object being read in steps 2 and 3, mapped: each function symbol
+ * to its offset in the module's code, or -2 - its import index, or -1
+ * if it is neither; and each data symbol to its offset in the module's
+ * data, or -1. */
+static int fmap[MAX_FUNCS];
+static int dmap[MAX_VARS];
 
 /* Load addresses: of the data segment, the string pool after it, and
  * the code segment after that. */
@@ -47,7 +105,9 @@ typedef struct {
   int kind;       /* REL_DATA, REL_STR or REL_FUNC (a REL_DSYM is kept
                    * as the REL_DATA it resolves to) */
   int at;         /* load address of the word (in data or code) */
-  int target;     /* data or string pool offset, or symbol index */
+  int target;     /* data or string pool offset in the module, or the
+                   * function symbol index in its object (-1: main) */
+  int import_idx; /* ESD index of an imported function, else -1 */
 } Lreloc;
 
 static Lreloc relocs[MAX_RELOCS];
@@ -66,7 +126,13 @@ static void damaged(const char *what)
   fatal(188 /* "compiler stream file is damaged:" */, what);
 }
 
-/* ---------- Step 1: the symbol summary ---------- */
+/* Stop with an error: the current object's stream file is damaged. */
+static void bad_obj(void)
+{
+  damaged(stream_name(obj_name[cur], SUFFIX_OBJ));
+}
+
+/* ---------- Step 1: the symbol summaries ---------- */
 
 /* The file the final pass is reading (in) and the module it writes
  * (out). They are static, not locals, so that their 512-byte buffers
@@ -94,7 +160,7 @@ static void read_name(char *buf, const char *name)
   buf[n] = 0;
 }
 
-/* Report an undefined reference to the symbol named name. */
+/* Report error msg about the symbol named name, quoted. */
 static void undefined(int msg, const char *name)
 {
   char buf[MAX_NAME + 3];
@@ -104,15 +170,29 @@ static void undefined(int msg, const char *name)
   error(msg, buf);
 }
 
-/* Step 1: read the symbol summary into lsyms[] and dsym_off[], with
- * the data and code sizes. A global that is used but not defined is an
- * undefined reference. */
-static void read_summary(const char *base)
+/* Report error msg about the shared name name, as declared or defined
+ * in objects a and b: 'name' (in a and b), with each object's name cut
+ * to 80 characters. */
+static void between(int msg, const char *name, int a, int b)
 {
-  const char *name = stream_name(base, SUFFIX_SYMS);
-  char gname[MAX_NAME + 1];
-  int i, flags, off;
+  static char buf[MAX_NAME + 180];
+  strcpy(buf, "'");
+  strcat(buf, name);
+  strcat(buf, "' (in ");
+  strncat(buf, obj_name[a], 80);
+  strcat(buf, " and ");
+  strncat(buf, obj_name[b], 80);
+  strcat(buf, ")");
+  error(msg, buf);
+}
 
+/* Open object k's symbol summary, check its header, and read its sizes
+ * and symbol counts; k becomes the current object. Returns the file
+ * name, for messages. */
+static const char *open_syms(int k)
+{
+  const char *name = stream_name(obj_name[k], SUFFIX_SYMS);
+  cur = k;
   if (!bopen(&in, name, 0))
     fatal(171 /* "cannot open" */, name);
   if (bgetc(&in) != 'C' || bgetc(&in) != 'I' || bgetc(&in) != OBJ_VERSION)
@@ -120,37 +200,191 @@ static void read_summary(const char *base)
   data_size = bgetw(&in);
   strs_size = bgetw(&in);
   code_size = bgetw(&in);
-  nlsyms = bgetw(&in);
+  nfsyms = bgetw(&in);
   ndsyms = bgetw(&in);
-  if (nlsyms > MAX_FUNCS)
+  if (nfsyms > MAX_FUNCS)
     fatal(26 /* "too many functions" */, NULL);
   if (ndsyms > MAX_VARS)
     fatal(28 /* "too many variables" */, NULL);
-  for (i = 0; i < nlsyms; i++) {
-    Lsym *s = &lsyms[i];
-    s->flags = bgetc(&in);
+  return name;
+}
+
+/* Read the next symbol summary entry into s: a data symbol's if data,
+ * else a function symbol's. name is the summary's file name. */
+static void read_sym(Lsym *s, int data, const char *name)
+{
+  s->flags = bgetc(&in);
+  if (data) {
+    s->off = bgetw(&in);
+    s->size = bgetw(&in);
+    s->nparams = 255;
+  } else {
     s->nparams = bgetc(&in);
-    s->code_off = bgetw(&in);
-    bgetw(&in);                 /* the type hash, for linking files */
-    read_name(s->name, name);
-    s->import_idx = -1;
+    s->off = bgetw(&in);
+    s->size = 0;
   }
-  for (i = 0; i < ndsyms; i++) {
-    flags = bgetc(&in);
-    off = bgetw(&in);
-    bskip(&in, 4);              /* the size and type hash */
-    read_name(gname, name);
-    if ((flags & SYM_DEFINED) && off > data_size)
-      damaged(name);
-    if ((flags & SYM_CALLED) && !(flags & SYM_DEFINED)) {
-      bclose(&in);
-      undefined(172 /* "undefined reference to" */, gname);
-    }
-    dsym_off[i] = flags & SYM_DEFINED ? off : -1;
-  }
+  s->hash = bgetw(&in);
+  read_name(s->name, name);
+  if ((s->flags & SYM_DEFINED)
+      && s->off > (data ? data_size : code_size))
+    damaged(name);
+}
+
+/* Check that the summary (file name) has nothing after its entries, and
+ * close it. */
+static void close_syms(const char *name)
+{
   if (bgetc(&in) != EOF)
     damaged(name);
   bclose(&in);
+}
+
+/* The gsyms[] entry named name, or -1 if there is none. */
+static int gsym_find(const char *name)
+{
+  int i;
+  for (i = 0; i < ngsyms; i++)
+    if (!strcmp(gnames + gsyms[i].name, name))
+      return i;
+  return -1;
+}
+
+/* Add symbol s (a global variable if data, else a function) of the
+ * current object to the table of shared names. A second definition is
+ * an error, and so is a description that disagrees with the one kept;
+ * a more complete description replaces it. */
+static void add_global(Lsym *s, int data)
+{
+  int g = gsym_find(s->name), n;
+  Gsym *e;
+  if (g < 0) {
+    n = (int)strlen(s->name) + 1;
+    if (ngsyms >= MAX_GSYMS || gnames_len + n > MAX_GNAMES)
+      fatal(222 /* "too many names shared between objects" */, NULL);
+    e = &gsyms[ngsyms++];
+    e->name = gnames_len;
+    memcpy(gnames + gnames_len, s->name, n);
+    gnames_len += n;
+    e->data = (char)data;
+    e->refs = 0;
+    e->returns = s->flags & SYM_RETURNS;
+    e->nparams = s->nparams;
+    e->hash = s->hash;
+    e->size = s->size;
+    e->desc_obj = cur;
+    e->def_obj = -1;
+    e->import_idx = -1;
+  } else {
+    e = &gsyms[g];
+    if ((s->flags & SYM_DEFINED) && e->def_obj >= 0)
+      between(220 /* "multiple definition of" */, s->name, e->def_obj, cur);
+    if (e->data != data || e->returns != (s->flags & SYM_RETURNS)
+        || (s->nparams != 255 && e->nparams != 255
+            && s->nparams != e->nparams)
+        || (s->hash && e->hash && s->hash != e->hash)
+        || (s->size && e->size && s->size != e->size))
+      between(221 /* "conflicting types for" */, s->name, e->desc_obj, cur);
+    if ((s->nparams != 255 && e->nparams == 255) || (s->hash && !e->hash)
+        || (s->size && !e->size)) {
+      e->nparams = s->nparams;
+      e->hash = s->hash;
+      e->size = s->size;
+      e->desc_obj = cur;
+    }
+  }
+  if (s->flags & SYM_DEFINED) {
+    e->def_obj = cur;
+    e->off = s->off;
+  }
+  if (s->flags & SYM_CALLED)
+    e->refs |= G_USED;
+  if (s->flags & SYM_NOTCMDSYS)
+    e->refs |= G_BADCMDSYS;
+  else if (!(s->flags & SYM_CMDSYS))
+    e->refs |= G_PLAIN;
+}
+
+/* Step 1 for object k: read its symbol summary, lay it out after the
+ * objects before it, and add its non-local symbols to gsyms[]. A local
+ * symbol that is used but not defined is an undefined reference. */
+static void read_summary(int k)
+{
+  const char *name = open_syms(k);
+  Lsym s;
+  int i;
+
+  obj_data[k + 1] = obj_data[k] + data_size;
+  obj_strs[k + 1] = obj_strs[k] + strs_size;
+  obj_code[k + 1] = obj_code[k] + code_size;
+  for (i = 0; i < nfsyms + ndsyms; i++) {
+    read_sym(&s, i >= nfsyms, name);
+    if ((s.flags & SYM_DEFINED) && i < nfsyms)
+      ndefined++;
+    if (!(s.flags & SYM_LOCAL))
+      add_global(&s, i >= nfsyms);
+    else if ((s.flags & SYM_CALLED) && !(s.flags & SYM_DEFINED))
+      undefined(172 /* "undefined reference to" */, s.name);
+  }
+  close_syms(name);
+}
+
+/* After step 1: resolve the shared names. A used name that no object
+ * defines must be a CMDSYS function, which becomes an import; main
+ * becomes the entry point. */
+static void resolve(void)
+{
+  int i;
+  for (i = 0; i < ngsyms; i++) {
+    Gsym *e = &gsyms[i];
+    const char *name = gnames + e->name;
+    if (e->def_obj >= 0) {
+      if (!e->data && !strcmp(name, "main"))
+        main_sym = i;
+    } else if (e->refs & G_USED) {
+      if (e->refs & G_BADCMDSYS)
+        undefined(173 /* "declaration doesn't match the CMDSYS"
+                         " function" */, name);
+      if (e->data || (e->refs & G_PLAIN))
+        undefined(172 /* "undefined reference to" */, name);
+      if (nimports >= 255)
+        fatal(190 /* "too many imported functions" */, NULL);
+      e->import_idx = nimports++;
+    }
+  }
+}
+
+/* Steps 2 and 3: read object k's symbol summary again, into lsyms[],
+ * fmap[] and dmap[]. */
+static void map_object(int k)
+{
+  const char *name = open_syms(k);
+  Lsym s;
+  Gsym *e;
+  int i, g, v;
+
+  for (i = 0; i < nfsyms + ndsyms; i++) {
+    int data = i >= nfsyms;
+    read_sym(data ? &s : &lsyms[i], data, name);
+    if (!data)
+      s = lsyms[i];
+    v = -1;
+    if (s.flags & SYM_DEFINED) {
+      v = s.off + (data ? obj_data[k] : obj_code[k]);
+    } else if (!(s.flags & SYM_LOCAL)) {
+      if ((g = gsym_find(s.name)) < 0)
+        damaged(name);
+      e = &gsyms[g];
+      if (e->def_obj >= 0)
+        v = e->off + (data ? obj_data[e->def_obj] : obj_code[e->def_obj]);
+      else if (e->import_idx >= 0)
+        v = -2 - e->import_idx;
+    }
+    if (data)
+      dmap[i - nfsyms] = v;
+    else
+      fmap[i] = v;
+  }
+  close_syms(name);
 }
 
 /* ---------- Listing ---------- */
@@ -211,10 +445,10 @@ static const char *reloc_note(int at, int first)
       } else if (relocs[i].kind == REL_STR) {
         sprintf(buf, "  ; string+%d", relocs[i].target);
       } else {
-        Lsym *s = &lsyms[relocs[i].target];
         strcpy(buf, "  ; ");
-        strcat(buf, s->name);
-        if (!(s->flags & SYM_DEFINED))
+        strcat(buf, relocs[i].target < 0 ? "main"
+                    : lsyms[relocs[i].target].name);
+        if (relocs[i].import_idx >= 0)
           strcat(buf, " (import)");
       }
       return buf;
@@ -310,7 +544,6 @@ static void list_code(const char *label, int len, int start, int first_reloc)
     pc += n;
   }
 }
-
 /* ---------- Steps 2-4: the module ---------- */
 
 /* Write a name in DCI form: uppercase, high bit set on every character
@@ -329,37 +562,55 @@ static void out_dci(const char *name)
 }
 
 /* Keep a relocation of the word at load address at, for the RLD and
- * the listing. Returns the word's final value. A record read from
- * stream file name is checked first. A REL_DSYM (data symbol target,
- * plus add) becomes the REL_DATA it stands for. */
-static int add_reloc(int kind, int at, int target, int add,
-                     const char *name)
+ * the listing (an Lreloc's fields). */
+static void keep_reloc(int kind, int at, int target, int import_idx)
 {
   Lreloc *r = &relocs[nrelocs];
-  if (kind == REL_DSYM) {
-    if (target >= ndsyms || dsym_off[target] < 0)
-      damaged(name);
-    kind = REL_DATA;
-    target = (dsym_off[target] + add) & 0xFFFF;
-  } else if ((kind == REL_DATA && target > data_size)
-             || (kind == REL_STR && target > strs_size)
-             || (kind == REL_FUNC && target >= nlsyms)
-             || (kind != REL_DATA && kind != REL_STR && kind != REL_FUNC)) {
-    damaged(name);
-  }
   if (nrelocs >= MAX_RELOCS)
     fatal(189 /* "too many relocations" */, NULL);
   r->kind = kind;
   r->at = at;
   r->target = target;
+  r->import_idx = import_idx;
   nrelocs++;
-  if (kind == REL_DATA)
+}
+
+/* Keep a relocation, read from the current object's stream, of the
+ * word at load address at, and return the word's final value. The
+ * record is checked first. Its target is an offset in the object's
+ * data or strings, or a symbol of the object's, through fmap[] and
+ * dmap[]. A REL_DSYM (data symbol target, plus add) becomes the
+ * REL_DATA it stands for. */
+static int add_reloc(int kind, int at, int target, int add)
+{
+  int v;
+  if (kind == REL_DSYM) {
+    if (target >= ndsyms || dmap[target] < 0)
+      bad_obj();
+    kind = REL_DATA;
+    target = (dmap[target] + add) & 0xFFFF;
+  } else if (kind == REL_DATA) {
+    if (target > data_size)
+      bad_obj();
+    target += obj_data[cur];
+  } else if (kind == REL_STR) {
+    if (target > strs_size)
+      bad_obj();
+    target += obj_strs[cur];
+  } else if (kind != REL_FUNC || target >= nfsyms || fmap[target] == -1) {
+    bad_obj();
+  }
+  if (kind == REL_DATA) {
+    keep_reloc(kind, at, target, -1);
     return data_base + target;
-  if (kind == REL_STR)
+  }
+  if (kind == REL_STR) {
+    keep_reloc(kind, at, target, -1);
     return strs_base + target;
-  if (lsyms[target].flags & SYM_DEFINED)
-    return subseg + lsyms[target].code_off;
-  return 0;       /* an import: the loader fills it in */
+  }
+  v = fmap[target];
+  keep_reloc(kind, at, target, v < 0 ? -2 - v : -1);
+  return v < 0 ? 0 : subseg + v;    /* an import: the loader fills it in */
 }
 
 /* The tags each step reads from the stream; it skips the others. */
@@ -367,11 +618,10 @@ static const char data_tags[] = { REC_DATA, REC_DREL, 0 };
 static const char str_tags[] = { REC_STR, 0 };
 static const char func_tags[] = { REC_FUNC, 0 };
 
-/* Open the stream file of output name base for reading, from its
- * start. */
-static void open_obj(const char *base)
+/* Open object k's stream file for reading, from its start. */
+static void open_obj(int k)
 {
-  const char *name = stream_name(base, SUFFIX_OBJ);
+  const char *name = stream_name(obj_name[k], SUFFIX_OBJ);
   if (!bopen(&in, name, 0))
     fatal(171 /* "cannot open" */, name);
 }
@@ -382,7 +632,7 @@ static void skip_record(int t)
   int n;
   if (t == REC_DATA) {
     if ((n = bgetc(&in)) == EOF)
-      damaged(SUFFIX_OBJ);
+      bad_obj();
     bskip(&in, n);
   } else if (t == REC_DREL) {
     bskip(&in, bgetc(&in) == REL_DSYM ? 4 : 2);
@@ -392,10 +642,10 @@ static void skip_record(int t)
     bskip(&in, 2);
     bskip(&in, bgetw(&in));
     if ((n = bgetw(&in)) > MAX_FUNC_RELOCS)
-      damaged(SUFFIX_OBJ);
+      bad_obj();
     bskip(&in, 5 * n);
   } else {
-    damaged(SUFFIX_OBJ);
+    bad_obj();
   }
 }
 
@@ -415,21 +665,23 @@ static void copy_bytes(int n)
   int c;
   while (n-- > 0) {
     if ((c = bgetc(&in)) == EOF)
-      damaged(SUFFIX_OBJ);
+      bad_obj();
     bputc(&out, c);
   }
 }
 
-/* Copy the data into the module: the stream's D records, with each R
- * record's word given its final value (an address, kept for the RLD). */
-static void copy_data(const char *base)
+/* Copy object k's data into the module: its stream's D records, with
+ * each R record's word given its final value (an address, kept for the
+ * RLD). */
+static void copy_data(int k)
 {
   int at = 0, t, n, kind, target, add;
-  open_obj(base);
+  map_object(k);
+  open_obj(k);
   while ((t = next_record(data_tags)) != EOF) {
     if (t == REC_DATA) {
       if ((n = bgetc(&in)) == EOF || at + n > data_size)
-        damaged(SUFFIX_OBJ);
+        bad_obj();
       copy_bytes(n);
       at += n;
     } else {
@@ -437,90 +689,97 @@ static void copy_data(const char *base)
       target = bgetw(&in);
       add = kind == REL_DSYM ? bgetw(&in) : 0;
       if (at + 2 > data_size)
-        damaged(SUFFIX_OBJ);
-      bputw(&out, add_reloc(kind, data_base + at, target, add,
-                            SUFFIX_OBJ));
+        bad_obj();
+      bputw(&out, add_reloc(kind, data_base + obj_data[k] + at, target,
+                            add));
       at += 2;
     }
   }
   bclose(&in);
   if (at != data_size)
-    damaged(SUFFIX_OBJ);
+    bad_obj();
 }
 
-/* Copy the string pool into the module: each S record's string as
- * [len][chars][NUL]. A string longer than 255 gets a length byte of 0,
- * which is meaningless (pstr() rejects such a string). */
-static void copy_strings(const char *base)
+/* Copy object k's string pool into the module: each S record's string
+ * as [len][chars][NUL]. A string longer than 255 gets a length byte of
+ * 0, which is meaningless (pstr() rejects such a string). */
+static void copy_strings(int k)
 {
-  int at = 0, n;
-  open_obj(base);
+  int at = 0, n, size = obj_strs[k + 1] - obj_strs[k];
+  cur = k;
+  open_obj(k);
   while (next_record(str_tags) != EOF) {
     n = bgetw(&in);
-    if (n > strs_size - at - 2)
-      damaged(SUFFIX_OBJ);
+    if (n > size - at - 2)
+      bad_obj();
     bputc(&out, n > 255 ? 0 : n);
     copy_bytes(n);
     bputc(&out, 0);
     at += n + 2;
   }
   bclose(&in);
-  if (at != strs_size)
-    damaged(SUFFIX_OBJ);
+  if (at != size)
+    bad_obj();
 }
 
-/* Copy the code into the module, one F record (function) at a time. */
-static void copy_code(const char *base)
+/* Copy object k's code into the module, one F record (function) at a
+ * time. */
+static void copy_code(int k)
 {
-  int at = 0, idx, len, n, i, first, c;
+  int at = 0, idx, len, n, i, first, c, start;
 
-  open_obj(base);
+  map_object(k);
+  if (opt_list && nobjs > 1)
+    printf("object %s:\n", obj_name[k]);
+  open_obj(k);
   while (next_record(func_tags) != EOF) {
     idx = bgetw(&in);
     len = bgetw(&in);
-    if (idx >= nlsyms || !(lsyms[idx].flags & SYM_DEFINED)
-        || lsyms[idx].code_off != at || len > MAX_FUNC_CODE
+    if (idx >= nfsyms || !(lsyms[idx].flags & SYM_DEFINED)
+        || lsyms[idx].off != at || len > MAX_FUNC_CODE
         || ndefs >= MAX_FUNCS)
-      damaged(SUFFIX_OBJ);
+      bad_obj();
     for (i = 0; i < len; i++) {
       if ((c = bgetc(&in)) == EOF)
-        damaged(SUFFIX_OBJ);
+        bad_obj();
       fbuf[i] = (unsigned char)c;
     }
+    start = obj_code[k] + at;
     first = nrelocs;
     n = bgetw(&in);
     for (i = 0; i < n; i++) {
       int kind = bgetc(&in), off = bgetw(&in), target = bgetw(&in), v;
       if (off < 0 || off > len - 2)
-        damaged(SUFFIX_OBJ);
+        bad_obj();
       /* The word holds an extern global's addend, else 0. */
-      v = add_reloc(kind, subseg + at + off, target,
-                    fbuf[off] | (fbuf[off + 1] << 8), SUFFIX_OBJ);
+      v = add_reloc(kind, subseg + start + off, target,
+                    fbuf[off] | (fbuf[off + 1] << 8));
       fbuf[off] = (unsigned char)v;
       fbuf[off + 1] = (unsigned char)(v >> 8);
     }
     if (opt_list)
-      list_code(lsyms[idx].name, len, at, first);
+      list_code(lsyms[idx].name, len, start, first);
     bwrite(&out, fbuf, len);
-    func_at[ndefs++] = at;
+    func_at[ndefs++] = start;
     at += len;
   }
   bclose(&in);
   if (at != code_size)
-    damaged(SUFFIX_OBJ);
+    bad_obj();
 }
 
 /* The init function runs when the module loads: call main, discard its
  * result, and return 0. A positive init result would be read as "keep
  * the module" flags. Init must be the last bytecode. */
-static int init_code(int main_idx, int init_off)
+static int init_code(int init_off)
 {
-  int n = 0, v = subseg + lsyms[main_idx].code_off;
-  add_reloc(REL_FUNC, subseg + init_off + 1, main_idx, 0, "init");
+  Gsym *m = &gsyms[main_sym];
+  int n = 0, v = subseg + obj_code[m->def_obj] + m->off;
+  keep_reloc(REL_FUNC, subseg + init_off + 1, -1, -1);
   fbuf[n++] = OP_CALL;
   fbuf[n++] = (unsigned char)v;
   fbuf[n++] = (unsigned char)(v >> 8);
-  if (lsyms[main_idx].flags & SYM_RETURNS)
+  if (m->returns)
     fbuf[n++] = OP_DROP;
   fbuf[n++] = OP_CN;
   fbuf[n++] = OP_RET;
@@ -529,50 +788,39 @@ static int init_code(int main_idx, int init_off)
 
 /* Bytes in the init function that init_code builds, or 0 if there is
  * no main. */
-static int init_size(int main_idx)
+static int init_size(void)
 {
-  return main_idx < 0 ? 0 : 6 - !(lsyms[main_idx].flags & SYM_RETURNS);
+  return main_sym < 0 ? 0 : 6 - !gsyms[main_sym].returns;
 }
 
-/* Run the final pass: read the stream files for output name base, and
- * write the REL module to path. */
-void link_module(const char *base, const char *path)
+/* Run the final pass: link the n objects whose output names (as given
+ * to cccomp) are bases, in that order, and write the REL module to
+ * path. */
+void link_module(int n, const char **bases, const char *path)
 {
   static const char dep[] = "CMDSYS";
   int module_base = 0x1000, hdr = 10;
-  int nimports = 0, main_idx = -1, init_off;
-  int deplen, defcnt = 0, total, i;
+  int init_off, deplen, total, i, k;
 
   /* Step 1. */
-  read_summary(base);
-  init_off = code_size;
-  for (i = 0; i < nlsyms; i++) {
-    Lsym *s = &lsyms[i];
-    if (s->flags & SYM_DEFINED) {
-      defcnt++;
-      if (!strcmp(s->name, "main") && !(s->flags & SYM_LOCAL))
-        main_idx = i;
-    } else if (s->flags & SYM_CALLED) {
-      /* Not defined here: CMDSYS must have it. */
-      if (s->flags & SYM_NOTCMDSYS)
-        undefined(173 /* "declaration doesn't match the CMDSYS"
-                         " function" */, s->name);
-      if (!(s->flags & SYM_CMDSYS) || (s->flags & SYM_LOCAL))
-        undefined(172 /* "undefined reference to" */, s->name);
-      if (nimports >= 255)
-        fatal(190 /* "too many imported functions" */, NULL);
-      s->import_idx = nimports++;
-    }
+  if (n > MAX_OBJS)
+    fatal(223 /* "too many objects to link" */, NULL);
+  nobjs = n;
+  for (k = 0; k < n; k++) {
+    obj_name[k] = bases[k];
+    read_summary(k);
   }
+  resolve();
+  init_off = obj_code[n];
 
   deplen = nimports ? (int)sizeof(dep) - 1 + 1 : 1;   /* name(s) + $00 */
   /* The data segment holds the globals, then the string pool. One pad
    * byte between it and the bytecode keeps data from ever sharing an
    * address with the first function. */
   data_base = module_base + hdr + deplen;
-  strs_base = data_base + data_size;
-  subseg = strs_base + strs_size + 1;
-  total = code_size + init_size(main_idx);
+  strs_base = data_base + obj_data[n];
+  subseg = strs_base + obj_strs[n] + 1;
+  total = obj_code[n] + init_size();
   if (subseg + total > 0xFFFF)
     fatal(191 /* "module too large" */, NULL);
 
@@ -583,23 +831,26 @@ void link_module(const char *base, const char *path)
   bputw(&out, 0x6502);                    /* magic */
   bputw(&out, 0);                         /* system flags */
   bputw(&out, subseg);
-  bputw(&out, defcnt + (main_idx >= 0));
-  bputw(&out, main_idx >= 0 ? subseg + init_off : 0);
+  bputw(&out, ndefined + (main_sym >= 0));
+  bputw(&out, main_sym >= 0 ? subseg + init_off : 0);
   if (nimports)
     out_dci(dep);
   bputc(&out, 0);                         /* end of dependencies */
 
-  copy_data(base);
-  copy_strings(base);
+  for (k = 0; k < n; k++)
+    copy_data(k);
+  for (k = 0; k < n; k++)
+    copy_strings(k);
   bputc(&out, 0);                         /* pad */
 
   /* Step 3. */
-  copy_code(base);
-  if (main_idx >= 0) {
-    int first = nrelocs, n = init_code(main_idx, init_off);
+  for (k = 0; k < n; k++)
+    copy_code(k);
+  if (main_sym >= 0) {
+    int first = nrelocs, len = init_code(init_off);
     if (opt_list)
-      list_code("(init)", n, init_off, first);
-    bwrite(&out, fbuf, n);
+      list_code("(init)", len, init_off, first);
+    bwrite(&out, fbuf, len);
   }
 
   /* Step 4. RLD: function entries first (in code order, init
@@ -612,10 +863,10 @@ void link_module(const char *base, const char *path)
   for (i = 0; i < nrelocs; i++) {
     Lreloc *r = &relocs[i];
     int at = r->at - module_base;
-    if (r->kind == REL_FUNC && lsyms[r->target].import_idx >= 0) {
+    if (r->import_idx >= 0) {
       bputc(&out, 0x91);
       bputw(&out, at);
-      bputc(&out, lsyms[r->target].import_idx);
+      bputc(&out, r->import_idx);
     } else {
       bputc(&out, 0x81);
       bputw(&out, at);
@@ -624,12 +875,12 @@ void link_module(const char *base, const char *path)
   }
   bputc(&out, 0);
 
-  /* ESD: imports. */
-  for (i = 0; i < nlsyms; i++)
-    if (lsyms[i].import_idx >= 0) {
-      out_dci(lsyms[i].name);
+  /* ESD: imports, in import order. */
+  for (i = 0; i < ngsyms; i++)
+    if (gsyms[i].import_idx >= 0) {
+      out_dci(gnames + gsyms[i].name);
       bputc(&out, 0x10);
-      bputw(&out, lsyms[i].import_idx);
+      bputw(&out, gsyms[i].import_idx);
     }
   bputc(&out, 0);
 

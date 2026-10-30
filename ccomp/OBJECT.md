@@ -4,13 +4,14 @@ The compiler proper (stages 1–4) doesn't write the REL module itself.
 It writes a **stream file** and a **symbol summary**, and a separate
 **final pass** (`src/link.c`, the program `ccrel`) turns them into the
 module. See [approach.md](approach.md), 18.1, for why. Together the
-two files are ccish's object file format. The final pass is meant to
-become a linker (issue 11), so this format should change only
-deliberately, with the version number bumped.
+two files are ccish's object file format, an **object**. The final
+pass is also a linker, which links several objects into one module
+(issue 11), so this format should change only deliberately, with the
+version number bumped.
 
-For output `NAME`, the files are `NAME.obj` and `NAME.syms`. They are
-removed after the module is written, and after any error, unless
-`ccish -k` is given. This is format version 4, which adds what linking
+For output `NAME`, the files are `NAME.obj` and `NAME.syms`. `ccish`
+removes them after the module is written, and after any error, unless
+`-k` is given; `cccomp` leaves them for `ccrel`, which keeps them. This is format version 4, which adds what linking
 several files needs (approach.md issue 11): data symbols, local
 (`static`) symbols, a relocation to an `extern` global, and type
 hashes. Version 3 had none of these. M5's version 2 had four stream
@@ -164,14 +165,15 @@ numbers them; every global is listed, static locals aren't):
 | byte | name length *n* (1–31) |
 | *n* bytes | name |
 
-A function that is called but not defined is an import if it has flag
-16, the CMDSYS functions (declared from the compiler's table, or
-matching it). Otherwise, it and a global that is used but not defined
-are undefined references, reported by the final pass ("undefined
-reference to"), or message 173 for flag 32; a linker of several files
-will look for them in the other files first. Nothing is exported: names
-stay inside the module. A global declared `extern` that nothing uses
-needn't be defined anywhere.
+A symbol without flag 8 is shared by every object linked together, by
+its name; one with flag 8 belongs to its object alone. A function that
+is called but defined in no object is an import if every object's
+entry for it has flag 16, the CMDSYS functions (declared from the
+compiler's table, or matching it). Otherwise, it and a global that is
+used but defined nowhere are undefined references, reported by the
+final pass ("undefined reference to"), or message 173 for flag 32.
+Nothing is exported: names stay inside the module. A global declared
+`extern` that nothing uses needn't be defined anywhere.
 
 **The type hash** lets a linker check that files agree on a function's
 or global's type. It is `h = (h * 31 + byte) & 0xFFFF`, from 0, over a
@@ -187,23 +189,38 @@ out 0 is written as 1.
 
 ## The final pass
 
-It has at most one input file open at a time, and the module.
+`ccrel` links one or more objects, in the order given, into one
+module. It has at most one input file open at a time, and the module.
 
-1. Read `NAME.syms`. Report undefined references, number the imports,
-   find `main`, and compute the layout: header, dependencies, globals,
-   string pool, one pad byte, then code.
-2. Write the module header and dependencies. Read the stream for its
+1. Read every object's `NAME.syms`, laying out each object's data,
+   strings and code after the objects before it. Put each symbol
+   without flag 8 into one table of shared names, where a second
+   definition is "multiple definition of" (220), and a declaration
+   that disagrees with the most complete one kept so far is
+   "conflicting types for" (221): a function's parameter count (unless
+   either is 255), flag 4 and type hash (unless either is 0), a
+   global's type hash and size (unless either is 0), and a function
+   against a global. Then report undefined references, number the
+   imports, find `main` (not local), and compute the layout: header,
+   dependencies, every object's globals, every object's string pool,
+   one pad byte, then every object's code.
+2. Write the module header and dependencies. For each object, read its
+   `NAME.syms` again to map its symbols to final addresses (through the
+   shared table for those it doesn't define), then its stream for its
    `D` and `R` records, writing the data with each `R` record's address
-   filled in and kept for the RLD; then read it again for its `S`
-   records, writing the string pool.
-3. Read the stream a third time for its `F` records, copying each
-   function with its relocations applied and kept for the RLD. With
-   `-l`, list each function as it passes. Then add the init function,
-   which calls `main`.
+   filled in and kept for the RLD. Then read each stream again for its
+   `S` records, writing the string pools.
+3. For each object, map its symbols again, and read its stream a third
+   time for its `F` records, copying each function with its relocations
+   applied and kept for the RLD. With `-l`, list each function as it
+   passes (with several objects, each object's functions after an
+   `object NAME:` line). Then add the init function, which calls
+   `main`.
 4. Write the RLD (function entries in code order, then the kept
    relocations, those in the data first) and the ESD (imports).
 
-A kind 4 relocation becomes a kind 1 relocation to the symbol's data
-offset plus the addend. The final pass checks that the files agree
-with each other (sizes, offsets, indexes, record tags), and reports
-"compiler stream file is damaged" if not.
+A kind 1 or 3 target is offset by where its object's data or strings
+start; a kind 4 relocation becomes a kind 1 relocation to the symbol's
+final data offset plus the addend. The final pass checks that the
+files agree with each other (sizes, offsets, indexes, record tags), and
+reports "compiler stream file is damaged" if not.

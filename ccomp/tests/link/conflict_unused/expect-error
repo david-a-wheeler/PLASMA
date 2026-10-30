@@ -1,0 +1,1 @@
+error 221: conflicting types for 'f' (in tests/out/link/conflict_unused_a and tests/out/link/conflict_unused_b)

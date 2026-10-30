@@ -70,7 +70,7 @@ int main(int argc, char **argv)
   base_name = outname;
   compile_file(src, outname);
   module_name = outname;
-  link_module(outname, outname);
+  link_module(1, &outname, outname);
   module_name = NULL;
   remove_streams(outname);
   return 0;

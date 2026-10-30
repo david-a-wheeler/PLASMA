@@ -1,0 +1,1 @@
+error 220: multiple definition of 'main' (in tests/out/link/two_mains_a and tests/out/link/two_mains_b)

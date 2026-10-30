@@ -1,0 +1,1 @@
+error 220: multiple definition of 'g' (in tests/out/link/func_and_global_a and tests/out/link/func_and_global_b)

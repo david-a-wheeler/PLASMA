@@ -177,6 +177,7 @@ for src in tests/run/*.c; do
         echo "FAIL $src: cccomp then ccrel don't write ccish's module"
         split_bad=1
     fi
+    rm -f "$OUT/split_$mod.obj" "$OUT/split_$mod.syms"
 done
 if [ $split_bad -eq 0 ]; then
     pass=$((pass + 1))
@@ -184,17 +185,18 @@ else
     fail=$((fail + 1))
 fi
 # cccomp leaves the stream file and symbol summary for ccrel, and ccrel
-# removes them.
+# keeps them, as a linker keeps its objects.
 if ./cccomp -o "$OUT/split_streams" tests/run/hello.c \
    && [ -s "$OUT/split_streams.obj" ] && [ -s "$OUT/split_streams.syms" ] \
    && ./ccrel "$OUT/split_streams" && [ -s "$OUT/split_streams" ] \
-   && [ ! -e "$OUT/split_streams.obj" ] \
-   && [ ! -e "$OUT/split_streams.syms" ]; then
+   && [ -s "$OUT/split_streams.obj" ] \
+   && [ -s "$OUT/split_streams.syms" ]; then
     pass=$((pass + 1))
 else
-    echo "FAIL cccomp/ccrel: stream files not passed on, or not removed"
+    echo "FAIL cccomp/ccrel: stream files not passed on, or not kept"
     fail=$((fail + 1))
 fi
+rm -f "$OUT/split_streams.obj" "$OUT/split_streams.syms"
 # A compile error in cccomp leaves no stream files for ccrel.
 if ./cccomp -o "$OUT/split_err" tests/errors/const_assign.c 2>/dev/null \
    || [ -e "$OUT/split_err.obj" ] || [ -e "$OUT/split_err.syms" ]; then
@@ -217,6 +219,7 @@ else
     sed 's/^/    /' "$OUT/noobj.err"
     fail=$((fail + 1))
 fi
+rm -f "$OUT/noobj.syms"
 # ccrel finds a damaged stream file: here, one cut short, and one with an
 # unknown record tag added at the end.
 damaged_test() {
@@ -230,6 +233,7 @@ damaged_test() {
         sed 's/^/    /' "$OUT/$1.err"
         fail=$((fail + 1))
     fi
+    rm -f "$OUT/$1.obj" "$OUT/$1.syms"
 }
 ./cccomp -o "$OUT/cut" tests/run/global_init.c
 size=$(wc -c < "$OUT/cut.obj")
@@ -239,6 +243,92 @@ damaged_test cut "cut short"
 ./cccomp -o "$OUT/badtag" tests/run/global_init.c
 printf 'X' >> "$OUT/badtag.obj"
 damaged_test badtag "with an unknown record tag"
+
+# Linking several objects (approach.md issue 11, "Step 3"): each
+# directory tests/link/NAME holds .c files, compiled by cccomp and linked
+# by ccrel in name order. With a file "expected", the module is run under
+# plvm, and its output must equal it; the listing directives of the run
+# tests may be in any of the .c files. With "expect-error", linking must
+# fail with a message containing its text, and leave no module.
+mkdir -p "$OUT/link"
+for dir in tests/link/*/; do
+    name=$(basename "$dir")
+    mod=$(echo "$name" | tr 'A-Z' 'a-z')
+    lerr=$OUT/link/$name.err
+    objs=""
+    compiled=1
+    for src in "$dir"*.c; do
+        obj=$OUT/link/${name}_$(basename "$src" .c)
+        if ! ./cccomp -o "$obj" "$src" 2>"$lerr"; then
+            echo "FAIL $src: compile error"
+            sed 's/^/    /' "$lerr"
+            compiled=0
+            break
+        fi
+        objs="$objs $obj"
+    done
+    if [ $compiled -eq 0 ]; then
+        fail=$((fail + 1))
+    elif [ -f "$dir/expect-error" ]; then
+        want=$(cat "$dir/expect-error")
+        if ./ccrel -o "$OUT/link/$mod" $objs 2>"$lerr"; then
+            echo "FAIL $dir: linked, but should have failed"
+            fail=$((fail + 1))
+        elif ! grep -qF -- "$want" "$lerr"; then
+            echo "FAIL $dir: wrong message. Wanted: $want"
+            sed 's/^/    got: /' "$lerr"
+            fail=$((fail + 1))
+        elif [ -e "$OUT/link/$mod" ]; then
+            echo "FAIL $dir: a failed link left its module"
+            fail=$((fail + 1))
+        else
+            pass=$((pass + 1))
+        fi
+    elif ! ./ccrel -l -o "$OUT/link/$mod" $objs >"$OUT/link/$name.lst" \
+            2>"$lerr"; then
+        echo "FAIL $dir: link error"
+        sed 's/^/    /' "$lerr"
+        fail=$((fail + 1))
+    else
+        (cd "$OUT/link" && timeout 10 "$PLVM" "$mod" 2>&1 | tr -d '\r' \
+            >"$name.actual")
+        problems=""
+        for src in "$dir"*.c; do
+            problems=$problems$(check_listing "$src" "$OUT/link/$name.lst")
+        done
+        if ! cmp -s "$OUT/link/$name.actual" "$dir/expected"; then
+            echo "FAIL $dir: output differs (expected, then actual):"
+            sed 's/^/    /' "$dir/expected"
+            echo "    ---"
+            sed 's/^/    /' "$OUT/link/$name.actual"
+            fail=$((fail + 1))
+        elif [ -n "$problems" ]; then
+            echo "FAIL $dir: generated code (see $OUT/link/$name.lst):"
+            echo "$problems"
+            fail=$((fail + 1))
+        elif [ -s "$lerr" ]; then
+            echo "FAIL $dir: unexpected messages:"
+            sed 's/^/    /' "$lerr"
+            fail=$((fail + 1))
+        else
+            pass=$((pass + 1))
+        fi
+    fi
+    for obj in $objs; do
+        rm -f "$obj.obj" "$obj.syms"
+    done
+done
+# Linking several objects needs a module name.
+if ./ccrel "$OUT/a" "$OUT/b" 2>"$OUT/link/noname.err"; then
+    echo "FAIL ccrel: linked several objects without -o"
+    fail=$((fail + 1))
+elif grep -qF "usage: ccrel" "$OUT/link/noname.err"; then
+    pass=$((pass + 1))
+else
+    echo "FAIL ccrel: wanted its usage for several objects without -o, got:"
+    sed 's/^/    /' "$OUT/link/noname.err"
+    fail=$((fail + 1))
+fi
 
 # The message file must agree with the sources (approach.md, "C2").
 if ./tests/check_msgs.sh; then

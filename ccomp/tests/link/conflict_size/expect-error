@@ -1,0 +1,1 @@
+error 221: conflicting types for 't' (in tests/out/link/conflict_size_a and tests/out/link/conflict_size_b)

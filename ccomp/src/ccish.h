@@ -393,7 +393,7 @@ void emit_abort(void);                      /* after an error */
 
 /* ---------- Final pass (link.c) ---------- */
 
-void link_module(const char *base, const char *path);
+void link_module(int n, const char **bases, const char *path);
 void link_abort(void);                      /* after an error */
 
 #endif

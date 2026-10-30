@@ -67,9 +67,42 @@ nearly all of memory (approach.md, "B3"):
 
 ```
 cccomp [-i] [-k] [-o output] input.c     the compile pass: writes the stream files
-ccrel [-l] [-k] [-o module] output       the final pass: writes the module, and
-                                          removes the stream files
+ccrel [-l] [-o module] output...         the final pass: links them into a module
 ```
+
+### Linking several files
+
+`ccrel` is also a static linker (approach.md issue 11). Compile each
+file with `cccomp`, then link the objects into one module:
+
+```
+$ ./cccomp main.c && ./cccomp util.c
+$ ./ccrel -o prog main util && ../src/plvm prog
+```
+
+* Each object is named by its output name, as given to `cccomp`
+  (`main` for `main.obj` and `main.syms`). They are linked in the
+  order given: every object's globals, then every object's strings,
+  then every object's code. `-o` is required with more than one.
+* `ccrel` keeps the objects, so after a change only the changed file
+  needs compiling again. (`ccish` removes the stream files it makes,
+  unless `-k`.)
+* A function or global that isn't `static` is shared by every object;
+  a `static` one is private to its file, so two files may each have a
+  `static` function of the same name. A name may be defined in only
+  one object ("multiple definition of"), and every declaration of it,
+  in every object, must agree with the others: the parameter count,
+  whether it returns a value, the types (through a type hash) and a
+  global's size ("conflicting types for"). This holds even for a
+  declaration nothing uses.
+* A function that no object defines must be a CMDSYS function, which
+  is imported; a program may define its own function of a CMDSYS name,
+  with the same type, and calls then go to it. Anything else used and
+  not defined is an "undefined reference".
+* `main` (not `static`) in any object is the entry point.
+* The module exports nothing, and imports only CMDSYS functions, so C
+  names are matched in full, with their case, and never reach PLASMA's
+  case-insensitive, 16-character symbol table.
 
 ## The language so far
 
@@ -97,16 +130,16 @@ ccrel [-l] [-k] [-o module] output       the final pass: writes the module, and
   of `for` may declare variables, which are in scope only in the loop.
 * Global variables of any of these types, declared outside functions
   (`int count, *p, buf[1000];`), anywhere before their first use. They
-  are private to the module (not exported). A local or parameter may
+  are private to the module (not exported), though shared by the files
+  linked into it. A local or parameter may
   hide a global of the same name, but a global can't share a name with
   a function or another global.
 * `extern`, at file scope: `extern int count;` or `extern char buf[];`
   declares a global without giving it storage. A later definition in
   the same file (`int count = 1;`) gives it storage; otherwise it must
-  be defined in another file, which linking several files will allow
-  (approach.md issue 11; until then, a used `extern` global that the
-  file doesn't define is an "undefined reference"). One that is never
-  used needn't be defined. `extern` on a function declaration changes
+  be defined in another file linked with it (see "Linking several
+  files"), or it is an "undefined reference". One that is never used
+  needn't be defined. `extern` on a function declaration changes
   nothing. An `extern` with an initializer, and `extern` in a block,
   aren't supported. `sizeof` an array of unknown size is an error.
 * Global initializers, computed at compile time and stored in the
@@ -297,9 +330,10 @@ of at most 255 characters, and its type is `char *` too.
 
 ### Calling CMDSYS
 
-A function that is called but not defined in the file must be one of
-the CMDSYS functions in `cmdsys_funcs[]` in `src/parse.c` (otherwise
-the final pass reports an "undefined reference"), such as
+A function that is called but not defined in any file linked into the
+module must be one of the CMDSYS functions in `cmdsys_funcs[]` in
+`src/parse.c` (otherwise the final pass reports an "undefined
+reference"), such as
 `putc`, `puts`, `puti`, `putln` or `heapalloc`. It is imported from
 CMDSYS. These are PLASMA's functions with PLASMA's meanings, not C's.
 For example, `puts` takes a PLASMA string and adds no newline, and
@@ -331,9 +365,10 @@ function returns exactly one.
 | `src/lower.c` | Stage 2: IR ops to PLASMA machine ops (see [IR.md](IR.md)) |
 | `src/peep.c` | Stage 3: peephole optimizer |
 | `src/emit.c` | Stage 4: encoding one function at a time, writing the stream files |
-| `src/link.c` | Final pass: stream files to REL module, and the listing (see [OBJECT.md](OBJECT.md)) |
+| `src/link.c` | Final pass and linker: stream files of one or more objects to a REL module, and the listing (see [OBJECT.md](OBJECT.md)) |
 | `tests/run/` | Programs, each with its expected output (`.expected`); comment lines can also check the generated code and the warnings; a program with no warning checks must compile silently |
 | `tests/errors/` | Programs that must fail; the first line gives the expected message |
+| `tests/link/` | Programs of several files, linked in name order, each with its expected output (`expected`) or link error (`expect-error`) |
 | `tests/check_msgs.sh` | Checks `ccish.msg` against the message comments in the sources |
 
 ## Messages
@@ -388,6 +423,10 @@ file is used, and that the file's numbers ascend.
   - A string literal: 256 characters (`MAX_STR`).
   - The module: 2432 relocations (calls and address references) in
     the final pass (`MAX_RELOCS`).
+  - A link: 32 objects, and 512 names shared between them, with 6144
+    bytes of those names, each with a NUL (`MAX_OBJS`, `MAX_GSYMS`,
+    `MAX_GNAMES` in `src/link.c`). Each object must also fit the
+    one-file limits.
 * Only a few peephole optimizations so far (see `src/peep.c`): removal
   of unreachable code, plain stores for assignments whose value is
   unused, folded negative constants, adding 0, `INCR`/`DECR`, `ANDI`,
