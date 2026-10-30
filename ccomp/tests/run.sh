@@ -360,6 +360,41 @@ else
     fail=$((fail + 1))
 fi
 rm -f "$OUT"/link/full_[abc].obj "$OUT"/link/full_[abc].syms
+# More functions in a module than one object may define (MAX_FUNCS,
+# 272): many_a defines f1..f150, many_b f151..f300 and main, which calls
+# functions from both ends of each. Each fN returns N, so a wrong RLD
+# function entry calls the wrong function.
+gen_funcs() {
+    i=$2
+    while [ "$i" -le "$3" ]; do
+        echo "int f$i(void) { return $i; }"
+        i=$((i + 1))
+    done >"$1"
+}
+gen_funcs "$OUT/link/many_a.c" 1 150
+gen_funcs "$OUT/link/many_b.c" 151 300
+cat >>"$OUT/link/many_b.c" <<'EOF'
+int f1(void); int f150(void);
+int main()
+{
+  puti(f1()); putc(' '); puti(f150()); putc(' ');
+  puti(f151()); putc(' '); puti(f300()); putc(10);
+  return 0;
+}
+EOF
+if ./cccomp -o "$OUT/link/many_a" "$OUT/link/many_a.c" \
+   && ./cccomp -o "$OUT/link/many_b" "$OUT/link/many_b.c" \
+   && ./ccrel -o "$OUT/link/many" "$OUT/link/many_a" "$OUT/link/many_b" \
+      2>"$OUT/link/many.err" \
+   && [ "$(cd "$OUT/link" && timeout 10 "$PLVM" many 2>&1 | tr -d '\r')" \
+        = "1 150 151 300" ]; then
+    pass=$((pass + 1))
+else
+    echo "FAIL ccrel: 300 functions in two objects don't link and run"
+    sed 's/^/    /' "$OUT/link/many.err"
+    fail=$((fail + 1))
+fi
+rm -f "$OUT"/link/many_[ab].obj "$OUT"/link/many_[ab].syms
 # Linking several objects needs a module name.
 if ./ccrel "$OUT/a" "$OUT/b" 2>"$OUT/link/noname.err"; then
     echo "FAIL ccrel: linked several objects without -o"

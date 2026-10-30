@@ -40,7 +40,9 @@ Each record starts with a one-byte tag, a letter:
 The `D` and `R` records, in order, make up the data (the global
 variables); the `S` records, in order, make up the string pool; and
 the `F` records, in order, make up the code. The final pass reads the
-stream three times, once for each, skipping the other records.
+stream three times, once for each, skipping the other records, and a
+fourth time for the `F` records' lengths alone, which give the RLD's
+function entries.
 
 ### `D`: data bytes
 

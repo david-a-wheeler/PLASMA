@@ -21,7 +21,9 @@
  *   3. each stream is read a third time for its functions, each copied
  *      with its relocations applied and kept for the RLD; then the init
  *      function is added;
- *   4. the RLD and ESD are written.
+ *   4. the RLD and ESD are written: each stream is read a fourth time
+ *      for its functions' lengths, giving the RLD's function entries
+ *      without keeping every function's start in memory.
  * In steps 2 and 3, each object's summary is read again just before
  * its stream, to map its own symbol numbers to final addresses, so only
  * one object's map is in memory.
@@ -113,10 +115,6 @@ typedef struct {
 
 static Lreloc relocs[MAX_RELOCS];
 static int nrelocs;
-
-/* Code-segment offsets of the functions, in code order, for the RLD. */
-static int func_at[MAX_FUNCS];
-static int ndefs;
 
 static unsigned char fbuf[MAX_FUNC_CODE];
 
@@ -761,8 +759,7 @@ static void copy_code(int k)
     idx = bgetw(&in);
     len = bgetw(&in);
     if (idx >= nfsyms || !(lsyms[idx].flags & SYM_DEFINED)
-        || lsyms[idx].off != at || len > MAX_FUNC_CODE
-        || ndefs >= MAX_FUNCS)
+        || lsyms[idx].off != at || len > MAX_FUNC_CODE)
       bad_obj();
     for (i = 0; i < len; i++) {
       if ((c = bgetc(&in)) == EOF)
@@ -785,11 +782,35 @@ static void copy_code(int k)
     if (opt_list)
       list_code(lsyms[idx].name, len, start, first);
     bwrite(&out, fbuf, len);
-    func_at[ndefs++] = start;
     at += len;
   }
   bclose(&in);
   if (at != code_size)
+    bad_obj();
+}
+
+/* Write the RLD's function entries for object k, in code order: reread
+ * its F records' lengths rather than keep every start in memory. */
+static void func_entries(int k)
+{
+  int at = obj_code[k], len, n;
+
+  cur = k;
+  open_obj(k);
+  while (next_record(func_tags) != EOF) {
+    bskip(&in, 2);                        /* function symbol index */
+    len = bgetw(&in);
+    bputc(&out, 0x02);
+    bputw(&out, subseg + at);
+    bputc(&out, 0);
+    at += len;
+    bskip(&in, len);
+    if ((n = bgetw(&in)) > MAX_FUNC_RELOCS)
+      bad_obj();
+    bskip(&in, 5 * n);                    /* its relocations */
+  }
+  bclose(&in);
+  if (at != obj_code[k + 1])
     bad_obj();
 }
 
@@ -881,11 +902,8 @@ void link_module(int n, const char **bases, const char *path)
 
   /* Step 4. RLD: function entries first (in code order, init
    * excluded), then the relocations. */
-  for (i = 0; i < ndefs; i++) {
-    bputc(&out, 0x02);
-    bputw(&out, subseg + func_at[i]);
-    bputc(&out, 0);
-  }
+  for (k = 0; k < n; k++)
+    func_entries(k);
   for (i = 0; i < nrelocs; i++) {
     Lreloc *r = &relocs[i];
     int at = r->at - module_base;

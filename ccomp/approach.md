@@ -1120,11 +1120,21 @@ tests). Choices made while building it, open for review:
   and `probe`, and two generated links in `run.sh`: 509 names filling
   every slot (a name then found in the full table), and 510 names
   (222).
-- **Found while testing (step 3's bug, not fixed here):** the whole
-  module may define at most `MAX_FUNCS` (272) functions, since
-  `func_at[]`, the RLD's list of function entries, has that size; the
-  273rd is reported as a damaged stream file. ccish itself has about
-  385 functions.
+- **Found while testing (step 3's bug, fixed in its own commit):** the
+  whole module could define at most `MAX_FUNCS` (272) functions, since
+  `func_at[]`, the RLD's list of function entries, had that size; the
+  273rd was reported as a damaged stream file. ccish itself has about
+  385 functions. Decided in discussion (2026-10-30): drop `func_at[]`
+  (544 bytes) instead of growing it. Step 4 of the final pass now
+  rereads each object's `F` records, reading only each one's length
+  and skipping the rest, and writes the function entries as it goes:
+  part of B4 done early, which B4 needs anyway (the extra pass costs
+  disk reads until B4 shares it; growing `func_at[]` to ~450 entries,
+  900 bytes, was the alternative). `bskip()` now skips the rest of its
+  512-byte buffer at a time instead of calling `bgetc()` per byte,
+  which speeds every pass's skipping. Output is byte-identical. Test: `run.sh`
+  links 300 generated functions in two objects and runs the module,
+  calling functions from both ends of each object.
 
 ### 12. Standard library
 
