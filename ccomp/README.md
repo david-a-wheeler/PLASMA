@@ -415,17 +415,17 @@ file is used, and that the file's numbers ascend.
     references, 104 labels, and 31 `return`s (`MAX_FUNC_CODE`,
     `MAX_FUNC_RELOCS`, `MAX_LABELS`, `MAX_RETURNS`). Each `if`, loop,
     `&&`, `||` and `?:` uses one to four labels.
-  - One file: 272 functions (declared, defined or called), 72
+  - One file: 302 functions (declared, defined or called), 82
     variables visible at once (globals, plus the parameters and locals
-    in scope), 384 parameter types in all, 56 distinct types, 10
+    in scope), 433 parameter types in all, 56 distinct types, 10
     struct tags (counting those in blocks that have ended), 64 struct
     members in all, 240 enum constants and typedef names visible at
-    once, and 5632 bytes of distinct names, each with a NUL, not
+    once, and 6212 bytes of distinct names, each with a NUL, not
     counting those of a function's parameters and locals after it ends
     (`MAX_FUNCS`, `MAX_VARS`, `MAX_PARAM_TYPES`, `MAX_TYPES`,
     `MAX_TAGS`, `MAX_MEMBERS`, `MAX_IDS`, `MAX_POOL`).
   - A string literal: 256 characters (`MAX_STR`).
-  - A link: 32 objects, and 509 names shared between them, with 6144
+  - A link: 32 objects, and 149 names shared between them, with 1281
     bytes of those names, each with a NUL (`MAX_OBJS`, `MAX_GSYMS`,
     `MAX_GNAMES` in `src/link.c`). `ccrel -l` ends its listing with
     how much of the last two is used. Each object must also fit the

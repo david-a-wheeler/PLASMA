@@ -343,12 +343,12 @@ for dir in tests/link/*/; do
     done
 done
 # The shared-name table full (approach.md issue 11, "Fitting the
-# linker's tables"): 509 names fill all 509 slots and link, and b's use
+# linker's tables"): 149 names fill all 149 slots and link, and b's use
 # of a's g0 is found in the full table; one more name stops the link.
 # The objects are generated, mostly unused declarations, which are
-# shared names too: full_a defines g0 and declares g1..g254, full_b
-# declares g255..g507 and defines use (which calls g0), and full_c
-# declares g255..g509, one too many.
+# shared names too: full_a defines g0 and declares g1..g74, full_b
+# declares g75..g147 and defines use (which calls g0), and full_c
+# declares g75..g149, one too many. (634 name bytes, within 1281.)
 gen_decls() {
     i=$2
     while [ "$i" -le "$3" ]; do
@@ -356,19 +356,19 @@ gen_decls() {
         i=$((i + 1))
     done >"$1"
 }
-gen_decls "$OUT/link/full_a.c" 1 254
+gen_decls "$OUT/link/full_a.c" 1 74
 echo 'void g0(void) {}' >>"$OUT/link/full_a.c"
-gen_decls "$OUT/link/full_b.c" 255 507
+gen_decls "$OUT/link/full_b.c" 75 147
 echo 'void g0(void); void use(void) { g0(); }' >>"$OUT/link/full_b.c"
-gen_decls "$OUT/link/full_c.c" 255 509
+gen_decls "$OUT/link/full_c.c" 75 149
 if ./cccomp -o "$OUT/link/full_a" "$OUT/link/full_a.c" \
    && ./cccomp -o "$OUT/link/full_b" "$OUT/link/full_b.c" \
    && ./ccrel -l -o "$OUT/link/full" "$OUT/link/full_a" "$OUT/link/full_b" \
       >"$OUT/link/full.lst" 2>"$OUT/link/full.err" \
-   && grep -qF "; shared names: 509 of 509 slots" "$OUT/link/full.lst"; then
+   && grep -qF "; shared names: 149 of 149 slots" "$OUT/link/full.lst"; then
     pass=$((pass + 1))
 else
-    echo "FAIL ccrel: 509 shared names don't fill the table and link"
+    echo "FAIL ccrel: 149 shared names don't fill the table and link"
     sed 's/^/    /' "$OUT/link/full.err"
     fail=$((fail + 1))
 fi
@@ -379,30 +379,33 @@ if ./cccomp -o "$OUT/link/full_c" "$OUT/link/full_c.c" \
         "$OUT/link/full_over.err"; then
     pass=$((pass + 1))
 else
-    echo "FAIL ccrel: 510 shared names, wanted 'too many names', got:"
+    echo "FAIL ccrel: 150 shared names, wanted 'too many names', got:"
     sed 's/^/    /' "$OUT/link/full_over.err"
     fail=$((fail + 1))
 fi
 rm -f "$OUT"/link/full_[abc].obj "$OUT"/link/full_[abc].syms
 # More functions in a module than one object may define (MAX_FUNCS,
-# 272): many_a defines f1..f150, many_b f151..f300 and main, which calls
-# functions from both ends of each. Each fN returns N, so a wrong RLD
-# function entry calls the wrong function.
+# 302): many_a defines f1..f160, many_b f161..f320, all static so they
+# don't fill the shared-name table, and each object shares only two
+# wrappers, which call its first and last; main calls all four. Each
+# fN returns N, so a wrong RLD function entry calls the wrong function.
 gen_funcs() {
     i=$2
     while [ "$i" -le "$3" ]; do
-        echo "int f$i(void) { return $i; }"
+        echo "static int f$i(void) { return $i; }"
         i=$((i + 1))
     done >"$1"
+    echo "int $4_first(void) { return f$2(); }" >>"$1"
+    echo "int $4_last(void) { return f$3(); }" >>"$1"
 }
-gen_funcs "$OUT/link/many_a.c" 1 150
-gen_funcs "$OUT/link/many_b.c" 151 300
+gen_funcs "$OUT/link/many_a.c" 1 160 a
+gen_funcs "$OUT/link/many_b.c" 161 320 b
 cat >>"$OUT/link/many_b.c" <<'EOF'
-int f1(void); int f150(void);
+int a_first(void); int a_last(void);
 int main()
 {
-  puti(f1()); putc(' '); puti(f150()); putc(' ');
-  puti(f151()); putc(' '); puti(f300()); putc(10);
+  puti(a_first()); putc(' '); puti(a_last()); putc(' ');
+  puti(b_first()); putc(' '); puti(b_last()); putc(10);
   return 0;
 }
 EOF
@@ -411,10 +414,10 @@ if ./cccomp -o "$OUT/link/many_a" "$OUT/link/many_a.c" \
    && ./ccrel -o "$OUT/link/many" "$OUT/link/many_a" "$OUT/link/many_b" \
       2>"$OUT/link/many.err" \
    && [ "$(cd "$OUT/link" && timeout 10 "$PLVM" many 2>&1 | tr -d '\r')" \
-        = "1 150 151 300" ]; then
+        = "1 160 161 320" ]; then
     pass=$((pass + 1))
 else
-    echo "FAIL ccrel: 300 functions in two objects don't link and run"
+    echo "FAIL ccrel: 324 functions in two objects don't link and run"
     sed 's/^/    /' "$OUT/link/many.err"
     fail=$((fail + 1))
 fi
@@ -457,12 +460,12 @@ fi
 rm -f "$OUT"/link/relocs.obj "$OUT"/link/relocs.syms
 # A static function's name that doesn't fit after the shared names is
 # listed by its address (approach.md issue 11, "Item 1: the linker's
-# local names"). 190 declared names and the caller, each 31 characters
-# (32 bytes), and main, puti and putc (5 each) take 6127 of the 6144
-# name bytes, leaving 17: too few for the static function's 31-character
+# local names"). 38 declared names and the caller, each 31 characters
+# (32 bytes), and main, puti and putc (5 each) take 1263 of the 1281
+# name bytes, leaving 18: too few for the static function's 31-character
 # name, which is then listed, as defined and as called, by its address.
-# The module still links and runs. The names are split between two
-# objects, since one compile's name pool can't hold them all.
+# The module still links and runs. The declared names are split
+# between two objects, so that the link has two objects' names.
 gen_long() {
     i=$2
     while [ "$i" -le "$3" ]; do
@@ -470,8 +473,8 @@ gen_long() {
         i=$((i + 1))
     done >"$1"
 }
-gen_long "$OUT/link/nofit_a.c" 1 95
-gen_long "$OUT/link/nofit_b.c" 96 190
+gen_long "$OUT/link/nofit_a.c" 1 19
+gen_long "$OUT/link/nofit_b.c" 20 38
 cat >>"$OUT/link/nofit_b.c" <<'EOF'
 static int static_padded_to_thirty_one_chr(void) { return 7; }
 int caller_padded_to_thirty_one_chr(void)
@@ -490,7 +493,7 @@ if ./cccomp -o "$OUT/link/nofit_a" "$OUT/link/nofit_a.c" \
       2>>"$OUT/link/nofit.err" \
    && ./ccrel -l -o "$OUT/link/nofit" "$OUT/link/nofit_a" \
       "$OUT/link/nofit_b" >"$OUT/link/nofit.lst" 2>>"$OUT/link/nofit.err" \
-   && grep -qF "; shared names: 194 of 509 slots, 6127 of 6144" \
+   && grep -qF "; shared names: 42 of 149 slots, 1263 of 1281" \
         "$OUT/link/nofit.lst" \
    && grep -q '^static@\$[0-9A-F]\{4\}:$' "$OUT/link/nofit.lst" \
    && grep -qF '; static@$' "$OUT/link/nofit.lst" \

@@ -1093,7 +1093,9 @@ measures what memory is free.
 **The shared-name table is done** (items 2 and 3, 2026-10-30; 258
 tests). Choices made while building it, open for review:
 - `MAX_GSYMS` is 509, the prime below the old 512. The table takes
-  5.6K (11 bytes a slot), down from 10K.
+  5.6K (11 bytes a slot), down from 10K. (Later cut to 149 slots and
+  1,281 name bytes, once measured: 18.5, "Programs linked and
+  measured".)
 - The type hash keeps its own array; a function's parameter count and
   a global's size share `g_count[]` (255 or 0 if unknown, by kind).
   The data and returns bits and a new "imported" bit join the old
@@ -1947,6 +1949,18 @@ Findings:
   standard `void *memcpy(...)` then conflicts at link time with one
   whose generated code calls it. The stand-in `string.h` declares them
   CMDSYS's way. M9's library must settle this.
+
+**Then (2026-10-30, decided in discussion):** ccish's four limits were
+raised 10% above those peaks ("Table sizes", below), and ccrel's
+shared-name table cut to 10% above linking's use: `MAX_GSYMS` 509 to
+149 (the first prime at least 10% above 131) and `MAX_GNAMES` 6144 to
+1281 (1,164). Measured again: ccrel 17,178 bytes (6,855 code, 9,620
+data, 703 strings; module file 20,780), down 8.7K; cccomp 52,359
+(data 19,455; module file 66,629). No file needs raised limits now.
+The tests that filled the old table were resized (149 names fill it;
+`tests/link/probe` has new names that collide at slot 148; the
+function-count test uses 324 static functions; the static-name
+fallback test fills 1,281 bytes).
 
 #### 18.6 Options for fitting in 64K (listed in discussion, 2026-10-29)
 
@@ -2835,6 +2849,13 @@ next to each limit in `ccish.h`:
   small, and nesting wasn't measured.
 - The test `local_init_frame.c` used a 300-character literal; it now
   uses 256.
+- **Raised 2026-10-30** (decided in discussion), 10% above what
+  `tools/measure.py` found ccish's own files need (18.5, "Programs
+  linked and measured"), so that it compiles them with no workaround:
+  `MAX_FUNCS` 272 to 302 (`parse.c` needs 274), `MAX_VARS` 72 to 82
+  (`link.c`, 74), `MAX_PARAM_TYPES` 384 to 433 (`parse.c`, 393),
+  `MAX_POOL` 5632 to 6212 (`parse.c`, 5,647). cccomp's data grows by
+  about 1.1K. The peaks include the stand-in headers' declarations.
 
 **The `Sym` split is done** (2026-10-29), in two steps (functions,
 then variables with their names). Settled while building it:
