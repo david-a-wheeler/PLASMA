@@ -1885,6 +1885,68 @@ Bytecode, not counting comments and blank lines:
   `size_t`, none supported yet; and two 512-byte local `Bfile`s that
   don't fit a frame (they must be static, or the buffers smaller).
 
+**Programs linked and measured (2026-10-30, after linker step 4).**
+`tools/measure.py` (`make measure`; output in `tools/out/`, not kept)
+replaces E2's lost script and is in the repository so it can be rerun.
+It preprocesses each file with gcc and the stand-in headers in
+`tools/inc/`, applies the workarounds listed at its top (`unsigned`,
+`long`, `short` to `int`; suffixes dropped; the `printf` family to 0;
+`main(argc, argv)` renamed `main_args`; nested initializer braces
+dropped; parse.c's struct `?:` as an `if`), compiles each file with
+cccomp, and links the Apple II programs, cccomp and ccrel, with
+ccrel, using `tools/libstub.c` (empty C library functions, and a
+`main` that calls `main_args`). ccish, both passes in one, is too large
+for one module ("module too large") and isn't linked. Results:
+
+| File | Code | Data | Strings | Function symbols |
+|---|---|---|---|---|
+| `parse.c` | 20,550 | 5,537 | 530 | 274 |
+| `link.c` | 5,443 | 16,923 | 631 | 144 |
+| `lex.c` | 2,250 | 426 | 358 | 119 |
+| `peep.c` | 2,125 | 104 | 0 | 112 |
+| `emit.c` | 2,098 | 3,092 | 26 | 121 |
+| `lower.c` | 1,508 | 490 | 342 | 117 |
+| `type.c` | 1,106 | 784 | 0 | 98 |
+| `diag.c` | 671 | 866 | 56 | 113 |
+| `bio.c` | 517 | 0 | 8 | 110 |
+| `name.c` | 510 | 7,076 | 25 | 108 |
+| `ccrel.c` | 232 | 514 | 8 | 112 |
+| `cccomp.c` | 212 | 2 | 12 | 112 |
+
+| Program | Code | Data | Strings | In all | Module file | RLD + ESD | Def table |
+|---|---|---|---|---|---|---|---|
+| cccomp (10 files) | 31,547 | 18,377 | 1,357 | 51,281 | 65,551 | 14,122 | 1,630 (326 functions) |
+| ccrel (4 files) | 6,863 | 18,303 | 703 | 25,869 | 29,471 | 3,454 | 415 (83 functions) |
+
+Not counted: the C library (M9), the removed `printf` calls, PLASMA
+itself, ProDOS's 1K file buffers, frames and the evaluation stack.
+Findings:
+- **ccish can't compile two of its own files within its own limits**,
+  each only just over: `link.c` needs `MAX_VARS` 74 (72 now);
+  `parse.c` needs `MAX_FUNCS` 274 (272), `MAX_PARAM_TYPES` 393 (384)
+  and `MAX_POOL` 5,647 (5,632). (Found by bisection, with the other
+  limits raised; the stand-in headers' declarations count too.) The
+  script compiles such a file with a cccomp built from a copy of the
+  sources with raised limits (and links with a matching ccrel), and
+  says so.
+- **The Apple II loader reads the whole module file into memory**,
+  RLD and ESD included, and frees those only after applying them
+  (`cmd.pla`, `loadmod`); it keeps 5 bytes per function (the def
+  table) while the module is loaded. So cccomp needs about 65.5K just
+  to load: it can't load on a 64K machine as one module, before its
+  tables or PLASMA are counted.
+- **ccrel is 25.9K** (6.9K code, 18.3K data, 0.7K strings), 29.5K
+  while loading. Its data is mostly the shared-name table (5.6K) and
+  its names (6.1K), sized for 509 names and 6,144 bytes, but linking
+  either program uses 131 names and 1,164 bytes (every object declares
+  everything in `ccish.h`). Sized 10-20% above that (a prime near 157
+  slots, about 1.4K of names), they would take about 3K, saving about
+  8.7K.
+- **`memcpy` and `memset`:** ccish's own struct copies and array zeroing
+  call CMDSYS's, which return nothing; a file that declares the
+  standard `void *memcpy(...)` then conflicts at link time with one
+  whose generated code calls it. The stand-in `string.h` declares them
+  CMDSYS's way. M9's library must settle this.
 
 #### 18.6 Options for fitting in 64K (listed in discussion, 2026-10-29)
 
@@ -2023,7 +2085,9 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
 - **E2.** Measure every file's code size with the same workaround as
   `peep.c` (18.5), instead of extrapolating from one file. Done
   (2026-10-29; results in 18.5): about 33K of code (30K for the
-  compiler, 3K for the final pass) and 10.7K of strings.
+  compiler, 3K for the final pass) and 10.7K of strings. Redone
+  2026-10-30 with `tools/measure.py`, which also links the programs
+  (18.5, "Programs linked and measured").
 - **E3. Disk space** (measured 2026-10-29, after C2, with E2's
   self-compile). A 5.25" floppy holds 140K (280 blocks, about 273
   free for files). ProDOS stores each file in whole 512-byte blocks,

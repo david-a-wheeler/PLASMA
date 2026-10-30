@@ -31,6 +31,8 @@ decision 16):
 ```
 make            # builds ./ccish
 make test       # also builds ../src/plvm (the C VM), then runs the tests
+make measure    # compiles ccish's own source with ccish, links cccomp
+                # and ccrel, and reports their sizes (needs gcc, python3)
 ```
 
 ## Usage
@@ -370,6 +372,8 @@ function returns exactly one.
 | `tests/errors/` | Programs that must fail; the first line gives the expected message |
 | `tests/link/` | Programs of several files, linked in name order, each with its expected output (`expected`) or link error (`expect-error`) |
 | `tests/check_msgs.sh` | Checks `ccish.msg` against the message comments in the sources |
+| `tools/measure.py` | `make measure`: compiles ccish's own source with ccish (with workarounds for what it lacks), links the Apple II programs, and reports sizes |
+| `tools/inc/`, `tools/libstub.c` | Stand-in C library headers and empty library functions for `measure.py` |
 
 ## Messages
 
