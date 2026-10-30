@@ -22,6 +22,7 @@ int fclose(FILE *f) { return 0; }
 int getc(FILE *f) { return EOF; }
 int putc(int c, FILE *f) { return c; }
 int puts(const char *s) { return 0; }
+int fputs(const char *s, FILE *f) { return 0; }
 int fflush(FILE *f) { return 0; }
 int remove(const char *path) { return 0; }
 size_t fread(void *p, size_t size, size_t n, FILE *f) { return 0; }

@@ -430,7 +430,9 @@ static const char *tag_desc(int tag)
   static char buf[MAX_NAME + 10];
   if (tag_name(tag) < 0)
     return "an unnamed struct";
-  sprintf(buf, "'struct %s'", name_of(tag_name(tag)));
+  strcpy(buf, "'struct ");
+  strcat(buf, name_of(tag_name(tag)));
+  strcat(buf, "'");
   return buf;
 }
 
@@ -1502,8 +1504,9 @@ static void parse_call(int f, Operand *o)
     for (;;) {
       parse_expr(PREC_ASSIGN, &a);
       if (fn_ptypes[f] >= 0 && nargs < nparams_of(f)) {
-        sprintf(where, "%d of %s", nargs + 1,
-                quote(fname(f)));
+        strcpy(where, num_text(nargs + 1));
+        strcat(where, " of ");
+        strcat(where, quote(fname(f)));
         check_assign(param_types[fn_ptypes[f] + nargs], &a,
                      200 /* "argument" */, where);
       }
@@ -1892,7 +1895,8 @@ static void parse_member(Operand *o, int arrow)
           tag_desc(tag));
   m = member_find(tag, name_find(tok_text));
   if (m < 0) {
-    sprintf(msg, "%s in ", quote(tok_text));
+    strcpy(msg, quote(tok_text));
+    strcat(msg, " in ");
     strcat(msg, tag_desc(tag));
     error(214 /* "no member named" */, msg);
   }
@@ -3354,7 +3358,8 @@ NULL);
                  204 /* "(a case label must be one)" */, NULL);
       for (i = sw_first; i < ncases; i++)
         if (case_val[i] == e.val) {
-          sprintf(buf, "%d", e.val);
+          /* A copy: reporting uses num_text() too. */
+          strcpy(buf, num_text(e.val));
           error(137 /* "duplicate case value" */, buf);
         }
       if (ncases >= MAX_CASES)

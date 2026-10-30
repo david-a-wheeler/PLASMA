@@ -2128,10 +2128,22 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
     16,509 vs 20,422. Both builds' figures leave out the `printf` calls'
     arguments (`measure.py` makes them 0), so the real savings are a
     little larger.
-  - **Not yet:** diagnostics still use `fprintf` (diag.c, usage) and
-    `sprintf` (four error details in parse.c). Removing them (`fputs`,
-    `strcat` and a small number-to-text helper, in both builds) is
-    next, so that the small build needs nothing of the `printf` family.
+  - **No `printf` family in the small build** (done next, its own
+    commit; asked for in discussion): diagnostics (diag.c `report()`)
+    and the usage messages now write with `fputs`; numbers go through
+    `num_text()` (diag.c: decimal by hand, never negating, so the most
+    negative int works); parse.c's four `sprintf`s became `strcpy` and
+    `strcat`. In both builds, with the same output. The small programs
+    link nothing of the `printf` family (`nm`); the full build keeps
+    `printf` for the listing. `num_text()`'s buffer is static, and the
+    diagnostics use it too, so a caller copies it before passing it as
+    a detail. New test `tests/errors/case_duplicate_negative.c`.
+  - **Measured after it:** small cccomp 52,272, ccrel 13,966; full
+    52,900 and 17,164. These are higher than above (51,802 and
+    13,627), but only because `measure.py` had made every `printf`
+    call 0, so printing diagnostics counted as almost nothing, and the
+    `printf` library itself not at all. The new figures include all of
+    the printing; the small build no longer needs a `printf`.
 - **C2. Smaller messages:** shorter text (11K to perhaps 5K), or error
   numbers with the text in a disk file read only on an error (to about
   1K), or numbers only, explained in the documentation.

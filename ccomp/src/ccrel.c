@@ -34,9 +34,9 @@ void clean_up(void)
 static void usage(void)
 {
 #ifdef CCISH_LISTING
-  fprintf(stderr, "usage: ccrel [-l] [-o module] output...\n");
+  fputs("usage: ccrel [-l] [-o module] output...\n", stderr);
 #else
-  fprintf(stderr, "usage: ccrel [-o module] output...\n");
+  fputs("usage: ccrel [-o module] output...\n", stderr);
 #endif
   exit(2);
 }

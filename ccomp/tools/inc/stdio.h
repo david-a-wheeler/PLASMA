@@ -11,6 +11,7 @@ int fclose(FILE *f);
 int getc(FILE *f);
 int putc(int c, FILE *f);
 int puts(const char *s);
+int fputs(const char *s, FILE *f);
 int fflush(FILE *f);
 int remove(const char *path);
 size_t fread(void *p, size_t size, size_t n, FILE *f);

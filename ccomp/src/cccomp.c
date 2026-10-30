@@ -31,9 +31,9 @@ void clean_up(void)
 static void usage(void)
 {
 #ifdef CCISH_LISTING
-  fprintf(stderr, "usage: cccomp [-i] [-k] [-o output] input.c\n");
+  fputs("usage: cccomp [-i] [-k] [-o output] input.c\n", stderr);
 #else
-  fprintf(stderr, "usage: cccomp [-k] [-o output] input.c\n");
+  fputs("usage: cccomp [-k] [-o output] input.c\n", stderr);
 #endif
   exit(2);
 }

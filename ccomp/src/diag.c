@@ -103,6 +103,40 @@ static int msg_text(int n, char *buf, int size)
   return found;
 }
 
+/* n in decimal, in a static buffer that the next call reuses (so copy
+ * it before passing it to a diagnostic, which uses it too). Written
+ * out by hand, so that ccish needs nothing of the printf family. A
+ * negative n's remainders are 0 to -9 (C's % truncates), so it is
+ * never negated, which would overflow for the most negative int. */
+const char *num_text(int n)
+{
+  static char buf[12];
+  int i = sizeof(buf) - 1, neg = n < 0, d;
+  buf[i] = 0;
+  do {
+    d = n % 10;
+    buf[--i] = (char)('0' + (d < 0 ? -d : d));
+    n /= 10;
+  } while (n != 0);
+  if (neg)
+    buf[--i] = '-';
+  return buf + i;
+}
+
+/* Write s to stderr. */
+static void put_err(const char *s)
+{
+  fputs(s, stderr);
+}
+
+/* Write message number part to stderr, as " (part)". */
+static void put_part(int part)
+{
+  put_err(" (");
+  put_err(num_text(part));
+  put_err(")");
+}
+
 /* Print a diagnostic to stderr: where (the source file and line, if
  * there is one), its kind and message number, then the message's text,
  * the text of part (another message number, if not 0), and detail (if
@@ -113,25 +147,36 @@ static void report(const char *kind, int msg, int part, const char *detail)
 {
   char text[128];
   fflush(stdout);
-  if (src_line > 0)
-    fprintf(stderr, "%s:%d: ", src_name, src_line);
-  else
-    fprintf(stderr, "ccish: ");
-  fprintf(stderr, "%s %d", kind, msg);
+  if (src_line > 0) {
+    put_err(src_name);
+    put_err(":");
+    put_err(num_text(src_line));
+    put_err(": ");
+  } else {
+    put_err("ccish: ");
+  }
+  put_err(kind);
+  put_err(" ");
+  put_err(num_text(msg));
   if (msg_text(msg, text, sizeof(text))) {
-    fprintf(stderr, ": %s", text);
-    if (part && msg_text(part, text, sizeof(text)))
-      fprintf(stderr, " %s", text);
-    else if (part)
-      fprintf(stderr, " (%d)", part);
+    put_err(": ");
+    put_err(text);
+    if (part && msg_text(part, text, sizeof(text))) {
+      put_err(" ");
+      put_err(text);
+    } else if (part) {
+      put_part(part);
+    }
   } else {
     if (part)
-      fprintf(stderr, " (%d)", part);
-    fprintf(stderr, ":");
+      put_part(part);
+    put_err(":");
   }
-  if (detail)
-    fprintf(stderr, " %s", detail);
-  fprintf(stderr, "\n");
+  if (detail) {
+    put_err(" ");
+    put_err(detail);
+  }
+  put_err("\n");
 }
 
 /* Report a diagnostic of this kind, then remove partial output and

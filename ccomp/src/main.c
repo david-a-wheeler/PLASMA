@@ -39,9 +39,9 @@ void clean_up(void)
 static void usage(void)
 {
 #ifdef CCISH_LISTING
-  fprintf(stderr, "usage: ccish [-l] [-i] [-k] [-o output] input.c\n");
+  fputs("usage: ccish [-l] [-i] [-k] [-o output] input.c\n", stderr);
 #else
-  fprintf(stderr, "usage: ccish [-k] [-o output] input.c\n");
+  fputs("usage: ccish [-k] [-o output] input.c\n", stderr);
 #endif
   exit(2);
 }
