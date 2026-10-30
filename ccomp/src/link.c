@@ -46,9 +46,7 @@ typedef struct {
   int hash;           /* type hash, 0 if unknown */
 } Lsym;
 
-/* The function symbols of the object being copied (step 3 lists their
- * names), and how many it has of each kind of symbol. */
-static Lsym lsyms[MAX_FUNCS];
+/* How many symbols of each kind the object being read has. */
 static int nfsyms, ndsyms;
 
 /* The object being read (an index in obj_name[]), and its sizes. */
@@ -99,6 +97,15 @@ static int nimports, ndefined;
  * data, or -1. */
 static int fmap[MAX_FUNCS];
 static int dmap[MAX_VARS];
+
+/* For the listing (-l), each function symbol's name as an offset in
+ * gnames[], or -1 if it has none there. A shared name is already in
+ * the table; a static function's name is added after the shared names,
+ * from lnames_len on, until the next object's replace it. One that
+ * doesn't fit is listed by its address (approach.md issue 11, "Item 1:
+ * the linker's local names"). */
+static int fname[MAX_FUNCS];
+static int lnames_len;
 
 /* Load addresses: of the data segment, the string pool after it, and
  * the code segment after that. */
@@ -224,8 +231,10 @@ static void read_sym(Lsym *s, int data, const char *name)
   }
   s->hash = bgetw(&in);
   read_name(s->name, name);
+  /* A function has at least one byte of code, so it can't start at
+   * the code's end. */
   if ((s->flags & SYM_DEFINED)
-      && s->off > (data ? data_size : code_size))
+      && (data ? s->off > data_size : s->off >= code_size))
     damaged(name);
 }
 
@@ -378,19 +387,38 @@ static void resolve(void)
   }
 }
 
-/* Steps 2 and 3: read object k's symbol summary again, into lsyms[],
- * fmap[] and dmap[]. */
+/* For the listing: where function symbol s of the current object
+ * (summary file name) has its name in gnames[], adding a static one
+ * after the shared names if it fits; or -1. */
+static int list_name(Lsym *s, const char *name)
+{
+  int g, n, at;
+  if (!(s->flags & SYM_LOCAL)) {
+    if ((g = gsym_find(s->name)) < 0)
+      damaged(name);
+    return g_name[g];
+  }
+  n = (int)strlen(s->name) + 1;
+  if (!(s->flags & SYM_DEFINED) || lnames_len + n > MAX_GNAMES)
+    return -1;
+  at = lnames_len;
+  memcpy(gnames + at, s->name, n);
+  lnames_len += n;
+  return at;
+}
+
+/* Steps 2 and 3: read object k's symbol summary again, into fmap[] and
+ * dmap[], and fname[] if listing. */
 static void map_object(int k)
 {
   const char *name = open_syms(k);
   Lsym s;
   int i, g, v;
 
+  lnames_len = gnames_len;
   for (i = 0; i < nfsyms + ndsyms; i++) {
     int data = i >= nfsyms;
-    read_sym(data ? &s : &lsyms[i], data, name);
-    if (!data)
-      s = lsyms[i];
+    read_sym(&s, data, name);
     v = -1;
     if (s.flags & SYM_DEFINED) {
       v = s.off + (data ? obj_data[k] : obj_code[k]);
@@ -402,10 +430,13 @@ static void map_object(int k)
       else if (g_flags[g] & G_IMPORT)
         v = -2 - g_off[g];
     }
-    if (data)
+    if (data) {
       dmap[i - nfsyms] = v;
-    else
+    } else {
       fmap[i] = v;
+      if (opt_list)
+        fname[i] = list_name(&s, name);
+    }
   }
   close_syms(name);
 }
@@ -455,6 +486,17 @@ static const struct { const char *name; int fmt; } opinfo[0xC6 / 2] = {
   {"NATV", F_NONE}, {"JUMPZ", F_WORD}, {"JUMP", F_WORD}
 };
 
+/* The listing's name for function symbol t of the current object: its
+ * name, or static@$ and its load address if the name didn't fit. */
+static const char *func_label(int t)
+{
+  static char buf[16];
+  if (fname[t] >= 0)
+    return gnames + fname[t];
+  sprintf(buf, "static@$%04X", subseg + fmap[t]);
+  return buf;
+}
+
 /* The comment for a relocated word at load address at; the
  * relocations of the function being listed start at index first. */
 static const char *reloc_note(int at, int first)
@@ -470,7 +512,7 @@ static const char *reloc_note(int at, int first)
       } else {
         strcpy(buf, "  ; ");
         strcat(buf, relocs[i].target < 0 ? "main"
-                    : lsyms[relocs[i].target].name);
+                    : func_label(relocs[i].target));
         if (relocs[i].import_idx >= 0)
           strcat(buf, " (import)");
       }
@@ -758,8 +800,8 @@ static void copy_code(int k)
   while (next_record(func_tags) != EOF) {
     idx = bgetw(&in);
     len = bgetw(&in);
-    if (idx >= nfsyms || !(lsyms[idx].flags & SYM_DEFINED)
-        || lsyms[idx].off != at || len > MAX_FUNC_CODE)
+    if (idx >= nfsyms || fmap[idx] != obj_code[k] + at
+        || len > MAX_FUNC_CODE)
       bad_obj();
     for (i = 0; i < len; i++) {
       if ((c = bgetc(&in)) == EOF)
@@ -780,7 +822,7 @@ static void copy_code(int k)
       fbuf[off + 1] = (unsigned char)(v >> 8);
     }
     if (opt_list)
-      list_code(lsyms[idx].name, len, start, first);
+      list_code(func_label(idx), len, start, first);
     bwrite(&out, fbuf, len);
     at += len;
   }

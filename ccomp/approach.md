@@ -972,8 +972,9 @@ Apple II, and 32 objects and 512 names are too few anyway. Options:
    needs only `fmap[]`; the listing's names would be offsets into
    `gnames[]`, with the current object's local and import names added
    at its end and released after the object. The damaged-file checks
-   in `copy_code()` would use `fmap[]` (module offsets). *Not decided
-   yet*; it may wait for step 4.
+   in `copy_code()` would use `fmap[]` (module offsets). **Decided and
+   done** (2026-10-30), with an address fallback for a static name that
+   doesn't fit: see "Item 1: the linker's local names" below.
 2. **Decided: the shared-name table as parallel arrays**, 11 bytes an
    entry, not a 20-byte struct: name offset (2), type hash (2),
    parameter count or size (2: a function has no size, a global no
@@ -1135,6 +1136,42 @@ tests). Choices made while building it, open for review:
   which speeds every pass's skipping. Output is byte-identical. Test: `run.sh`
   links 300 generated functions in two objects and runs the module,
   calling functions from both ends of each object.
+
+**Item 1: the linker's local names. Done** (decided in discussion
+and built 2026-10-30; option A with the address fallback, built
+before B4, which it doesn't depend on). `lsyms[]` (272 entries of 42
+bytes, 11.4K) is gone; saving about 10.9K. Choices, open for review:
+- Steps 2 and 3 read each symbol summary entry into one `Lsym`, as the
+  data symbols already were; after step 1, linking needs only
+  `fmap[]` and `dmap[]`.
+- `copy_code()`'s damaged-file check is now `fmap[idx] == obj_code[k]
+  + at`: a function defined in another object maps outside this
+  object's code, so it can't match. A function exactly at its object's
+  end would map to the next object's first function, so `read_sym()`
+  now rejects a function offset equal to the code size (`>=`; a
+  function has at least one byte). Data keeps `>`. Before, such a
+  summary was caught only by its own object's F record not matching,
+  which misses a summary with a defined function that has no F
+  record. Test: `run.sh` patches a summary so, and wants the summary
+  (not the stream file) named as damaged.
+- Names for the listing: `fname[MAX_FUNCS]` (544 bytes), each an
+  offset in `gnames[]`, filled only with `-l`. A shared name is the
+  one already in the table. A defined `static` function's name is
+  added after the shared names, from `lnames_len`, which restarts at
+  `gnames_len` for each object, so the table's own count and the
+  listing's "name bytes" line are unchanged.
+- A static name that doesn't fit is listed by its load address,
+  `static@$1012`, where it is defined and where it is called; the
+  link never fails because of the listing. Other options were B (a
+  separate per-object name pool, about 3K, storing shared names
+  twice) and C (no names).
+- `map_object()` also runs for the data step, so with `-l` the names
+  are built twice per object (cheap).
+- Listings and modules are byte-identical to before. Tests: `run.sh`
+  fills the name bytes so that a 31-character static name doesn't fit
+  (two generated objects, since one compile's name pool can't hold all
+  the names) and checks the fallback and that the module runs;
+  `tests/link/basic` checks a static name is listed.
 
 ### 12. Standard library
 

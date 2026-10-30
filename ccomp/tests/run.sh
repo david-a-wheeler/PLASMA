@@ -243,6 +243,30 @@ damaged_test cut "cut short"
 ./cccomp -o "$OUT/badtag" tests/run/global_init.c
 printf 'X' >> "$OUT/badtag.obj"
 damaged_test badtag "with an unknown record tag"
+# A summary whose function starts at the code's end, where no function
+# can (it has at least one byte), is found damaged as it is read: the
+# message names the summary, not the stream file. The only symbol is
+# main; its offset is bytes 15-16, after the 13-byte header (C I
+# version, then five words: data, strings and code sizes, symbol
+# counts) and its flags and parameter count. It becomes the code size,
+# bytes 7-8.
+echo 'int main() { return 0; }' >"$OUT/atend.c"
+./cccomp -o "$OUT/atend" "$OUT/atend.c"
+dd if="$OUT/atend.syms" of="$OUT/atend.size" bs=1 skip=7 count=2 2>/dev/null
+dd if="$OUT/atend.size" of="$OUT/atend.syms" bs=1 seek=15 conv=notrunc \
+   2>/dev/null
+rm -f "$OUT/atend.size"
+if ./ccrel "$OUT/atend" 2>"$OUT/atend.err"; then
+    echo "FAIL ccrel: accepted a summary with a function at the code's end"
+    fail=$((fail + 1))
+elif grep -qF "damaged: $OUT/atend.syms" "$OUT/atend.err"; then
+    pass=$((pass + 1))
+else
+    echo "FAIL ccrel: wanted the summary damaged, for a function at the end:"
+    sed 's/^/    /' "$OUT/atend.err"
+    fail=$((fail + 1))
+fi
+rm -f "$OUT/atend.obj" "$OUT/atend.syms"
 
 # Linking several objects (approach.md issue 11, "Step 3"): each
 # directory tests/link/NAME holds .c files, compiled by cccomp and linked
@@ -395,6 +419,55 @@ else
     fail=$((fail + 1))
 fi
 rm -f "$OUT"/link/many_[ab].obj "$OUT"/link/many_[ab].syms
+# A static function's name that doesn't fit after the shared names is
+# listed by its address (approach.md issue 11, "Item 1: the linker's
+# local names"). 190 declared names and the caller, each 31 characters
+# (32 bytes), and main, puti and putc (5 each) take 6127 of the 6144
+# name bytes, leaving 17: too few for the static function's 31-character
+# name, which is then listed, as defined and as called, by its address.
+# The module still links and runs. The names are split between two
+# objects, since one compile's name pool can't hold them all.
+gen_long() {
+    i=$2
+    while [ "$i" -le "$3" ]; do
+        printf 'void n%030d(void);\n' "$i"
+        i=$((i + 1))
+    done >"$1"
+}
+gen_long "$OUT/link/nofit_a.c" 1 95
+gen_long "$OUT/link/nofit_b.c" 96 190
+cat >>"$OUT/link/nofit_b.c" <<'EOF'
+static int static_padded_to_thirty_one_chr(void) { return 7; }
+int caller_padded_to_thirty_one_chr(void)
+{
+  return static_padded_to_thirty_one_chr();
+}
+int main()
+{
+  puti(caller_padded_to_thirty_one_chr()); putc(10);
+  return 0;
+}
+EOF
+if ./cccomp -o "$OUT/link/nofit_a" "$OUT/link/nofit_a.c" \
+      2>"$OUT/link/nofit.err" \
+   && ./cccomp -o "$OUT/link/nofit_b" "$OUT/link/nofit_b.c" \
+      2>>"$OUT/link/nofit.err" \
+   && ./ccrel -l -o "$OUT/link/nofit" "$OUT/link/nofit_a" \
+      "$OUT/link/nofit_b" >"$OUT/link/nofit.lst" 2>>"$OUT/link/nofit.err" \
+   && grep -qF "; shared names: 194 of 509 slots, 6127 of 6144" \
+        "$OUT/link/nofit.lst" \
+   && grep -q '^static@\$[0-9A-F]\{4\}:$' "$OUT/link/nofit.lst" \
+   && grep -qF '; static@$' "$OUT/link/nofit.lst" \
+   && ! grep -qF "static_padded" "$OUT/link/nofit.lst" \
+   && [ "$(cd "$OUT/link" && timeout 10 "$PLVM" nofit 2>&1 | tr -d '\r')" \
+        = "7" ]; then
+    pass=$((pass + 1))
+else
+    echo "FAIL ccrel: a static name that doesn't fit isn't listed by address"
+    sed 's/^/    /' "$OUT/link/nofit.err"
+    fail=$((fail + 1))
+fi
+rm -f "$OUT"/link/nofit_[ab].obj "$OUT"/link/nofit_[ab].syms
 # Linking several objects needs a module name.
 if ./ccrel "$OUT/a" "$OUT/b" 2>"$OUT/link/noname.err"; then
     echo "FAIL ccrel: linked several objects without -o"
