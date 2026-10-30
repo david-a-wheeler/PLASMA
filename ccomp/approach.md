@@ -1369,6 +1369,39 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
 - **B6. Fewer open files:** ProDOS needs a 1K buffer per open file, and
   today a compilation has the source and 4-5 stream files open (5-6K).
   One combined stream file makes it 2K, but changes OBJECT.md.
+  **Decided: B6a** (discussion, 2026-10-29; decision 18), to be built
+  later, not yet scheduled. Found since:
+  - **It is required, not just a saving.** PLASMA's Apple II file
+    library (`src/libsrc/apple/fileio.pla`) allows at most 4 open
+    files (`MAX_IOBUFS`), the system buffer plus up to 3 more taken
+    from the heap with `fileio:iobufalloc`. The compile pass keeps 5
+    open (the source, `.data`, `.drel`, `.strs`, `.code`), so it can't
+    run on the Apple as it is. (`.syms` is written after those close.
+    The final pass opens at most 3: an input, `.drel` beside `.data`,
+    and the module.)
+  - Each open file also has a 512-byte `Bfile` block buffer; emit.c's
+    five are static, about 2.6K in cccomp whether open or not.
+  - Variants considered: **B6a**, one tagged stream (2 files open while
+    compiling); **B6b**, `.code` plus one tagged file for data,
+    relocations and strings (3 open, about 1K less saved); **B6c**,
+    raising `MAX_IOBUFS` upstream (no saving: each file still costs
+    1.5K); **B6d**, holding data and strings in memory (spends what it
+    saves).
+  - **B6a as decided:** the compile pass writes one stream of tagged
+    records (data, data relocation, string, function), with each data
+    relocation in the same stream as the data it patches, so the final
+    pass never needs two inputs open (which helps B4 too). `.syms`
+    stays a separate file, written last: the final pass needs it first
+    for the layout, and a separate file avoids seeking back to patch a
+    header. The final pass reads the stream three times (data, then
+    strings, then code), skipping the other records. OBJECT.md's format
+    version goes to 3. One object file per `.c` is also the shape the
+    linker (issue 11) wants.
+  - **Disk space:** about the same as today, not more. Tags add a
+    byte, or a byte and a length word, per data, string or relocation
+    record: a few hundred bytes on parse.c's 37K of streams. One file
+    instead of four saves the partly filled last blocks and the index
+    blocks of the others (2-5 blocks). See E3.
 
 **C. The compiler's code.**
 - **C1. Two builds from one source** (`#if`, after M8): the cross build
@@ -1425,6 +1458,64 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
   `peep.c` (18.5), instead of extrapolating from one file. Done
   (2026-10-29; results in 18.5): about 33K of code (30K for the
   compiler, 3K for the final pass) and 10.7K of strings.
+- **E3. Disk space** (measured 2026-10-29, after C2, with E2's
+  self-compile). A 5.25" floppy holds 140K (280 blocks, about 273
+  free for files). ProDOS stores each file in whole 512-byte blocks,
+  plus an index block for any file over one block.
+  - **parse.c is 145,133 bytes: it doesn't fit on a floppy by itself.**
+    It is the main disk problem, with or without B6.
+  - parse.c's streams: `.code` 30,644, `.data` 5,482, `.strs` 530,
+    `.drel` 300 (about 37K); the module is about the same size.
+  - The most disk needed at once is the source plus its streams while
+    compiling, then the streams plus the module in the final pass. B6
+    changes neither.
+  - **Uninitialized globals are stored as zeros.** link.c's `.data` is
+    29,359 bytes, mostly its zero-filled tables. PLASMA modules have no
+    zero-filled (BSS) section, so the zeros are in the module file too.
+    They cost disk, not memory: loaded, they take the same memory
+    either way.
+  - How much of the source is comments and indentation (bytes as is;
+    with leading spaces as tabs; without comments; without comments
+    or indentation; the script is in the session scratchpad, not the
+    repository):
+
+    | File      | As is   | Tabs    | No comments | Neither |
+    |-----------|---------|---------|-------------|---------|
+    | `parse.c` | 145,133 | 133,324 | 80,268      | 61,973  |
+    | `ccish.h` | 17,501  | 17,137  | 6,543       | 6,231   |
+    | `link.c`  | 18,262  | 16,729  | 13,188      | 10,576  |
+    | `lex.c`   | 11,049  | 9,558   | 8,552       | 6,114   |
+
+**F. Disk space** (E3; options, none chosen yet). **parse.c's size**
+is the main problem. Splitting it is one way, but not the only one:
+- **F1. Split parse.c into several files.** Each file and its streams
+  are smaller. It needs `extern` and multi-file linking (M8, issue 11),
+  which self-hosting needs anyway. But `ccish.h` is read again for
+  each file (18.3 would help), and more files mean more steps to build.
+- **F2. A stripped copy for the Apple,** made by a tool from the
+  commented source, which stays the one maintained by hand. Comments
+  are about 45% of parse.c (145K to 80K; 62K without indentation too).
+  But what the Apple compiles is no longer the source people read, and
+  error line numbers then refer to the copy, unless the tool keeps
+  lines (blank comment lines and all, which keeps less of the saving).
+- **F3. Tabs for indentation:** 8 spaces to a tab saves about 8% of
+  parse.c (145K to 133K). Simple, and the source is unchanged
+  otherwise, but alone it's not enough, and it changes the project's
+  style.
+- **F4. Shorter comments in the source:** move long design
+  explanations into approach.md and keep the comments brief. It shrinks
+  the one source everyone reads, but it is hand work, and much of
+  parse.c's commentary is useful where it is.
+- **F5. Smaller code:** C3 (dropping costly C semantics) and C5
+  (restructuring) shrink the source as well as the compiled code.
+- **F6. Zero-filled globals as a count:** the compile pass writes a run
+  of zeros as a length instead of bytes, and the final pass expands it.
+  It shrinks the streams (link.c's `.data`: 29K to well under 1K), but
+  not the module, unless PLASMA's loader learns a zero-filled section
+  (an upstream change).
+- **F7. More storage:** streams on a second drive, or an 800K 3.5" disk
+  or a hard disk. No change to ccish, but not every Apple II has them.
+  A RAM disk needs 128K, so it is not the 64K answer.
 
 View when listed (not a decision): E1 and E2 first, since they set the
 target; then the biggest levers look like B1 (`Sym` split), B3 (final
@@ -1748,6 +1839,12 @@ issue. In summary:
     add features it doesn't need ("goodies", such as `union`) only as
     room and real programs allow. A feature that is cheap to add is
     still not free: it costs compiler code and tables on the Apple II.
+18. **One combined stream file (18.6 B6a)** (decided in discussion,
+    2026-10-29; to be built later, not yet scheduled). PLASMA's Apple
+    II file library allows at most 4 open files, and the compile pass
+    keeps 5 open, so the four stream files become one stream of tagged
+    records, with `.syms` still separate and written last. Disk space
+    stays about the same (18.6 E3).
 
 
 ## Milestones
