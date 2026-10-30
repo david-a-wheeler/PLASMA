@@ -1528,7 +1528,8 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
     | `link.c`  | 18,262  | 16,729  | 13,188      | 10,576  |
     | `lex.c`   | 11,049  | 9,558   | 8,552       | 6,114   |
 
-**F. Disk space** (E3; options, none chosen yet). **parse.c's size**
+**F. Disk space** (E3; options. F2 partly adopted, F3 rejected, F8
+decided for later; the rest not chosen yet). **parse.c's size**
 is the main problem. Splitting it is one way, but not the only one:
 - **F1. Split parse.c into several files.** Each file and its streams
   are smaller. It needs `extern` and multi-file linking (M8, issue 11),
@@ -1563,6 +1564,17 @@ is the main problem. Splitting it is one way, but not the only one:
 - **F7. More storage:** streams on a second drive, or an 800K 3.5" disk
   or a hard disk. No change to ccish, but not every Apple II has them.
   A RAM disk needs 128K, so it is not the 64K answer.
+- **F8. Drop the message-text comments** (decided in discussion,
+  2026-10-29; to be done later). Each message number in the source
+  carries its text in a comment (`error(123 /* "redeclaration of" */,
+  ...)`, C2), duplicating `ccish.msg`. The 275 such comments take
+  about 12K of source (about 10K of parse.c's 136K, measured after the
+  2-space reindent). They stay while the compiler is still changing a
+  lot, since they make the code easier to read and change; they are
+  removed only after the other major changes. Then
+  `tests/check_msgs.sh` keeps its other checks (every number used is
+  in the file, every number in the file is used, numbers unique and
+  ascending) but no longer compares comments with the file.
 
 View when listed (not a decision): E1 and E2 first, since they set the
 target; then the biggest levers look like B1 (`Sym` split), B3 (final
@@ -2077,7 +2089,9 @@ the Apple II, although at most one error is printed per run.
   in a comment, `error(123 /* "redeclaration of" */, quote(name));`,
   and `make test` checks that every such comment matches the file, that
   every number used is in the file, that every number in the file is
-  used, and that the file's numbers are unique and ascending.
+  used, and that the file's numbers are unique and ascending. These
+  comments duplicate the file, so they will be removed later, after the
+  other major changes, to shrink the source (18.6 F8).
 - **Finding the file:** next to the program (on the host, the
   directory of `argv[0]`; on the Apple II, the prefix, then the system
   path), else the number alone. The reader accepts CR, LF or CRLF line
