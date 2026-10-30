@@ -7,7 +7,7 @@ void memcpy(int n);
 
 int main()
 {
-    struct big a, b;
-    a = b;
-    return 0;
+  struct big a, b;
+  a = b;
+  return 0;
 }

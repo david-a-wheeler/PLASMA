@@ -28,50 +28,50 @@ static const char *module_name;
 /* After an error: close the open files, and remove partial output. */
 void clean_up(void)
 {
-    compile_abort();
-    link_abort();
-    remove_streams(base_name);
-    if (module_name)
-        remove(module_name);
+  compile_abort();
+  link_abort();
+  remove_streams(base_name);
+  if (module_name)
+    remove(module_name);
 }
 
 /* Print the command-line syntax and exit. */
 static void usage(void)
 {
-    fprintf(stderr, "usage: ccish [-l] [-i] [-k] [-o output] input.c\n");
-    exit(2);
+  fprintf(stderr, "usage: ccish [-l] [-i] [-k] [-o output] input.c\n");
+  exit(2);
 }
 
 /* Compile one .c file: the compile pass, then the final pass. */
 int main(int argc, char **argv)
 {
-    const char *src = NULL, *outname = NULL;
-    int i;
+  const char *src = NULL, *outname = NULL;
+  int i;
 
-    msg_init(argv[0]);
-    for (i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "-l"))
-            opt_list = 1;
-        else if (!strcmp(argv[i], "-i"))
-            opt_ir = 1;
-        else if (!strcmp(argv[i], "-k"))
-            opt_keep = 1;
-        else if (!strcmp(argv[i], "-o") && i + 1 < argc)
-            outname = argv[++i];
-        else if (argv[i][0] == '-' || src)
-            usage();
-        else
-            src = argv[i];
-    }
-    if (!src)
-        usage();
-    if (!outname)
-        outname = base_of(src);
-    base_name = outname;
-    compile_file(src, outname);
-    module_name = outname;
-    link_module(outname, outname);
-    module_name = NULL;
-    remove_streams(outname);
-    return 0;
+  msg_init(argv[0]);
+  for (i = 1; i < argc; i++) {
+    if (!strcmp(argv[i], "-l"))
+      opt_list = 1;
+    else if (!strcmp(argv[i], "-i"))
+      opt_ir = 1;
+    else if (!strcmp(argv[i], "-k"))
+      opt_keep = 1;
+    else if (!strcmp(argv[i], "-o") && i + 1 < argc)
+      outname = argv[++i];
+    else if (argv[i][0] == '-' || src)
+      usage();
+    else
+      src = argv[i];
+  }
+  if (!src)
+    usage();
+  if (!outname)
+    outname = base_of(src);
+  base_name = outname;
+  compile_file(src, outname);
+  module_name = outname;
+  link_module(outname, outname);
+  module_name = NULL;
+  remove_streams(outname);
+  return 0;
 }

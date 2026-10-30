@@ -18,26 +18,26 @@ static int pool_used;
 /* The offset of name s in the pool, or -1 if it isn't there. */
 int name_find(const char *s)
 {
-    int i = 0;
-    while (i < pool_used) {
-        if (!strcmp(pool + i, s))
-            return i;
-        i += (int)strlen(pool + i) + 1;
-    }
-    return -1;
+  int i = 0;
+  while (i < pool_used) {
+    if (!strcmp(pool + i, s))
+      return i;
+    i += (int)strlen(pool + i) + 1;
+  }
+  return -1;
 }
 
 /* The offset of name s in the pool, adding it if it isn't there. */
 int intern(const char *s)
 {
-    int i = name_find(s), n = (int)strlen(s) + 1;
-    if (i >= 0)
-        return i;
-    if (pool_used + n > MAX_POOL)
-        fatal(18 /* "too many names" */, "(the name pool is full)");
-    memcpy(pool + pool_used, s, n);
-    pool_used += n;
-    return pool_used - n;
+  int i = name_find(s), n = (int)strlen(s) + 1;
+  if (i >= 0)
+    return i;
+  if (pool_used + n > MAX_POOL)
+    fatal(18 /* "too many names" */, "(the name pool is full)");
+  memcpy(pool + pool_used, s, n);
+  pool_used += n;
+  return pool_used - n;
 }
 
 /* Where the pool ends now: a mark, taken before a function's
@@ -45,7 +45,7 @@ int intern(const char *s)
  * design"). */
 int pool_mark(void)
 {
-    return pool_used;
+  return pool_used;
 }
 
 /* At the end of a function, release the names added since mark: its
@@ -55,21 +55,21 @@ int pool_mark(void)
  * stay, so they are moved down to mark, in order. */
 void pool_release(int mark)
 {
-    int f, n;
-    for (f = 0; f < nfuncs; f++)
-        if (fn_name[f] >= mark) {
-            n = (int)strlen(pool + fn_name[f]) + 1;
-            memmove(pool + mark, pool + fn_name[f], n);
-            fn_name[f] = mark;
-            mark += n;
-        }
-    pool_used = mark;
+  int f, n;
+  for (f = 0; f < nfuncs; f++)
+    if (fn_name[f] >= mark) {
+      n = (int)strlen(pool + fn_name[f]) + 1;
+      memmove(pool + mark, pool + fn_name[f], n);
+      fn_name[f] = mark;
+      mark += n;
+    }
+  pool_used = mark;
 }
 
 /* The name at offset n of the pool. */
 const char *name_of(int n)
 {
-    return pool + n;
+  return pool + n;
 }
 
 static int id_nm[MAX_IDS];
@@ -83,41 +83,41 @@ static int nids;
  * that the name is new in its scope. */
 int id_add(int name, int kind, int val, int depth)
 {
-    if (nids >= MAX_IDS)
-        fatal(19 /* "too many enum constants and typedef names" */, NULL);
-    id_nm[nids] = name;
-    id_v[nids] = val;
-    id_k[nids] = (char)kind;
-    id_d[nids] = (char)depth;
-    return nids++;
+  if (nids >= MAX_IDS)
+    fatal(19 /* "too many enum constants and typedef names" */, NULL);
+  id_nm[nids] = name;
+  id_v[nids] = val;
+  id_k[nids] = (char)kind;
+  id_d[nids] = (char)depth;
+  return nids++;
 }
 
 /* The innermost visible enum constant or typedef named name, or -1. */
 int id_find(int name)
 {
-    int i;
-    for (i = nids - 1; i >= 0; i--)
-        if (id_nm[i] == name && id_d[i] >= 0)
-            return i;
-    return -1;
+  int i;
+  for (i = nids - 1; i >= 0; i--)
+    if (id_nm[i] == name && id_d[i] >= 0)
+      return i;
+  return -1;
 }
 
 /* The kind of entry i (ID_*). */
 int id_kind(int i)
 {
-    return id_k[i];
+  return id_k[i];
 }
 
 /* The value of entry i: a constant's value, or a typedef's type. */
 int id_val(int i)
 {
-    return id_v[i];
+  return id_v[i];
 }
 
 /* The block depth entry i was declared at. */
 int id_depth(int i)
 {
-    return id_d[i];
+  return id_d[i];
 }
 
 /* Hide the entries declared deeper than depth, at the end of their
@@ -125,10 +125,10 @@ int id_depth(int i)
  * no type refers to them. */
 void id_hide(int depth)
 {
-    int i;
-    for (i = 0; i < nids; i++)
-        if (id_d[i] > depth)
-            id_d[i] = -1;
-    while (nids > 0 && id_d[nids - 1] < 0)
-        nids--;
+  int i;
+  for (i = 0; i < nids; i++)
+    if (id_d[i] > depth)
+      id_d[i] = -1;
+  while (nids > 0 && id_d[nids - 1] < 0)
+    nids--;
 }

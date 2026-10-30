@@ -11,75 +11,75 @@ int count;
 
 int f(void)
 {
-    count++;
-    return 1;
+  count++;
+  return 1;
 }
 
 void show(int n)
 {
-    puti(n);
-    putc(' ');
+  puti(n);
+  putc(' ');
 }
 
 int param(int a[], char *s)
 {
-    return sizeof a + sizeof s + sizeof a[0] + sizeof *s;
+  return sizeof a + sizeof s + sizeof a[0] + sizeof *s;
 }
 
 int main()
 {
-    int a[5], i;
-    char c;
-    char *p;
-    int m[3][4];
-    int b[sizeof(int) * 3];
+  int a[5], i;
+  char c;
+  char *p;
+  int m[3][4];
+  int b[sizeof(int) * 3];
 
-    show(sizeof(int));
-    show(sizeof(char));
-    show(sizeof(char *));
-    show(sizeof(int **));
-    show(sizeof(char[10]));
-    show(sizeof(int[3][4]));
-    show(sizeof(void *));
-    show(sizeof(char *[4]));
-    putln();
+  show(sizeof(int));
+  show(sizeof(char));
+  show(sizeof(char *));
+  show(sizeof(int **));
+  show(sizeof(char[10]));
+  show(sizeof(int[3][4]));
+  show(sizeof(void *));
+  show(sizeof(char *[4]));
+  putln();
 
-    show(sizeof a);
-    show(sizeof(a));
-    show(sizeof a[0]);
-    show(sizeof (a)[1]);
-    show(sizeof g);
-    show(sizeof gc);
-    show(sizeof m);
-    show(sizeof m[1]);
-    show(sizeof m[1][2]);
-    show(sizeof b / sizeof b[0]);
-    putln();
+  show(sizeof a);
+  show(sizeof(a));
+  show(sizeof a[0]);
+  show(sizeof (a)[1]);
+  show(sizeof g);
+  show(sizeof gc);
+  show(sizeof m);
+  show(sizeof m[1]);
+  show(sizeof m[1][2]);
+  show(sizeof b / sizeof b[0]);
+  putln();
 
-    p = gc;
-    show(sizeof c);
-    show(sizeof p);
-    show(sizeof *p);
-    show(sizeof &c);
-    show(sizeof c * 3);
-    show(sizeof(c + c));
-    show(sizeof "hello");
-    show(sizeof("hi"));
-    show(sizeof "hi"[0]);
-    show(sizeof "");
-    show(sizeof sizeof c);
-    show(param(a, p));
-    putln();
+  p = gc;
+  show(sizeof c);
+  show(sizeof p);
+  show(sizeof *p);
+  show(sizeof &c);
+  show(sizeof c * 3);
+  show(sizeof(c + c));
+  show(sizeof "hello");
+  show(sizeof("hi"));
+  show(sizeof "hi"[0]);
+  show(sizeof "");
+  show(sizeof sizeof c);
+  show(param(a, p));
+  putln();
 
-    /* the operand isn't run */
-    i = 5;
-    show(sizeof i++);
-    show(i);
-    show(sizeof f());
-    show(count);
-    show(sizeof (f() + i++));
-    show(count);
-    show(i);
-    putln();
-    return 0;
+  /* the operand isn't run */
+  i = 5;
+  show(sizeof i++);
+  show(i);
+  show(sizeof f());
+  show(count);
+  show(sizeof (f() + i++));
+  show(count);
+  show(i);
+  putln();
+  return 0;
 }

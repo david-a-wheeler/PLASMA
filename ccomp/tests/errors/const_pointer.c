@@ -5,8 +5,8 @@ char buf[4];
 
 int main()
 {
-    char *const p = buf;
-    *p = 'a';
-    p = buf + 1;
-    return 0;
+  char *const p = buf;
+  *p = 'a';
+  p = buf + 1;
+  return 0;
 }

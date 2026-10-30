@@ -14,16 +14,16 @@ char c;
 
 int main()
 {
-    int i = 2;
-    g = 5;
-    h = g = 7;
-    g++;
-    a[i] = g;
-    a[3] = 1;
-    c = 'A';
-    puti(a[2] + a[3] + h);
-    putc(' ');
-    putc(c);
-    putln();
-    return 0;
+  int i = 2;
+  g = 5;
+  h = g = 7;
+  g++;
+  a[i] = g;
+  a[3] = 1;
+  c = 'A';
+  puti(a[2] + a[3] + h);
+  putc(' ');
+  putc(c);
+  putln();
+  return 0;
 }

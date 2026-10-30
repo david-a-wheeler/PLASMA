@@ -5,10 +5,10 @@ struct big { int v[5]; };
 
 int first(struct big b)
 {
-    return b.v[0];
+  return b.v[0];
 }
 
 int main()
 {
-    return 0;
+  return 0;
 }

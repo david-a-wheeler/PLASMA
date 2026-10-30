@@ -8,10 +8,10 @@ struct q { int x; };
 
 void f(struct q *p)
 {
-    p->x = 1;
+  p->x = 1;
 }
 
 int main()
 {
-    return 0;
+  return 0;
 }

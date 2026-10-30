@@ -3,7 +3,7 @@
  * must be constant, as in C: not an automatic variable's value. */
 int main()
 {
-    int x = 1;
-    static int y = x;
-    return y;
+  int x = 1;
+  static int y = x;
+  return y;
 }

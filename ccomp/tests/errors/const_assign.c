@@ -5,6 +5,6 @@ const int N = 1;
 
 int main()
 {
-    N = 2;
-    return 0;
+  N = 2;
+  return 0;
 }

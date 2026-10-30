@@ -7,6 +7,6 @@ int len(struct pt p);
 
 int main()
 {
-    struct sz s;
-    return len(s);
+  struct sz s;
+  return len(s);
 }

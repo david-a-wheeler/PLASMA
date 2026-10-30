@@ -6,6 +6,6 @@ struct pt origin(void);
 
 int main()
 {
-    origin().x = 1;
-    return 0;
+  origin().x = 1;
+  return 0;
 }

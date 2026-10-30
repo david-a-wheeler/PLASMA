@@ -2,23 +2,23 @@
  * allows it; the value is 0), and a void main. */
 int f(int x)
 {
-    { ; }
-    { { puti(x); } }
-    ;;
-    return;
+  { ; }
+  { { puti(x); } }
+  ;;
+  return;
 }
 
 void g()
 {
-    putc('g');
-    return;
-    putc('X');
+  putc('g');
+  return;
+  putc('X');
 }
 
 void main()
 {
-    puti(f(7));
-    putln();
-    g();
-    putln();
+  puti(f(7));
+  putln();
+  g();
+  putln();
 }

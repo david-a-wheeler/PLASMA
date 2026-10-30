@@ -6,5 +6,5 @@ int M = N + 1;
 
 int main()
 {
-    return M;
+  return M;
 }

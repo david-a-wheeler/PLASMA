@@ -4,5 +4,5 @@ struct s;
 
 int main()
 {
-    return sizeof(struct s);
+  return sizeof(struct s);
 }

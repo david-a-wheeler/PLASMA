@@ -21,59 +21,59 @@ const char *names[] = {"zero", "one"};
 
 void show(int n)
 {
-    puti(n);
-    putc(' ');
+  puti(n);
+  putc(' ');
 }
 
 int len(char *s)
 {
-    int n = 0;
-    while (*s++)
-        n++;
-    return n;
+  int n = 0;
+  while (*s++)
+    n++;
+  return n;
 }
 
 int clen(const char *s)
 {
-    int n = 0;
-    while (*s) {
-        s++;
-        n++;
-    }
-    return n;
+  int n = 0;
+  while (*s) {
+    s++;
+    n++;
+  }
+  return n;
 }
 
 int main()
 {
-    const int local = 5;
-    int x = 3, buf[sizeof N];
-    const char *p = "hi";
-    char *q = p;
-    const int *ip = &N;
-    char *s;
-    show(x < N);
-    show(N * 2 + local);
-    show(LETTER);
-    show(*ip);
-    show(clen(p));
-    show(len(p));
-    p = names[1];
-    show(clen(p));
-    show(M);
-    show(CV);
-    show(ZERO);
-    show(sizeof buf);
-    {
-        volatile int v = 1;
-        int *vp = &v;
-        show(*vp);
-    }
-    show(q[0]);
-    show(p == q);
-    p = x ? q : p;
-    show(p[1]);
-    s = x ? q : names[0];
-    show(s[0]);
-    putln();
-    return 0;
+  const int local = 5;
+  int x = 3, buf[sizeof N];
+  const char *p = "hi";
+  char *q = p;
+  const int *ip = &N;
+  char *s;
+  show(x < N);
+  show(N * 2 + local);
+  show(LETTER);
+  show(*ip);
+  show(clen(p));
+  show(len(p));
+  p = names[1];
+  show(clen(p));
+  show(M);
+  show(CV);
+  show(ZERO);
+  show(sizeof buf);
+  {
+    volatile int v = 1;
+    int *vp = &v;
+    show(*vp);
+  }
+  show(q[0]);
+  show(p == q);
+  p = x ? q : p;
+  show(p[1]);
+  s = x ? q : names[0];
+  show(s[0]);
+  putln();
+  return 0;
 }

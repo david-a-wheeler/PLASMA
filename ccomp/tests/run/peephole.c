@@ -9,8 +9,8 @@
 // listing-has: INCR
 void main()
 {
-    int x, y;
-    x = -5;
-    y = x + 1;
-    puti(x); putc(' '); puti(y); putln();
+  int x, y;
+  x = -5;
+  y = x + 1;
+  puti(x); putc(' '); puti(y); putln();
 }

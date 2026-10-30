@@ -6,16 +6,16 @@
 // listing-has: DECR
 int main()
 {
-    int i = 5, j;
-    i++;
-    ++i;
-    i--;
-    --i;
-    puti(i); putc(' ');
-    j = i++; puti(j); puti(i); putc(' ');
-    j = ++i; puti(j); puti(i); putc(' ');
-    j = i--; puti(j); puti(i); putc(' ');
-    j = --i; puti(j); puti(i); putc(' ');
-    puti(-i++); puti(i); putln();
-    return 0;
+  int i = 5, j;
+  i++;
+  ++i;
+  i--;
+  --i;
+  puti(i); putc(' ');
+  j = i++; puti(j); puti(i); putc(' ');
+  j = ++i; puti(j); puti(i); putc(' ');
+  j = i--; puti(j); puti(i); putc(' ');
+  j = --i; puti(j); puti(i); putc(' ');
+  puti(-i++); puti(i); putln();
+  return 0;
 }

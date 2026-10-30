@@ -88,11 +88,11 @@ void clean_up(void);
 /* ---------- Block-buffered file I/O (bio.c) ---------- */
 
 typedef struct {
-    FILE *f;
-    int writing;
-    int pos, len;       /* next byte in buf; bytes in buf when reading */
-    int error;          /* a write failed */
-    unsigned char buf[BLOCK];
+  FILE *f;
+  int writing;
+  int pos, len;       /* next byte in buf; bytes in buf when reading */
+  int error;          /* a write failed */
+  unsigned char buf[BLOCK];
 } Bfile;
 
 int  bopen(Bfile *b, const char *path, int writing);
@@ -108,18 +108,18 @@ int  bclose(Bfile *b);
 
 /* Single-character tokens are their character code; others start at 256. */
 enum {
-    T_EOF = 0,
-    T_ID = 256, T_NUM, T_STR,
-    /* keywords supported now, in the order of keywords[] in lex.c */
-    T_INT, T_VOID, T_RETURN, T_IF, T_ELSE, T_WHILE, T_DO, T_FOR, T_BREAK,
-    T_CONTINUE, T_CHAR, T_SIZEOF, T_STATIC, T_CONST, T_VOLATILE, T_STRUCT,
-    T_SWITCH, T_CASE, T_DEFAULT, T_TYPEDEF, T_ENUM,
-    /* any other C keyword: reported as "not supported yet" */
-    T_KEYWORD,
-    /* multi-character operators (not all are supported by the parser yet) */
-    T_EQ, T_NE, T_LE, T_GE, T_SHL, T_SHR, T_ANDAND, T_OROR, T_INC, T_DEC,
-    T_ADDEQ, T_SUBEQ, T_MULEQ, T_DIVEQ, T_MODEQ, T_ANDEQ, T_OREQ, T_XOREQ,
-    T_SHLEQ, T_SHREQ, T_ARROW, T_ELLIPSIS
+  T_EOF = 0,
+  T_ID = 256, T_NUM, T_STR,
+  /* keywords supported now, in the order of keywords[] in lex.c */
+  T_INT, T_VOID, T_RETURN, T_IF, T_ELSE, T_WHILE, T_DO, T_FOR, T_BREAK,
+  T_CONTINUE, T_CHAR, T_SIZEOF, T_STATIC, T_CONST, T_VOLATILE, T_STRUCT,
+  T_SWITCH, T_CASE, T_DEFAULT, T_TYPEDEF, T_ENUM,
+  /* any other C keyword: reported as "not supported yet" */
+  T_KEYWORD,
+  /* multi-character operators (not all are supported by the parser yet) */
+  T_EQ, T_NE, T_LE, T_GE, T_SHL, T_SHR, T_ANDAND, T_OROR, T_INC, T_DEC,
+  T_ADDEQ, T_SUBEQ, T_MULEQ, T_DIVEQ, T_MODEQ, T_ANDEQ, T_OREQ, T_XOREQ,
+  T_SHLEQ, T_SHREQ, T_ARROW, T_ELLIPSIS
 };
 
 /* The current token. */
@@ -237,50 +237,50 @@ void compile_abort(void);                   /* after an error */
  * Each op's meaning, and why it differs from PLASMA's, is in ../IR.md. */
 
 enum {
-    IR_FUNC,        /* f: start a function */
-    IR_ENDFUNC,     /* a = frame size: end the current function */
-    IR_CONST,       /* a = value: push a constant */
-    IR_DATAADDR,    /* a = data offset: push the address of data */
-    IR_STRADDR,     /* a = string pool offset: push a string's address */
-    IR_LOCAL,       /* a = frame offset: push a local word */
-    IR_SETLOCAL,    /* a = frame offset: store top value there, keep it */
-    IR_LOCALB,      /* a = frame offset: push a local byte (a char) */
-    IR_SETLOCALB,   /* a = frame offset: store the top value's low byte
-                     * there, and keep that byte as the value */
-    IR_LOCALADDR,   /* a = frame offset: push the address of a local */
-    IR_GLOBAL,      /* a = data offset: push a global word */
-    IR_SETGLOBAL,   /* a = data offset: store top value there, keep it */
-    IR_GLOBALB,     /* a = data offset: push a global byte (a char) */
-    IR_SETGLOBALB,  /* a = data offset: store the top value's low byte
-                     * there, and keep that byte as the value */
-    IR_LOAD,        /* ( addr -- word ) load a word */
-    IR_LOADB,       /* ( addr -- byte ) load a byte (a char) */
-    IR_STORE,       /* ( val addr -- ) store a word */
-    IR_STOREB,      /* ( val addr -- ) store val's low byte */
-    IR_CALL,        /* f, a = argument count: call, push the result */
-    IR_DROP,        /* discard the top value */
-    IR_DUP,         /* duplicate the top value */
-    IR_RETURN,      /* return the top value from the current function */
-    /* binary: ( x y -- x op y ) */
-    IR_ADD, IR_SUB, IR_MUL, IR_DIV, IR_MOD,
-    IR_AND, IR_OR, IR_XOR, IR_SHL, IR_SHR,
-    /* comparisons, binary, giving C's 1 or 0 (not PLASMA's $FFFF) */
-    IR_EQ, IR_NE, IR_LT, IR_GT, IR_LE, IR_GE,
-    /* unary: ( x -- op x ) */
-    IR_NEG, IR_COMP,
-    IR_NOT,         /* C's !: 1 if x is 0, else 0 (not PLASMA's NOT) */
-    /* control flow; a = label number, local to the function */
-    IR_LABEL,       /* a branch target */
-    IR_JUMP,        /* always branch */
-    IR_BRFALSE,     /* ( x -- ) branch if x is 0 */
-    IR_BRTRUE,      /* ( x -- ) branch if x is not 0 */
-    IR_BRAND,       /* ( x -- x ) branch if 0, keeping it; else ( x -- ) */
-    IR_BROR,        /* ( x -- x ) branch if not 0, keeping it; else ( x -- ) */
-    IR_SEL,         /* ( x -- ) go to the case table at label a (a switch) */
-    /* a case table, after its label: */
-    IR_CASES,       /* a = the number of cases that follow */
-    IR_CASEVAL,     /* a = one case's value; then: */
-    IR_CASETO       /* a = the label of that case's code */
+  IR_FUNC,        /* f: start a function */
+  IR_ENDFUNC,     /* a = frame size: end the current function */
+  IR_CONST,       /* a = value: push a constant */
+  IR_DATAADDR,    /* a = data offset: push the address of data */
+  IR_STRADDR,     /* a = string pool offset: push a string's address */
+  IR_LOCAL,       /* a = frame offset: push a local word */
+  IR_SETLOCAL,    /* a = frame offset: store top value there, keep it */
+  IR_LOCALB,      /* a = frame offset: push a local byte (a char) */
+  IR_SETLOCALB,   /* a = frame offset: store the top value's low byte
+                   * there, and keep that byte as the value */
+  IR_LOCALADDR,   /* a = frame offset: push the address of a local */
+  IR_GLOBAL,      /* a = data offset: push a global word */
+  IR_SETGLOBAL,   /* a = data offset: store top value there, keep it */
+  IR_GLOBALB,     /* a = data offset: push a global byte (a char) */
+  IR_SETGLOBALB,  /* a = data offset: store the top value's low byte
+                   * there, and keep that byte as the value */
+  IR_LOAD,        /* ( addr -- word ) load a word */
+  IR_LOADB,       /* ( addr -- byte ) load a byte (a char) */
+  IR_STORE,       /* ( val addr -- ) store a word */
+  IR_STOREB,      /* ( val addr -- ) store val's low byte */
+  IR_CALL,        /* f, a = argument count: call, push the result */
+  IR_DROP,        /* discard the top value */
+  IR_DUP,         /* duplicate the top value */
+  IR_RETURN,      /* return the top value from the current function */
+  /* binary: ( x y -- x op y ) */
+  IR_ADD, IR_SUB, IR_MUL, IR_DIV, IR_MOD,
+  IR_AND, IR_OR, IR_XOR, IR_SHL, IR_SHR,
+  /* comparisons, binary, giving C's 1 or 0 (not PLASMA's $FFFF) */
+  IR_EQ, IR_NE, IR_LT, IR_GT, IR_LE, IR_GE,
+  /* unary: ( x -- op x ) */
+  IR_NEG, IR_COMP,
+  IR_NOT,         /* C's !: 1 if x is 0, else 0 (not PLASMA's NOT) */
+  /* control flow; a = label number, local to the function */
+  IR_LABEL,       /* a branch target */
+  IR_JUMP,        /* always branch */
+  IR_BRFALSE,     /* ( x -- ) branch if x is 0 */
+  IR_BRTRUE,      /* ( x -- ) branch if x is not 0 */
+  IR_BRAND,       /* ( x -- x ) branch if 0, keeping it; else ( x -- ) */
+  IR_BROR,        /* ( x -- x ) branch if not 0, keeping it; else ( x -- ) */
+  IR_SEL,         /* ( x -- ) go to the case table at label a (a switch) */
+  /* a case table, after its label: */
+  IR_CASES,       /* a = the number of cases that follow */
+  IR_CASEVAL,     /* a = one case's value; then: */
+  IR_CASETO       /* a = the label of that case's code */
 };
 
 void ir_put(int op, int a, int f);   /* f: a function, or -1 */
@@ -293,32 +293,32 @@ void ir_rotate(int m0, int m1);
 
 /* PLASMA opcodes used so far (see ../../doc/Bytecodes.md). */
 enum {
-    OP_CN = 0x00, OP_MINUS1 = 0x20, OP_BREQ = 0x22, OP_BRNE = 0x24,
-    OP_LA = 0x26, OP_LLA = 0x28, OP_CB = 0x2A,
-    OP_CW = 0x2C, OP_DROP = 0x30, OP_DUP = 0x34, OP_ANDI = 0x3C,
-    OP_ISEQ = 0x40, OP_ISNE = 0x42, OP_ISGT = 0x44, OP_ISLT = 0x46,
-    OP_ISGE = 0x48, OP_ISLE = 0x4A, OP_BRFLS = 0x4C, OP_BRTRU = 0x4E,
-    OP_BRNCH = 0x50, OP_SEL = 0x52,
-    OP_CALL = 0x54, OP_ENTER = 0x58, OP_LEAVE = 0x5A, OP_RET = 0x5C,
-    OP_CFFB = 0x5E, OP_LB = 0x60, OP_LW = 0x62, OP_LLB = 0x64,
-    OP_LLW = 0x66, OP_LAB = 0x68, OP_LAW = 0x6A, OP_DLB = 0x6C,
-    OP_DLW = 0x6E, OP_SB = 0x70, OP_SW = 0x72, OP_SLB = 0x74, OP_SLW = 0x76,
-    OP_SAB = 0x78, OP_SAW = 0x7A, OP_DAB = 0x7C, OP_DAW = 0x7E,
-    OP_NOT = 0x80, OP_ADD = 0x82, OP_SUB = 0x84, OP_MUL = 0x86, OP_DIV = 0x88,
-    OP_MOD = 0x8A, OP_INCR = 0x8C, OP_DECR = 0x8E, OP_NEG = 0x90,
-    OP_COMP = 0x92, OP_AND = 0x94, OP_IOR = 0x96, OP_XOR = 0x98,
-    OP_SHL = 0x9A, OP_SHR = 0x9C, OP_IDXW = 0x9E, OP_BRAND = 0xAC,
-    OP_BROR = 0xAE,
-    /* Pseudo-ops: markers that travel through stages 2-4 in order with
-     * the code, but emit no bytes themselves. */
-    OP_FUNC_BEGIN = 0x100,  /* fn: a function starts here */
-    OP_FUNC_END = 0x101,    /* a = frame size: the function ends here */
-    OP_LABEL = 0x102,       /* a = label number: a branch target is here */
-    /* A SEL's case table (see ../../doc/Bytecodes.md), as data in the
-     * code: */
-    OP_CASES = 0x103,       /* a = the count byte */
-    OP_CASEVAL = 0x104,     /* a = a case's value word */
-    OP_CASETO = 0x105       /* a = the label its offset word leads to */
+  OP_CN = 0x00, OP_MINUS1 = 0x20, OP_BREQ = 0x22, OP_BRNE = 0x24,
+  OP_LA = 0x26, OP_LLA = 0x28, OP_CB = 0x2A,
+  OP_CW = 0x2C, OP_DROP = 0x30, OP_DUP = 0x34, OP_ANDI = 0x3C,
+  OP_ISEQ = 0x40, OP_ISNE = 0x42, OP_ISGT = 0x44, OP_ISLT = 0x46,
+  OP_ISGE = 0x48, OP_ISLE = 0x4A, OP_BRFLS = 0x4C, OP_BRTRU = 0x4E,
+  OP_BRNCH = 0x50, OP_SEL = 0x52,
+  OP_CALL = 0x54, OP_ENTER = 0x58, OP_LEAVE = 0x5A, OP_RET = 0x5C,
+  OP_CFFB = 0x5E, OP_LB = 0x60, OP_LW = 0x62, OP_LLB = 0x64,
+  OP_LLW = 0x66, OP_LAB = 0x68, OP_LAW = 0x6A, OP_DLB = 0x6C,
+  OP_DLW = 0x6E, OP_SB = 0x70, OP_SW = 0x72, OP_SLB = 0x74, OP_SLW = 0x76,
+  OP_SAB = 0x78, OP_SAW = 0x7A, OP_DAB = 0x7C, OP_DAW = 0x7E,
+  OP_NOT = 0x80, OP_ADD = 0x82, OP_SUB = 0x84, OP_MUL = 0x86, OP_DIV = 0x88,
+  OP_MOD = 0x8A, OP_INCR = 0x8C, OP_DECR = 0x8E, OP_NEG = 0x90,
+  OP_COMP = 0x92, OP_AND = 0x94, OP_IOR = 0x96, OP_XOR = 0x98,
+  OP_SHL = 0x9A, OP_SHR = 0x9C, OP_IDXW = 0x9E, OP_BRAND = 0xAC,
+  OP_BROR = 0xAE,
+  /* Pseudo-ops: markers that travel through stages 2-4 in order with
+   * the code, but emit no bytes themselves. */
+  OP_FUNC_BEGIN = 0x100,  /* fn: a function starts here */
+  OP_FUNC_END = 0x101,    /* a = frame size: the function ends here */
+  OP_LABEL = 0x102,       /* a = label number: a branch target is here */
+  /* A SEL's case table (see ../../doc/Bytecodes.md), as data in the
+   * code: */
+  OP_CASES = 0x103,       /* a = the count byte */
+  OP_CASEVAL = 0x104,     /* a = a case's value word */
+  OP_CASETO = 0x105       /* a = the label its offset word leads to */
 };
 
 /* For a branch op (BRNCH, BRFLS, ...), Mop.a is the label number; stage
@@ -332,11 +332,11 @@ enum { FIX_NONE, FIX_DATA, FIX_FUNC, FIX_STR };
 #define FRAME_LATER (-1)
 
 typedef struct {
-    int op;
-    int a;          /* first operand (byte or word), or data offset */
-    int b;          /* second operand (ENTER's parameter count) */
-    int fix;        /* FIX_* for a word operand */
-    int fn;         /* FIX_FUNC target; OP_FUNC_BEGIN's function */
+  int op;
+  int a;          /* first operand (byte or word), or data offset */
+  int b;          /* second operand (ENTER's parameter count) */
+  int fix;        /* FIX_* for a word operand */
+  int fn;         /* FIX_FUNC target; OP_FUNC_BEGIN's function */
 } Mop;
 
 void mop_const(Mop *m, int v);         /* lower.c: make m push v */

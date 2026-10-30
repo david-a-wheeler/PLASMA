@@ -5,10 +5,10 @@ struct sz { int w, h; };
 
 struct pt corner(struct sz s)
 {
-    return s;
+  return s;
 }
 
 int main()
 {
-    return 0;
+  return 0;
 }

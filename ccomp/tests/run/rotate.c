@@ -18,70 +18,70 @@ int a[6];
 
 void show(int n)
 {
-    puti(n);
-    putc(' ');
+  puti(n);
+  putc(' ');
 }
 
 void say(char *s)
 {
-    while (*s)
-        putc(*s++);
-    putc(' ');
+  while (*s)
+    putc(*s++);
+  putc(' ');
 }
 
 void copy(char *d, char *s)
 {
-    while ((*d++ = *s++) != 0)
-        ;
+  while ((*d++ = *s++) != 0)
+    ;
 }
 
 int *pick(int i)
 {
-    return &a[i];
+  return &a[i];
 }
 
 int bump(void)
 {
-    gp++;
-    return 10;
+  gp++;
+  return 10;
 }
 
 int main()
 {
-    int i = 1, j = 2, x, *p;
-    char *cp;
-    copy(buf, "hello");
-    say(buf);
-    a[i + 1] = 7;
-    show(a[2]);
-    *pick(3) = 8;
-    show(a[3]);
-    x = *pick(4) = 9;
-    show(x);
-    show(a[4]);
-    cp = buf;
-    show(*(cp + 1) = 300);
-    show(buf[1]);
-    a[i + (a[j + 3] = 2)] = 5;
-    show(a[5]);
-    show(a[3]);
-    x = 5 - (a[i + 1] = 2);
-    show(x);
-    show(a[2]);
-    show(10 + (*pick(0) = 4));
-    show(a[0]);
-    p = a;
-    show(*(j + p));
-    if ((*pick(5) = 0) == 0)
-        show(1);
-    gp = g;
-    g[0] = 1;
-    g[1] = 2;
-    g[2] = 3;
-    *gp += bump();
-    show(g[0]);
-    show(g[1]);
-    show(g[2]);
-    putln();
-    return 0;
+  int i = 1, j = 2, x, *p;
+  char *cp;
+  copy(buf, "hello");
+  say(buf);
+  a[i + 1] = 7;
+  show(a[2]);
+  *pick(3) = 8;
+  show(a[3]);
+  x = *pick(4) = 9;
+  show(x);
+  show(a[4]);
+  cp = buf;
+  show(*(cp + 1) = 300);
+  show(buf[1]);
+  a[i + (a[j + 3] = 2)] = 5;
+  show(a[5]);
+  show(a[3]);
+  x = 5 - (a[i + 1] = 2);
+  show(x);
+  show(a[2]);
+  show(10 + (*pick(0) = 4));
+  show(a[0]);
+  p = a;
+  show(*(j + p));
+  if ((*pick(5) = 0) == 0)
+    show(1);
+  gp = g;
+  g[0] = 1;
+  g[1] = 2;
+  g[2] = 3;
+  *gp += bump();
+  show(g[0]);
+  show(g[1]);
+  show(g[2]);
+  putln();
+  return 0;
 }

@@ -23,22 +23,22 @@ volatile char *const KEYBOARD = (volatile char *)0xC000;
 
 void click(void)
 {
-    *SPEAKER;
+  *SPEAKER;
 }
 
 int ready(void)
 {
-    if (*KEYBOARD > 127)
-        return 1;
-    return 0;
+  if (*KEYBOARD > 127)
+    return 1;
+  return 0;
 }
 
 int main()
 {
-    click();
-    click();
-    click();
-    puti(ready());
-    putln();
-    return 0;
+  click();
+  click();
+  click();
+  puti(ready());
+  putln();
+  return 0;
 }

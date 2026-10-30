@@ -5,5 +5,5 @@ struct s *p;
 
 int main()
 {
-    return p->x;
+  return p->x;
 }

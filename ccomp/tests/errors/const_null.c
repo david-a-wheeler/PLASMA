@@ -3,7 +3,7 @@
  * integer constant expression 0 is. */
 int main()
 {
-    const int ZERO = 0;
-    int *p = ZERO;
-    return p == 0;
+  const int ZERO = 0;
+  int *p = ZERO;
+  return p == 0;
 }

@@ -3,10 +3,10 @@
  * struct t afterward is a new, incomplete struct. */
 int main()
 {
-    {
-        struct t { int a; } x;
-        x.a = 1;
-    }
-    struct t y;
-    return 0;
+  {
+    struct t { int a; } x;
+    x.a = 1;
+  }
+  struct t y;
+  return 0;
 }

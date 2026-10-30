@@ -4,5 +4,5 @@ typedef int T;
 
 int main()
 {
-    return T + 1;
+  return T + 1;
 }

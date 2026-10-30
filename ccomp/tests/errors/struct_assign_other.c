@@ -5,8 +5,8 @@ struct b { int x; };
 
 int main()
 {
-    struct a p;
-    struct b q;
-    p = q;
-    return 0;
+  struct a p;
+  struct b q;
+  p = q;
+  return 0;
 }

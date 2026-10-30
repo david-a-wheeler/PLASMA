@@ -4,6 +4,6 @@ struct s *p;
 
 int main()
 {
-    p++;
-    return 0;
+  p++;
+  return 0;
 }

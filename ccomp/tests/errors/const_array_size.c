@@ -4,7 +4,7 @@
  * doesn't have). ccish refuses it, so its programs stay valid C. */
 int main()
 {
-    const int N = 3;
-    int a[N];
-    return 0;
+  const int N = 3;
+  int a[N];
+  return 0;
 }

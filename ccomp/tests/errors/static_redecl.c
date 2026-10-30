@@ -3,7 +3,7 @@
  * block. */
 int main()
 {
-    int x = 1;
-    static int x;
-    return x;
+  int x = 1;
+  static int x;
+  return x;
 }

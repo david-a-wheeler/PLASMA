@@ -5,7 +5,7 @@ int a[4];
 
 int main()
 {
-    int i = 1;
-    (a[i + 1] = 2) = 3;
-    return 0;
+  int i = 1;
+  (a[i + 1] = 2) = 3;
+  return 0;
 }

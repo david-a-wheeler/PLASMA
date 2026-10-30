@@ -4,5 +4,5 @@ enum { BIG = 32767, BIGGER };
 
 int main()
 {
-    return 0;
+  return 0;
 }

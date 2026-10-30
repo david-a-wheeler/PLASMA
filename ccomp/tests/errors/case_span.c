@@ -3,10 +3,10 @@
  * (approach.md, "M7 design"). */
 int main()
 {
-    int x = 1;
-    switch (x) {
-    case -20000: x = 2; break;
-    case 20000: x = 3; break;
-    }
-    return x;
+  int x = 1;
+  switch (x) {
+  case -20000: x = 2; break;
+  case 20000: x = 3; break;
+  }
+  return x;
 }

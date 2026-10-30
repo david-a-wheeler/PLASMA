@@ -2,13 +2,13 @@
  * literal used as a statement. */
 int main()
 {
-    puts(pstr("one, " "two"));
-    putln();
-    puts(pstr("tab:\t| quote:\" backslash:\\ end"));
-    putln();
-    puts(pstr(""));
-    puts(pstr("x"));
-    putln();
-    "unused literal";
-    return 0;
+  puts(pstr("one, " "two"));
+  putln();
+  puts(pstr("tab:\t| quote:\" backslash:\\ end"));
+  putln();
+  puts(pstr(""));
+  puts(pstr("x"));
+  putln();
+  "unused literal";
+  return 0;
 }

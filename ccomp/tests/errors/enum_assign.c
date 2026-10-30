@@ -4,6 +4,6 @@ enum { A, B };
 
 int main()
 {
-    A = 2;
-    return 0;
+  A = 2;
+  return 0;
 }

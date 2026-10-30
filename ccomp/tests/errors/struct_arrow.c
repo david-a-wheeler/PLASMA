@@ -4,7 +4,7 @@ struct pt { int x, y; };
 
 int main()
 {
-    struct pt p;
-    p->x = 1;
-    return 0;
+  struct pt p;
+  p->x = 1;
+  return 0;
 }

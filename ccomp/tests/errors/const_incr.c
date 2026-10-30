@@ -2,7 +2,7 @@
 /* ++ and -- on a const local are errors. */
 int main()
 {
-    const int n = 1;
-    n++;
-    return n;
+  const int n = 1;
+  n++;
+  return n;
 }

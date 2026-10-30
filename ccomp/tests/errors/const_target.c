@@ -3,8 +3,8 @@
  * a compound assignment. (The pointer itself can change.) */
 int main()
 {
-    const char *p = "x";
-    p++;
-    *p += 1;
-    return 0;
+  const char *p = "x";
+  p++;
+  *p += 1;
+  return 0;
 }

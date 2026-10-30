@@ -5,7 +5,7 @@ struct pt { int x, y; };
 
 int main()
 {
-    struct pt p;
-    show(p);
-    return 0;
+  struct pt p;
+  show(p);
+  return 0;
 }

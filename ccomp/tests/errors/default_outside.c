@@ -2,6 +2,6 @@
 /* So does default. */
 int main()
 {
-    default:
-    return 0;
+  default:
+  return 0;
 }

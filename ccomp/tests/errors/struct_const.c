@@ -6,6 +6,6 @@ const struct pt origin;
 
 int main()
 {
-    origin.y = 1;
-    return 0;
+  origin.y = 1;
+  return 0;
 }

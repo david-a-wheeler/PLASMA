@@ -10,29 +10,29 @@ int a[4];
 
 void show(int n)
 {
-    puti(n);
-    putc(' ');
+  puti(n);
+  putc(' ');
 }
 
 int *pick(int i)
 {
-    return &a[i];
+  return &a[i];
 }
 
 int main()
 {
-    int x = 1, *p = a;
-    *pick(1) = x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
-        + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
-        + x + x + x + x + x + x + x;
-    show(a[1]);
-    show(*pick(2) = x + x + x + x + x + x + x + x + x + x + x + x + x + x
-        + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
-        + x + x + x + x + x + x + x + x + x);
-    show(a[2]);
-    show(*((x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
-        + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
-        + x + x + x + x + x + x + x - 39) + p));
-    putln();
-    return 0;
+  int x = 1, *p = a;
+  *pick(1) = x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
+      + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
+      + x + x + x + x + x + x + x;
+  show(a[1]);
+  show(*pick(2) = x + x + x + x + x + x + x + x + x + x + x + x + x + x
+      + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
+      + x + x + x + x + x + x + x + x + x);
+  show(a[2]);
+  show(*((x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
+      + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
+      + x + x + x + x + x + x + x - 39) + p));
+  putln();
+  return 0;
 }

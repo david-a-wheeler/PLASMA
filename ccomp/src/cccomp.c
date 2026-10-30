@@ -23,41 +23,41 @@ static const char *base_name;
  * (unless -k). */
 void clean_up(void)
 {
-    compile_abort();
-    remove_streams(base_name);
+  compile_abort();
+  remove_streams(base_name);
 }
 
 /* Print the command-line syntax and exit. */
 static void usage(void)
 {
-    fprintf(stderr, "usage: cccomp [-i] [-k] [-o output] input.c\n");
-    exit(2);
+  fprintf(stderr, "usage: cccomp [-i] [-k] [-o output] input.c\n");
+  exit(2);
 }
 
 /* Compile one .c file into the stream files. */
 int main(int argc, char **argv)
 {
-    const char *src = NULL, *outname = NULL;
-    int i;
+  const char *src = NULL, *outname = NULL;
+  int i;
 
-    msg_init(argv[0]);
-    for (i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "-i"))
-            opt_ir = 1;
-        else if (!strcmp(argv[i], "-k"))
-            opt_keep = 1;
-        else if (!strcmp(argv[i], "-o") && i + 1 < argc)
-            outname = argv[++i];
-        else if (argv[i][0] == '-' || src)
-            usage();
-        else
-            src = argv[i];
-    }
-    if (!src)
-        usage();
-    if (!outname)
-        outname = base_of(src);
-    base_name = outname;
-    compile_file(src, outname);
-    return 0;
+  msg_init(argv[0]);
+  for (i = 1; i < argc; i++) {
+    if (!strcmp(argv[i], "-i"))
+      opt_ir = 1;
+    else if (!strcmp(argv[i], "-k"))
+      opt_keep = 1;
+    else if (!strcmp(argv[i], "-o") && i + 1 < argc)
+      outname = argv[++i];
+    else if (argv[i][0] == '-' || src)
+      usage();
+    else
+      src = argv[i];
+  }
+  if (!src)
+    usage();
+  if (!outname)
+    outname = base_of(src);
+  base_name = outname;
+  compile_file(src, outname);
+  return 0;
 }

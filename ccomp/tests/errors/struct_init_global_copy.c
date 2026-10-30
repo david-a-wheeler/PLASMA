@@ -7,5 +7,5 @@ struct pt b = a;
 
 int main()
 {
-    return 0;
+  return 0;
 }

@@ -7,34 +7,34 @@
 // listing-has: DLW
 int f(int *q)
 {
-    *q = 2;
-    return 10;
+  *q = 2;
+  return 10;
 }
 
 int main()
 {
-    int a[3], i;
-    char s[4], c;
+  int a[3], i;
+  char s[4], c;
 
-    a[1] = 1;
-    a[2] = 2;
-    i = 1;
-    a[i] += f(&i);
-    puti(a[1]);
-    putc(' ');
-    puti(a[2]);
-    putc(' ');
-    puti(i);
-    putc(' ');
+  a[1] = 1;
+  a[2] = 2;
+  i = 1;
+  a[i] += f(&i);
+  puti(a[1]);
+  putc(' ');
+  puti(a[2]);
+  putc(' ');
+  puti(i);
+  putc(' ');
 
-    s[2] = 'e';
-    c = 2;
-    s[c] -= 2;
-    putc(s[2]);
-    putc(' ');
+  s[2] = 'e';
+  c = 2;
+  s[c] -= 2;
+  putc(s[2]);
+  putc(' ');
 
-    a[i] <<= 2;
-    puti(a[i] += 1);
-    putln();
-    return 0;
+  a[i] <<= 2;
+  puti(a[i] += 1);
+  putln();
+  return 0;
 }

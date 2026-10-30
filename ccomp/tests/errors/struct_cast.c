@@ -4,7 +4,7 @@ struct pt { int x, y; };
 
 int main()
 {
-    struct pt a;
-    (struct pt)a.x;
-    return 0;
+  struct pt a;
+  (struct pt)a.x;
+  return 0;
 }

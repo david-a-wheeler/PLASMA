@@ -16,35 +16,35 @@ const struct pt unit = {1, 1};
 /* Print a point. */
 void show(const struct pt *p)
 {
-    puti(p->x); putc(','); puti(p->y); putc(' ');
+  puti(p->x); putc(','); puti(p->y); putc(' ');
 }
 
 int main()
 {
-    static struct pt saved = {7, 8};
-    struct pt a = {10, 20};
-    struct pt b = a;                /* a struct copy */
-    struct box lb = {a.x, a.y + 1, 5};          /* the rest is 0 */
-    struct pt many[2] = {0};
-    int i;
+  static struct pt saved = {7, 8};
+  struct pt a = {10, 20};
+  struct pt b = a;                /* a struct copy */
+  struct box lb = {a.x, a.y + 1, 5};          /* the rest is 0 */
+  struct pt many[2] = {0};
+  int i;
 
-    show(&origin);
-    puti(sizeof corners / sizeof corners[0]); putc(' ');
-    for (i = 0; i < 3; i++)
-        show(&corners[i]);
-    putln();
-    show(&gb.lo); show(&gb.hi); putc(gb.tag); putln();
-    for (i = 0; i < 2; i++) {
-        puts(pstr("["));
-        puti(stock[i].qty); putc(' ');
-        puti(stock[i].name[0]); putc(' ');
-        puti(stock[i].where ? stock[i].where->y : -1);
-        puts(pstr("] "));
-    }
-    putln();
-    show(&unit); show(&saved); show(&b);
-    show(&lb.lo); show(&lb.hi); puti(lb.tag); putln();
-    show(&many[1]);
-    putln();
-    return 0;
+  show(&origin);
+  puti(sizeof corners / sizeof corners[0]); putc(' ');
+  for (i = 0; i < 3; i++)
+    show(&corners[i]);
+  putln();
+  show(&gb.lo); show(&gb.hi); putc(gb.tag); putln();
+  for (i = 0; i < 2; i++) {
+    puts(pstr("["));
+    puti(stock[i].qty); putc(' ');
+    puti(stock[i].name[0]); putc(' ');
+    puti(stock[i].where ? stock[i].where->y : -1);
+    puts(pstr("] "));
+  }
+  putln();
+  show(&unit); show(&saved); show(&b);
+  show(&lb.lo); show(&lb.hi); puti(lb.tag); putln();
+  show(&many[1]);
+  putln();
+  return 0;
 }

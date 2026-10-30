@@ -4,5 +4,5 @@ struct node { int val; struct node next; };
 
 int main()
 {
-    return 0;
+  return 0;
 }

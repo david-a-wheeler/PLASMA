@@ -15,17 +15,17 @@ struct s g;
 
 int get(struct s *p)
 {
-    return p->a + p->c;
+  return p->a + p->c;
 }
 
 int main()
 {
-    struct s l;
-    int v;
-    l.b = 5;
-    g.c = 6;
-    puti(l.b + g.c + get(&g));
-    putln();
-    v = ((struct s *)0x300)->c;
-    return v - v;
+  struct s l;
+  int v;
+  l.b = 5;
+  g.c = 6;
+  puti(l.b + g.c + get(&g));
+  putln();
+  v = ((struct s *)0x300)->c;
+  return v - v;
 }

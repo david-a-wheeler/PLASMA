@@ -41,77 +41,77 @@ int count;
 
 void show(int n)
 {
-    puti(n);
-    putc(' ');
+  puti(n);
+  putc(' ');
 }
 
 /* Print the C string s, then a space. */
 void say(char *s)
 {
-    while (*s)
-        putc(*s++);
-    putc(' ');
+  while (*s)
+    putc(*s++);
+  putc(' ');
 }
 
 int main()
 {
-    int i;
+  int i;
 
-    show(n);
-    show(neg);
-    show(c);
-    show(wrap);
-    show(size);
-    show(np == 0);
-    putln();
+  show(n);
+  show(neg);
+  show(c);
+  show(wrap);
+  show(size);
+  show(np == 0);
+  putln();
 
-    say(msg);
-    say(empty);
-    say(tail);
-    say(word);
-    say(roomy);
-    putc(exact[0]);
-    putc(exact[2]);
-    putc(' ');
-    putln();
+  say(msg);
+  say(empty);
+  say(tail);
+  say(word);
+  say(roomy);
+  putc(exact[0]);
+  putc(exact[2]);
+  putc(' ');
+  putln();
 
-    for (i = 0; i < 5; i++)
-        show(table[i]);
-    show(sizeof sq / sizeof sq[0]);
-    show(sq[3]);
-    show(sizeof word);
-    show(sizeof exact);
-    show(sizeof roomy);
-    show(roomy[5]);
-    putln();
+  for (i = 0; i < 5; i++)
+    show(table[i]);
+  show(sizeof sq / sizeof sq[0]);
+  show(sq[3]);
+  show(sizeof word);
+  show(sizeof exact);
+  show(sizeof roomy);
+  show(roomy[5]);
+  putln();
 
-    show(m[1][2]);
-    show(part[0][0]);
-    show(part[1][1]);
-    show(sizeof flat);
-    show(flat[1][0]);
-    show(flat[1][1]);
-    putln();
+  show(m[1][2]);
+  show(part[0][0]);
+  show(part[1][1]);
+  show(sizeof flat);
+  show(flat[1][0]);
+  show(flat[1][1]);
+  putln();
 
-    show(*pn);
-    *pn = 6;
-    show(n);
-    show(*pt);
-    show(*pm);
-    show(pend - sq);
-    say(pw);
-    putln();
+  show(*pn);
+  *pn = 6;
+  show(n);
+  show(*pt);
+  show(*pm);
+  show(pend - sq);
+  say(pw);
+  putln();
 
-    for (i = 0; i < 3; i++)
-        say(names[i]);
-    show(sizeof names);
-    for (i = 0; i < 3; i++)
-        say(kw[i]);
-    show(sizeof kw);
-    show(braced);
-    show(speaker == (char *)0xC030);
-    show(self == (int *)&self);
-    show(count);
-    putln();
-    return 0;
+  for (i = 0; i < 3; i++)
+    say(names[i]);
+  show(sizeof names);
+  for (i = 0; i < 3; i++)
+    say(kw[i]);
+  show(sizeof kw);
+  show(braced);
+  show(speaker == (char *)0xC030);
+  show(self == (int *)&self);
+  show(count);
+  putln();
+  return 0;
 }

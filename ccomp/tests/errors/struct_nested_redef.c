@@ -4,5 +4,5 @@ struct s { int a; struct s { int b; } c; };
 
 int main()
 {
-    return 0;
+  return 0;
 }

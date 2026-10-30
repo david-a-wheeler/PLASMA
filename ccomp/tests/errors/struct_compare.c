@@ -4,6 +4,6 @@ struct pt { int x, y; };
 
 int main()
 {
-    struct pt a, b;
-    return a == b;
+  struct pt a, b;
+  return a == b;
 }

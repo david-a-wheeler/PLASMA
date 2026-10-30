@@ -4,6 +4,6 @@ struct s;
 
 int main()
 {
-    struct s v;
-    return 0;
+  struct s v;
+  return 0;
 }

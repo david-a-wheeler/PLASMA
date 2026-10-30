@@ -1544,7 +1544,8 @@ is the main problem. Splitting it is one way, but not the only one:
   is such a stripped copy, made on every build, with `#line` keeping
   the line numbers right (issue 2, "Revised"). It shrinks what the
   compile pass reads, but not the source on disk.
-- **F3. Tabs for indentation:** 8 spaces to a tab saves about 8% of
+- **F3. Tabs for indentation:** (rejected 2026-10-29: 2-space indents
+  instead, decision 19, saving about 6%.) 8 spaces to a tab saves about 8% of
   parse.c (145K to 133K). Simple, and the source is unchanged
   otherwise, but alone it's not enough, and it changes the project's
   style.
@@ -1894,6 +1895,13 @@ issue. In summary:
     keeps 5 open, so the four stream files become one stream of tagged
     records, with `.syms` still separate and written last. Disk space
     stays about the same (18.6 E3).
+19. **C source style: 2-space indents, no tabs** (decided in discussion,
+    2026-10-29). Tabs show as different widths in different tools.
+    All the C files (sources and tests) were converted from 4 spaces
+    once, by a script not kept: statement lines' indents were halved, and continuation
+    lines moved with their statement's first line, so alignment under
+    a parenthesis or operator is kept. parse.c went from 145,133 to
+    135,813 bytes (18.6 E3's table predates this).
 
 
 ## Milestones

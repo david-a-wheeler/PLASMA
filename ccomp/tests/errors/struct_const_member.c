@@ -4,8 +4,8 @@ struct counter { const int id; int n; };
 
 int main()
 {
-    struct counter c;
-    c.n++;
-    c.id++;
-    return 0;
+  struct counter c;
+  c.n++;
+  c.id++;
+  return 0;
 }

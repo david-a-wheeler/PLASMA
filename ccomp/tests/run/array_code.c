@@ -10,36 +10,36 @@
 // listing-has: LLB 13
 void bump(int m[][3], int j)
 {
-    m[1][j]++;
+  m[1][j]++;
 }
 
 int main()
 {
-    int a[4], i, x;
-    char b[4];
-    int *p = a;
-    int m[2][3];
+  int a[4], i, x;
+  char b[4];
+  int *p = a;
+  int m[2][3];
 
-    i = 1;
-    x = 5;
-    a[i] = x;
-    a[3] = 9;
-    b[i] = 'Q';
-    a[i]++;
-    p[i]++;
-    p[2] = 4;
-    b[i]--;
-    m[1][0] = 3;
-    bump(m, 0);
-    puti(a[1]);
-    putc(' ');
-    puti(a[3]);
-    putc(' ');
-    puti(a[2]);
-    putc(' ');
-    putc(b[1]);
-    putc(' ');
-    puti(m[1][0]);
-    putln();
-    return 0;
+  i = 1;
+  x = 5;
+  a[i] = x;
+  a[3] = 9;
+  b[i] = 'Q';
+  a[i]++;
+  p[i]++;
+  p[2] = 4;
+  b[i]--;
+  m[1][0] = 3;
+  bump(m, 0);
+  puti(a[1]);
+  putc(' ');
+  puti(a[3]);
+  putc(' ');
+  puti(a[2]);
+  putc(' ');
+  putc(b[1]);
+  putc(' ');
+  puti(m[1][0]);
+  putln();
+  return 0;
 }

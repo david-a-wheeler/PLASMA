@@ -4,5 +4,5 @@ enum { A, B };
 
 int main()
 {
-    return A();
+  return A();
 }

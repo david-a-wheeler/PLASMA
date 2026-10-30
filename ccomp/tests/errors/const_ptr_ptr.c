@@ -4,8 +4,8 @@
  * makes it an error too. */
 int main()
 {
-    char *s = "x";
-    char **pp = &s;
-    const char **cpp = pp;
-    return cpp == 0;
+  char *s = "x";
+  char **pp = &s;
+  const char **cpp = pp;
+  return cpp == 0;
 }

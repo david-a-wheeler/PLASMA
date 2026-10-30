@@ -9,35 +9,35 @@
 // listing-count: 2 DUP
 void show(int n)
 {
-    puti(n);
-    putc(' ');
+  puti(n);
+  putc(' ');
 }
 
 int g()
 {
-    putc('g');
-    return 5;
+  putc('g');
+  return 5;
 }
 
 void f(int x)
 {
-    show(x * 2);
-    show(x * 3);
-    show(x * 4);
-    show(x * 16);
-    show(x * 0);
-    show(x * 1);
-    show(x * 0x4000);
-    show(x * 5);
+  show(x * 2);
+  show(x * 3);
+  show(x * 4);
+  show(x * 16);
+  show(x * 0);
+  show(x * 1);
+  show(x * 0x4000);
+  show(x * 5);
 }
 
 int main()
 {
-    f(3);
-    putln();
-    f(-7);
-    putln();
-    show(g() * 0);
-    putln();
-    return 0;
+  f(3);
+  putln();
+  f(-7);
+  putln();
+  show(g() * 0);
+  putln();
+  return 0;
 }

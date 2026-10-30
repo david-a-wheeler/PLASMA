@@ -5,9 +5,9 @@ const int TWO = 2;
 
 int main()
 {
-    int x = 1;
-    switch (x) {
-    case TWO: x = 3;
-    }
-    return x;
+  int x = 1;
+  switch (x) {
+  case TWO: x = 3;
+  }
+  return x;
 }
