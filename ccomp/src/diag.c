@@ -27,16 +27,13 @@ const char *stream_name(const char *base, const char *suffix)
   return buf;
 }
 
-/* Remove the stream files of output name base, unless -k asked to keep
- * them. */
+/* Remove the stream file and symbol summary of output name base, unless
+ * -k asked to keep them. */
 void remove_streams(const char *base)
 {
   if (!base || opt_keep)
     return;
-  remove(stream_name(base, SUFFIX_DATA));
-  remove(stream_name(base, SUFFIX_DREL));
-  remove(stream_name(base, SUFFIX_STRS));
-  remove(stream_name(base, SUFFIX_CODE));
+  remove(stream_name(base, SUFFIX_OBJ));
   remove(stream_name(base, SUFFIX_SYMS));
 }
 
@@ -135,17 +132,33 @@ static void report(const char *kind, int msg, int part, const char *detail)
   fprintf(stderr, "\n");
 }
 
+/* Report a diagnostic of this kind, then remove partial output and
+ * exit. The files are closed first, so that printing (which opens the
+ * message file) needs no more memory or files. detail is copied first:
+ * it may be in a static buffer that clean_up() reuses (stream_name()'s,
+ * when removing the stream files). The copy fits in a PLASMA frame (255
+ * bytes); a ProDOS path has at most 64 characters, and only a longer
+ * host path is cut short. */
+static void stop(const char *kind, int msg, int part, const char *detail)
+{
+  char copy[200];
+  if (detail) {
+    strncpy(copy, detail, sizeof(copy) - 1);
+    copy[sizeof(copy) - 1] = 0;
+    detail = copy;
+  }
+  clean_up();
+  report(kind, msg, part, detail);
+  exit(1);
+}
+
 /* Report error msg, followed by part (another message number: how or
  * where, such as "left operand of assignment") and detail, in the
  * program being compiled; then remove partial output, and exit.
- * Compilation stops at the first error. The files are closed first, so
- * that printing (which opens the message file) needs no more memory or
- * files. */
+ * Compilation stops at the first error. */
 void error_in(int msg, int part, const char *detail)
 {
-  clean_up();
-  report("error", msg, part, detail);
-  exit(1);
+  stop("error", msg, part, detail);
 }
 
 /* Report error msg, with detail. */
@@ -172,7 +185,5 @@ void warning(int msg, const char *detail)
  * (a compiler limit or a file error). Remove partial output, and exit. */
 void fatal(int msg, const char *detail)
 {
-  clean_up();
-  report("fatal", msg, 0, detail);
-  exit(1);
+  stop("fatal", msg, 0, detail);
 }

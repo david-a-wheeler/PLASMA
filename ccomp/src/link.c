@@ -1,21 +1,22 @@
 /*
- * The final pass: turn the compiler's five stream files (../OBJECT.md)
- * into a PLASMA REL module (../../doc/Bytecodes.md), and print the
- * listing (-l), since only this pass knows the final addresses.
+ * The final pass: turn the compiler's stream file and symbol summary
+ * (../OBJECT.md) into a PLASMA REL module (../../doc/Bytecodes.md), and
+ * print the listing (-l), since only this pass knows the final
+ * addresses.
  *
  * It uses none of the compiler's tables (fn_name[] and so on), only the
- * streams, so it can become a separate program later: on an Apple II,
- * a module loaded after the compiler has finished (approach.md 18.1),
- * and a linker for several files (issue 11).
+ * files, so it is a program of its own, ccrel (approach.md, "B3"), and
+ * can become a linker for several files (issue 11).
  *
- * Each stream is read once, in order, with no seeking:
+ * The files are read in order, with no seeking, and only one at a time
+ * (approach.md 18.6 B6a):
  *   1. the symbol summary, so that every address can be computed;
- *   2. the header and dependencies are written, then the data stream is
- *      copied, with the data relocations applied (and kept for the RLD),
- *      then the string pool;
- *   3. the code stream is copied one function at a time, with each
- *      function's relocations applied and kept for the RLD; then the
- *      init function is added;
+ *   2. the header and dependencies are written; then the stream is read
+ *      for its data records, with the data relocations applied (and
+ *      kept for the RLD), and again for its strings, the string pool;
+ *   3. the stream is read a third time for its functions, each copied
+ *      with its relocations applied and kept for the RLD; then the init
+ *      function is added;
  *   4. the RLD and ESD are written.
  */
 #include <string.h>
@@ -61,18 +62,17 @@ static void damaged(const char *what)
 
 /* ---------- Step 1: the symbol summary ---------- */
 
-/* The files the final pass reads (in, and rel for data relocations)
- * and writes (out). They are static, not locals, so that their 512-byte
- * buffers take no frame space (a frame holds 255 bytes), and so that
+/* The file the final pass is reading (in) and the module it writes
+ * (out). They are static, not locals, so that their 512-byte buffers
+ * take no frame space (a frame holds 255 bytes), and so that
  * link_abort() can close them after an error. */
-static Bfile in, rel, out;
+static Bfile in, out;
 
 /* After an error: close whichever of the final pass's files are open
  * (ProDOS needs it). */
 void link_abort(void)
 {
   bclose(&in);
-  bclose(&rel);
   bclose(&out);
 }
 
@@ -85,7 +85,7 @@ static void read_summary(const char *base)
 
   if (!bopen(&in, name, 0))
     fatal(171 /* "cannot open" */, name);
-  if (bgetc(&in) != 'C' || bgetc(&in) != 'I' || bgetc(&in) != 2)
+  if (bgetc(&in) != 'C' || bgetc(&in) != 'I' || bgetc(&in) != OBJ_VERSION)
     damaged(name);
   data_size = bgetw(&in);
   strs_size = bgetw(&in);
@@ -312,71 +312,127 @@ static int add_reloc(int kind, int at, int target, const char *name)
   return 0;       /* an import: the loader fills it in */
 }
 
-/* Copy stream file base + suffix (size bytes) into the module. If drel
- * is set, apply the data relocation records as well: each gives a word
- * in the data, written as 0, and what its address points to. */
-static void copy_stream(const char *base, const char *suffix, int size,
-                        int drel)
-{
-  const char *name;
-  int i, c, next = -1, kind = 0, target = 0, v;
+/* The tags each step reads from the stream; it skips the others. */
+static const char data_tags[] = { REC_DATA, REC_DREL, 0 };
+static const char str_tags[] = { REC_STR, 0 };
+static const char func_tags[] = { REC_FUNC, 0 };
 
-  /* stream_name() uses one static buffer, so the messages below name
-   * the relocation stream by its suffix. */
-  if (drel) {
-    name = stream_name(base, SUFFIX_DREL);
-    if (!bopen(&rel, name, 0))
-      fatal(171 /* "cannot open" */, name);
-  }
-  name = stream_name(base, suffix);
+/* Open the stream file of output name base for reading, from its
+ * start. */
+static void open_obj(const char *base)
+{
+  const char *name = stream_name(base, SUFFIX_OBJ);
   if (!bopen(&in, name, 0))
     fatal(171 /* "cannot open" */, name);
-  for (i = 0; ; i++) {
-    if (drel && next < i && (kind = bgetc(&rel)) != EOF) {
-      next = bgetw(&rel);
-      target = bgetw(&rel);
-      if (next < i || next > size - 2)
-        damaged(SUFFIX_DREL);
-    }
-    if ((c = bgetc(&in)) == EOF)
-      break;
-    if (i == next) {
-      /* The word, written as 0, gets its final value. */
-      v = add_reloc(kind, data_base + i, target, SUFFIX_DREL);
-      if (bgetc(&in) == EOF)
-        damaged(name);
-      bputw(&out, v);
-      i++;
-      continue;
-    }
-    bputc(&out, c);
-  }
-  bclose(&in);
-  if (i != size || (drel && next >= i))
-    damaged(name);
-  if (drel)
-    bclose(&rel);
 }
 
-/* Copy the code stream into the module, one function at a time. */
+/* Read past the rest of a record whose tag t has just been read. */
+static void skip_record(int t)
+{
+  int n;
+  if (t == REC_DATA) {
+    if ((n = bgetc(&in)) == EOF)
+      damaged(SUFFIX_OBJ);
+    bskip(&in, n);
+  } else if (t == REC_DREL) {
+    bskip(&in, 3);
+  } else if (t == REC_STR) {
+    bskip(&in, bgetw(&in));
+  } else if (t == REC_FUNC) {
+    bskip(&in, 2);
+    bskip(&in, bgetw(&in));
+    if ((n = bgetw(&in)) > MAX_FUNC_RELOCS)
+      damaged(SUFFIX_OBJ);
+    bskip(&in, 5 * n);
+  } else {
+    damaged(SUFFIX_OBJ);
+  }
+}
+
+/* Read the next record's tag that is one of want, skipping records with
+ * other tags; or return EOF at the end of the stream. */
+static int next_record(const char *want)
+{
+  int t;
+  while ((t = bgetc(&in)) != EOF && (t == 0 || !strchr(want, t)))
+    skip_record(t);
+  return t;
+}
+
+/* Copy the next n bytes of the stream into the module. */
+static void copy_bytes(int n)
+{
+  int c;
+  while (n-- > 0) {
+    if ((c = bgetc(&in)) == EOF)
+      damaged(SUFFIX_OBJ);
+    bputc(&out, c);
+  }
+}
+
+/* Copy the data into the module: the stream's D records, with each R
+ * record's word given its final value (an address, kept for the RLD). */
+static void copy_data(const char *base)
+{
+  int at = 0, t, n, kind, target;
+  open_obj(base);
+  while ((t = next_record(data_tags)) != EOF) {
+    if (t == REC_DATA) {
+      if ((n = bgetc(&in)) == EOF || at + n > data_size)
+        damaged(SUFFIX_OBJ);
+      copy_bytes(n);
+      at += n;
+    } else {
+      kind = bgetc(&in);
+      target = bgetw(&in);
+      if (at + 2 > data_size)
+        damaged(SUFFIX_OBJ);
+      bputw(&out, add_reloc(kind, data_base + at, target, SUFFIX_OBJ));
+      at += 2;
+    }
+  }
+  bclose(&in);
+  if (at != data_size)
+    damaged(SUFFIX_OBJ);
+}
+
+/* Copy the string pool into the module: each S record's string as
+ * [len][chars][NUL]. A string longer than 255 gets a length byte of 0,
+ * which is meaningless (pstr() rejects such a string). */
+static void copy_strings(const char *base)
+{
+  int at = 0, n;
+  open_obj(base);
+  while (next_record(str_tags) != EOF) {
+    n = bgetw(&in);
+    if (n > strs_size - at - 2)
+      damaged(SUFFIX_OBJ);
+    bputc(&out, n > 255 ? 0 : n);
+    copy_bytes(n);
+    bputc(&out, 0);
+    at += n + 2;
+  }
+  bclose(&in);
+  if (at != strs_size)
+    damaged(SUFFIX_OBJ);
+}
+
+/* Copy the code into the module, one F record (function) at a time. */
 static void copy_code(const char *base)
 {
-  const char *name = stream_name(base, SUFFIX_CODE);
   int at = 0, idx, len, n, i, first, c;
 
-  if (!bopen(&in, name, 0))
-    fatal(171 /* "cannot open" */, name);
-  while ((c = bgetc(&in)) != EOF) {
-    bungetc(&in, c);
+  open_obj(base);
+  while (next_record(func_tags) != EOF) {
     idx = bgetw(&in);
     len = bgetw(&in);
     if (idx >= nlsyms || !(lsyms[idx].flags & SYM_DEFINED)
         || lsyms[idx].code_off != at || len > MAX_FUNC_CODE
         || ndefs >= MAX_FUNCS)
-      damaged(name);
+      damaged(SUFFIX_OBJ);
     for (i = 0; i < len; i++) {
       if ((c = bgetc(&in)) == EOF)
-        damaged(name);
+        damaged(SUFFIX_OBJ);
       fbuf[i] = (unsigned char)c;
     }
     first = nrelocs;
@@ -384,8 +440,8 @@ static void copy_code(const char *base)
     for (i = 0; i < n; i++) {
       int kind = bgetc(&in), off = bgetw(&in), target = bgetw(&in), v;
       if (off < 0 || off > len - 2)
-        damaged(name);
-      v = add_reloc(kind, subseg + at + off, target, name);
+        damaged(SUFFIX_OBJ);
+      v = add_reloc(kind, subseg + at + off, target, SUFFIX_OBJ);
       fbuf[off] = (unsigned char)v;
       fbuf[off + 1] = (unsigned char)(v >> 8);
     }
@@ -395,9 +451,9 @@ static void copy_code(const char *base)
     func_at[ndefs++] = at;
     at += len;
   }
-  if (at != code_size)
-    damaged(name);
   bclose(&in);
+  if (at != code_size)
+    damaged(SUFFIX_OBJ);
 }
 
 /* The init function runs when the module loads: call main, discard its
@@ -473,8 +529,8 @@ void link_module(const char *base, const char *path)
     out_dci(dep);
   bputc(&out, 0);                         /* end of dependencies */
 
-  copy_stream(base, SUFFIX_DATA, data_size, 1);
-  copy_stream(base, SUFFIX_STRS, strs_size, 0);
+  copy_data(base);
+  copy_strings(base);
   bputc(&out, 0);                         /* pad */
 
   /* Step 3. */

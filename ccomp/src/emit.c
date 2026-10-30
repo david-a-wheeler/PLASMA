@@ -1,33 +1,41 @@
 /*
  * Stage 4: the emitter. Encodes machine ops into bytes and writes the
- * compiler's output as five stream files (approach.md 18.1; formats in
- * ../OBJECT.md):
+ * compiler's output (approach.md 18.1 and 18.6 B6a; formats in
+ * ../OBJECT.md) as two files:
  *
- *   .data  the global variables' bytes, in order, with their initial
- *          values (0 if they have none)
- *   .drel  relocation records for the words in .data that hold
- *          addresses (char *p = "hi";)
- *   .strs  the string pool: every string literal, in order. It is kept
- *          apart from .data so that literals inside a global's
- *          initializer don't land in the middle of the global.
- *   .code  for each function: its bytecode, then its relocation records
+ *   .obj   one stream of tagged records, in the order they are made:
+ *          D  a run of the global variables' bytes, with their initial
+ *             values (0 if they have none)
+ *          R  a word in the data that holds an address (char *p = "hi";)
+ *          S  a string literal, for the string pool. The pool is kept
+ *             apart from the data so that literals inside a global's
+ *             initializer don't land in the middle of the global.
+ *          F  a function: its bytecode, then its relocation records
  *   .syms  the symbol summary, written when compilation ends
  *
- * Only one function's bytecode is in memory at a time, in a function
- * buffer, so that its frame size and its branch offsets can be patched
- * before it is written. Memory use doesn't depend on the size of
- * the program. The final pass (link.c) turns the streams into a module.
+ * So only the source and one output file are open while compiling
+ * (PLASMA's Apple II file library allows 4 open files). Only one
+ * function's bytecode is in memory at a time, in a function buffer, so
+ * that its frame size and its branch offsets can be patched before it is
+ * written. Memory use doesn't depend on the size of the program. The
+ * final pass (link.c) turns the files into a module.
  */
 #include <string.h>
 #include "ccish.h"
 
-static Bfile data_out, drel_out, strs_out, code_out;
-static Bfile syms_out;      /* written at the end (emit_finish()) */
+/* The output file: the stream while compiling, then the symbol summary
+ * (emit_finish()). One Bfile serves both, one after the other. */
+static Bfile out;
 static const char *base_name;
 
-static int ndata;               /* bytes written to the data stream */
-static int nstrs;               /* bytes written to the string pool */
-static int ncode;               /* bytes written to the code stream so far */
+static int ndata;               /* bytes in the data so far */
+static int nstrs;               /* bytes in the string pool so far */
+static int ncode;               /* bytes of code written so far */
+
+/* Data bytes not yet written: the current run, written as one D record
+ * when it is full, or before an R record or the end of the stream. */
+static unsigned char drun[DATA_RUN];
+static int ndrun;
 
 /* The function being built (an index into fn_name[] and the other
  * function arrays), or -1. */
@@ -60,22 +68,19 @@ static int nframe;
 static int label_word[MAX_LABELS];
 static char label_placed[MAX_LABELS];
 
-/* Create stream file base + suffix for writing, as b. */
-static void open_stream(Bfile *b, const char *base, const char *suffix)
+/* Create output file base + suffix for writing. */
+static void open_out(const char *base, const char *suffix)
 {
-  if (!bopen(b, stream_name(base, suffix), 1))
+  if (!bopen(&out, stream_name(base, suffix), 1))
     fatal(176 /* "cannot create" */, stream_name(base, suffix));
 }
 
-/* Create the stream files written during compilation, for output name
+/* Create the stream file written during compilation, for output name
  * base. */
 void emit_open(const char *base)
 {
   base_name = base;
-  open_stream(&data_out, base, SUFFIX_DATA);
-  open_stream(&drel_out, base, SUFFIX_DREL);
-  open_stream(&strs_out, base, SUFFIX_STRS);
-  open_stream(&code_out, base, SUFFIX_CODE);
+  open_out(base, SUFFIX_OBJ);
 }
 
 /* Append one byte to the function buffer. */
@@ -155,25 +160,34 @@ static void place_label(int n)
   label_placed[n] = 1;
 }
 
-/* Write a string literal of len bytes to the string pool. Returns the
- * pool offset of its first character. */
+/* Write a string literal of len bytes to the stream, for the string
+ * pool. Returns the pool offset of its first character. */
 int data_string(const char *s, int len)
 {
-  int first, i;
+  int first = nstrs + 1;
   /* Keep offsets well inside 16 bits; the final pass checks that the
    * whole module fits. */
   if (nstrs > 0x7FFF - len - 2)
     error(181 /* "too many string literals: over 32767 bytes" */, NULL);
-  /* [len][chars][NUL]: the C pointer is to the first character, and
-   * the byte before it makes it a PLASMA string as well. A literal
-   * longer than 255 has a meaningless length byte (pstr() rejects it). */
-  bputc(&strs_out, len > 255 ? 0 : len);
-  first = nstrs + 1;
-  for (i = 0; i < len; i++)
-    bputc(&strs_out, s[i]);
-  bputc(&strs_out, 0);
+  /* In the pool it is [len][chars][NUL] (the final pass adds the length
+   * byte and the NUL): the C pointer is to the first character, and the
+   * byte before it makes it a PLASMA string as well. */
+  bputc(&out, REC_STR);
+  bputw(&out, len);
+  bwrite(&out, (const unsigned char *)s, len);
   nstrs += len + 2;
   return first;
+}
+
+/* Write the pending data run as a D record. */
+static void flush_data(void)
+{
+  if (ndrun == 0)
+    return;
+  bputc(&out, REC_DATA);
+  bputc(&out, ndrun);
+  bwrite(&out, drun, ndrun);
+  ndrun = 0;
 }
 
 /* The number of bytes written to the data stream so far: the data
@@ -183,44 +197,48 @@ int data_offset(void)
   return ndata;
 }
 
-/* Append one byte (the low byte of v) to the data stream. */
+/* Append one byte (the low byte of v) to the data. */
 void data_byte(int v)
 {
   if (ndata >= 0x7FFF)
     error(182 /* "too much data: globals over 32767 bytes" */, NULL);
-  bputc(&data_out, v & 0xFF);
+  if (ndrun == DATA_RUN)
+    flush_data();
+  drun[ndrun++] = (unsigned char)v;
   ndata++;
 }
 
-/* Append a word, low byte first, to the data stream. */
+/* Append a word, low byte first, to the data. */
 void data_word(int v)
 {
   data_byte(v);
   data_byte(v >> 8);
 }
 
-/* Append a word to the data stream that holds an address: of data
- * (kind REL_DATA) or of a string (REL_STR), at offset target. It is
- * written as 0, with a record in the data relocation stream; the final
- * pass fills it in. */
+/* Append a word to the data that holds an address: of data (kind
+ * REL_DATA) or of a string (REL_STR), at offset target. It is an R
+ * record in place of the word's two bytes; the final pass writes the
+ * address there. */
 void data_addr(int kind, int target)
 {
-  bputc(&drel_out, kind);
-  bputw(&drel_out, ndata);
-  bputw(&drel_out, target);
-  data_word(0);
+  if (ndata > 0x7FFF - 2)
+    error(182 /* "too much data: globals over 32767 bytes" */, NULL);
+  flush_data();
+  bputc(&out, REC_DREL);
+  bputc(&out, kind);
+  bputw(&out, target);
+  ndata += 2;
 }
 
-/* Reserve n zero bytes in the data stream, for a global variable.
- * Returns their data offset. */
+/* Reserve n zero bytes in the data, for a global variable. Returns
+ * their data offset. */
 int data_zero(int n)
 {
-  int first = ndata, i;
+  int first = ndata;
   if (ndata > 0x7FFF - n)
     error(182 /* "too much data: globals over 32767 bytes" */, NULL);
-  for (i = 0; i < n; i++)
-    bputc(&data_out, 0);
-  ndata += n;
+  while (n-- > 0)
+    data_byte(0);
   return first;
 }
 
@@ -250,7 +268,7 @@ static void drop_frame(void)
     relocs[i].at -= 3;
 }
 
-/* Write the finished function to the code stream. */
+/* Write the finished function to the stream, as an F record. */
 static void end_function(int frame_size)
 {
   int i;
@@ -268,14 +286,15 @@ static void end_function(int frame_size)
   if (ncode > 0x7FFF - nfbuf)
     fatal(186 /* "too much code" */, NULL);
   fn_code[fn] = ncode;
-  bputw(&code_out, fn);
-  bputw(&code_out, nfbuf);
-  bwrite(&code_out, fbuf, nfbuf);
-  bputw(&code_out, nrelocs);
+  bputc(&out, REC_FUNC);
+  bputw(&out, fn);
+  bputw(&out, nfbuf);
+  bwrite(&out, fbuf, nfbuf);
+  bputw(&out, nrelocs);
   for (i = 0; i < nrelocs; i++) {
-    bputc(&code_out, relocs[i].kind);
-    bputw(&code_out, relocs[i].at);
-    bputw(&code_out, relocs[i].target);
+    bputc(&out, relocs[i].kind);
+    bputw(&out, relocs[i].at);
+    bputw(&out, relocs[i].target);
   }
   ncode += nfbuf;
   fn = -1;
@@ -343,60 +362,52 @@ void emit_put(Mop *m)
   }
 }
 
-/* Close stream b, written as base + suffix, checking for errors. */
-static void close_stream(Bfile *b, const char *suffix)
+/* Close the output file, written as base + suffix, checking for
+ * errors. */
+static void close_out(const char *suffix)
 {
-  if (bclose(b) != 0)
+  if (bclose(&out) != 0)
     fatal(187 /* "error writing" */, stream_name(base_name, suffix));
 }
 
-/* After an error: close the streams that are still open, writing out
- * what is buffered, so that a kept stream (-k) is complete up to the
- * error, and so that ProDOS can remove the files. */
+/* After an error: close the output file if it is open, writing out what
+ * is buffered, so that a kept stream (-k) is complete up to the error,
+ * and so that ProDOS can remove the file. */
 void emit_abort(void)
 {
-  bclose(&syms_out);
-  bclose(&data_out);
-  bclose(&drel_out);
-  bclose(&strs_out);
-  bclose(&code_out);
+  if (out.f)
+    flush_data();
+  bclose(&out);
 }
 
-/* Close the streams written during compilation, and write the symbol
- * summary. */
+/* Finish and close the stream, and write the symbol summary. */
 void emit_finish(void)
 {
   int i, n;
   const char *name;
 
-  close_stream(&data_out, SUFFIX_DATA);
-  close_stream(&drel_out, SUFFIX_DREL);
-  close_stream(&strs_out, SUFFIX_STRS);
-  close_stream(&code_out, SUFFIX_CODE);
+  flush_data();
+  close_out(SUFFIX_OBJ);
 
-  /* stream_name() uses one static buffer, so get this name last. */
-  name = stream_name(base_name, SUFFIX_SYMS);
-  if (!bopen(&syms_out, name, 1))
-    fatal(176 /* "cannot create" */, name);
-  bputc(&syms_out, 'C');
-  bputc(&syms_out, 'I');
-  bputc(&syms_out, 2);                         /* format version */
-  bputw(&syms_out, ndata);
-  bputw(&syms_out, nstrs);
-  bputw(&syms_out, ncode);
-  bputw(&syms_out, nfuncs);
+  open_out(base_name, SUFFIX_SYMS);
+  bputc(&out, 'C');
+  bputc(&out, 'I');
+  bputc(&out, OBJ_VERSION);
+  bputw(&out, ndata);
+  bputw(&out, nstrs);
+  bputw(&out, ncode);
+  bputw(&out, nfuncs);
   for (i = 0; i < nfuncs; i++) {
     int defined = fn_flags[i] & FN_DEFINED;
-    bputc(&syms_out, (defined ? SYM_DEFINED : 0)
+    bputc(&out, (defined ? SYM_DEFINED : 0)
                 | (fn_flags[i] & FN_CALLED ? SYM_CALLED : 0)
                 | (fn_type[i] != TY_VOID ? SYM_RETURNS : 0));
-    bputc(&syms_out, fn_flags[i] & FN_COUNTED ? fn_nparams[i] : 255);
-    bputw(&syms_out, defined ? fn_code[i] : 0);
+    bputc(&out, fn_flags[i] & FN_COUNTED ? fn_nparams[i] : 255);
+    bputw(&out, defined ? fn_code[i] : 0);
     name = name_of(fn_name[i]);
     n = (int)strlen(name);
-    bputc(&syms_out, n);
-    bwrite(&syms_out, (const unsigned char *)name, n);
+    bputc(&out, n);
+    bwrite(&out, (const unsigned char *)name, n);
   }
-  if (bclose(&syms_out) != 0)
-    fatal(187 /* "error writing" */, name);
+  close_out(SUFFIX_SYMS);
 }

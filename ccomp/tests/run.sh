@@ -183,11 +183,13 @@ if [ $split_bad -eq 0 ]; then
 else
     fail=$((fail + 1))
 fi
-# cccomp leaves the stream files for ccrel, and ccrel removes them.
+# cccomp leaves the stream file and symbol summary for ccrel, and ccrel
+# removes them.
 if ./cccomp -o "$OUT/split_streams" tests/run/hello.c \
-   && [ -s "$OUT/split_streams.code" ] && [ -s "$OUT/split_streams.syms" ] \
+   && [ -s "$OUT/split_streams.obj" ] && [ -s "$OUT/split_streams.syms" ] \
    && ./ccrel "$OUT/split_streams" && [ -s "$OUT/split_streams" ] \
-   && [ ! -e "$OUT/split_streams.code" ]; then
+   && [ ! -e "$OUT/split_streams.obj" ] \
+   && [ ! -e "$OUT/split_streams.syms" ]; then
     pass=$((pass + 1))
 else
     echo "FAIL cccomp/ccrel: stream files not passed on, or not removed"
@@ -195,12 +197,48 @@ else
 fi
 # A compile error in cccomp leaves no stream files for ccrel.
 if ./cccomp -o "$OUT/split_err" tests/errors/const_assign.c 2>/dev/null \
-   || [ -e "$OUT/split_err.code" ] || [ -e "$OUT/split_err.syms" ]; then
+   || [ -e "$OUT/split_err.obj" ] || [ -e "$OUT/split_err.syms" ]; then
     echo "FAIL cccomp: a compile error must fail and leave no stream files"
     fail=$((fail + 1))
 else
     pass=$((pass + 1))
 fi
+# ccrel names the file it can't open (not another in the same static
+# buffer: the message is printed after the stream files are removed).
+./cccomp -o "$OUT/noobj" tests/run/hello.c
+rm -f "$OUT/noobj.obj"
+if ./ccrel "$OUT/noobj" 2>"$OUT/noobj.err"; then
+    echo "FAIL ccrel: succeeded without its stream file"
+    fail=$((fail + 1))
+elif grep -qF "cannot open $OUT/noobj.obj" "$OUT/noobj.err"; then
+    pass=$((pass + 1))
+else
+    echo "FAIL ccrel: wanted 'cannot open $OUT/noobj.obj', got:"
+    sed 's/^/    /' "$OUT/noobj.err"
+    fail=$((fail + 1))
+fi
+# ccrel finds a damaged stream file: here, one cut short, and one with an
+# unknown record tag added at the end.
+damaged_test() {
+    if ./ccrel "$OUT/$1" 2>"$OUT/$1.err"; then
+        echo "FAIL ccrel: accepted a stream file $2"
+        fail=$((fail + 1))
+    elif grep -qE "damaged|unexpected end" "$OUT/$1.err"; then
+        pass=$((pass + 1))
+    else
+        echo "FAIL ccrel: wrong message for a stream file $2:"
+        sed 's/^/    /' "$OUT/$1.err"
+        fail=$((fail + 1))
+    fi
+}
+./cccomp -o "$OUT/cut" tests/run/global_init.c
+size=$(wc -c < "$OUT/cut.obj")
+head -c $((size - 3)) "$OUT/cut.obj" > "$OUT/cut.tmp"
+mv "$OUT/cut.tmp" "$OUT/cut.obj"
+damaged_test cut "cut short"
+./cccomp -o "$OUT/badtag" tests/run/global_init.c
+printf 'X' >> "$OUT/badtag.obj"
+damaged_test badtag "with an unknown record tag"
 
 # The message file must agree with the sources (approach.md, "C2").
 if ./tests/check_msgs.sh; then
@@ -226,10 +264,9 @@ else
     fail=$((fail + 1))
 fi
 
-# The stream files (.data, .drel, .strs, .code, .syms) must be gone
-# after every compile, successful or not, unless -k keeps them.
-left=$(find "$OUT" -name '*.data' -o -name '*.drel' -o -name '*.strs' \
-       -o -name '*.code' -o -name '*.syms')
+# The stream files (.obj and .syms) must be gone after every compile,
+# successful or not, unless -k keeps them.
+left=$(find "$OUT" -name '*.obj' -o -name '*.syms')
 if [ -n "$left" ]; then
     echo "FAIL stream files left behind:"
     echo "$left" | sed 's/^/    /'
@@ -238,9 +275,8 @@ else
     pass=$((pass + 1))
 fi
 if "$CCISH" -k -o "$OUT/keep" tests/run/hello.c \
-   && [ -s "$OUT/keep" ] && [ -e "$OUT/keep.data" ] \
-   && [ -e "$OUT/keep.drel" ] && [ -s "$OUT/keep.strs" ] \
-   && [ -s "$OUT/keep.code" ] && [ -s "$OUT/keep.syms" ]; then
+   && [ -s "$OUT/keep" ] && [ -s "$OUT/keep.obj" ] \
+   && [ -s "$OUT/keep.syms" ]; then
     pass=$((pass + 1))
 else
     echo "FAIL -k: module and stream files should all exist"

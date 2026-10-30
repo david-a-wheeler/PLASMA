@@ -53,6 +53,14 @@ int bgetw(Bfile *b)
   return lo | (hi << 8);
 }
 
+/* Read past the next n bytes, which must be there. */
+void bskip(Bfile *b, int n)
+{
+  while (n-- > 0)
+    if (bgetc(b) == EOF)
+      fatal(3 /* "unexpected end of a compiler stream file" */, NULL);
+}
+
 /* Write out the buffered bytes, remembering any write error for
  * bclose to report. */
 static void flush(Bfile *b)

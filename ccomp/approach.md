@@ -1411,8 +1411,8 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
 - **B6. Fewer open files:** ProDOS needs a 1K buffer per open file, and
   today a compilation has the source and 4-5 stream files open (5-6K).
   One combined stream file makes it 2K, but changes OBJECT.md.
-  **Decided: B6a** (discussion, 2026-10-29; decision 18), to be built
-  later, not yet scheduled. Found since:
+  **Decided: B6a** (discussion, 2026-10-29; decision 18). **Done**
+  (2026-10-29; see "B6a is done" under Milestones). Found before:
   - **It is required, not just a saving.** PLASMA's Apple II file
     library (`src/libsrc/apple/fileio.pla`) allows at most 4 open
     files (`MAX_IOBUFS`), the system buffer plus up to 3 more taken
@@ -1902,11 +1902,11 @@ issue. In summary:
     room and real programs allow. A feature that is cheap to add is
     still not free: it costs compiler code and tables on the Apple II.
 18. **One combined stream file (18.6 B6a)** (decided in discussion,
-    2026-10-29; to be built later, not yet scheduled). PLASMA's Apple
-    II file library allows at most 4 open files, and the compile pass
-    keeps 5 open, so the four stream files become one stream of tagged
-    records, with `.syms` still separate and written last. Disk space
-    stays about the same (18.6 E3).
+    2026-10-29; done the same day, object format version 3). PLASMA's
+    Apple II file library allows at most 4 open files, and the compile
+    pass kept 5 open, so the four stream files became one stream of
+    tagged records, `.obj`, with `.syms` still separate and written
+    last. Disk space stays about the same (18.6 E3).
 19. **C source style: 2-space indents, no tabs** (decided in discussion,
     2026-10-29). Tabs show as different widths in different tools.
     All the C files (sources and tests) were converted from 4 spaces
@@ -2158,6 +2158,52 @@ the Apple II, although at most one error is printed per run.
   `ccish`'s module for every run test, that `cccomp` leaves the stream
   files and `ccrel` removes them, and that a compile error leaves no
   stream files.
+
+**B6a is done** (2026-10-29; 18.6 B6, decision 18). The compile pass
+writes one stream file, `NAME.obj`, of tagged records, then the symbol
+summary `NAME.syms`; object format version 3 (`OBJECT.md`). Every run
+test's module and listing is byte for byte what the version 2 format
+gave. Chosen while building it (open for review):
+- **Names:** `.obj` for the stream, `.syms` kept. The tags are letters
+  (`D` data, `R` data relocation, `S` string, `F` function), so that a
+  dump of the file is easy to read.
+- **`D` records hold up to 128 bytes** (`DATA_RUN`), with a count byte,
+  from a 128-byte buffer in `emit.c`: 2 bytes of overhead per 128 (about
+  1.6%; about 460 bytes on `link.c`'s 29K of zero-filled tables). A run
+  is written when full, before an `R` record, and at the end; `F` and
+  `S` records needn't end a run, since each step of the final pass reads
+  only its own kinds. Alternatives: a count kept in the `Bfile`'s own
+  block buffer and patched before the block is written (no extra buffer,
+  but `emit.c` then depends on `bio.c`'s internals), or F6 (a run of
+  zeros as a count), which would remove most of the data bytes too.
+- **`R` records have no offset:** the word's place among the `D` and
+  `R` records gives it, so an `R` record is 4 bytes (version 2's `.drel`
+  records were 5), and the data's two bytes aren't written at all.
+- **`S` records carry a length word and the characters;** the final pass
+  adds the pool's length byte and NUL. One byte more per string than
+  version 2's `.strs`.
+- **One `Bfile` in `emit.c`,** for the stream and then for the summary
+  (it opens after the stream closes): 4 fewer than before, plus the
+  128-byte run buffer, so about 2K less static data in `cccomp`.
+  `link.c` lost its second input `Bfile` (`rel`), about 0.5K.
+- **Open files:** the compile pass has the source and `.obj` open (was
+  5 files); the final pass has one input and the module (was 3). Both
+  fit PLASMA's limit of 4, with room for the message file (C2) and,
+  later, `#include` in the separate preprocessor (issue 2, "Revised").
+- **The final pass reads `.obj` three times** (data, strings, code),
+  skipping records with `next_record()`/`skip_record()`; slower from a
+  floppy, as expected. Disk space is about the same: for the larger run
+  tests, -19 to +11 bytes against the four version 2 files together,
+  and three fewer files (their last blocks and index blocks).
+- **Fixed on the way, an older bug:** a "cannot open" message could name
+  the wrong file, since `error()` and `fatal()` remove the stream files
+  (reusing `stream_name()`'s static buffer) before printing. `ccrel`
+  missing `x.code` said "cannot open x.syms". They now copy the detail
+  first (`stop()` in `diag.c`, a 200-byte local, which fits a PLASMA
+  frame; only a host path over 199 characters is cut short).
+- `bskip()` added to `bio.c`. New tests: `ccrel` names the missing
+  `.obj` file, and rejects a stream cut short and one with an unknown
+  tag (226 tests).
 
 **Table sizes (2026-10-29; decided in discussion: "slightly exceed
 ccish's need").** Every fixed table is sized just above the peak

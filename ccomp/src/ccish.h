@@ -10,7 +10,8 @@
  *   lower.c  stage 2: IR ops -> machine ops     (peep_put)
  *   peep.c   stage 3: peephole optimization     (emit_put)
  *   emit.c   stage 4: encode bytes, one function at a time, and write
- *            them to the stream files
+ *            them to the stream file (with the symbol summary at the
+ *            end)
  *
  * Then a separate final pass, link.c, reads only the stream files and
  * writes the REL module (approach.md 18.1; formats in ../OBJECT.md).
@@ -99,6 +100,7 @@ int  bopen(Bfile *b, const char *path, int writing);
 int  bgetc(Bfile *b);
 void bungetc(Bfile *b, int c);
 int  bgetw(Bfile *b);
+void bskip(Bfile *b, int n);
 void bputc(Bfile *b, int c);
 void bputw(Bfile *b, int v);
 void bwrite(Bfile *b, const unsigned char *p, int n);
@@ -346,16 +348,20 @@ void peep_flush(void);
 
 /* ---------- Stage 4: emitter (emit.c) ---------- */
 
-/* Stream file names: the output name plus these suffixes. */
-#define SUFFIX_DATA ".data"
-#define SUFFIX_DREL ".drel"
-#define SUFFIX_STRS ".strs"
-#define SUFFIX_CODE ".code"
+/* Stream file names: the output name plus these suffixes. The compile
+ * pass writes one stream of tagged records, then the symbol summary. */
+#define SUFFIX_OBJ  ".obj"
 #define SUFFIX_SYMS ".syms"
+#define OBJ_VERSION 3       /* the format version, in the symbol summary */
+#define DATA_RUN    128     /* bytes in one data record at most */
 
-/* Stream record kinds and symbol flags (see ../OBJECT.md). A REL_DATA
- * target is a data offset, a REL_STR target an offset in the string
- * pool, and a REL_FUNC target a symbol index. */
+/* Record tags in the stream (see ../OBJECT.md), as letters so that a
+ * dump of the file is easy to read. */
+enum { REC_DATA = 'D', REC_DREL = 'R', REC_STR = 'S', REC_FUNC = 'F' };
+
+/* Relocation kinds and symbol flags. A REL_DATA target is a data
+ * offset, a REL_STR target an offset in the string pool, and a REL_FUNC
+ * target a symbol index. */
 enum { REL_DATA = 1, REL_FUNC = 2, REL_STR = 3 };
 enum { SYM_DEFINED = 1, SYM_CALLED = 2, SYM_RETURNS = 4 };
 
