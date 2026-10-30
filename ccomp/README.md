@@ -433,7 +433,8 @@ file is used, and that the file's numbers ascend.
 * Only a few peephole optimizations so far (see `src/peep.c`): removal
   of unreachable code, plain stores for assignments whose value is
   unused, folded negative constants, adding 0, `INCR`/`DECR`, `ANDI`,
-  `IDXW`,
+  `IDXW`, `ADDI`/`SUBI` for a byte constant, `ADDLW`/`IDXLW` and the
+  other fused adds of a variable,
   multiplication by 0, 1, 3 or a power of two without `MUL`,
   `DLW` for a store followed by a load of the same variable, `LAB` and
   friends for a load or store through a constant address (reading the

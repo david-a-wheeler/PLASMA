@@ -2075,7 +2075,23 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
 - **C4. Optimize the generated code (M10):** fused opcodes (`ADDLW`,
   `IDXLW`, ...), peephole patterns, shared sequences. Shrinks every
   program, the compiler too; gain unknown (perhaps 10-20%), and the
-  optimizer is more code.
+  optimizer is more code. **Measured 2026-10-30** (cccomp's own code,
+  from `make measure`'s listing): the obvious fusable patterns come to
+  only about 0.9K (3%), so 10-20% was too high. Most of the code is
+  `CALL` (5.5K), `LLW` (5.2K), branches (about 4K) and `ENTER`/`LEAVE`
+  (2.1K). **Done the same day** (decided in discussion): `ADDI`/`SUBI`
+  for a byte constant added or subtracted either way, and `ADDLW`,
+  `IDXLW` (and the byte and global forms) for a variable's value added,
+  in peep.c (`rewrite()` split into four functions to stay under
+  `MAX_FUNC_CODE`; the fused ops found by their opcode layout, not a
+  table, to keep peep.c small). cccomp's code: 31,547 to 31,560 (other
+  files shrink about as much as peep.c grows); ccrel's: 6,863 to 6,667.
+  `MAX_IDS` 240 to 268 (`ccish.h`'s new opcode constants; parse.c
+  needs 243). **Found:** the biggest pattern, `NEG` before a branch
+  (437 bytes), comes from `&&` and `||` in conditions, compiled as
+  values (`a NEG BROR L b NEG L: BRFLS`); the existing `NEG BRFLS`
+  rule can't apply across the label. The fix is in the parser
+  (conditions as jumps), not the peephole stage.
 - **C5. Restructure ccish's own source for size:** smaller functions,
   table-driven code instead of `switch` chains, `ccish.h` split by
   stage. No language change; gains hard to predict.

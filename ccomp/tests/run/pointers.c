@@ -2,7 +2,7 @@
  * scaled by the element size, comparisons (< > <= >= are unsigned),
  * stores through pointers, and void *. */
 // listing-has: LLA
-// listing-has: IDXW
+// listing-has: IDXLW
 // listing-has: SB
 // listing-has: SW
 // listing-has: LB

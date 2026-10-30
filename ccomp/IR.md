@@ -128,9 +128,9 @@ Push the constant *a* (taken as 16 bits).
   so the evaluation order is kept. For `c op x` with a commutative op
   and a plain variable `x`, the parser emits `x c op` instead, so that
   `1 + x` can become `INCR`.
-- **Later:** merged with the following op where possible: `CB 5 ADD` →
-  `ADDI 5`, `CN 1 ADD` → `INCR` (done), `CW $C000 LB` → `LAB $C000`
-  (approach.md, 17, P1–P5 and P8).
+- **Now also** merged with the following op in the peephole stage:
+  `CB 5 ADD` → `ADDI 5`, `CN 1 ADD` → `INCR`, `CW $C000 LB` →
+  `LAB $C000` (approach.md, 17, P1–P5 and P8).
 
 ### `IR_DATAADDR` *a* = data offset
 
@@ -285,8 +285,8 @@ when it sees `=`, but the store needs the value first:
   local or global, and the index is a variable (local or global) or a
   constant. So `a[i] = v` is
   `v LOCALADDR a LOCAL i CONST 2 MUL ADD STORE`, which the peephole
-  stage makes `v LLA a LLW i IDXW SW` (`v LA a LLW i IDXW SW` for a
-  global `a`). A constant index on an array variable is a variable at a
+  stage makes `v LLA a IDXLW i SW` (`v LA a IDXLW i SW` for a global
+  `a`, and `IDXAW i` for a global `i`). A constant index on an array variable is a variable at a
   fixed offset: `a[2] = v` is `v SETLOCAL a+4` (`SETGLOBAL a+4`, which
   becomes `SAW`). A row of a two-dimensional array takes a constant
   index the same way (`m[1][i]`, `m[i][2]`).
@@ -317,7 +317,7 @@ load through the same address before the store, as in
 array element, `++`/`--` compute its address twice. A compound
 assignment to an element with an index variable saves the address in a
 temporary instead, so it is computed once: `a[i] += v` becomes
-`LLA a LLW i IDXW DLW t LW v ADD LLW t SW`. That is 1 byte smaller, and
+`LLA a IDXLW i DLW t LW ADDLW v LLW t SW`. That is 1 byte smaller, and
 it stays right if `v` changes `i` through a pointer. A compound
 assignment to a pending element without an index variable (`*p op= v`,
 `p[3] op= v`) computes the address twice. C evaluates the lvalue once,
@@ -379,9 +379,14 @@ that matters.
   - `unsigned` operands (M11) will need different `/`, `%`, `>>` and
     comparisons.
 - **Now in the peephole stage:** `CN 1 ADD` → `INCR`, `CN 1 SUB` →
-  `DECR`, a constant from 0 to 255 then `AND` → `ANDI` (which is also
-  how a conversion to `char` is done), and `DUP ADD ADD` → `IDXW` (so
-  `p + i` for an `int *` is `p i IDXW`). A multiply by a constant
+  `DECR`, any other constant added or subtracted that fits a byte
+  either way → `ADDI` or `SUBI` (`x - 5` and `x + -5` are `SUBI 5`), a
+  constant from 0 to 255 then `AND` → `ANDI` (which is also how a
+  conversion to `char` is done), `DUP ADD ADD` → `IDXW` (so `p + i`
+  for an `int *` is `p i IDXW`), and a variable's load then `ADD` or
+  `IDXW` → `ADDLW`, `IDXLW` (`ADDLB`, `IDXLB` for a `char`; `ADDAW`,
+  `IDXAW`, `ADDAB`, `IDXAB` for a global), so `p + i` with a local `i`
+  is `p IDXLW i`. A multiply by a constant
   becomes cheaper ops, as in PLASMA's own optimizer (`codeopt.pla`),
   since `MUL` is a 16-step loop on the 6502 VMs:
   - `* 2` → `DUP ADD`. It is the same size as `CN 1 SHL` (2 bytes) but

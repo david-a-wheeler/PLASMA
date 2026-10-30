@@ -8,7 +8,7 @@
 // listing-has: SAB
 // listing-has: ; data+10
 // listing-lacks: DUP
-// listing-count: 1 IDXW
+// listing-count: 1 IDXLW
 int g, h, a[4];
 char c;
 

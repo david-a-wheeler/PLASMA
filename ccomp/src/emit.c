@@ -310,7 +310,7 @@ static void end_function(int frame_size)
  * pseudo-ops start a function, or end it and write it out. */
 void emit_put(Mop *m)
 {
-  int i;
+  int i, op;
   switch (m->op) {
   case OP_FUNC_BEGIN:
     fn = m->fn;
@@ -337,8 +337,13 @@ void emit_put(Mop *m)
     return;
   }
   code_byte(m->op);
-  switch (m->op) {
-  case OP_CB: case OP_CFFB: case OP_ANDI:
+  op = m->op;
+  /* ADDLB to IDXAW: those with 4 set (ADDAB, ADDAW, IDXAB, IDXAW) take
+   * an address word, as LAW does; the others a local's byte, as LLW. */
+  if (op >= OP_ADDLB && op <= OP_IDXAW)
+    op = op & 4 ? OP_LAW : OP_LLW;
+  switch (op) {
+  case OP_CB: case OP_CFFB: case OP_ANDI: case OP_ADDI: case OP_SUBI:
   case OP_LLA: case OP_LLB: case OP_LLW: case OP_DLB: case OP_DLW:
   case OP_SLB: case OP_SLW:
     code_byte(m->a);

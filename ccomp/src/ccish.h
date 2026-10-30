@@ -50,7 +50,7 @@
 #define MAX_TAGS     10     /* struct tags, including hidden ones (7) */
 #define MAX_MEMBERS  64     /* struct members, in all structs (51) */
 #define MAX_POOL     6212   /* bytes of names in the name pool (5,647) */
-#define MAX_IDS      240    /* enum constants and typedef names (216) */
+#define MAX_IDS      268    /* enum constants and typedef names (243) */
 #define MAX_BYVAL    8      /* bytes in a struct passed or returned by value */
 #define MAX_CASES    36     /* case labels in all the switches open at once
                              * (29); at most 255, a SEL table's limit */
@@ -304,7 +304,8 @@ void ir_rotate(int m0, int m1);
 enum {
   OP_CN = 0x00, OP_MINUS1 = 0x20, OP_BREQ = 0x22, OP_BRNE = 0x24,
   OP_LA = 0x26, OP_LLA = 0x28, OP_CB = 0x2A,
-  OP_CW = 0x2C, OP_DROP = 0x30, OP_DUP = 0x34, OP_ANDI = 0x3C,
+  OP_CW = 0x2C, OP_DROP = 0x30, OP_DUP = 0x34, OP_ADDI = 0x38,
+  OP_SUBI = 0x3A, OP_ANDI = 0x3C,
   OP_ISEQ = 0x40, OP_ISNE = 0x42, OP_ISGT = 0x44, OP_ISLT = 0x46,
   OP_ISGE = 0x48, OP_ISLE = 0x4A, OP_BRFLS = 0x4C, OP_BRTRU = 0x4E,
   OP_BRNCH = 0x50, OP_SEL = 0x52,
@@ -317,7 +318,9 @@ enum {
   OP_MOD = 0x8A, OP_INCR = 0x8C, OP_DECR = 0x8E, OP_NEG = 0x90,
   OP_COMP = 0x92, OP_AND = 0x94, OP_IOR = 0x96, OP_XOR = 0x98,
   OP_SHL = 0x9A, OP_SHR = 0x9C, OP_IDXW = 0x9E, OP_BRAND = 0xAC,
-  OP_BROR = 0xAE,
+  OP_BROR = 0xAE, OP_ADDLB = 0xB0, OP_ADDLW = 0xB2, OP_ADDAB = 0xB4,
+  OP_ADDAW = 0xB6, OP_IDXLB = 0xB8, OP_IDXLW = 0xBA, OP_IDXAB = 0xBC,
+  OP_IDXAW = 0xBE,
   /* Pseudo-ops: markers that travel through stages 2-4 in order with
    * the code, but emit no bytes themselves. */
   OP_FUNC_BEGIN = 0x100,  /* fn: a function starts here */

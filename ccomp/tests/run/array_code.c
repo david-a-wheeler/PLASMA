@@ -4,7 +4,7 @@
  * an unused a[i]++ keeps no copy of the old value (no DUP). */
 // listing-has: ENTER 30,0
 // listing-lacks: DUP
-// listing-count: 7 IDXW
+// listing-count: 7 IDXLW
 // listing-has: SLW 6
 // listing-has: SLW 24
 // listing-has: LLB 13

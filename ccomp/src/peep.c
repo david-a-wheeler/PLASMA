@@ -22,7 +22,12 @@
  *   const  AND               -> ANDI const for a constant from 0 to 255
  *   const  NEG / COMP        -> const      e.g. -5 is one constant
  *   CN 0   ADD / SUB         -> (nothing)
- *   CN 1   ADD / SUB         -> INCR / DECR
+ *   CN 1   ADD / SUB         -> INCR / DECR   (also MINUS1 SUB, ...)
+ *   const  ADD / SUB         -> ADDI / SUBI n  for adding n from 2 to 255
+ *                                          either way (x - 5, x + -5:
+ *                                          SUBI 5)
+ *   LLW n  ADD / IDXW        -> ADDLW / IDXLW n  (also LLB, LAW, LAB:
+ *                                          ADDLB, IDXLB, ADDAW, ...)
  *   NEG  BRFLS / BRTRU       -> BRFLS / BRTRU    comparison used as a test
  *   NOT ANDI 1  BRFLS/BRTRU  -> BRTRU / BRFLS    branch on !x
  *   ISEQ / ISNE  BRFLS/BRTRU -> BREQ / BRNE
@@ -34,10 +39,10 @@
  *   const MUL, const = 2^n   -> CN n SHL   for n from 2 to 15
  *   DUP  ADD  ADD            -> IDXW       p + 2*i
  *   DUP  update  store  DROP -> update  store   x++ whose old value is
- *        unused. update is INCR, DECR, NEG, COMP, or a constant then ADD
- *        or SUB; store is SLW, SLB, SAW or SAB n, or SW or SB after an
- *        address computed only on the stack (LLW p, LLA a LLW i IDXW, LA g
- *        LAW i IDXW, ...).
+ *        unused. update is INCR, DECR, NEG, COMP, ADDI, SUBI, or a
+ *        constant then ADD or SUB; store is SLW, SLB, SAW or SAB n, or SW
+ *        or SB after an address computed only on the stack (LLW p, LLA a
+ *        IDXLW i, LA g IDXAW i, ...).
  * All are valid for C: they don't change any value the program sees.
  */
 #include "ccish.h"
@@ -124,11 +129,31 @@ static int absolute_op(int op)
   return -1;
 }
 
+/* The op that adds a load's value (ADDLW for LLW, and so on for LLB,
+ * LAW and LAB), or that adds twice it if idx (IDXLW, ...), or -1. The
+ * VM numbers both sets of four in the loads' order: ADDLB is LLB +
+ * $4C, and IDXLB is ADDLB + 8. */
+static int fused_op(int load, int idx)
+{
+  if (load < OP_LLB || load > OP_LAW)
+    return -1;
+  return load + (OP_ADDLB - OP_LLB) + (idx ? OP_IDXLB - OP_ADDLB : 0);
+}
+
+/* Does op take one value and give one back, adding something to it
+ * (ADDI, SUBI, or ADDLB to IDXAW)? */
+static int is_add_op(int op)
+{
+  return op == OP_ADDI || op == OP_SUBI
+         || (op >= OP_ADDLB && op <= OP_IDXAW);
+}
+
 /* Is op a one-operand op that can sit between DUP and SLW in the x++
  * pattern below? */
 static int is_unary(int op)
 {
-  return op == OP_INCR || op == OP_DECR || op == OP_NEG || op == OP_COMP;
+  return op == OP_INCR || op == OP_DECR || op == OP_NEG || op == OP_COMP
+         || op == OP_ADDI || op == OP_SUBI;
 }
 
 /* If m is an op that only works on the stack (no branch, call or
@@ -139,6 +164,10 @@ static int stack_effect(Mop *m, int *pops, int *pushes)
   *pushes = 1;
   if (mop_const_value(m, &v)) {
     *pops = 0;
+    return 1;
+  }
+  if (is_add_op(m->op)) {
+    *pops = 1;
     return 1;
   }
   switch (m->op) {
@@ -225,17 +254,11 @@ static int drop_dup(void)
   return 1;
 }
 
-/* Try one pattern at the end of the window. Returns 1 if it changed
- * anything, so the caller tries again. */
-static int rewrite(void)
+/* The patterns on loads and stores, with a and b the last two ops in
+ * the window. Returns 1 if one changed anything. */
+static int rewrite_load_store(Mop *a, Mop *b)
 {
-  Mop *a, *b;
   int v;
-
-  if (nwin < 2)
-    return 0;
-  a = &win[nwin - 2];
-  b = &win[nwin - 1];
 
   /* DLW n DROP -> SLW n (also DLB, DAW, DAB): an assignment whose
    * value is unused just stores, without keeping a copy to throw away. */
@@ -268,6 +291,24 @@ static int rewrite(void)
     nwin--;
     return 1;
   }
+  /* LLW n ADD -> ADDLW n, and LLW n IDXW -> IDXLW n (also for LLB, LAW
+   * and LAB): adding a variable's value, or twice it, is one op, a
+   * byte smaller. */
+  if ((b->op == OP_ADD || b->op == OP_IDXW)
+      && fused_op(a->op, b->op == OP_IDXW) >= 0) {
+    a->op = fused_op(a->op, b->op == OP_IDXW);
+    nwin--;
+    return 1;
+  }
+  return 0;
+}
+
+/* The patterns on a constant (a) and the op that uses it (b). Returns
+ * 1 if one changed anything. */
+static int rewrite_const(Mop *a, Mop *b)
+{
+  int v;
+
   /* const AND -> ANDI const, for a constant from 0 to 255: one
    * two-byte op (it clears the high byte, as the AND would). */
   if (b->op == OP_AND && mop_const_value(a, &v) && v <= 0xFF) {
@@ -283,21 +324,39 @@ static int rewrite(void)
     nwin--;
     return 1;
   }
-  /* CN 0 ADD / SUB -> nothing: adding or subtracting 0 changes
-   * nothing (p[0] when p is itself loaded, as in names[i][0]). */
-  if ((b->op == OP_ADD || b->op == OP_SUB)
-      && mop_const_value(a, &v) && v == 0) {
-    nwin -= 2;
-    return 1;
-  }
-  /* CN 1 ADD / SUB -> INCR / DECR: adding or subtracting 1 is a
-   * single one-byte op. */
-  if ((b->op == OP_ADD || b->op == OP_SUB)
-      && mop_const_value(a, &v) && v == 1) {
-    a->op = b->op == OP_ADD ? OP_INCR : OP_DECR;
+  /* const ADD / SUB, adding d (the constant, or minus it for SUB):
+   * d = 0 -> nothing (p[0] when p is itself loaded, as in
+   * names[i][0]); 1 or -1 -> INCR or DECR; up to 255 either way ->
+   * ADDI or SUBI (x - 5 and x + -5 are both SUBI 5). One op instead of
+   * two: a byte smaller after CB or CFFB, and faster after CN. */
+  if ((b->op == OP_ADD || b->op == OP_SUB) && a->fix == FIX_NONE
+      && mop_const_value(a, &v)) {
+    int d = b->op == OP_ADD ? v : -v, op = OP_ADDI;
+    if ((d & 0xFF00) != 0) {
+      d = -d;
+      op = OP_SUBI;
+      if ((d & 0xFF00) != 0)
+        return 0;
+    }
+    d &= 0xFF;
+    if (d == 0) {
+      nwin -= 2;
+      return 1;
+    }
+    a->op = d != 1 ? op : op == OP_ADDI ? OP_INCR : OP_DECR;
+    a->a = d;
     nwin--;
     return 1;
   }
+  return 0;
+}
+
+/* The patterns that end in a branch (b), with a the op before it.
+ * Returns 1 if one changed anything. */
+static int rewrite_branch(Mop *a, Mop *b)
+{
+  int v;
+
   /* NEG BRFLS / BRTRU -> BRFLS / BRTRU: negating doesn't change
    * whether a value is 0, so a comparison's NEG (which makes C's 1)
    * isn't needed when the result only feeds a branch. */
@@ -334,9 +393,17 @@ static int rewrite(void)
     nwin--;
     return 1;
   }
-  /* const MUL -> cheaper ops for some constants, as PLASMA's own
-   * optimizer does (src/toolsrc/codeopt.pla). MUL is a 16-step
-   * shift-and-add loop on the 6502 VMs, so it is the slowest choice. */
+  return 0;
+}
+
+/* const MUL -> cheaper ops for some constants, as PLASMA's own
+ * optimizer does (src/toolsrc/codeopt.pla), with a the constant and b
+ * the MUL. MUL is a 16-step shift-and-add loop on the 6502 VMs, so it
+ * is the slowest choice. Returns 1 if it changed anything. */
+static int rewrite_mul(Mop *a, Mop *b)
+{
+  int v;
+
   if (b->op == OP_MUL && mop_const_value(a, &v)) {
     /* x * 2 -> DUP ADD, not CN 1 SHL. Both are 2 bytes, but on the
      * 6502 VM DUP ADD takes about 52 cycles and CN 1 SHL about 59:
@@ -383,6 +450,22 @@ static int rewrite(void)
       return 1;
     }
   }
+  return 0;
+}
+
+/* Try one pattern at the end of the window. Returns 1 if it changed
+ * anything, so the caller tries again. */
+static int rewrite(void)
+{
+  Mop *a, *b;
+
+  if (nwin < 2)
+    return 0;
+  a = &win[nwin - 2];
+  b = &win[nwin - 1];
+  if (rewrite_load_store(a, b) || rewrite_const(a, b)
+      || rewrite_branch(a, b) || rewrite_mul(a, b))
+    return 1;
   /* DUP ADD ADD -> IDXW: adding twice x is PLASMA's word index op
    * (p + i for a pointer to 2-byte elements). */
   if (nwin >= 3 && win[nwin - 3].op == OP_DUP && a->op == OP_ADD
