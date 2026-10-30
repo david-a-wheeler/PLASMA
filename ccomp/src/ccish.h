@@ -283,8 +283,7 @@ enum {
   IR_JUMP,        /* always branch */
   IR_BRFALSE,     /* ( x -- ) branch if x is 0 */
   IR_BRTRUE,      /* ( x -- ) branch if x is not 0 */
-  IR_BRAND,       /* ( x -- x ) branch if 0, keeping it; else ( x -- ) */
-  IR_BROR,        /* ( x -- x ) branch if not 0, keeping it; else ( x -- ) */
+  IR_JOIN,        /* the branches so far to label a go to label f */
   IR_SEL,         /* ( x -- ) go to the case table at label a (a switch) */
   /* a case table, after its label: */
   IR_CASES,       /* a = the number of cases that follow */
@@ -317,8 +316,7 @@ enum {
   OP_NOT = 0x80, OP_ADD = 0x82, OP_SUB = 0x84, OP_MUL = 0x86, OP_DIV = 0x88,
   OP_MOD = 0x8A, OP_INCR = 0x8C, OP_DECR = 0x8E, OP_NEG = 0x90,
   OP_COMP = 0x92, OP_AND = 0x94, OP_IOR = 0x96, OP_XOR = 0x98,
-  OP_SHL = 0x9A, OP_SHR = 0x9C, OP_IDXW = 0x9E, OP_BRAND = 0xAC,
-  OP_BROR = 0xAE, OP_ADDLB = 0xB0, OP_ADDLW = 0xB2, OP_ADDAB = 0xB4,
+  OP_SHL = 0x9A, OP_SHR = 0x9C, OP_IDXW = 0x9E, OP_ADDLB = 0xB0, OP_ADDLW = 0xB2, OP_ADDAB = 0xB4,
   OP_ADDAW = 0xB6, OP_IDXLB = 0xB8, OP_IDXLW = 0xBA, OP_IDXAB = 0xBC,
   OP_IDXAW = 0xBE,
   /* Pseudo-ops: markers that travel through stages 2-4 in order with
@@ -330,7 +328,9 @@ enum {
    * code: */
   OP_CASES = 0x103,       /* a = the count byte */
   OP_CASEVAL = 0x104,     /* a = a case's value word */
-  OP_CASETO = 0x105       /* a = the label its offset word leads to */
+  OP_CASETO = 0x105,      /* a = the label its offset word leads to */
+  OP_JOIN = 0x106         /* the branches so far to label a go to
+                           * label b instead */
 };
 
 /* For a branch op (BRNCH, BRFLS, ...), Mop.a is the label number; stage

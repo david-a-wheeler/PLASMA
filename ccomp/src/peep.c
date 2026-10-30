@@ -43,6 +43,13 @@
  *        constant then ADD or SUB; store is SLW, SLB, SAW or SAB n, or SW
  *        or SB after an address computed only on the stack (LLW p, LLA a
  *        IDXLW i, LA g IDXAW i, ...).
+ * And at a label L, just before it flushes the window (skipping joins):
+ *   BRNCH L                  -> (nothing)  a jump to the very next op
+ *   Bcond L  BRNCH T         -> Binv T     the opposite branch (BRFLS /
+ *                                          BRTRU, BREQ / BRNE); for
+ *                                          a && b || c, !(a && b), ...
+ * A join (OP_JOIN, from && and ||) emits no code: it isn't a barrier,
+ * but waits in the window in order, even in dead code.
  * All are valid for C: they don't change any value the program sees.
  */
 #include "ccish.h"
@@ -85,10 +92,17 @@ static int is_test_branch(int op)
   return op == OP_BRFLS || op == OP_BRTRU;
 }
 
-/* The branch with the opposite test: BRFLS for BRTRU, and so on. */
+/* The branch with the opposite test: BRFLS for BRTRU, BREQ for BRNE,
+ * and back; or -1 for any other op. */
 static int invert_branch(int op)
 {
-  return op == OP_BRFLS ? OP_BRTRU : OP_BRFLS;
+  switch (op) {
+  case OP_BRFLS: return OP_BRTRU;
+  case OP_BRTRU: return OP_BRFLS;
+  case OP_BREQ:  return OP_BRNE;
+  case OP_BRNE:  return OP_BREQ;
+  }
+  return -1;
 }
 
 /* The store that doesn't keep its value for a store that does (SLW for
@@ -481,12 +495,64 @@ static int rewrite(void)
   return 0;
 }
 
+/* The index of the last op in the window before index i that isn't a
+ * join (which emits no code), or -1. */
+static int code_before(int i)
+{
+  while (--i >= 0 && win[i].op == OP_JOIN)
+    ;
+  return i;
+}
+
+/* Remove the op at window index i. */
+static void remove_op(int i)
+{
+  for (; i < nwin - 1; i++)
+    win[i] = win[i + 1];
+  nwin--;
+}
+
+/* The patterns at label n, just before it is placed (which flushes the
+ * window). Joins in between are skipped. */
+static void before_label(int n)
+{
+  int b = code_before(nwin), a;
+  if (b < 0 || win[b].op != OP_BRNCH)
+    return;
+  /* BRNCH n, then label n -> the label alone: the jump goes to the
+   * very next op. */
+  if (win[b].a == n) {
+    remove_op(b);
+    return;
+  }
+  /* Bcond n BRNCH t, then label n -> Binv t, then label n: branch to t
+   * on the opposite test, else fall through to n (BRFLS / BRTRU,
+   * BREQ / BRNE). a && b || c and !(a && b) need this BRNCH. */
+  a = code_before(b);
+  if (a >= 0 && invert_branch(win[a].op) >= 0 && win[a].a == n) {
+    win[a].op = invert_branch(win[a].op);
+    win[a].a = win[b].a;
+    remove_op(b);
+  }
+}
+
 /* Stage 3's entry: add an op to the window and apply the patterns.
- * Barriers flush the window, and ops in dead code are dropped. */
+ * Barriers flush the window, and ops in dead code are dropped. A join
+ * emits no code, so it isn't a barrier: it waits in the window, in
+ * order (stage 4 needs the branches it moves first), and is kept even
+ * in dead code (the branches it moves are live). */
 void peep_put(Mop *m)
 {
+  if (m->op == OP_JOIN) {
+    if (nwin == WINDOW)
+      pass_oldest();
+    win[nwin++] = *m;
+    return;
+  }
   if (m->op >= OP_FUNC_BEGIN) {
     /* A barrier: never optimize across it. */
+    if (m->op == OP_LABEL)
+      before_label(m->a);
     peep_flush();
     dead = 0;
     emit_put(m);

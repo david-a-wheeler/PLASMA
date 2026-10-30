@@ -25,7 +25,7 @@ static const char *const ir_names[] = {
   "ADD", "SUB", "MUL", "DIV", "MOD", "AND", "OR", "XOR", "SHL", "SHR",
   "EQ", "NE", "LT", "GT", "LE", "GE",
   "NEG", "COMP", "NOT",
-  "LABEL", "JUMP", "BRFALSE", "BRTRUE", "BRAND", "BROR",
+  "LABEL", "JUMP", "BRFALSE", "BRTRUE", "JOIN",
   "SEL", "CASES", "CASEVAL", "CASETO"
 };
 
@@ -50,8 +50,6 @@ static int branch_op(int op)
   case IR_JUMP:    return OP_BRNCH;
   case IR_BRFALSE: return OP_BRFLS;
   case IR_BRTRUE:  return OP_BRTRU;
-  case IR_BRAND:   return OP_BRAND;
-  case IR_BROR:    return OP_BROR;
   case IR_SEL:     return OP_SEL;
   }
   return -1;
@@ -104,8 +102,9 @@ static void dump_ir(int op, int a, int f)
                     printf(" [%d]", a); break;
   case IR_CALL:     printf(" %s nargs=%d", name_of(fn_name[f]), a); break;
   case IR_LABEL: case IR_JUMP: case IR_BRFALSE: case IR_BRTRUE:
-  case IR_BRAND: case IR_BROR: case IR_SEL: case IR_CASETO:
+  case IR_SEL: case IR_CASETO:
                     printf(" L%d", a); break;
+  case IR_JOIN:     printf(" L%d L%d", a, f); break;
   case IR_CASES: case IR_CASEVAL:
                     printf(" %d", a); break;
   }
@@ -259,6 +258,11 @@ static void lower(int op, int a, int f)
   case IR_LABEL:
     m.op = OP_LABEL;
     m.a = a;
+    break;
+  case IR_JOIN:
+    m.op = OP_JOIN;
+    m.a = a;
+    m.b = f;
     break;
   case IR_CASES: case IR_CASEVAL: case IR_CASETO:
     m.op = op == IR_CASES ? OP_CASES

@@ -716,6 +716,17 @@ static void place_forward(int n)
     place_label(n);
 }
 
+/* Make the branches so far to label from go to label to instead (an
+ * IR_JOIN; nothing if there are none, or from is -1). */
+static void join_label(int from, int to)
+{
+  if (suppress || from < 0 || label_uses[from] == 0)
+    return;
+  label_uses[to] += label_uses[from];
+  label_uses[from] = 0;
+  put(IR_JOIN, from, to);
+}
+
 /* ---------- Expressions ---------- */
 
 /*
@@ -768,8 +779,13 @@ enum {
   K_VAR,          /* a variable, not loaded yet (off, global) */
   K_DEREF,        /* the object at the address on the stack */
   K_ELEM,         /* the object at base + index * scale + disp */
-  K_STORE         /* an assignment through an address, whose store
+  K_STORE,        /* an assignment through an address, whose store
                    * waits (m0, m1, mend, stype, vmask) */
+  K_JUMP          /* a condition (&&, ||, ! on them) whose code is
+                   * emitted: it jumps to label val when false, and
+                   * otherwise is true: it falls through, or jumps
+                   * to label off, if off isn't -1 (approach.md C4,
+                   * "Conditions as jumps") */
 };
 
 typedef struct {
@@ -784,11 +800,12 @@ typedef struct {
                    * (const int N = 10; N + 1). It can't size an array
                    * or initialize a global, and 0 isn't a null
                    * pointer constant. */
-  int off;        /* K_VAR: its offset; K_ELEM: the base's offset */
+  int off;        /* K_VAR: its offset; K_ELEM: the base's offset;
+                   * K_JUMP: its true label, still to place, or -1 */
   int global;     /* K_VAR, K_ELEM: 1 if off is a data offset (a
                    * global), 0 if a frame offset, or 2 + v if off is
                    * an addend to extern global v (var_where()) */
-  int val;        /* K_CONST: the value */
+  int val;        /* K_CONST: the value; K_JUMP: the false label */
   int is_bool;    /* K_VALUE: known to be 1 or 0 (a comparison, !, &&) */
   int assigned;   /* K_VAR, K_ELEM: the result of an assignment to
                    * the object (K_VAR: only a struct's), so not an
@@ -828,6 +845,7 @@ static int parse_global_init(int type, const char *name);
 static void binary(Operand *o, Operand *r, int op, int lstart, int mid);
 static void finish_store(Operand *o, int keep);
 static void offset_place(Operand *o, int off);
+static void cond_branch(Operand *o, int n, int on_true);
 
 /* The data symbol for a global IR op on an operand whose global field
  * is global: the extern variable, or -1 for an address in this file's
@@ -948,6 +966,15 @@ static void push_address(Operand *o)
   }
 }
 
+/* Place a K_JUMP's pending true label here, where the code goes on
+ * when it is true. */
+static void place_true(Operand *o)
+{
+  if (o->off >= 0)
+    place_forward(o->off);
+  o->off = -1;
+}
+
 /* Make sure the operand's value is on the stack. An array's value is
  * the address of its first element (for K_DEREF, already there). */
 static void rvalue(Operand *o)
@@ -986,6 +1013,18 @@ static void rvalue(Operand *o)
   case K_STORE:
     finish_store(o, 1);
     break;
+  case K_JUMP: {
+    /* T: CONST 1 JUMP E F: CONST 0 E: */
+    int e = new_label();
+    place_true(o);
+    put(IR_CONST, 1, -1);
+    branch(IR_JUMP, e);
+    place_forward(o->val);
+    put(IR_CONST, 0, -1);
+    place_forward(e);
+    o->is_bool = 1;
+    break;
+  }
   }
   o->kind = K_VALUE;
 }
@@ -1155,6 +1194,13 @@ static void discard(Operand *o)
   }
   if (o->kind == K_STORE)
     finish_store(o, 0);
+  if (o->kind == K_JUMP) {
+    /* Both outcomes go on to the same place. */
+    place_true(o);
+    place_forward(o->val);
+    o->kind = K_VOID;
+    return;
+  }
   if (o->kind == K_DEREF || (o->kind == K_ELEM && !o->assigned))
     rvalue(o);
   if (o->kind == K_VALUE)
@@ -1884,6 +1930,18 @@ static void parse_unary(Operand *o)
       o->type = TY_INT;
       return;
     }
+    if (t == '!' && o->kind == K_JUMP) {
+      /* Swap the outcomes: the true label (or a new one, G) becomes
+       * the false label, reached also by BRNCH G where true fell
+       * through; then the old false label, where true now falls
+       * through. */
+      int g = o->off >= 0 ? o->off : new_label();
+      branch(IR_JUMP, g);
+      place_forward(o->val);
+      o->val = g;
+      o->off = -1;
+      return;
+    }
     rvalue(o);
     o->type = TY_INT;           /* a char operand is promoted */
     if (t == '-')
@@ -1993,14 +2051,18 @@ static void parse_sizeof(Operand *o)
 
 /*
  * Parse the right side of && or || (the current token), with *o as the
- * left side, which binds at precedence prec. The result is C's 1 or 0.
- * Code: "a BRAND L b' L:" for &&, where b' is b as 1 or 0. If a is 0,
- * BRAND leaves it as the result. For ||, a must be made 1 or 0 too,
- * since BROR leaves it when it is nonzero. A constant left side folds.
+ * left side, which binds at precedence prec. The result is a K_JUMP
+ * with false label F (approach.md C4, "Conditions as jumps"):
+ *   a && b:  a BRFALSE F  b BRFALSE F
+ *   a || b:  a BRTRUE T   b BRFALSE F       (true label T, not placed)
+ * A side that is itself a K_JUMP brings its own false label, which
+ * becomes F (for && with both, a's is joined to b's); and maybe a true
+ * label, placed where its true outcome goes on, or joined to T. A
+ * constant left side folds.
  */
 static void parse_logical(Operand *o, int prec)
 {
-  int is_and = tok == T_ANDAND, end;
+  int is_and = tok == T_ANDAND, end, t, f;
   Operand r;
 
   next();
@@ -2013,25 +2075,50 @@ static void parse_logical(Operand *o, int prec)
       o->nonice |= r.nonice;
       return;
     }
-    /* 1 && x and 0 || x are x, as 1 or 0. */
+    /* 1 && x and 0 || x are x, as 1 or 0 (or as a condition). */
     end = o->nonice;
     parse_expr(prec + 1, &r);
-    to_bool(&r);
+    if (r.kind != K_JUMP)
+      to_bool(&r);
     *o = r;
     o->nonice |= end;
     return;
   }
-  if (is_and)
-    rvalue(o);
-  else
-    to_bool(o);
-  end = new_label();
-  branch(is_and ? IR_BRAND : IR_BROR, end);
-  parse_expr(prec + 1, &r);
-  to_bool(&r);
-  rvalue(&r);
-  place_forward(end);
-  o->kind = K_VALUE;
+  if (is_and) {
+    if (o->kind == K_JUMP) {
+      f = o->val;
+      place_true(o);                /* b runs when a is true */
+    } else {
+      f = new_label();
+      cond_branch(o, f, 0);
+    }
+    parse_expr(prec + 1, &r);
+    t = -1;
+    if (r.kind == K_JUMP) {
+      /* Keep b's false label, the one its last branch names (so that
+       * a BRNCH and that label can still meet in the peephole stage),
+       * and join a's to it. */
+      join_label(f, r.val);
+      f = r.val;
+      t = r.off;
+    } else {
+      cond_branch(&r, f, 0);
+    }
+  } else {
+    t = new_label();
+    cond_branch(o, t, 1);
+    parse_expr(prec + 1, &r);
+    if (r.kind == K_JUMP) {
+      f = r.val;
+      join_label(r.off, t);
+    } else {
+      f = new_label();
+      cond_branch(&r, f, 0);
+    }
+  }
+  o->kind = K_JUMP;
+  o->val = f;
+  o->off = t;
   o->type = TY_INT;
   o->is_bool = 1;
 }
@@ -2103,10 +2190,9 @@ static void parse_conditional(Operand *o)
     o->nonice |= b_null;        /* N ? 1 : 2 is no more constant */
     return;
   }
-  rvalue(o);
   else_l = new_label();
   end_l = new_label();
-  branch(IR_BRFALSE, else_l);
+  cond_branch(o, else_l, 0);
   parse_expr(PREC_COMMA, &b);
   b_null = is_null(&b);
   if (!is_void(&b))
@@ -3042,12 +3128,26 @@ static void parse_expr_statement(void)
 }
 
 /* Branch to label n if the condition *o is false (or, if on_true, if it
- * is true). A constant condition gives a jump or nothing. */
+ * is true). A constant condition gives a jump or nothing; a K_JUMP's
+ * false branches are joined to n. */
 static void cond_branch(Operand *o, int n, int on_true)
 {
   if (o->kind == K_CONST) {
     if ((o->val != 0) == on_true)
       branch(IR_JUMP, n);
+    return;
+  }
+  if (o->kind == K_JUMP) {
+    /* It already jumps when false; when true, it jumps to its true
+     * label or falls through. */
+    if (on_true) {
+      join_label(o->off, n);
+      branch(IR_JUMP, n);
+      place_forward(o->val);
+    } else {
+      join_label(o->val, n);
+      place_true(o);
+    }
     return;
   }
   rvalue(o);

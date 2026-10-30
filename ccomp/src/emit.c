@@ -160,6 +160,25 @@ static void place_label(int n)
   label_placed[n] = 1;
 }
 
+/* Make the branches waiting for label a (not placed) go to label b:
+ * each moves to b's fixup chain, or gets its offset now if b is
+ * placed. a is then empty. */
+static void join_labels(int a, int b)
+{
+  int at = label_word[a];
+  while (at != NO_LINK) {
+    int link = fbuf[at] | (fbuf[at + 1] << 8);
+    if (label_placed[b]) {
+      patch_word(at, label_word[b] - at);
+    } else {
+      patch_word(at, label_word[b]);
+      label_word[b] = at;
+    }
+    at = link;
+  }
+  label_word[a] = NO_LINK;
+}
+
 /* Write a string literal of len bytes to the stream, for the string
  * pool. Returns the pool offset of its first character. */
 int data_string(const char *s, int len)
@@ -326,6 +345,9 @@ void emit_put(Mop *m)
   case OP_LABEL:
     place_label(m->a);
     return;
+  case OP_JOIN:
+    join_labels(m->a, m->b);
+    return;
   case OP_CASES:                  /* a case table: no opcode byte */
     code_byte(m->a);
     return;
@@ -363,7 +385,7 @@ void emit_put(Mop *m)
     code_word(m->fix == FIX_NONE || m->fix == FIX_DSYM ? m->a : 0);
     break;
   case OP_BRNCH: case OP_BRFLS: case OP_BRTRU: case OP_BREQ:
-  case OP_BRNE: case OP_BRAND: case OP_BROR: case OP_SEL:
+  case OP_BRNE: case OP_SEL:
     branch_word(m->a);
     break;
   case OP_ENTER:

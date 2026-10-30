@@ -461,39 +461,50 @@ false.
   before the signed comparison. `==` and `!=` need no change.
 - **Later:** `unsigned` integers (M11) can use the same sign flip.
 
-### Labels and branches: `IR_LABEL`, `IR_JUMP`, `IR_BRFALSE`, `IR_BRTRUE`, `IR_BRAND`, `IR_BROR` (*a* = label)
+### Labels and branches: `IR_LABEL`, `IR_JUMP`, `IR_BRFALSE`, `IR_BRTRUE` (*a* = label), `IR_JOIN` (*a* = label, *f* = label)
 
 Control flow within a function. Labels are numbered per function by
-the parser. `IR_LABEL` marks where a label is; the others branch to
-one.
+the parser. `IR_LABEL` marks where a label is; the jumps and branches
+go to one. `IR_JOIN a f` makes the branches so far to label *a* go to
+label *f* instead.
 
 - **Stack:**
-  - `IR_LABEL`, `IR_JUMP`: none;
+  - `IR_LABEL`, `IR_JUMP`, `IR_JOIN`: none;
   - `IR_BRFALSE`, `IR_BRTRUE`: `( x -- )`, branching if `x` is 0 (or,
-    for `IR_BRTRUE`, not 0);
-  - `IR_BRAND`: if `x` is 0, branch and keep it, `( x -- x )`;
-    otherwise `( x -- )`. `IR_BROR` is the same with "not 0". These are
-    for `&&` and `||`.
-- **Now:** `IR_LABEL` becomes the pseudo-op `OP_LABEL`, which emits no
-  bytes. The branches become `BRNCH`, `BRFLS`, `BRTRU`, `BRAND` and
-  `BROR`, whose operand is still the label number. Stage 4 turns it into
-  a relative offset: right away for a label already placed (a loop's
-  top), or through the label's fixup chain (approach.md 18.2) when the
-  label is placed later.
+    for `IR_BRTRUE`, not 0).
+- **Now:** `IR_LABEL` becomes the pseudo-op `OP_LABEL`, and `IR_JOIN`
+  the pseudo-op `OP_JOIN`; neither emits bytes. The branches become
+  `BRNCH`, `BRFLS` and `BRTRU`, whose operand is still the label
+  number. Stage 4 turns it into a relative offset: right away for a
+  label already placed (a loop's top), or through the label's fixup
+  chain (approach.md 18.2) when the label is placed later. `OP_JOIN`
+  moves label *a*'s chain onto label *f*'s, or resolves it at once if
+  *f* is placed.
 - **Why they differ:** PLASMA branches need an offset, and a forward
   target's offset isn't known yet (reason 3).
 - **How the parser uses them:**
   - `if`, `while`, `do`, `for`, `?:`: see the comments on `parse_if`
     and the other functions in `src/parse.c` for the exact layouts;
-  - `a && b`: `a BRAND L b' L:`, where `b'` is `b` made 1 or 0 (by
-    `CONST 0 NE`) unless it already is, such as a comparison. `a || b`
-    is the same with `BROR`, and `a` made 1 or 0 too;
+  - `a && b`, `a || b` and `!` on them are jumps, not values
+    (approach.md C4, "Conditions as jumps"): the result jumps to its
+    false label when false and falls through when true. `a && b` is
+    `a BRFALSE F b BRFALSE F`; `a || b` is `a BRTRUE T b BRFALSE F`,
+    with `T` placed only when the code goes on along the true path (or
+    made the false label by `!`, or joined to a `do` loop's top). An
+    operand that is itself `&&` or `||` brings its own labels, reused,
+    or joined with `IR_JOIN`. A condition's false label joins the
+    statement's (`if`'s else). Used as a value, the result becomes
+    `T: CONST 1 JUMP E F: CONST 0 E:`;
   - a label that nothing has branched to is not emitted, so that it
     doesn't stop the peephole stage from dropping unreachable code.
 - **Peephole:** a `BRNCH` makes the following code unreachable until
-  the next label, and labels are barriers.
-- **Later:** a `BRNCH` to the very next label can be removed, and
-  branches to branches shortened. `for` loops may use a side buffer
+  the next label, and labels are barriers. A join isn't: it waits in
+  the window in order, and is kept in unreachable code (the branches
+  it moves are live). Just before a label flushes the window, a
+  `BRNCH` to that label is removed, and `Bcond L BRNCH T` then `L:`
+  becomes `Binv T L:` (the opposite branch: `BRFLS`/`BRTRU`,
+  `BREQ`/`BRNE`), skipping any joins in between.
+- **Later:** branches to branches shortened. `for` loops may use a side buffer
   for the step, and PLASMA's FOR opcodes (17, P18).
 
 ### `IR_SEL` *a* = label, and the case table: `IR_CASES` *a* = count, `IR_CASEVAL` *a* = value, `IR_CASETO` *a* = label

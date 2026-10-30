@@ -2092,6 +2092,95 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
   values (`a NEG BROR L b NEG L: BRFLS`); the existing `NEG BRFLS`
   rule can't apply across the label. The fix is in the parser
   (conditions as jumps), not the peephole stage.
+
+  **Conditions as jumps (decided in discussion 2026-10-30; built as its
+  own commit, so it can be dropped on its own).** `&&`, `||` and `!` on
+  them compile to branches, not to a 1 or 0, unless the value is used.
+  Walked through in review: `if (a > 5 && (b == 0 || c))` goes from
+  24 bytes of condition to 17. The design:
+  - **`K_JUMP`**, a new Operand kind: a condition whose code is
+    emitted, which **jumps to its false label** (`val`) **when false
+    and falls through when true**. Every `&&` and `||` result has this
+    one form, so most nestings never have two labels to merge.
+  - **`a && b`**: `a` jumps on false to the result's false label (a
+    `K_JUMP` `a` already is one: its label is reused), then `b` does
+    too.
+  - **`a || b`**: `a` jumps on true to a label `T`; `b` jumps on false
+    to the result's false label (a `K_JUMP` `b`'s own); `T` is placed
+    after `b`, where the true outcome falls through. A `K_JUMP` `a`
+    needs `BRNCH T` then its false label, where `b` starts.
+  - **`JOIN a b`** (new IR op and pseudo-op, no bytes): label `a`'s
+    waiting branches go to label `b` instead, by moving them from `a`'s
+    fixup chain to `b`'s in stage 4, or resolving them at once if `b`
+    is placed (a backward target). Needed only when both sides bring
+    a false label: `&&` with a parenthesized `||` (or `!`) on its right,
+    as in `a && (b || c)` (about 10 places in ccish's source), and when
+    a condition's false label goes to a statement's (`if`'s else).
+  - **`!` on a `K_JUMP`**: `BRNCH G`, then its false label (where true
+    now falls through); `G` is the new false label.
+  - **Consumers:** `if`, `while`, `do`, `for` and `?:` take a `K_JUMP`
+    through `cond_branch()`. Any other use (`x = a && b`, `return a ||
+    b`, an argument, an operand of another operator) turns it into a
+    value in `rvalue()`: `CN 1 BRNCH E F: CN 0 E:`. That is a few bytes
+    more than today's form, but such uses are rare. `parse_expr()`
+    always calls `rvalue()` on a left operand before parsing the right
+    one, so the value is made before any later code. As a statement,
+    `discard()` just places the false label.
+  - **Comparisons don't change:** a comparison is still a value
+    (`ISxx NEG`), but now it comes right before its branch, so the
+    existing peephole rules make `ISEQ NEG BRFLS` into `BRNE`, `CN 0
+    BREQ` into `BRFLS`, and drop the `NEG`. An operand that isn't a
+    comparison (`c` in `b || c`) is tested as it is: no `CONST 0 NE`.
+  - **Two new peephole rules, at a label:** `BRNCH L` then label `L` ->
+    the label alone; and `Bcond L; BRNCH T; L:` -> `Binv T; L:` (the
+    inverted branch, for `BRFLS`/`BRTRU` and `BREQ`/`BRNE`). The second
+    removes the `BRNCH` that `a && b || c` and `!(a && b)` need, in the
+    usual case where the last test is a branch. Labels are barriers, so
+    these run just before the window is flushed for a label.
+  - `IR_BRAND`, `IR_BROR` (and `OP_BRAND`, `OP_BROR`) are no longer
+    used, so they go.
+  - **Costs:** perhaps 0.4-0.6K more code in parse.c, no new tables;
+    more labels per function (`||` uses two), which may need
+    `MAX_LABELS` raised. Estimated gross saving about 1-1.3K in
+    cccomp, so a net 0.5-0.8K, and in every program. To be measured,
+    and dropped if it doesn't pay.
+
+  **Built (2026-10-30), with a refinement found while measuring.** The
+  design as reviewed (v1) took cccomp's code from 31,560 to 31,309
+  bytes and ccrel's from 6,667 to 6,515; the `NEG`s before branches
+  are gone (42 remain, from values). But `BRNCH` grew (486 to 546): in
+  `!(a || b)` and `do ... while (a || b)`, the `||`'s true label was
+  placed at once, between its last branch and the `BRNCH` that `!` or
+  `do` adds, and a `JOIN` flushed the peephole window; either one
+  stopped the inverted-branch rule. The refinement, kept (decided in
+  discussion: better code for every program is worth it):
+  - **A pending true label:** a `K_JUMP` may also carry a true label
+    (`off`, or -1) that isn't placed until the code goes on along the
+    true path (`place_true()`). `||` leaves its `T` pending; `!` makes
+    it the new false label; `do`'s `cond_branch()` joins it to the
+    loop's top. So `!(a || b)` is `a BRTRU G b BRTRU G`, and `do ...
+    while (a || b)` branches back from both tests.
+  - **`&&` keeps its right side's false label** when that side is a
+    `K_JUMP`, and joins the left side's to it, so the label placed next
+    is the one the last branch names.
+  - **`JOIN` waits in the peephole window** instead of flushing it: it
+    emits no code, it is passed on in order (stage 4 needs the branches
+    it moves first), it is kept in dead code, and the label rules skip
+    it (`code_before()`).
+  - **Measured:** 31 fewer `BRNCH`es in cccomp (about 93 bytes), but
+    about 170 bytes more compiler code (parse.c and peep.c), so
+    cccomp's code is 31,454 (145 more than v1, 106 less than before);
+    ccrel's 6,497 (18 less than v1). Every other program only gains.
+  - **Tests:** `tests/run/logical_truth.c` (ten `&&`/`||`/`!` forms as
+    conditions and as values, all 8 cases, with operands 7, -1 and 2
+    as well as 0), `logical_flow.c` (order and short-circuiting in
+    each statement, `?:`, expression statements, values, constant
+    operands, `sizeof`), and `logical_code.c` (the exact code of seven
+    functions: no `NEG`, `BRNCH`, `ISEQ`, `ISNE`; counts of `BRTRU`,
+    `BREQ`, `BRNE`). Expected outputs written by hand, checked with
+    gcc (which differs only in `sizeof(int)`).
+  - Remaining `BRNCH`es come mostly from `for` loops (the step is
+    placed before the body: "Later" in IR.md) and from `else` parts.
 - **C5. Restructure ccish's own source for size:** smaller functions,
   table-driven code instead of `switch` chains, `ccish.h` split by
   stage. No language change; gains hard to predict.
