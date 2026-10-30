@@ -115,7 +115,7 @@ enum {
   /* keywords supported now, in the order of keywords[] in lex.c */
   T_INT, T_VOID, T_RETURN, T_IF, T_ELSE, T_WHILE, T_DO, T_FOR, T_BREAK,
   T_CONTINUE, T_CHAR, T_SIZEOF, T_STATIC, T_CONST, T_VOLATILE, T_STRUCT,
-  T_SWITCH, T_CASE, T_DEFAULT, T_TYPEDEF, T_ENUM,
+  T_SWITCH, T_CASE, T_DEFAULT, T_TYPEDEF, T_ENUM, T_EXTERN,
   /* any other C keyword: reported as "not supported yet" */
   T_KEYWORD,
   /* multi-character operators (not all are supported by the parser yet) */
@@ -191,6 +191,8 @@ int array_of(int t, int count);
 int qualify(int t, int q);
 int unqual(int t);
 int is_const(int t);
+int hash_byte(int h, int c);    /* a type hash with byte c added */
+int type_hash(int t, int h);    /* a type hash with type t added */
 
 /* Struct tags and members. A tag is a struct type's number (named, or
  * anonymous with name -1), and is visible from the block depth it was
@@ -218,7 +220,8 @@ int member_off(int m);
 /* Functions: declared, defined or called. A function is an index into
  * these parallel arrays (approach.md, "Sym split design"), each
  * MAX_FUNCS long. */
-enum { FN_DECLARED = 1, FN_DEFINED = 2, FN_CALLED = 4, FN_COUNTED = 8 };
+enum { FN_DECLARED = 1, FN_DEFINED = 2, FN_CALLED = 4, FN_COUNTED = 8,
+       FN_STATIC = 16 };
 extern int fn_name[MAX_FUNCS];      /* its name: a name pool offset */
 extern int fn_type[MAX_FUNCS];      /* its return type */
 extern int fn_ptypes[MAX_FUNCS];    /* its parameter types' index in
@@ -232,6 +235,12 @@ extern int fn_code[MAX_FUNCS];      /* once defined: the start of its
 extern int nfuncs;
 
 void parse_program(void);
+/* For the symbol summary: function f's SYM_* flags and type hash, and
+ * the number of globals and global v's flags, data offset, size, type
+ * hash and name (a name pool offset). */
+int  func_sym(int f, int *hash);
+int  data_sym_count(void);
+int  data_sym(int v, int *off, int *size, int *hash, int *name);
 void compile_file(const char *src, const char *base);  /* the compile pass */
 void compile_abort(void);                   /* after an error */
 
@@ -328,7 +337,7 @@ enum {
 
 /* What an operand word refers to, if it needs relocation: a data
  * offset, a function, or an offset in the string pool. */
-enum { FIX_NONE, FIX_DATA, FIX_FUNC, FIX_STR };
+enum { FIX_NONE, FIX_DATA, FIX_FUNC, FIX_STR, FIX_DSYM };
 
 /* Marks an ENTER/LEAVE frame size that is filled in at function end. */
 #define FRAME_LATER (-1)
@@ -338,7 +347,9 @@ typedef struct {
   int a;          /* first operand (byte or word), or data offset */
   int b;          /* second operand (ENTER's parameter count) */
   int fix;        /* FIX_* for a word operand */
-  int fn;         /* FIX_FUNC target; OP_FUNC_BEGIN's function */
+  int fn;         /* FIX_FUNC target; FIX_DSYM data symbol (global
+                   * variable), with a the addend; OP_FUNC_BEGIN's
+                   * function */
 } Mop;
 
 void mop_const(Mop *m, int v);         /* lower.c: make m push v */
@@ -352,7 +363,7 @@ void peep_flush(void);
  * pass writes one stream of tagged records, then the symbol summary. */
 #define SUFFIX_OBJ  ".obj"
 #define SUFFIX_SYMS ".syms"
-#define OBJ_VERSION 3       /* the format version, in the symbol summary */
+#define OBJ_VERSION 4       /* the format version, in the symbol summary */
 #define DATA_RUN    128     /* bytes in one data record at most */
 
 /* Record tags in the stream (see ../OBJECT.md), as letters so that a
@@ -360,10 +371,14 @@ void peep_flush(void);
 enum { REC_DATA = 'D', REC_DREL = 'R', REC_STR = 'S', REC_FUNC = 'F' };
 
 /* Relocation kinds and symbol flags. A REL_DATA target is a data
- * offset, a REL_STR target an offset in the string pool, and a REL_FUNC
- * target a symbol index. */
-enum { REL_DATA = 1, REL_FUNC = 2, REL_STR = 3 };
-enum { SYM_DEFINED = 1, SYM_CALLED = 2, SYM_RETURNS = 4 };
+ * offset, a REL_STR target an offset in the string pool, a REL_FUNC
+ * target a function symbol index, and a REL_DSYM target a data symbol
+ * index, with an addend. SYM_CALLED is "used" for a data symbol;
+ * SYM_RETURNS, SYM_CMDSYS and SYM_NOTCMDSYS (a CMDSYS name declared
+ * differently) are for functions. */
+enum { REL_DATA = 1, REL_FUNC = 2, REL_STR = 3, REL_DSYM = 4 };
+enum { SYM_DEFINED = 1, SYM_CALLED = 2, SYM_RETURNS = 4, SYM_LOCAL = 8,
+       SYM_CMDSYS = 16, SYM_NOTCMDSYS = 32 };
 
 void emit_open(const char *base);
 void emit_put(Mop *m);
@@ -371,7 +386,7 @@ int  data_string(const char *s, int len);   /* pool offset of first char */
 int  data_offset(void);                     /* data bytes written so far */
 void data_byte(int v);
 void data_word(int v);
-void data_addr(int kind, int target);       /* a relocated word */
+void data_addr(int kind, int target, int add);  /* a relocated word */
 int  data_zero(int n);                      /* returns offset of n 0 bytes */
 void emit_finish(void);
 void emit_abort(void);                      /* after an error */

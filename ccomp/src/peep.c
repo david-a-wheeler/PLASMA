@@ -249,7 +249,7 @@ static int rewrite(void)
    * keeps the value. DLB keeps the stored byte, which is what LLB would
    * load. */
   if (keeping_store(a->op, b->op) >= 0 && a->a == b->a
-      && a->fix == b->fix) {
+      && a->fix == b->fix && a->fn == b->fn) {
     a->op = keeping_store(a->op, b->op);
     nwin--;
     return 1;

@@ -778,6 +778,94 @@ shares data as well as functions between them (`ccish.h` declares
   for the tests; (4) write the RLD by rereading the objects (B4), so
   the whole compiler can be linked.
 
+**Object format 4 and `extern`, in detail (decided in discussion,
+2026-10-30).** OBJECT.md has the exact layout.
+- **`.syms`** gains a data symbol count after the function count.
+  Function entries gain flags 8 (local: `static`) and 16 (a CMDSYS
+  function, declared from the table or matching it), and a type hash
+  word. Data symbols follow the functions: flags (1 defined, 2 used,
+  8 local), data offset if defined, size (0 if unknown, as in
+  `extern int a[];`), type hash, name. Data symbols are numbered by the
+  compiler's global variable index (globals are never popped, so the
+  index is fixed at the first reference), and every global is listed;
+  static locals aren't. "Used" lets `ccrel` ignore an `extern` that a
+  header declares and the file never uses.
+- **Relocation kind 4, a data symbol plus an addend,** for a reference
+  to a global declared `extern` and not (yet) defined in this file.
+  In an `F` record it is the usual 5 bytes, and the addend is the code
+  word itself (written as 0 for the other kinds), as in classic
+  relocatable formats. In the data, an `R` record of kind 4 has the
+  symbol and then the addend (5 bytes, not 3). A reference to a global
+  with storage in this file stays kind 1; one made before the
+  definition is kind 4, resolved against the object's own symbol.
+- **Type hash:** `h = (h * 31 + byte) & 0xFFFF` over a canonical
+  string: `i` int (and enums), `c` char, `v` void, `s<tag name>;` a
+  struct (by name: tag numbers differ between files), `k` const and
+  `V` volatile before what they qualify, `*` then the target, `[`,
+  the count (2 bytes), then the element; a function is its return
+  type, `(`, its parameters (their own qualifiers dropped), `)`. A data
+  symbol's outermost array count is left out, so `extern int a[];`
+  matches `int a[10];`; the size field is checked instead, when both
+  know it. A function declared with `()` hashes to 0, "unknown": only
+  its return flag is checked. (A hash that comes out 0 becomes 1.) The
+  hash is the same on the host and in ccish: `h` is below 2^16 before
+  the multiply, so a 32-bit `int` never overflows.
+- **Compiler:** `extern` at file scope declares a global without
+  storage, or (on a function) changes nothing. `extern` with an
+  initializer, and `extern` in a block, are errors (legal C, rare). A
+  later definition gives an `extern` global its storage. Linkage
+  follows C11 6.2.2: `static` after a non-`static` declaration is an
+  error, and `extern` or no specifier after `static` keeps it static.
+  Globals get `var_link[]` (static, used, no storage yet), 72 bytes,
+  since `var_flags[]` is full; functions get `FN_STATIC`. A global
+  operand's `global` field becomes three-way (frame, this file's data,
+  or extern variable *v*), and the global IR ops carry *v* in their
+  function operand, lowered to `FIX_DSYM`.
+- **Undefined names move to `ccrel`:** a function called but not
+  defined, other than a CMDSYS one, is an undefined symbol, and
+  `ccrel` reports "undefined reference" (message 172, reworded), as
+  for a used, undefined global. A declaration of a CMDSYS name that
+  doesn't match CMDSYS isn't an error in the compiler any more (another
+  file may define that function); the compiler flags it (32), and
+  `ccrel` reports message 173 only if nothing defines it.
+
+**Step 2 is done** (2026-10-30; object format 4, 237 tests). Every
+earlier run test's module and listing is byte for byte what format 3
+gave. Choices made while building it, open for review:
+- The parser's `Operand.global` is 0 (frame), 1 (this file's data) or
+  2 + *v* (extern global *v*, `var_where()`); `load_var()` and the
+  other helpers pass *v* as the IR op's function operand. The
+  peephole rule `SAW a LAW a` → `DAW a` now also compares that operand,
+  since two extern globals both have addend 0.
+- A global is "used" only by code or data actually emitted, so
+  `sizeof ext` doesn't make it need a definition.
+- `sizeof` an array of unknown size (`extern int t[];`) is now error
+  79, which before could only arise in a parameter, where it is a
+  pointer. Before this, it would have given 0.
+- Redeclaring a global with storage is still "redeclaration" (27),
+  checked before the types (165), so `int x; char x;` reports as it did.
+- New messages: 216 (`extern` with an initializer), 217 (`static`
+  after a non-`static` declaration, for globals and functions), 218
+  (no type after `extern`), 219 (`extern` in a block or a `for`). 172
+  is reworded "undefined reference to", and 172 and 173 now come from
+  `ccrel`, after the source is closed, so they name no line.
+- A `static` function named `main` isn't the module's entry point.
+- Type hashes are computed when the summary is written, from the
+  types then known. A struct tag declared only in a parameter list may
+  have had its name released by then (`pool_release()`), so its hash
+  is unreliable; such a function can't be called with a compatible
+  argument anyway.
+- `ccrel` (still one object) reads data symbols into `dsym_off[]`
+  (`MAX_VARS` ints), reports a used, undefined global while reading the
+  summary, and skips the hashes. A kind 4 relocation is kept as the
+  kind 1 it resolves to, so the listing shows `data+`*n*, not the name.
+- Tests: `run/extern.c` (extern globals used before their definitions,
+  arrays without a size, addresses in initializers, an unused extern,
+  `static` and `extern` functions), `run/extern_ops.c` (struct copies,
+  compound assignment and `++` through extern globals), and error tests
+  for messages 79, 165, 172 (a global and a static function), 216, 217
+  (a global and a function), 218 and 219.
+
 ### 12. Standard library
 
 Existing programs need at least parts of `stdio.h` (`printf`, `fopen`,

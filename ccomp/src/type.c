@@ -139,6 +139,41 @@ int is_const(int t)
   return (t & Q_CONST) != 0;
 }
 
+/* Type hash h with byte c added (approach.md issue 11, "Object format
+ * 4"). h stays below 2^16, so a 32-bit int never overflows, and a
+ * 16-bit one keeps the same low bits. */
+int hash_byte(int h, int c)
+{
+  return (h * 31 + (c & 0xFF)) & 0xFFFF;
+}
+
+/* Type hash h with type t added, as a canonical string: k and V for
+ * const and volatile, then i, c or v, * and the target, [ with the
+ * count and the element, or s, the tag's name and ';' (a struct is
+ * known by its name in every file). */
+int type_hash(int t, int h)
+{
+  const char *name;
+  if (t & Q_CONST)
+    h = hash_byte(h, 'k');
+  if (t & Q_VOLATILE)
+    h = hash_byte(h, 'V');
+  switch (type_kind(t)) {
+  case TK_VOID: return hash_byte(h, 'v');
+  case TK_CHAR: return hash_byte(h, 'c');
+  case TK_INT:  return hash_byte(h, 'i');
+  case TK_PTR:  return type_hash(type_sub(t), hash_byte(h, '*'));
+  case TK_ARRAY:
+    h = hash_byte(hash_byte(h, '['), type_count(t));
+    return type_hash(type_sub(t), hash_byte(h, type_count(t) >> 8));
+  }
+  h = hash_byte(h, 's');
+  if (tag_name(struct_tag(t)) >= 0)
+    for (name = name_of(tag_name(struct_tag(t))); *name; name++)
+      h = hash_byte(h, *name);
+  return hash_byte(h, ';');
+}
+
 /* Is t a struct type? */
 int is_struct(int t)
 {

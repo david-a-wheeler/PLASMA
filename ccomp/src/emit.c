@@ -44,7 +44,7 @@ static unsigned char fbuf[MAX_FUNC_CODE];
 static int nfbuf;
 
 typedef struct {
-  int kind;       /* REL_DATA, REL_STR or REL_FUNC */
+  int kind;       /* REL_DATA, REL_STR, REL_FUNC or REL_DSYM */
   int at;         /* offset of the operand word in fbuf */
   int target;     /* data or string pool offset, or symbol index */
 } Reloc;
@@ -215,18 +215,24 @@ void data_word(int v)
   data_byte(v >> 8);
 }
 
-/* Append a word to the data that holds an address: of data (kind
- * REL_DATA) or of a string (REL_STR), at offset target. It is an R
- * record in place of the word's two bytes; the final pass writes the
- * address there. */
-void data_addr(int kind, int target)
+/* Append a word to the data that holds an address, plus add bytes: of
+ * data (kind REL_DATA) or of a string (REL_STR), at offset target, or
+ * of data symbol target (REL_DSYM, an extern global). It is an R record
+ * in place of the word's two bytes; the final pass writes the address
+ * there. */
+void data_addr(int kind, int target, int add)
 {
   if (ndata > 0x7FFF - 2)
     error(182 /* "too much data: globals over 32767 bytes" */, NULL);
   flush_data();
   bputc(&out, REC_DREL);
   bputc(&out, kind);
-  bputw(&out, target);
+  if (kind == REL_DSYM) {
+    bputw(&out, target);
+    bputw(&out, add);
+  } else {
+    bputw(&out, target + add);
+  }
   ndata += 2;
 }
 
@@ -339,14 +345,17 @@ void emit_put(Mop *m)
     break;
   case OP_CW: case OP_LA: case OP_CALL: case OP_LAB: case OP_LAW:
   case OP_SAB: case OP_SAW: case OP_DAB: case OP_DAW:
-    /* A relocated word is written as 0; the final pass fills it in. */
+    /* A relocated word is written as 0, or for an extern global as
+     * its addend; the final pass fills it in. */
     if (m->fix == FIX_DATA)
       add_reloc(REL_DATA, m->a);
     else if (m->fix == FIX_STR)
       add_reloc(REL_STR, m->a);
     else if (m->fix == FIX_FUNC)
       add_reloc(REL_FUNC, m->fn);
-    code_word(m->fix == FIX_NONE ? m->a : 0);
+    else if (m->fix == FIX_DSYM)
+      add_reloc(REL_DSYM, m->fn);
+    code_word(m->fix == FIX_NONE || m->fix == FIX_DSYM ? m->a : 0);
     break;
   case OP_BRNCH: case OP_BRFLS: case OP_BRTRU: case OP_BREQ:
   case OP_BRNE: case OP_BRAND: case OP_BROR: case OP_SEL:
@@ -380,11 +389,21 @@ void emit_abort(void)
   bclose(&out);
 }
 
-/* Finish and close the stream, and write the symbol summary. */
+/* Write a symbol's name (a name pool offset) to the summary: its
+ * length, then its characters. */
+static void put_name(int name)
+{
+  const char *s = name_of(name);
+  int n = (int)strlen(s);
+  bputc(&out, n);
+  bwrite(&out, (const unsigned char *)s, n);
+}
+
+/* Finish and close the stream, and write the symbol summary: the
+ * functions, then the global variables (data symbols). */
 void emit_finish(void)
 {
-  int i, n;
-  const char *name;
+  int i, flags, off, size, hash, name, nsyms = data_sym_count();
 
   flush_data();
   close_out(SUFFIX_OBJ);
@@ -397,17 +416,22 @@ void emit_finish(void)
   bputw(&out, nstrs);
   bputw(&out, ncode);
   bputw(&out, nfuncs);
+  bputw(&out, nsyms);
   for (i = 0; i < nfuncs; i++) {
-    int defined = fn_flags[i] & FN_DEFINED;
-    bputc(&out, (defined ? SYM_DEFINED : 0)
-                | (fn_flags[i] & FN_CALLED ? SYM_CALLED : 0)
-                | (fn_type[i] != TY_VOID ? SYM_RETURNS : 0));
+    flags = func_sym(i, &hash);
+    bputc(&out, flags);
     bputc(&out, fn_flags[i] & FN_COUNTED ? fn_nparams[i] : 255);
-    bputw(&out, defined ? fn_code[i] : 0);
-    name = name_of(fn_name[i]);
-    n = (int)strlen(name);
-    bputc(&out, n);
-    bwrite(&out, (const unsigned char *)name, n);
+    bputw(&out, flags & SYM_DEFINED ? fn_code[i] : 0);
+    bputw(&out, hash);
+    put_name(fn_name[i]);
+  }
+  for (i = 0; i < nsyms; i++) {
+    flags = data_sym(i, &off, &size, &hash, &name);
+    bputc(&out, flags);
+    bputw(&out, off);
+    bputw(&out, size);
+    bputw(&out, hash);
+    put_name(name);
   }
   close_out(SUFFIX_SYMS);
 }

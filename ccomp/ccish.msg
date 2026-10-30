@@ -169,7 +169,7 @@
 169 parameter count differs from earlier use of
 170 main with parameters is not supported yet
 171 cannot open
-172 call to undefined function
+172 undefined reference to
 173 declaration doesn't match the CMDSYS function
 174 internal error: unknown IR op
 175 internal error: bad IR rotation
@@ -213,3 +213,7 @@
 213 a struct over 8 bytes can't be returned by value: return it through a pointer parameter
 214 no member named
 215 function called without a declaration:
+216 'extern' with an initializer is not supported
+217 static declaration follows a non-static declaration of
+218 expected a type after 'extern', not
+219 'extern' in a block is not supported: declare it at file scope

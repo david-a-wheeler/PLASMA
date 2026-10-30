@@ -25,13 +25,14 @@
  *   - local variables, declared anywhere in a block (or in a for
  *     statement's first clause), with optional initializers (an array's
  *     are stores into the frame), and block scope;
- *   - global variables, private to the module, declared anywhere
- *     between functions, with optional initializers, computed at compile
- *     time (see "Global initializers" below);
+ *   - global variables, declared anywhere between functions, with
+ *     optional initializers, computed at compile time (see "Global
+ *     initializers" below);
  *   - static: a static local is a variable in the data segment, as a
  *     global is (V_DATA), with block scope, and a global's kind of
- *     initializer; on a global or a function, static changes nothing
- *     yet, since nothing is exported;
+ *     initializer; a static global or function is local to the file;
+ *   - extern, at file scope: a global declared without storage, which
+ *     another file (or a later definition) provides; see var_link[];
  *   - enum constants, which are int constants, and typedef names, both
  *     with block scope (see find_id()); an enum type is int;
  *   - const and volatile, as part of the type (bits in the type handle;
@@ -253,6 +254,14 @@ static char var_flags[MAX_VARS];
 static int var_val[MAX_VARS];
 static int nvars, nglobals;
 
+/* A global's linkage, for the symbol summary (approach.md issue 11):
+ * VL_STATIC if it is local to the file, VL_USED if code or data refers
+ * to it, and VL_EXTERN while it is declared extern with no storage in
+ * this file (var_off[] is then 0, the base of an addend). 0 for a
+ * local. */
+enum { VL_STATIC = 1, VL_USED = 2, VL_EXTERN = 4 };
+static char var_link[MAX_VARS];
+
 /* The innermost visible variable named name, or -1. */
 static int find_var(const char *name)
 {
@@ -337,6 +346,7 @@ static int push_var(const char *name, int type, int off, int flags)
   var_type[nvars] = type;
   var_off[nvars] = off;
   var_flags[nvars] = (char)(depth | flags);
+  var_link[nvars] = 0;
   return nvars++;
 }
 
@@ -568,6 +578,18 @@ static void put(int op, int a, int f)
   ir_put(op, a, f);
 }
 
+/* Where variable v is, as an Operand's global field: 0 in the frame, 1
+ * in this file's data, or 2 + v for a global declared extern with no
+ * storage here, which is then used (unless no code is emitted). */
+static int var_where(int v)
+{
+  if (!(var_link[v] & VL_EXTERN))
+    return var_data(v);
+  if (!suppress)
+    var_link[v] |= VL_USED;
+  return 2 + v;
+}
+
 /* The low 16 bits of u, as a signed 16-bit int. Unsigned arithmetic is
  * used so that this works whether the host's int has 16 or 32 bits. */
 static int wrap16(unsigned u)
@@ -763,8 +785,9 @@ typedef struct {
                    * or initialize a global, and 0 isn't a null
                    * pointer constant. */
   int off;        /* K_VAR: its offset; K_ELEM: the base's offset */
-  int global;     /* K_VAR, K_ELEM: off is a data offset (a global),
-                   * not a frame offset */
+  int global;     /* K_VAR, K_ELEM: 1 if off is a data offset (a
+                   * global), 0 if a frame offset, or 2 + v if off is
+                   * an addend to extern global v (var_where()) */
   int val;        /* K_CONST: the value */
   int is_bool;    /* K_VALUE: known to be 1 or 0 (a comparison, !, &&) */
   int assigned;   /* K_VAR, K_ELEM: the result of an assignment to
@@ -806,12 +829,20 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid);
 static void finish_store(Operand *o, int keep);
 static void offset_place(Operand *o, int off);
 
-/* Push the variable at off, a data offset if global, else a frame
- * offset: a word, or a byte if is_char. */
+/* The data symbol for a global IR op on an operand whose global field
+ * is global: the extern variable, or -1 for an address in this file's
+ * data. */
+static int data_sym_of(int global)
+{
+  return global >= 2 ? global - 2 : -1;
+}
+
+/* Push the variable at off, where global says (var_where()): a word,
+ * or a byte if is_char. */
 static void load_var(int off, int global, int is_char)
 {
   if (global)
-    put(is_char ? IR_GLOBALB : IR_GLOBAL, off, -1);
+    put(is_char ? IR_GLOBALB : IR_GLOBAL, off, data_sym_of(global));
   else
     put(is_char ? IR_LOCALB : IR_LOCAL, off, -1);
 }
@@ -819,7 +850,10 @@ static void load_var(int off, int global, int is_char)
 /* Push the address of the variable at off (a global's or a local's). */
 static void push_var_addr(int off, int global)
 {
-  put(global ? IR_DATAADDR : IR_LOCALADDR, off, -1);
+  if (global)
+    put(IR_DATAADDR, off, data_sym_of(global));
+  else
+    put(IR_LOCALADDR, off, -1);
 }
 
 /* Store the top value into the variable o (a K_VAR), keeping the stored
@@ -828,7 +862,7 @@ static void store_var(Operand *o)
 {
   int c = o->type == TY_CHAR;
   if (o->global)
-    put(c ? IR_SETGLOBALB : IR_SETGLOBAL, o->off, -1);
+    put(c ? IR_SETGLOBALB : IR_SETGLOBAL, o->off, data_sym_of(o->global));
   else
     put(c ? IR_SETLOCALB : IR_SETLOCAL, o->off, -1);
 }
@@ -1590,7 +1624,7 @@ static void parse_primary(Operand *o)
       o->type = unqual(var_type[v]);
       o->quals = var_type[v] & Q_ALL;
       o->off = var_off[v];
-      o->global = var_data(v);
+      o->global = var_where(v);
       return;
     }
     if (find_func(name) >= 0)
@@ -1947,6 +1981,9 @@ static void parse_sizeof(Operand *o)
   if (is_struct(t) && type_size(t) == 0)
     error(79 /* "sizeof can't be applied to the incomplete type" */,
           tag_desc(struct_tag(t)));
+  if (is_array(t) && type_count(t) == 0)    /* extern int a[]; */
+    error(79 /* "sizeof can't be applied to the incomplete type" */,
+          NULL);
   o->kind = K_CONST;
   o->val = type_size(t);
   o->type = TY_INT;
@@ -3122,6 +3159,9 @@ static void parse_for(void)
   depth++;
   if (tok == T_STATIC)
     error(125 /* "a 'for' loop can't declare a static variable" */, NULL);
+  if (tok == T_EXTERN)
+    error(219 /* "'extern' in a block is not supported: declare it at"
+                 " file scope" */, NULL);
   if (is_type_start()) {
     parse_declaration(0);       /* includes the ';' */
   } else {
@@ -3385,6 +3425,10 @@ static void parse_statement(void)
   case T_TYPEDEF:
     parse_typedef();
     return;
+  case T_EXTERN:
+    error(219 /* "'extern' in a block is not supported: declare it at"
+                 " file scope" */, NULL);
+    return;
   case T_STATIC:
     next();
     if (!is_type_start())
@@ -3503,8 +3547,9 @@ static int parse_params(void)
 /* An initializer's value: an integer, or an address (the start of the
  * global or string at target, in kind's space) plus val bytes. */
 typedef struct {
-  int kind;       /* 0 for an integer, else REL_DATA or REL_STR */
-  int target;     /* data or string pool offset */
+  int kind;       /* 0 for an integer, else REL_DATA, REL_STR or
+                   * REL_DSYM */
+  int target;     /* data or string pool offset, or extern global */
   int val;        /* the integer, or the bytes added to the address */
   int max;        /* REL_STR: the largest val that stays in the string */
   int type;
@@ -3531,6 +3576,15 @@ static void parse_const(int prec, Operand *e)
     error_in(201 /* "a const variable's value isn't a constant"
                   " expression in C" */,
              205 /* "(an initializer here must be one)" */, NULL);
+}
+
+/* Make *a the address of global or static variable s: a data offset,
+ * or an extern global's symbol. */
+static void init_target(Init *a, int s)
+{
+  int where = var_where(s);
+  a->kind = where == 1 ? REL_DATA : REL_DSYM;
+  a->target = where == 1 ? var_off[s] : s;
 }
 
 /* Parse an address constant for an initializer into *a, or an integer
@@ -3587,8 +3641,7 @@ static void parse_addr(Init *a, int unary)
             NULL);
     next();
     t = var_type[s];
-    a->kind = REL_DATA;
-    a->target = var_off[s];
+    init_target(a, s);
     while (tok == '[' && is_array(t)) {
       next();
       parse_const(PREC_COMMA, &e);
@@ -3601,8 +3654,7 @@ static void parse_addr(Init *a, int unary)
     a->type = pointer_to(t);
   } else if (s >= 0 && var_data(s) && is_array(var_type[s])) {
     /* An array's name: the address of its first element. */
-    a->kind = REL_DATA;
-    a->target = var_off[s];
+    init_target(a, s);
     a->type = value_type(var_type[s]);
     next();
   } else {
@@ -3658,7 +3710,7 @@ static void parse_scalar_init(int type)
   if (type_size(type) == 1)
     data_byte(a.val);
   else if (a.kind)
-    data_addr(a.kind, a.target + a.val);
+    data_addr(a.kind, a.target, a.val);
   else
     data_word(a.val);
 }
@@ -3958,10 +4010,57 @@ static int parse_local_init(int type, const char *name, int base)
   return type;
 }
 
+/* Can a global of type a be declared again with type b? They must be
+ * the same, except that one array may leave its size out. */
+static int same_global_type(int a, int b)
+{
+  if (a == b)
+    return 1;
+  return is_array(a) && is_array(b) && type_sub(a) == type_sub(b)
+         && (type_count(a) == 0 || type_count(b) == 0);
+}
+
+/* Declare a global named name of type type, with storage class storage
+ * (T_STATIC, T_EXTERN or 0), and return it. An extern one has no
+ * storage here (VL_EXTERN); otherwise it is at the next data offset, and
+ * the caller writes its bytes. A global may be declared again if all but
+ * one of its declarations are extern, as in C; the last gives it its
+ * storage. Linkage follows C11 6.2.2: extern after static keeps it
+ * static, and static after a declaration that isn't is an error. */
+static int declare_global(const char *name, int type, int storage)
+{
+  int s = find_var(name);
+  if (s < 0) {
+    s = add_global(name, type);
+    if (storage == T_EXTERN) {
+      var_off[s] = 0;
+      var_link[s] = VL_EXTERN;
+    } else if (storage == T_STATIC) {
+      var_link[s] = VL_STATIC;
+    }
+    return s;
+  }
+  if (storage != T_EXTERN && !(var_link[s] & VL_EXTERN))
+    error(27 /* "redeclaration of" */, quote(name));    /* two have storage */
+  if (!same_global_type(var_type[s], type))
+    error(165 /* "conflicting declaration of" */, quote(name));
+  if (type_count(type) > 0)
+    var_type[s] = type;         /* extern int a[]; then int a[10]; */
+  if (storage == T_STATIC && !(var_link[s] & VL_STATIC))
+    error(217 /* "static declaration follows a non-static declaration"
+                 " of" */, quote(name));
+  if (storage == T_EXTERN)
+    return s;
+  var_link[s] &= ~VL_EXTERN;
+  var_off[s] = data_offset();
+  return s;
+}
+
 /* Parse global variable declarations, after the base type base and
- * the first declarator's type and name: int x = 1, *p = &x, buf[100];
- * A global without an initializer is zero when the module loads. */
-static void parse_globals(int base, int type, char *name)
+ * the first declarator's type and name, with storage class storage
+ * (T_STATIC, T_EXTERN or 0): int x = 1, *p = &x, buf[100]; A global
+ * without an initializer is zero when the module loads. */
+static void parse_globals(int base, int type, char *name, int storage)
 {
   int s;
   for (;;) {
@@ -3970,13 +4069,17 @@ static void parse_globals(int base, int type, char *name)
       error(163 /* "declare functions separately from variables" */,
             NULL);
     /* In C, the name is in scope in its own initializer. */
-    s = add_global(name, type);
+    s = declare_global(name, type, storage);
+    type = var_type[s];
     if (tok == '=') {
+      if (storage == T_EXTERN)
+        error(216 /* "'extern' with an initializer is not supported" */,
+              NULL);
       next();
       var_type[s] = parse_global_init(type, name);
       if (init_known)
         set_known(s, init_val);
-    } else {
+    } else if (storage != T_EXTERN) {
       if (is_array(type) && type_count(type) == 0)
         error(87 /* "array size missing" */, NULL);
       data_zero(type_size(type));
@@ -3991,12 +4094,11 @@ static void parse_globals(int base, int type, char *name)
 
 /* Parse one top-level item: global variable declarations, a function
  * prototype, or a function definition. Any may start with "static",
- * which is accepted and, for now, changes nothing: globals and
- * functions are already private to the module, since ccish exports
- * nothing yet (approach.md, "M5 design"). */
+ * which makes it local to the file, or "extern", which declares a
+ * global without storage, and changes nothing on a function. */
 static void parse_toplevel(void)
 {
-  int base, type, nparams, pwords, i, f, mark;
+  int base, type, nparams, pwords, i, f, mark, storage = 0;
   char name[MAX_NAME + 1];
 
   depth = 0;                      /* file scope, for tags and names */
@@ -4004,10 +4106,14 @@ static void parse_toplevel(void)
     parse_typedef();
     return;
   }
-  if (tok == T_STATIC) {
+  if (tok == T_STATIC || tok == T_EXTERN) {
+    storage = tok;
     next();
     if (!is_type_start())
-      error(147 /* "expected a type after 'static', not" */, tok_desc());
+      error(storage == T_STATIC
+            ? 147 /* "expected a type after 'static', not" */
+            : 218 /* "expected a type after 'extern', not" */,
+            tok_desc());
   }
   if (tok == T_KEYWORD)
     not_yet();
@@ -4021,7 +4127,7 @@ static void parse_toplevel(void)
   }
   type = parse_declarator(base, name);
   if (tok != '(') {
-    parse_globals(base, type, name);
+    parse_globals(base, type, name, storage);
     return;
   }
   type = unqual(type);    /* const int f(void) returns an int */
@@ -4032,6 +4138,12 @@ static void parse_toplevel(void)
   f = find_func(name);
   if (f < 0)
     f = add_func(name);
+  if (storage == T_STATIC) {
+    if ((fn_flags[f] & FN_DECLARED) && !(fn_flags[f] & FN_STATIC))
+      error(217 /* "static declaration follows a non-static declaration"
+                   " of" */, quote(name));
+    fn_flags[f] |= FN_STATIC;
+  }
   mark = pool_mark();             /* its own names are released after */
 
   cur_fn = f;                     /* for messages about its variables */
@@ -4126,25 +4238,70 @@ void compile_abort(void)
   emit_abort();
 }
 
-/* Stage 1's entry: parse the whole source file, then check that every
- * function called but not defined is a CMDSYS function. */
+/* Stage 1's entry: parse the whole source file. A function called but
+ * not defined here is left to the final pass, which finds it in
+ * another file or CMDSYS (approach.md issue 11). */
 void parse_program(void)
 {
-  int i, c;
   while (tok != T_EOF)
     parse_toplevel();
+}
 
-  /* Every function called but not defined here must come from
-   * CMDSYS, with the signature CMDSYS has. */
-  src_line = 0;
-  for (i = 0; i < nfuncs; i++) {
-    if ((fn_flags[i] & FN_DEFINED) || !(fn_flags[i] & FN_CALLED))
-      continue;
-    c = find_cmdsys(fname(i));
-    if (c < 0)
-      error(172 /* "call to undefined function" */, quote(fname(i)));
-    if (!matches_cmdsys(i, c))
-      error(173 /* "declaration doesn't match the CMDSYS function" */,
-            quote(fname(i)));
+/* Function f's SYM_* flags for the symbol summary, and its type hash
+ * in *hash: of its return type and parameter types, or 0 if they
+ * aren't known (int f();). */
+int func_sym(int f, int *hash)
+{
+  int flags = 0, c, i, h;
+  if (fn_flags[f] & FN_DEFINED)
+    flags |= SYM_DEFINED;
+  if (fn_flags[f] & FN_CALLED)
+    flags |= SYM_CALLED;
+  if (fn_type[f] != TY_VOID)
+    flags |= SYM_RETURNS;
+  if (fn_flags[f] & FN_STATIC)
+    flags |= SYM_LOCAL;
+  c = find_cmdsys(fname(f));
+  if (c >= 0)
+    flags |= matches_cmdsys(f, c) ? SYM_CMDSYS : SYM_NOTCMDSYS;
+  *hash = 0;
+  if (fn_ptypes[f] >= 0) {
+    h = hash_byte(type_hash(fn_type[f], 0), '(');
+    for (i = 0; i < nparams_of(f); i++)
+      h = type_hash(param_types[fn_ptypes[f] + i], h);
+    h = hash_byte(h, ')');
+    *hash = h ? h : 1;
   }
+  return flags;
+}
+
+/* The number of global variables: the data symbols. */
+int data_sym_count(void)
+{
+  return nglobals;
+}
+
+/* Global v's SYM_* flags for the symbol summary, with its data offset
+ * (if defined), size (0 if an array's size is unknown), type hash
+ * (leaving out an array's size, so that int a[] matches int a[10]) and
+ * name. */
+int data_sym(int v, int *off, int *size, int *hash, int *name)
+{
+  int t = var_type[v], flags = 0, h = 0;
+  if (!(var_link[v] & VL_EXTERN))
+    flags |= SYM_DEFINED;
+  if (var_link[v] & VL_USED)
+    flags |= SYM_CALLED;
+  if (var_link[v] & VL_STATIC)
+    flags |= SYM_LOCAL;
+  *off = flags & SYM_DEFINED ? var_off[v] : 0;
+  *size = is_array(t) && type_count(t) == 0 ? 0 : type_size(t);
+  if (is_array(t)) {
+    h = hash_byte(h, '[');
+    t = type_sub(t);
+  }
+  h = type_hash(t, h);
+  *hash = h ? h : 1;
+  *name = var_name[v];
+  return flags;
 }

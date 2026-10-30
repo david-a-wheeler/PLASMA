@@ -34,12 +34,18 @@ static Lsym lsyms[MAX_FUNCS];
 static int nlsyms;
 static int data_size, strs_size, code_size;
 
+/* Data symbols (global variables): each one's data offset, or -1 if it
+ * isn't defined in this file (an extern global nothing refers to). */
+static int dsym_off[MAX_VARS];
+static int ndsyms;
+
 /* Load addresses: of the data segment, the string pool after it, and
  * the code segment after that. */
 static int data_base, strs_base, subseg;
 
 typedef struct {
-  int kind;       /* REL_DATA, REL_STR or REL_FUNC */
+  int kind;       /* REL_DATA, REL_STR or REL_FUNC (a REL_DSYM is kept
+                   * as the REL_DATA it resolves to) */
   int at;         /* load address of the word (in data or code) */
   int target;     /* data or string pool offset, or symbol index */
 } Lreloc;
@@ -76,12 +82,36 @@ void link_abort(void)
   bclose(&out);
 }
 
-/* Step 1: read the symbol summary into lsyms[], with the data and
- * code sizes. */
+/* Read a symbol's name from the summary (file name) into buf, which
+ * holds MAX_NAME + 1 characters. */
+static void read_name(char *buf, const char *name)
+{
+  int n = bgetc(&in), j;
+  if (n < 1 || n > MAX_NAME)
+    damaged(name);
+  for (j = 0; j < n; j++)
+    buf[j] = (char)bgetc(&in);
+  buf[n] = 0;
+}
+
+/* Report an undefined reference to the symbol named name. */
+static void undefined(int msg, const char *name)
+{
+  char buf[MAX_NAME + 3];
+  buf[0] = '\'';
+  strcpy(buf + 1, name);
+  strcat(buf, "'");
+  error(msg, buf);
+}
+
+/* Step 1: read the symbol summary into lsyms[] and dsym_off[], with
+ * the data and code sizes. A global that is used but not defined is an
+ * undefined reference. */
 static void read_summary(const char *base)
 {
   const char *name = stream_name(base, SUFFIX_SYMS);
-  int i, n, j;
+  char gname[MAX_NAME + 1];
+  int i, flags, off;
 
   if (!bopen(&in, name, 0))
     fatal(171 /* "cannot open" */, name);
@@ -91,20 +121,32 @@ static void read_summary(const char *base)
   strs_size = bgetw(&in);
   code_size = bgetw(&in);
   nlsyms = bgetw(&in);
+  ndsyms = bgetw(&in);
   if (nlsyms > MAX_FUNCS)
     fatal(26 /* "too many functions" */, NULL);
+  if (ndsyms > MAX_VARS)
+    fatal(28 /* "too many variables" */, NULL);
   for (i = 0; i < nlsyms; i++) {
     Lsym *s = &lsyms[i];
     s->flags = bgetc(&in);
     s->nparams = bgetc(&in);
     s->code_off = bgetw(&in);
-    n = bgetc(&in);
-    if (n < 1 || n > MAX_NAME)
-      damaged(name);
-    for (j = 0; j < n; j++)
-      s->name[j] = (char)bgetc(&in);
-    s->name[n] = 0;
+    bgetw(&in);                 /* the type hash, for linking files */
+    read_name(s->name, name);
     s->import_idx = -1;
+  }
+  for (i = 0; i < ndsyms; i++) {
+    flags = bgetc(&in);
+    off = bgetw(&in);
+    bskip(&in, 4);              /* the size and type hash */
+    read_name(gname, name);
+    if ((flags & SYM_DEFINED) && off > data_size)
+      damaged(name);
+    if ((flags & SYM_CALLED) && !(flags & SYM_DEFINED)) {
+      bclose(&in);
+      undefined(172 /* "undefined reference to" */, gname);
+    }
+    dsym_off[i] = flags & SYM_DEFINED ? off : -1;
   }
   if (bgetc(&in) != EOF)
     damaged(name);
@@ -288,15 +330,23 @@ static void out_dci(const char *name)
 
 /* Keep a relocation of the word at load address at, for the RLD and
  * the listing. Returns the word's final value. A record read from
- * stream file name is checked first. */
-static int add_reloc(int kind, int at, int target, const char *name)
+ * stream file name is checked first. A REL_DSYM (data symbol target,
+ * plus add) becomes the REL_DATA it stands for. */
+static int add_reloc(int kind, int at, int target, int add,
+                     const char *name)
 {
   Lreloc *r = &relocs[nrelocs];
-  if ((kind == REL_DATA && target > data_size)
-      || (kind == REL_STR && target > strs_size)
-      || (kind == REL_FUNC && target >= nlsyms)
-      || (kind != REL_DATA && kind != REL_STR && kind != REL_FUNC))
+  if (kind == REL_DSYM) {
+    if (target >= ndsyms || dsym_off[target] < 0)
+      damaged(name);
+    kind = REL_DATA;
+    target = (dsym_off[target] + add) & 0xFFFF;
+  } else if ((kind == REL_DATA && target > data_size)
+             || (kind == REL_STR && target > strs_size)
+             || (kind == REL_FUNC && target >= nlsyms)
+             || (kind != REL_DATA && kind != REL_STR && kind != REL_FUNC)) {
     damaged(name);
+  }
   if (nrelocs >= MAX_RELOCS)
     fatal(189 /* "too many relocations" */, NULL);
   r->kind = kind;
@@ -335,7 +385,7 @@ static void skip_record(int t)
       damaged(SUFFIX_OBJ);
     bskip(&in, n);
   } else if (t == REC_DREL) {
-    bskip(&in, 3);
+    bskip(&in, bgetc(&in) == REL_DSYM ? 4 : 2);
   } else if (t == REC_STR) {
     bskip(&in, bgetw(&in));
   } else if (t == REC_FUNC) {
@@ -374,7 +424,7 @@ static void copy_bytes(int n)
  * record's word given its final value (an address, kept for the RLD). */
 static void copy_data(const char *base)
 {
-  int at = 0, t, n, kind, target;
+  int at = 0, t, n, kind, target, add;
   open_obj(base);
   while ((t = next_record(data_tags)) != EOF) {
     if (t == REC_DATA) {
@@ -385,9 +435,11 @@ static void copy_data(const char *base)
     } else {
       kind = bgetc(&in);
       target = bgetw(&in);
+      add = kind == REL_DSYM ? bgetw(&in) : 0;
       if (at + 2 > data_size)
         damaged(SUFFIX_OBJ);
-      bputw(&out, add_reloc(kind, data_base + at, target, SUFFIX_OBJ));
+      bputw(&out, add_reloc(kind, data_base + at, target, add,
+                            SUFFIX_OBJ));
       at += 2;
     }
   }
@@ -441,7 +493,9 @@ static void copy_code(const char *base)
       int kind = bgetc(&in), off = bgetw(&in), target = bgetw(&in), v;
       if (off < 0 || off > len - 2)
         damaged(SUFFIX_OBJ);
-      v = add_reloc(kind, subseg + at + off, target, SUFFIX_OBJ);
+      /* The word holds an extern global's addend, else 0. */
+      v = add_reloc(kind, subseg + at + off, target,
+                    fbuf[off] | (fbuf[off + 1] << 8), SUFFIX_OBJ);
       fbuf[off] = (unsigned char)v;
       fbuf[off + 1] = (unsigned char)(v >> 8);
     }
@@ -462,7 +516,7 @@ static void copy_code(const char *base)
 static int init_code(int main_idx, int init_off)
 {
   int n = 0, v = subseg + lsyms[main_idx].code_off;
-  add_reloc(REL_FUNC, subseg + init_off + 1, main_idx, "init");
+  add_reloc(REL_FUNC, subseg + init_off + 1, main_idx, 0, "init");
   fbuf[n++] = OP_CALL;
   fbuf[n++] = (unsigned char)v;
   fbuf[n++] = (unsigned char)(v >> 8);
@@ -496,9 +550,15 @@ void link_module(const char *base, const char *path)
     Lsym *s = &lsyms[i];
     if (s->flags & SYM_DEFINED) {
       defcnt++;
-      if (!strcmp(s->name, "main"))
+      if (!strcmp(s->name, "main") && !(s->flags & SYM_LOCAL))
         main_idx = i;
     } else if (s->flags & SYM_CALLED) {
+      /* Not defined here: CMDSYS must have it. */
+      if (s->flags & SYM_NOTCMDSYS)
+        undefined(173 /* "declaration doesn't match the CMDSYS"
+                         " function" */, s->name);
+      if (!(s->flags & SYM_CMDSYS) || (s->flags & SYM_LOCAL))
+        undefined(172 /* "undefined reference to" */, s->name);
       if (nimports >= 255)
         fatal(190 /* "too many imported functions" */, NULL);
       s->import_idx = nimports++;

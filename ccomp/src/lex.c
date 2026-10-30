@@ -212,12 +212,12 @@ static void lex_string(void)
 }
 
 static const char *const keywords[] = {
-  /* supported: in the order of T_INT ... T_ENUM */
+  /* supported: in the order of T_INT ... T_EXTERN */
   "int", "void", "return", "if", "else", "while", "do", "for", "break",
   "continue", "char", "sizeof", "static", "const", "volatile", "struct",
-  "switch", "case", "default", "typedef", "enum",
+  "switch", "case", "default", "typedef", "enum", "extern",
   /* the rest of C89's keywords: recognized so the error is clear */
-  "auto", "double", "extern",
+  "auto", "double",
   "float", "goto", "long", "register", "short", "signed",
   "union", "unsigned",
   NULL

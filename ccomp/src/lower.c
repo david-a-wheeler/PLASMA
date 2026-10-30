@@ -93,7 +93,11 @@ static void dump_ir(int op, int a, int f)
   case IR_CONST:    printf(" %d", a); break;
   case IR_DATAADDR: case IR_GLOBAL: case IR_SETGLOBAL:
   case IR_GLOBALB: case IR_SETGLOBALB:
-                    printf(" data+%d", a); break;
+                    if (f >= 0)
+                      printf(" sym%d+%d", f, a);
+                    else
+                      printf(" data+%d", a);
+                    break;
   case IR_STRADDR:  printf(" string+%d", a); break;
   case IR_LOCAL: case IR_SETLOCAL:
   case IR_LOCALB: case IR_SETLOCALB: case IR_LOCALADDR:
@@ -106,6 +110,14 @@ static void dump_ir(int op, int a, int f)
                     printf(" %d", a); break;
   }
   printf("\n");
+}
+
+/* The fixup for a global op's address: a data offset (f is -1), or
+ * extern global f plus the addend in m->a, which m->fn then names. */
+static int data_fix(Mop *m, int f)
+{
+  m->fn = f;
+  return f < 0 ? FIX_DATA : FIX_DSYM;
 }
 
 /* Make m push the constant v, using the shortest encoding (the same
@@ -203,7 +215,7 @@ static void lower(int op, int a, int f)
   case IR_STRADDR:
     m.op = OP_LA;
     m.a = a;
-    m.fix = op == IR_DATAADDR ? FIX_DATA : FIX_STR;
+    m.fix = op == IR_STRADDR ? FIX_STR : data_fix(&m, f);
     break;
   case IR_LOCAL:
     m.op = OP_LLW;
@@ -237,7 +249,7 @@ static void lower(int op, int a, int f)
     m.op = op == IR_GLOBAL ? OP_LAW : op == IR_SETGLOBAL ? OP_DAW
          : op == IR_GLOBALB ? OP_LAB : OP_DAB;
     m.a = a;
-    m.fix = FIX_DATA;
+    m.fix = data_fix(&m, f);
     break;
   case IR_CALL:
     m.op = OP_CALL;

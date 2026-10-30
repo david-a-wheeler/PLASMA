@@ -10,8 +10,11 @@ deliberately, with the version number bumped.
 
 For output `NAME`, the files are `NAME.obj` and `NAME.syms`. They are
 removed after the module is written, and after any error, unless
-`ccish -k` is given. This is format version 3: M5's version 2 had four
-stream files (`.data`, `.drel`, `.strs` and `.code`), which are now
+`ccish -k` is given. This is format version 4, which adds what linking
+several files needs (approach.md issue 11): data symbols, local
+(`static`) symbols, a relocation to an `extern` global, and type
+hashes. Version 3 had none of these. M5's version 2 had four stream
+files (`.data`, `.drel`, `.strs` and `.code`), which version 3 made
 records in the one stream file, so that the compile pass has only the
 source and one output file open (PLASMA's Apple II file library allows
 4 open files; approach.md 18.6 B6a).
@@ -55,13 +58,16 @@ A long run is split into several records.
 | Size | Field |
 |------|-------|
 | byte | tag `R` |
-| byte | kind: 1 = data address, 3 = string address |
-| word | target: a data offset (kind 1), or a string pool offset (kind 3) |
+| byte | kind: 1 = data address, 3 = string address, 4 = data symbol address |
+| word | target: a data offset (kind 1), a string pool offset (kind 3), or a data symbol index (kind 4) |
+| word | kind 4 only: the addend, bytes added to the symbol's address |
 
 It stands for the next two bytes of the data (`char *p = "hi";`,
 `int *q = &x;`), so its offset is where it falls among the `D` and `R`
 records. The final pass writes the address there, and adds an RLD entry
-so that the loader can adjust it.
+so that the loader can adjust it. Kind 4 is the address of a global
+declared `extern` and not (yet) defined in this file, plus the addend
+(`int *q = &ext[3];`).
 
 Data offsets elsewhere count from the first byte of the data. Its
 length is the data size.
@@ -100,13 +106,16 @@ needs a final address:
 
 | Size | Field |
 |------|-------|
-| byte | kind: 1 = data address, 2 = function address, 3 = string address |
+| byte | kind: 1 = data address, 2 = function address, 3 = string address, 4 = data symbol address |
 | word | offset of the word, from the start of this function |
-| word | target: a data offset (kind 1), a symbol index (kind 2), or a string pool offset (kind 3) |
+| word | target: a data offset (kind 1), a function symbol index (kind 2), a string pool offset (kind 3), or a data symbol index (kind 4) |
 
-The word itself is written as 0; the final pass fills it in. A function
-address may refer to a function defined later in the file, or to an
-import, which the loader fills in.
+The word itself is written as 0, except for kind 4, where it holds the
+addend; the final pass fills it in. A function address may refer to a
+function defined later in the file, or to an import, which the loader
+fills in. A data symbol address (kind 4) refers to a global declared
+`extern`, used before any definition in this file: a reference to a
+global with storage here is kind 1.
 
 The function's code offset in the code segment is the sum of the
 lengths of the `F` records before it. The frame sizes in `ENTER` and
@@ -123,36 +132,66 @@ of its own so that the compiler needn't seek back to patch a header.
 | Size | Field |
 |------|-------|
 | 2 bytes | magic `CI` |
-| byte | format version: 3 |
+| byte | format version: 4 |
 | word | data size |
 | word | string pool size |
 | word | code size (the total code length of the `F` records) |
-| word | symbol count *N* |
-| *N* entries | symbols, in index order |
+| word | function symbol count *N* |
+| word | data symbol count *M* |
+| *N* entries | function symbols, in index order |
+| *M* entries | data symbols, in index order |
 
-Each symbol entry:
+Each function symbol entry:
 
 | Size | Field |
 |------|-------|
-| byte | flags: 1 = defined here, 2 = called, 4 = returns a value |
+| byte | flags: 1 = defined here, 2 = called, 4 = returns a value, 8 = local (`static`), 16 = a CMDSYS function, 32 = a CMDSYS name declared differently |
 | byte | parameter count, or 255 if unknown |
 | word | code offset, if defined; otherwise 0 |
+| word | type hash, or 0 if the parameters are unknown (`int f();`) |
 | byte | name length *n* (1–31) |
 | *n* bytes | name |
 
-A symbol that is called but not defined is an import. Its name must be
-a CMDSYS function, which the compiler has already checked. Exported
-names are the defined ones. The parameter count and value flag aren't
-needed to write one module, but a linker will need them to check calls
-between files.
+Each data symbol entry (a global variable, numbered as the compiler
+numbers them; every global is listed, static locals aren't):
+
+| Size | Field |
+|------|-------|
+| byte | flags: 1 = defined here, 2 = used, 8 = local (`static`) |
+| word | data offset, if defined; otherwise 0 |
+| word | size in bytes, or 0 if unknown (`extern int a[];`) |
+| word | type hash |
+| byte | name length *n* (1–31) |
+| *n* bytes | name |
+
+A function that is called but not defined is an import if it has flag
+16, the CMDSYS functions (declared from the compiler's table, or
+matching it). Otherwise, it and a global that is used but not defined
+are undefined references, reported by the final pass ("undefined
+reference to"), or message 173 for flag 32; a linker of several files
+will look for them in the other files first. Nothing is exported: names
+stay inside the module. A global declared `extern` that nothing uses
+needn't be defined anywhere.
+
+**The type hash** lets a linker check that files agree on a function's
+or global's type. It is `h = (h * 31 + byte) & 0xFFFF`, from 0, over a
+canonical string of the type: `i` int (and enums), `c` char, `v` void,
+`s`, the tag's name and `;` for a struct, `k` (const) and `V`
+(volatile) before what they qualify, `*` then the pointed-to type, and
+`[`, the count (low byte, then high), then the element type. A
+function's is its return type, `(`, each parameter's type (without its
+own qualifiers), then `)`. A data symbol's leaves out its outermost
+array count (`[` then the element type), so that `extern int a[];`
+matches `int a[10];`; the size field covers that. A hash that comes
+out 0 is written as 1.
 
 ## The final pass
 
 It has at most one input file open at a time, and the module.
 
-1. Read `NAME.syms`. Number the imports, find `main`, and compute the
-   layout: header, dependencies, globals, string pool, one pad byte,
-   then code.
+1. Read `NAME.syms`. Report undefined references, number the imports,
+   find `main`, and compute the layout: header, dependencies, globals,
+   string pool, one pad byte, then code.
 2. Write the module header and dependencies. Read the stream for its
    `D` and `R` records, writing the data with each `R` record's address
    filled in and kept for the RLD; then read it again for its `S`
@@ -164,6 +203,7 @@ It has at most one input file open at a time, and the module.
 4. Write the RLD (function entries in code order, then the kept
    relocations, those in the data first) and the ESD (imports).
 
-It checks that the files agree with each other (sizes, offsets,
-indexes, record tags), and reports "compiler stream file is damaged"
-if not.
+A kind 4 relocation becomes a kind 1 relocation to the symbol's data
+offset plus the addend. The final pass checks that the files agree
+with each other (sizes, offsets, indexes, record tags), and reports
+"compiler stream file is damaged" if not.

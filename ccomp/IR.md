@@ -147,6 +147,13 @@ global variable (`&g`), or a global array used as a value.
   ops (`IR_GLOBAL` and the rest, below), so nothing needs to fuse
   `LA g LW` into `LAW g`. A constant offset is folded in by the parser:
   `&a[3]` is `DATAADDR a+6`.
+- **An `extern` global** with no storage in this file yet has no data
+  offset. Then the op's function operand is the global's variable
+  index *v*, and *a* is the addend: `&ext[3]` is `DATAADDR sym`*v*`+6`
+  in the `-i` listing. It is lowered with a data symbol fixup
+  (`FIX_DSYM`), which the emitter writes as a kind 4 relocation, with
+  the addend in the word (OBJECT.md). This applies to `IR_GLOBAL` and
+  the rest too.
 
 ### `IR_STRADDR` *a* = string pool offset
 
@@ -229,9 +236,10 @@ element).
 ### `IR_GLOBAL`, `IR_SETGLOBAL`, `IR_GLOBALB` and `IR_SETGLOBALB` *a* = data offset
 
 The same as `IR_LOCAL`, `IR_SETLOCAL`, `IR_LOCALB` and `IR_SETLOCALB`,
-for a global variable at offset *a* of the data segment. Globals are
-private to the module, and are zero when it loads: each is zero bytes
-in the data segment, in declaration order, between string literals.
+for a global variable at offset *a* of the data segment, or at *a*
+bytes past an `extern` global (as for `IR_DATAADDR`). A global without
+an initializer is zero when the module loads: zero bytes in the data
+segment, in declaration order.
 
 - **Stack:** as for the local ops.
 - **Now:** `LAW`, `DAW`, `LAB` and `DAB`, with the address relocated

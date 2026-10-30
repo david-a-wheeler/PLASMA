@@ -100,6 +100,15 @@ ccrel [-l] [-k] [-o module] output       the final pass: writes the module, and
   are private to the module (not exported). A local or parameter may
   hide a global of the same name, but a global can't share a name with
   a function or another global.
+* `extern`, at file scope: `extern int count;` or `extern char buf[];`
+  declares a global without giving it storage. A later definition in
+  the same file (`int count = 1;`) gives it storage; otherwise it must
+  be defined in another file, which linking several files will allow
+  (approach.md issue 11; until then, a used `extern` global that the
+  file doesn't define is an "undefined reference"). One that is never
+  used needn't be defined. `extern` on a function declaration changes
+  nothing. An `extern` with an initializer, and `extern` in a block,
+  aren't supported. `sizeof` an array of unknown size is an error.
 * Global initializers, computed at compile time and stored in the
   module, so they cost no code. A global without one is zero.
   - Integers and `char`s: any constant expression (`int n = 3 * 4;`,
@@ -131,8 +140,10 @@ ccrel [-l] [-k] [-o module] output       the final pass: writes the module, and
     (`static char line[300];`). Its initializer takes the forms a
     global's does, must be constant, and is applied once, when the
     module loads. A `for` loop's declaration can't be static, as in C.
-  - On a global or a function, `static` is accepted and changes
-    nothing yet, since nothing is exported from the module.
+  - On a global or a function, `static` makes it local to the file.
+    As in C, `static` after a declaration without it is an error, and
+    a later declaration without `static` (or with `extern`) keeps it
+    static.
 * Structs (`struct pt { int x, y; };`), at file scope or in a block:
   - Members are laid out in order with no padding (the 6502 has no
     alignment rules), as PLASMA's `struc` lays them out, so C can read
@@ -270,7 +281,7 @@ ccrel [-l] [-k] [-o module] output       the final pass: writes the module, and
 * Digraphs `<% %> <: :>`, `/* */` and `//` comments, and LF, CR or CRLF
   line endings.
 
-Anything else, such as `extern`,
+Anything else, such as
 function pointers, declarators in parentheses (`int (*p)[4]`), `goto`,
 `union`, the comma operator, or the types `signed`,
 `unsigned`, `short` and `long`, gives a "not supported yet" error.
@@ -287,7 +298,8 @@ of at most 255 characters, and its type is `char *` too.
 ### Calling CMDSYS
 
 A function that is called but not defined in the file must be one of
-the CMDSYS functions in `cmdsys_funcs[]` in `src/parse.c`, such as
+the CMDSYS functions in `cmdsys_funcs[]` in `src/parse.c` (otherwise
+the final pass reports an "undefined reference"), such as
 `putc`, `puts`, `puti`, `putln` or `heapalloc`. It is imported from
 CMDSYS. These are PLASMA's functions with PLASMA's meanings, not C's.
 For example, `puts` takes a PLASMA string and adds no newline, and
