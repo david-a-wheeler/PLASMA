@@ -1,0 +1,6 @@
+# Commits that only reformat code, for git blame to look through.
+# Use locally with: git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub's blame view uses this file automatically.)
+
+# Reindent ccish's C files from 4 spaces to 2
+9d860b4ebe241aeab726dd6db1ecbd500e3512cb
