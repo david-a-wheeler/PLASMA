@@ -699,6 +699,85 @@ Also:
 
 Suggest A first, then B.
 
+**Decided in discussion (2026-10-30): C, a static linker in `ccrel`**
+(decision 20). ccish's own source needs separately compiled files, and
+shares data as well as functions between them (`ccish.h` declares
+`extern int tok;` and `extern int fn_name[MAX_FUNCS];`).
+
+- **Declarations are required.** Calling a function with no
+  declaration or definition in scope is an error, not a C89 implicit
+  declaration (returning `int`, with its parameter count fixed by the
+  first call). Without a declaration, a wrong argument count or return
+  type would be caught only at link time, if at all. C99 dropped
+  implicit declarations too. The CMDSYS table (`cmdsys_funcs[]`)
+  carries full signatures, so its names stay declared as built-ins
+  until M8 can supply a `cmdsys.h`. This is C3's "implicit function
+  declarations" item, though it saves little compiler code:
+  `pool_release()` must still keep the names of CMDSYS functions first
+  called inside a function. A declaration with `()` is still allowed
+  (C89), and the first call then fixes its parameter count.
+  **Done** (2026-10-30): message 215, "function called without a
+  declaration".
+- **Static linking.** `ccrel` links several objects into **one** REL
+  module, which exports nothing and imports only CMDSYS functions, as
+  it does now. So C names never reach PLASMA's symbol table, and the
+  case and 16-character collisions above don't arise: `ccrel` matches
+  names in full, with their case. (One REL module per `.c`, importing
+  from each other, would expose them; rejected.)
+- **Object format 4** (OBJECT.md):
+  - `.syms` describes data symbols too: a "data" flag, and for a
+    definition its data offset and size.
+  - A "local" flag for `static` functions and globals: they stay out
+    of the global namespace, so two files may each have a `static`
+    helper of the same name.
+  - A new relocation kind, a symbol's address plus an offset, for
+    another file's data (`tok`, `&tbl[3]`). A function address
+    (kind 2) already names a symbol.
+  - A 16-bit hash of each function's full type, so that `ccrel` can
+    check calls between files beyond the parameter count and return
+    flag `.syms` already has (`char *` against `int`, say). Two bytes a
+    symbol; we may drop it if space demands.
+- **The compiler's side.** A function declared but not defined is an
+  undefined symbol, not an error; `ccrel` resolves it to another
+  object's definition, or a CMDSYS import (the compiler flags those
+  from its table), or reports "undefined reference". `extern int x;`
+  declares a data symbol without allocating it. No common symbols:
+  `int x;` in two files is a duplicate definition (C11 6.9p5 allows
+  only one external definition), which ccish's own source never needs.
+- **`ccrel`'s passes**, with one input file open at a time and the
+  module:
+  1. Read every object's `.syms`: lay out each object's data, strings
+     and code; build one table of the global (non-`static`) names
+     (about 300 for ccish itself, roughly 4-5K); report duplicates,
+     undefined names, and mismatched counts, return flags or type
+     hashes.
+  2. Write the data, then the strings, then the code, object by
+     object. Each object's `.syms` is read again to map its own symbol
+     indexes to the global ones, so only one object's map is in memory.
+  3. Write the RLD by reading the objects once more and computing the
+     entries from their `R` and `F` records (18.6 B4), so relocations
+     aren't held in memory: linking the whole compiler needs perhaps
+     10K of them. (A temporary RLD file would need a third open file;
+     within PLASMA's 4, but tighter.)
+- **Relinkable output.** If reasonable, `ccrel` should also be able to
+  write an object instead of a module (like `ld -r`): several small
+  objects linked into one larger one, which can be linked again. The
+  output is the same format: data, `R`, `S` and `F` records in order,
+  and a merged `.syms` with local symbols kept local and undefined
+  ones left undefined.
+- **Libraries, later** (consistent with the design, not built yet): an
+  archive, like Unix `.a`, of objects plus an index of the names each
+  defines, from which `ccrel` takes only the members something refers
+  to. So `ccrel` handles each object through "open object *k*'s
+  summary" and "open object *k*'s stream", which an archive member can
+  provide too (with PLASMA's set-mark to find it). Until then, all
+  objects are named on the command line.
+- **Order of work:** (1) require declarations, its own commit;
+  (2) object format 4 and the compiler's side; (3) link several
+  objects in `ccrel`, with relocations still held in memory, enough
+  for the tests; (4) write the RLD by rereading the objects (B4), so
+  the whole compiler can be linked.
+
 ### 12. Standard library
 
 Existing programs need at least parts of `stdio.h` (`printf`, `fopen`,
@@ -1262,14 +1341,14 @@ Not yet. Two separate kinds of things stand in the way.
 | stdio files (`fopen`, `fread`, `fwrite`, `fclose`, `remove`) | 7 | M9 library |
 | `string.h` / `exit` | 59 / 11 | M9 library |
 | Nested initializers (`cmdsys_funcs[]`: an array of structs) | a few | M11 |
-| `extern`, and linking 9 `.c` files | 11 | issue 11; no milestone yet |
+| `extern`, and linking 9 `.c` files | 11 | issue 11 (decision 20) |
 | `long` | 1 (`lex.c`, number overflow) | none: rewrite it |
 
 Nothing else: no function pointers, `goto`, `union` or comma operator.
 So, apart from `long` and multi-file linking, the source keeps to the
-features planned up to M11, as intended (issue 15). **Open:** link
-separately compiled modules (`extern` and exports, issue 11), or build
-the compiler from one file.
+features planned up to M11, as intended (issue 15). Decided
+(decision 20): separately compiled files, statically linked by
+`ccrel` (issue 11).
 
 **Memory, the bigger obstacle.** Even under `plvm` the compiler must
 fit in 64K: plvm emulates a 64K 6502 memory (`MEM6502_SIZE` in
@@ -1461,7 +1540,8 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
 - **C3. Drop C semantics that cost compiler code**, with "not
   supported" (or a simpler accepted form) instead. Candidates:
   block-scope tags, typedefs and enum constants (file scope only);
-  implicit function declarations (require prototypes); the exact
+  implicit function declarations (require prototypes; adopted,
+  decision 20); the exact
   compound-assignment ordering (`compound_elem`, `reversed_op`);
   rotation in place (`K_STORE`, stage 2's buffer; this makes generated
   code bigger); pending-constant folding beyond what constant
@@ -1914,6 +1994,13 @@ issue. In summary:
     lines moved with their statement's first line, so alignment under
     a parenthesis or operator is kept. parse.c went from 145,133 to
     135,813 bytes (18.6 E3's table predates this).
+20. **Separate compilation, statically linked by `ccrel`** (decided in
+    discussion, 2026-10-30; issue 11). Functions must be declared
+    before they are called (no implicit declarations); `extern` data
+    and functions are shared between files through object format 4
+    (data symbols, `static` kept local, a type hash); `ccrel` links any
+    number of objects into one module, later also into one object, and
+    later from archives.
 
 
 ## Milestones
@@ -3502,6 +3589,10 @@ M1 is built fresh around the pipeline.
    `putc`, and leave strings until a runtime `puts` exists.
 7. **Linking (issue 11):** a single translation unit first? How should
    names that collide on export (case, 16 characters) be handled?
+
+   Answer (2026-10-30): separate compilation, statically linked by
+   `ccrel` into one module (decision 20). Nothing is exported to
+   PLASMA, so the collisions don't arise.
 8. **Hints (issue 10):** defer until after M10?
 9. **Name:** the doc says "C-ish". Should the program be called
    `ccish`, and should the predefined macro be `__CCISH__`?

@@ -51,8 +51,9 @@ int pool_mark(void)
 /* At the end of a function, release the names added since mark: its
  * parameters', locals' and block-scope names, which nothing uses any
  * more (their tags and enum constants are hidden). The names of
- * functions first seen inside it (called before being declared) must
- * stay, so they are moved down to mark, in order. */
+ * functions first seen inside it (CMDSYS functions, declared by their
+ * first call or a struct copy) must stay, so they are moved down to
+ * mark, in order. */
 void pool_release(int mark)
 {
   int f, n;

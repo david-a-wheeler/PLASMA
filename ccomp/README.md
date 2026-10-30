@@ -82,7 +82,9 @@ ccrel [-l] [-k] [-o module] output       the final pass: writes the module, and
   is a pointer, as in C: `int a[]` and `int a[10]` are `int *a`, and
   `int m[][4]` points to arrays of 4 ints. A prototype and a definition must
   agree on the return and parameter types. `main` takes no parameters.
-  Its return value is ignored.
+  Its return value is ignored. A function must be declared (by a
+  prototype, or its definition) before it is called; C89's implicit
+  declarations are an error. The CMDSYS functions are declared already.
 * Local variables, declared anywhere in a block, with optional
   initializers (`int a, b = 1, *p = &a;`). A local array's initializer
   takes the same forms as a global's (below), but its elements may be

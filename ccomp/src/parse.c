@@ -53,8 +53,10 @@
  *     the element size, pointers compare unsigned, pointer types are
  *     checked as strictly as C says, and an array used as a value is a
  *     pointer to its first element.
- * A function called but not defined in the file must be one of the
- * CMDSYS functions in cmdsys_funcs[] below; it is imported from CMDSYS.
+ * A function must be declared before it is called (no implicit
+ * declarations), except the CMDSYS functions in cmdsys_funcs[] below,
+ * which their first call declares. A function called but not defined
+ * in the file must be one of those; it is imported from CMDSYS.
  *
  * Like PLASMA, a function returns exactly as many values as it is
  * declared to: one for int, none for void. So a void call used as a
@@ -168,7 +170,7 @@ static int add_func(const char *name)
   if (nfuncs >= MAX_FUNCS)
     fatal(26 /* "too many functions" */, NULL);
   fn_name[nfuncs] = intern(name);
-  fn_type[nfuncs] = TY_INT;   /* C89 implicit declarations return int */
+  fn_type[nfuncs] = TY_INT;
   fn_ptypes[nfuncs] = -1;
   fn_flags[nfuncs] = 0;
   fn_code[nfuncs] = 0;
@@ -520,7 +522,7 @@ static void declare_cmdsys(int f, int c)
 }
 
 /* Does f's declaration match CMDSYS function c's types? Parameter
- * types that were never declared (an implicit declaration) match. */
+ * types that were never declared (int memset();) match. */
 static int matches_cmdsys(int f, int c)
 {
   const char *sig = cmdsys_funcs[c].sig;
@@ -1562,12 +1564,14 @@ static void parse_primary(Operand *o)
               quote(name));
       f = find_func(name);
       if (f < 0) {
-        f = add_func(name);
+        /* No implicit declarations (approach.md, decision 20):
+         * only the CMDSYS table declares a function by itself. */
         c = find_cmdsys(name);
-        if (c >= 0)
-          declare_cmdsys(f, c);   /* by the CMDSYS table */
-        /* Otherwise an implicit declaration: returns int, and
-         * this call fixes the parameter count. */
+        if (c < 0)
+          error(215 /* "function called without a declaration:" */,
+                quote(name));
+        f = add_func(name);
+        declare_cmdsys(f, c);
       }
       parse_call(f, o);
       return;
@@ -4036,10 +4040,8 @@ static void parse_toplevel(void)
   in_params = 0;
   pwords = frame_next / 2;
   if (tok == ';') {
-    /* A prototype. "()" leaves the parameter count unspecified.
-     * A call before any declaration assumed int, and its code
-     * already depends on that. */
-    if ((fn_flags[f] & (FN_DECLARED | FN_CALLED)) && fn_type[f] != type)
+    /* A prototype. "()" leaves the parameter count unspecified. */
+    if ((fn_flags[f] & FN_DECLARED) && fn_type[f] != type)
       error(165 /* "conflicting declaration of" */, quote(fname(f)));
     fn_type[f] = type;
     if (nparams >= 0) {
@@ -4069,7 +4071,7 @@ static void parse_toplevel(void)
             quote(fname(f)));
   if (fn_flags[f] & FN_DEFINED)
     error(104 /* "redefinition of" */, quote(fname(f)));
-  if ((fn_flags[f] & (FN_DECLARED | FN_CALLED)) && fn_type[f] != type)
+  if ((fn_flags[f] & FN_DECLARED) && fn_type[f] != type)
     error(165 /* "conflicting declaration of" */, quote(fname(f)));
   if (nparams_of(f) >= 0 && nparams_of(f) != nparams)
     error(169 /* "parameter count differs from earlier use of" */,

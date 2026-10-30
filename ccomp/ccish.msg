@@ -212,3 +212,4 @@
 212 a struct over 8 bytes can't be passed by value: use a pointer to it
 213 a struct over 8 bytes can't be returned by value: return it through a pointer parameter
 214 no member named
+215 function called without a declaration:
