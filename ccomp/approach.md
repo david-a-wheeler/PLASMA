@@ -908,8 +908,8 @@ gave. Choices made while building it, open for review:
   symbols to a final code address or import, and its data symbols to a
   final data offset; then its records are copied, with kind 1 and 3
   targets offset by the object's bases and kind 4 resolved through the
-  map. Only one object's map is in memory. Relocations stay in memory
-  until B4 (step 4).
+  map. Only one object's map is in memory. Relocations stayed in
+  memory until B4 (step 4), now done: see "Step 4 (B4) is done".
 - **Listing:** `data+`*n* and `string+`*n* are module offsets; function
   names come from the object being copied. With several objects, each
   object's code starts with an `object `*name*`:` line.
@@ -1129,9 +1129,11 @@ tests). Choices made while building it, open for review:
   (544 bytes) instead of growing it. Step 4 of the final pass now
   rereads each object's `F` records, reading only each one's length
   and skipping the rest, and writes the function entries as it goes:
-  part of B4 done early, which B4 needs anyway (the extra pass costs
-  disk reads until B4 shares it; growing `func_at[]` to ~450 entries,
-  900 bytes, was the alternative). `bskip()` now skips the rest of its
+  part of B4 done early (growing `func_at[]` to ~450 entries, 900
+  bytes, was the alternative). *Correction:* this assumed B4's reread
+  could write the function entries too, but the loaders want every
+  function entry before any relocation, so it can't; step 4 (B4) then
+  took the function entries from the summaries instead. `bskip()` now skips the rest of its
   512-byte buffer at a time instead of calling `bgetc()` per byte,
   which speeds every pass's skipping. Output is byte-identical. Test: `run.sh`
   links 300 generated functions in two objects and runs the module,
@@ -1172,6 +1174,51 @@ bytes, 11.4K) is gone; saving about 10.9K. Choices, open for review:
   (two generated objects, since one compile's name pool can't hold all
   the names) and checks the fallback and that the module runs;
   `tests/link/basic` checks a static name is listed.
+
+**Step 4 (B4) is done** (decided in discussion and built 2026-10-30;
+option A). `relocs[]` (2,432 entries of 8 bytes, 19.5K) and
+`MAX_RELOCS` are gone, and with them the limit on relocations in a
+module (message 189 removed; its number is left unused). Choices, open
+for review:
+- **The loaders' order.** Both the Apple II loader
+  (`src/vmsrc/apple/cmd.pla`, `while ^rld == $02`, then the fixups)
+  and plvm (`src/vmsrc/cmdsys.c`, one loop, looking each fixup's
+  target up among the entries seen so far) need every `$02` function
+  entry before any relocation, but in any order: both keep a list and
+  search it linearly.
+- **Function entries from the summaries** (`def_entries()`): each
+  `.syms` is read again and each defined function gets a `$02` entry
+  at its offset. Summaries are much smaller than streams, so this
+  replaces the `F`-record pass of the `func_at[]` fix. Entries are in
+  summary order (first declaration), not code order.
+- **Relocations from the streams** (`reloc_entries()`): after
+  `map_object()`, each stream is read again for its `R` records (data
+  offsets tracked as in `copy_data()`) and each `F` record's
+  relocations; a function relocation to an import is `$91` with its
+  ESD index, everything else `$81`. Steps 2 and 3 have checked the
+  records; the reread checks only what keeps it in bounds (relocation
+  count, function symbol index). Init's call to `main` comes last.
+- Relocations are now in object order, each object's data then code
+  (before: all objects' data, then all code).
+- **Other approach not taken (B):** a temporary RLD file written in
+  steps 2 and 3, no reread, but about 20K of disk space and 1.5K of
+  buffers while open. Still possible if linking proves too slow.
+- **The listing** keeps the current function's relocations in parallel
+  arrays `lr_at[]`, `lr_kind[]`, `lr_target[]` (`MAX_FUNC_RELOCS`, 640
+  bytes), filled only with `-l`; "(import)" is now found through
+  `fmap[]`. Net saving about 18.8K.
+- `copy_code()` now checks a function's relocation count against
+  `MAX_FUNC_RELOCS` too. `MODULE_BASE` is a macro, used by the header
+  and the RLD.
+- **Results:** all listings unchanged. 9 test modules changed, each
+  only in the order of its RLD entries (checked by a scratchpad script
+  comparing the bytes before the RLD, the RLD entries as a sorted
+  list, and the ESD); the rest are byte-identical. New test: `run.sh`
+  links 2,500 data relocations (25 generated functions of 100 stores
+  to one global) and runs the module.
+- Disk reads per object now: the stream 4 times (data, strings, code,
+  relocations) and the summary 5 times (step 1, data, code, function
+  entries, relocations).
 
 ### 12. Standard library
 
@@ -1879,6 +1926,8 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
   parser's.
 - **B4. Stream relocations instead of holding them:** read the input
   twice instead of keeping 2,048 relocations (12K). Slower on floppies.
+  **Done** (2026-10-30, linker step 4; see issue 11, "Step 4 (B4) is
+  done"): about 18.8K saved.
 - **B5. Smaller or no code buffers:** two 4K function buffers to 2K (a
   function-size limit; ccish's largest so far is about 1K), or write
   code straight to disk and patch it by seeking (slower).
@@ -2700,7 +2749,7 @@ next to each limit in `ccish.h`:
 | `MAX_FUNC_CODE` (bytes in one function) | 1,053 (`peep.c`) | 4096 | 1280 |
 | `MAX_FUNC_RELOCS` (in one function) | 112 | 256 | 128 |
 | `MAX_RETURNS` (ENTER and LEAVEs in one function) | 23 | 128 | 32 |
-| `MAX_RELOCS` (final pass, the module) | 2,263 (`parse.c`) | 2048 | 2432 |
+| `MAX_RELOCS` (final pass, the module) | 2,263 (`parse.c`) | 2048 | 2432; gone with B4 |
 | `MAX_LABELS` (in one function) | 90 (`lex.c`) | 256 | 104 |
 | `MAX_TYPES` | 46 | 128 | 56 |
 | `MAX_PARAM_TYPES` | 343 | 512 | 384 |
@@ -2716,7 +2765,8 @@ next to each limit in `ccish.h`:
 - **`MAX_RELOCS` had to grow:** `parse.c` needs 2,263 relocations, more
   than the old 2,048, which the self-compile hadn't shown because it
   stops before the final pass. Holding them costs 6 bytes each (14.6K);
-  streaming them instead (18.6 B4) would remove the table.
+  streaming them instead (18.6 B4) would remove the table. **Done**
+  (2026-10-30): B4 removed the table and the limit.
 - `MAX_NEST` (32) and `MAX_PARAMS` (16) are unchanged: their arrays are
   small, and nesting wasn't measured.
 - The test `local_init_frame.c` used a 300-character literal; it now

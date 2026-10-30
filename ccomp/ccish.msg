@@ -186,7 +186,6 @@
 186 too much code
 187 error writing
 188 compiler stream file is damaged:
-189 too many relocations
 190 too many imported functions
 191 module too large
 192 cannot create output file

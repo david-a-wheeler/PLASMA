@@ -421,8 +421,6 @@ file is used, and that the file's numbers ascend.
     (`MAX_FUNCS`, `MAX_VARS`, `MAX_PARAM_TYPES`, `MAX_TYPES`,
     `MAX_TAGS`, `MAX_MEMBERS`, `MAX_IDS`, `MAX_POOL`).
   - A string literal: 256 characters (`MAX_STR`).
-  - The module: 2432 relocations (calls and address references) in
-    the final pass (`MAX_RELOCS`).
   - A link: 32 objects, and 509 names shared between them, with 6144
     bytes of those names, each with a NUL (`MAX_OBJS`, `MAX_GSYMS`,
     `MAX_GNAMES` in `src/link.c`). `ccrel -l` ends its listing with

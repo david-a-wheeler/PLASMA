@@ -42,8 +42,6 @@
 #define MAX_FUNC_RELOCS 128 /* relocations in one function (112) */
 #define MAX_RETURNS  32     /* frame-size bytes (ENTER, LEAVEs) in one
                              * function (23) */
-#define MAX_RELOCS   2432   /* final pass: relocations in the module
-                             * (2,263) */
 #define MAX_NEST     32     /* nesting of parentheses and blocks */
 #define MAX_LABELS   104    /* branch targets in one function (90) */
 #define MAX_TYPES    56     /* distinct types (46) */

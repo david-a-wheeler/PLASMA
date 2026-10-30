@@ -419,6 +419,42 @@ else
     fail=$((fail + 1))
 fi
 rm -f "$OUT"/link/many_[ab].obj "$OUT"/link/many_[ab].syms
+# More relocations than ccrel once kept in memory (2432; B4 rereads them
+# instead): f1..f25 each store to the global g 100 times, one data
+# relocation each, 2500 in all. main calls the first and the last, so a
+# wrong RLD entry stores elsewhere or calls the wrong function.
+{
+    echo 'int g;'
+    f=1
+    while [ "$f" -le 25 ]; do
+        echo "void f$f(void)"
+        echo '{'
+        i=1
+        while [ "$i" -le 100 ]; do
+            echo "  g = $((f * 1000 + i));"
+            i=$((i + 1))
+        done
+        echo '}'
+        f=$((f + 1))
+    done
+    echo 'int main()'
+    echo '{'
+    echo '  f1(); puti(g); putc(32); f25(); puti(g); putc(10);'
+    echo '  return 0;'
+    echo '}'
+} >"$OUT/link/relocs.c"
+if ./cccomp -o "$OUT/link/relocs" "$OUT/link/relocs.c" \
+      2>"$OUT/link/relocs.err" \
+   && ./ccrel "$OUT/link/relocs" 2>>"$OUT/link/relocs.err" \
+   && [ "$(cd "$OUT/link" && timeout 10 "$PLVM" relocs 2>&1 | tr -d '\r')" \
+        = "1100 25100" ]; then
+    pass=$((pass + 1))
+else
+    echo "FAIL ccrel: 2500 relocations don't link and run"
+    sed 's/^/    /' "$OUT/link/relocs.err"
+    fail=$((fail + 1))
+fi
+rm -f "$OUT"/link/relocs.obj "$OUT"/link/relocs.syms
 # A static function's name that doesn't fit after the shared names is
 # listed by its address (approach.md issue 11, "Item 1: the linker's
 # local names"). 190 declared names and the caller, each 31 characters

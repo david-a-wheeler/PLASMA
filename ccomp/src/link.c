@@ -17,15 +17,15 @@
  *      found;
  *   2. the header and dependencies are written; then each object's
  *      stream is read for its data records, with the data relocations
- *      applied (and kept for the RLD), and each again for its strings;
+ *      applied, and each again for its strings;
  *   3. each stream is read a third time for its functions, each copied
- *      with its relocations applied and kept for the RLD; then the init
- *      function is added;
- *   4. the RLD and ESD are written: each stream is read a fourth time
- *      for its functions' lengths, giving the RLD's function entries
- *      without keeping every function's start in memory.
- * In steps 2 and 3, each object's summary is read again just before
- * its stream, to map its own symbol numbers to final addresses, so only
+ *      with its relocations applied; then the init function is added;
+ *   4. the RLD and ESD are written. The relocations aren't kept in
+ *      memory (approach.md 18.6 B4): each summary is read again for
+ *      the function entries, which the loaders want first, and then
+ *      each stream a fourth time for the relocations.
+ * In steps 2 to 4, each object's summary is read again just before its
+ * stream, to map its own symbol numbers to final addresses, so only
  * one object's map is in memory.
  */
 #include <string.h>
@@ -107,21 +107,21 @@ static int dmap[MAX_VARS];
 static int fname[MAX_FUNCS];
 static int lnames_len;
 
-/* Load addresses: of the data segment, the string pool after it, and
- * the code segment after that. */
+/* Load addresses: of the module, of the data segment, the string pool
+ * after it, and the code segment after that. */
+#define MODULE_BASE 0x1000
 static int data_base, strs_base, subseg;
 
-typedef struct {
-  int kind;       /* REL_DATA, REL_STR or REL_FUNC (a REL_DSYM is kept
-                   * as the REL_DATA it resolves to) */
-  int at;         /* load address of the word (in data or code) */
-  int target;     /* data or string pool offset in the module, or the
-                   * function symbol index in its object (-1: main) */
-  int import_idx; /* ESD index of an imported function, else -1 */
-} Lreloc;
-
-static Lreloc relocs[MAX_RELOCS];
-static int nrelocs;
+/* The relocations of the function being listed (-l), as parallel
+ * arrays: each word's load address; its kind, REL_DATA, REL_STR or
+ * REL_FUNC (a REL_DSYM is kept as the REL_DATA it resolves to); and
+ * its target, a data or string pool offset in the module, or a function
+ * symbol of the current object (-1: main). The RLD's relocations are
+ * not kept: step 4 reads them again (approach.md 18.6 B4). */
+static int lr_at[MAX_FUNC_RELOCS];
+static char lr_kind[MAX_FUNC_RELOCS];
+static int lr_target[MAX_FUNC_RELOCS];
+static int nlr;
 
 static unsigned char fbuf[MAX_FUNC_CODE];
 
@@ -497,23 +497,23 @@ static const char *func_label(int t)
   return buf;
 }
 
-/* The comment for a relocated word at load address at; the
- * relocations of the function being listed start at index first. */
-static const char *reloc_note(int at, int first)
+/* The comment for a relocated word at load address at, from the
+ * relocations of the function being listed. */
+static const char *reloc_note(int at)
 {
   static char buf[MAX_NAME + 16];
-  int i;
-  for (i = first; i < nrelocs; i++)
-    if (relocs[i].at == at) {
-      if (relocs[i].kind == REL_DATA) {
-        sprintf(buf, "  ; data+%d", relocs[i].target);
-      } else if (relocs[i].kind == REL_STR) {
-        sprintf(buf, "  ; string+%d", relocs[i].target);
+  int i, t;
+  for (i = 0; i < nlr; i++)
+    if (lr_at[i] == at) {
+      t = lr_target[i];
+      if (lr_kind[i] == REL_DATA) {
+        sprintf(buf, "  ; data+%d", t);
+      } else if (lr_kind[i] == REL_STR) {
+        sprintf(buf, "  ; string+%d", t);
       } else {
         strcpy(buf, "  ; ");
-        strcat(buf, relocs[i].target < 0 ? "main"
-                    : func_label(relocs[i].target));
-        if (relocs[i].import_idx >= 0)
+        strcat(buf, t < 0 ? "main" : func_label(t));
+        if (t >= 0 && fmap[t] < -1)
           strcat(buf, " (import)");
       }
       return buf;
@@ -545,8 +545,9 @@ static int list_table(int pc, int start)
 /* List len bytes of code (in fbuf) that start at code-segment offset
  * start; addresses are shown as loaded at subseg. A SEL's case table is
  * data inside the code, so each SEL's target is noted, and the table is
- * listed as a table when the listing reaches it. */
-static void list_code(const char *label, int len, int start, int first_reloc)
+ * listed as a table when the listing reaches it. Its relocations are
+ * in lr_at[] and the rest. */
+static void list_code(const char *label, int len, int start)
 {
   int pc = 0, i, tables[MAX_NEST], ntables = 0;
   printf("%s:\n", label);
@@ -588,7 +589,7 @@ static void list_code(const char *label, int len, int start, int first_reloc)
       break;
     case F_WORD:
       printf(" $%04X%s", fbuf[pc + 1] | (fbuf[pc + 2] << 8),
-             reloc_note(subseg + start + pc + 1, first_reloc));
+             reloc_note(subseg + start + pc + 1));
       break;
     case F_REL: {
       /* The offset is relative to the offset word itself. */
@@ -626,27 +627,25 @@ static void out_dci(const char *name)
   }
 }
 
-/* Keep a relocation of the word at load address at, for the RLD and
- * the listing (an Lreloc's fields). */
-static void keep_reloc(int kind, int at, int target, int import_idx)
+/* Keep a relocation of the word at load address at for the listing
+ * (lr_at[] and the rest). */
+static void keep_reloc(int kind, int at, int target)
 {
-  Lreloc *r = &relocs[nrelocs];
-  if (nrelocs >= MAX_RELOCS)
-    fatal(189 /* "too many relocations" */, NULL);
-  r->kind = kind;
-  r->at = at;
-  r->target = target;
-  r->import_idx = import_idx;
-  nrelocs++;
+  if (nlr < MAX_FUNC_RELOCS) {
+    lr_at[nlr] = at;
+    lr_kind[nlr] = (char)kind;
+    lr_target[nlr] = target;
+    nlr++;
+  }
 }
 
-/* Keep a relocation, read from the current object's stream, of the
- * word at load address at, and return the word's final value. The
- * record is checked first. Its target is an offset in the object's
- * data or strings, or a symbol of the object's, through fmap[] and
- * dmap[]. A REL_DSYM (data symbol target, plus add) becomes the
- * REL_DATA it stands for. */
-static int add_reloc(int kind, int at, int target, int add)
+/* Return the final value of the word at load address at, given a
+ * relocation read from the current object's stream; keep it for the
+ * listing if list. The record is checked first. Its target is an
+ * offset in the object's data or strings, or a symbol of the object's,
+ * through fmap[] and dmap[]. A REL_DSYM (data symbol target, plus add)
+ * becomes the REL_DATA it stands for. */
+static int add_reloc(int kind, int at, int target, int add, int list)
 {
   int v;
   if (kind == REL_DSYM) {
@@ -665,16 +664,13 @@ static int add_reloc(int kind, int at, int target, int add)
   } else if (kind != REL_FUNC || target >= nfsyms || fmap[target] == -1) {
     bad_obj();
   }
-  if (kind == REL_DATA) {
-    keep_reloc(kind, at, target, -1);
+  if (list)
+    keep_reloc(kind, at, target);
+  if (kind == REL_DATA)
     return data_base + target;
-  }
-  if (kind == REL_STR) {
-    keep_reloc(kind, at, target, -1);
+  if (kind == REL_STR)
     return strs_base + target;
-  }
   v = fmap[target];
-  keep_reloc(kind, at, target, v < 0 ? -2 - v : -1);
   return v < 0 ? 0 : subseg + v;    /* an import: the loader fills it in */
 }
 
@@ -682,6 +678,7 @@ static int add_reloc(int kind, int at, int target, int add)
 static const char data_tags[] = { REC_DATA, REC_DREL, 0 };
 static const char str_tags[] = { REC_STR, 0 };
 static const char func_tags[] = { REC_FUNC, 0 };
+static const char rld_tags[] = { REC_DATA, REC_DREL, REC_FUNC, 0 };
 
 /* Open object k's stream file for reading, from its start. */
 static void open_obj(int k)
@@ -756,7 +753,7 @@ static void copy_data(int k)
       if (at + 2 > data_size)
         bad_obj();
       bputw(&out, add_reloc(kind, data_base + obj_data[k] + at, target,
-                            add));
+                            add, 0));
       at += 2;
     }
   }
@@ -791,7 +788,7 @@ static void copy_strings(int k)
  * time. */
 static void copy_code(int k)
 {
-  int at = 0, idx, len, n, i, first, c, start;
+  int at = 0, idx, len, n, i, c, start;
 
   map_object(k);
   if (opt_list && nobjs > 1)
@@ -809,20 +806,21 @@ static void copy_code(int k)
       fbuf[i] = (unsigned char)c;
     }
     start = obj_code[k] + at;
-    first = nrelocs;
-    n = bgetw(&in);
+    nlr = 0;
+    if ((n = bgetw(&in)) > MAX_FUNC_RELOCS)
+      bad_obj();
     for (i = 0; i < n; i++) {
       int kind = bgetc(&in), off = bgetw(&in), target = bgetw(&in), v;
       if (off < 0 || off > len - 2)
         bad_obj();
       /* The word holds an extern global's addend, else 0. */
       v = add_reloc(kind, subseg + start + off, target,
-                    fbuf[off] | (fbuf[off + 1] << 8));
+                    fbuf[off] | (fbuf[off + 1] << 8), opt_list);
       fbuf[off] = (unsigned char)v;
       fbuf[off + 1] = (unsigned char)(v >> 8);
     }
     if (opt_list)
-      list_code(func_label(idx), len, start, first);
+      list_code(func_label(idx), len, start);
     bwrite(&out, fbuf, len);
     at += len;
   }
@@ -831,29 +829,88 @@ static void copy_code(int k)
     bad_obj();
 }
 
-/* Write the RLD's function entries for object k, in code order: reread
- * its F records' lengths rather than keep every start in memory. */
-static void func_entries(int k)
-{
-  int at = obj_code[k], len, n;
+/* ---------- Step 4: the RLD, read again from the objects ---------- */
 
-  cur = k;
-  open_obj(k);
-  while (next_record(func_tags) != EOF) {
-    bskip(&in, 2);                        /* function symbol index */
-    len = bgetw(&in);
-    bputc(&out, 0x02);
-    bputw(&out, subseg + at);
-    bputc(&out, 0);
-    at += len;
-    bskip(&in, len);
-    if ((n = bgetw(&in)) > MAX_FUNC_RELOCS)
+/* Write one 4-byte RLD entry: its type, a word, and a byte. */
+static void rld_entry(int type, int word, int byte)
+{
+  bputc(&out, type);
+  bputw(&out, word);
+  bputc(&out, byte);
+}
+
+/* Write the RLD's function entries for object k, one for each function
+ * its summary defines. The loaders want them all before any
+ * relocation, but in any order (cmd.pla, cmdsys.c), so the summary,
+ * much smaller than the stream, is read again, not the F records. */
+static void def_entries(int k)
+{
+  const char *name = open_syms(k);
+  Lsym s;
+  int i;
+
+  for (i = 0; i < nfsyms + ndsyms; i++) {
+    read_sym(&s, i >= nfsyms, name);
+    if (i < nfsyms && (s.flags & SYM_DEFINED))
+      rld_entry(0x02, subseg + obj_code[k] + s.off, 0);
+  }
+  close_syms(name);
+}
+
+/* Write the RLD entry for a relocation of kind to target (a function
+ * symbol of the current object, for REL_FUNC) of the word at load
+ * address at: an import's, with its ESD index, or an address's. */
+static void reloc_entry(int kind, int target, int at)
+{
+  int v = -1;
+  if (kind == REL_FUNC) {
+    if (target >= nfsyms)
       bad_obj();
-    bskip(&in, 5 * n);                    /* its relocations */
+    v = fmap[target];
+  }
+  if (v < -1)
+    rld_entry(0x91, at - MODULE_BASE, -2 - v);
+  else
+    rld_entry(0x81, at - MODULE_BASE, 0);
+}
+
+/* Write the RLD's relocations for object k: read its stream again, for
+ * the R records and each F record's relocations, which steps 2 and 3
+ * have checked. */
+static void reloc_entries(int k)
+{
+  int at = 0, start = obj_code[k], t, n, kind, target, off, len;
+
+  map_object(k);
+  open_obj(k);
+  while ((t = next_record(rld_tags)) != EOF) {
+    if (t == REC_DATA) {
+      n = bgetc(&in);
+      bskip(&in, n);
+      at += n;
+    } else if (t == REC_DREL) {
+      kind = bgetc(&in);
+      target = bgetw(&in);
+      if (kind == REL_DSYM)
+        bskip(&in, 2);                    /* its addend */
+      reloc_entry(kind, target, data_base + obj_data[k] + at);
+      at += 2;
+    } else {
+      bskip(&in, 2);                      /* function symbol index */
+      len = bgetw(&in);
+      bskip(&in, len);
+      if ((n = bgetw(&in)) > MAX_FUNC_RELOCS)
+        bad_obj();
+      while (n-- > 0) {
+        kind = bgetc(&in);
+        off = bgetw(&in);
+        target = bgetw(&in);
+        reloc_entry(kind, target, subseg + start + off);
+      }
+      start += len;
+    }
   }
   bclose(&in);
-  if (at != obj_code[k + 1])
-    bad_obj();
 }
 
 /* The init function runs when the module loads: call main, discard its
@@ -862,7 +919,8 @@ static void func_entries(int k)
 static int init_code(int init_off)
 {
   int n = 0, v = subseg + obj_code[g_def[main_sym]] + g_off[main_sym];
-  keep_reloc(REL_FUNC, subseg + init_off + 1, -1, -1);
+  nlr = 0;
+  keep_reloc(REL_FUNC, subseg + init_off + 1, -1);
   fbuf[n++] = OP_CALL;
   fbuf[n++] = (unsigned char)v;
   fbuf[n++] = (unsigned char)(v >> 8);
@@ -886,7 +944,7 @@ static int init_size(void)
 void link_module(int n, const char **bases, const char *path)
 {
   static const char dep[] = "CMDSYS";
-  int module_base = 0x1000, hdr = 10;
+  int hdr = 10;
   int init_off, deplen, total, i, k;
 
   /* Step 1. */
@@ -906,7 +964,7 @@ void link_module(int n, const char **bases, const char *path)
   /* The data segment holds the globals, then the string pool. One pad
    * byte between it and the bytecode keeps data from ever sharing an
    * address with the first function. */
-  data_base = module_base + hdr + deplen;
+  data_base = MODULE_BASE + hdr + deplen;
   strs_base = data_base + obj_data[n];
   subseg = strs_base + obj_strs[n] + 1;
   total = obj_code[n] + init_size();
@@ -916,7 +974,7 @@ void link_module(int n, const char **bases, const char *path)
   /* Step 2. */
   if (!bopen(&out, path, 1))
     fatal(192 /* "cannot create output file" */, path);
-  bputw(&out, subseg - module_base + total);
+  bputw(&out, subseg - MODULE_BASE + total);
   bputw(&out, 0x6502);                    /* magic */
   bputw(&out, 0);                         /* system flags */
   bputw(&out, subseg);
@@ -936,29 +994,21 @@ void link_module(int n, const char **bases, const char *path)
   for (k = 0; k < n; k++)
     copy_code(k);
   if (main_sym >= 0) {
-    int first = nrelocs, len = init_code(init_off);
+    int len = init_code(init_off);
     if (opt_list)
-      list_code("(init)", len, init_off, first);
+      list_code("(init)", len, init_off);
     bwrite(&out, fbuf, len);
   }
 
-  /* Step 4. RLD: function entries first (in code order, init
-   * excluded), then the relocations. */
+  /* Step 4. RLD: function entries first (init excluded), then the
+   * relocations, both read again from the objects; then init's call
+   * to main. */
   for (k = 0; k < n; k++)
-    func_entries(k);
-  for (i = 0; i < nrelocs; i++) {
-    Lreloc *r = &relocs[i];
-    int at = r->at - module_base;
-    if (r->import_idx >= 0) {
-      bputc(&out, 0x91);
-      bputw(&out, at);
-      bputc(&out, r->import_idx);
-    } else {
-      bputc(&out, 0x81);
-      bputw(&out, at);
-      bputc(&out, 0);
-    }
-  }
+    def_entries(k);
+  for (k = 0; k < n; k++)
+    reloc_entries(k);
+  if (main_sym >= 0)
+    rld_entry(0x81, subseg + init_off + 1 - MODULE_BASE, 0);
   bputc(&out, 0);
 
   /* ESD: imports, in import order (slot order). */
