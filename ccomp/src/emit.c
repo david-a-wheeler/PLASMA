@@ -1,7 +1,8 @@
 /*
- * Stage 4: the emitter. Encodes machine ops into bytes and writes the
- * compiler's output (approach.md 18.1 and 18.6 B6a; formats in
- * ../OBJECT.md) as two files:
+ * Stage 4: the emitter, the last stage of the back end (ccgen).
+ * Encodes machine ops into bytes and writes the compiler's output
+ * (approach.md 18.1 and 18.6 B6a; formats in ../OBJECT.md) as two
+ * files:
  *
  *   .obj   one stream of tagged records, in the order they are made:
  *          D  a run of the global variables' bytes, with their initial
@@ -11,31 +12,26 @@
  *             apart from the data so that literals inside a global's
  *             initializer don't land in the middle of the global.
  *          F  a function: its bytecode, then its relocation records
- *   .syms  the symbol summary, written when compilation ends
+ *   .syms  the symbol summary, written when the IR file ends
  *
- * So only the source and one output file are open while compiling
- * (PLASMA's Apple II file library allows 4 open files). Only one
- * function's bytecode is in memory at a time, in a function buffer, so
- * that its frame size and its branch offsets can be patched before it is
- * written. Memory use doesn't depend on the size of the program. The
- * final pass (link.c) turns the files into a module.
+ * The D, R and S records come from the IR file as they are, and irin.c
+ * copies them here (emit_byte()); the F records are built here. Only
+ * one function's bytecode is in memory at a time, in a function buffer,
+ * so that its frame size and its branch offsets can be patched before
+ * it is written. Memory use doesn't depend on the size of the program.
+ * The final pass (link.c) turns the files into a module.
  */
 #include <string.h>
 #include "ccish.h"
 
-/* The output file: the stream while compiling, then the symbol summary
- * (emit_finish()). One Bfile serves both, one after the other. */
+/* The output file: the stream, then the symbol summary
+ * (emit_summary()). One Bfile serves both, one after the other. */
 static Bfile out;
 static const char *base_name;
 
-static int ndata;               /* bytes in the data so far */
-static int nstrs;               /* bytes in the string pool so far */
 static int ncode;               /* bytes of code written so far */
 
-/* Data bytes not yet written: the current run, written as one D record
- * when it is full, or before an R record or the end of the stream. */
-static unsigned char drun[DATA_RUN];
-static int ndrun;
+int fn_code[MAX_FUNCS];
 
 /* The function being built (an index into fn_name[] and the other
  * function arrays), or -1. */
@@ -75,19 +71,42 @@ static void open_out(const char *base, const char *suffix)
     fatal(176 /* "cannot create" */, stream_name(base, suffix));
 }
 
-/* Create the stream file written during compilation, for output name
- * base. */
+/* Create the stream file for output name base. No function is written
+ * yet. */
 void emit_open(const char *base)
 {
+  int i;
   base_name = base;
+  for (i = 0; i < MAX_FUNCS; i++)
+    fn_code[i] = -1;
   open_out(base, SUFFIX_OBJ);
+}
+
+/* Write one byte to the output file as it is: a record copied from the
+ * IR file, or part of the summary. */
+void emit_byte(int c)
+{
+  bputc(&out, c);
+}
+
+/* Write a word, low byte first, to the output file as it is. */
+void emit_word(int v)
+{
+  bputw(&out, v);
+}
+
+/* The number of bytes of code written so far: the code segment's size,
+ * once every function is written. */
+int emit_code_size(void)
+{
+  return ncode;
 }
 
 /* Append one byte to the function buffer. */
 static void code_byte(int v)
 {
   if (nfbuf >= MAX_FUNC_CODE)
-    error(177 /* "function too large:" */, name_of(fn_name[fn]));
+    error(177 /* "function too large:" */, func_name(fn));
   fbuf[nfbuf++] = (unsigned char)v;
 }
 
@@ -103,7 +122,7 @@ static void add_reloc(int kind, int target)
 {
   if (nrelocs >= MAX_FUNC_RELOCS)
     error(178 /* "too many calls and data references in" */,
-          name_of(fn_name[fn]));
+          func_name(fn));
   relocs[nrelocs].kind = kind;
   relocs[nrelocs].at = nfbuf;
   relocs[nrelocs].target = target;
@@ -116,7 +135,7 @@ static void frame_byte(int v)
 {
   if (v == FRAME_LATER) {
     if (nframe >= MAX_RETURNS)
-      error(179 /* "too many returns in" */, name_of(fn_name[fn]));
+      error(179 /* "too many returns in" */, func_name(fn));
     frame_at[nframe++] = nfbuf;
     v = 0;
   }
@@ -150,7 +169,7 @@ static void place_label(int n)
   int at = label_word[n];
   if (label_placed[n])
     fatal(180 /* "internal error: label placed twice in" */,
-          name_of(fn_name[fn]));
+          func_name(fn));
   while (at != NO_LINK) {
     int link = fbuf[at] | (fbuf[at + 1] << 8);
     patch_word(at, nfbuf - at);
@@ -179,94 +198,6 @@ static void join_labels(int a, int b)
   label_word[a] = NO_LINK;
 }
 
-/* Write a string literal of len bytes to the stream, for the string
- * pool. Returns the pool offset of its first character. */
-int data_string(const char *s, int len)
-{
-  int first = nstrs + 1;
-  /* Keep offsets well inside 16 bits; the final pass checks that the
-   * whole module fits. */
-  if (nstrs > 0x7FFF - len - 2)
-    error(181 /* "too many string literals: over 32767 bytes" */, NULL);
-  /* In the pool it is [len][chars][NUL] (the final pass adds the length
-   * byte and the NUL): the C pointer is to the first character, and the
-   * byte before it makes it a PLASMA string as well. */
-  bputc(&out, REC_STR);
-  bputw(&out, len);
-  bwrite(&out, (const unsigned char *)s, len);
-  nstrs += len + 2;
-  return first;
-}
-
-/* Write the pending data run as a D record. */
-static void flush_data(void)
-{
-  if (ndrun == 0)
-    return;
-  bputc(&out, REC_DATA);
-  bputc(&out, ndrun);
-  bwrite(&out, drun, ndrun);
-  ndrun = 0;
-}
-
-/* The number of bytes written to the data stream so far: the data
- * offset of the next byte. */
-int data_offset(void)
-{
-  return ndata;
-}
-
-/* Append one byte (the low byte of v) to the data. */
-void data_byte(int v)
-{
-  if (ndata >= 0x7FFF)
-    error(182 /* "too much data: globals over 32767 bytes" */, NULL);
-  if (ndrun == DATA_RUN)
-    flush_data();
-  drun[ndrun++] = (unsigned char)v;
-  ndata++;
-}
-
-/* Append a word, low byte first, to the data. */
-void data_word(int v)
-{
-  data_byte(v);
-  data_byte(v >> 8);
-}
-
-/* Append a word to the data that holds an address, plus add bytes: of
- * data (kind REL_DATA) or of a string (REL_STR), at offset target, or
- * of data symbol target (REL_DSYM, an extern global). It is an R record
- * in place of the word's two bytes; the final pass writes the address
- * there. */
-void data_addr(int kind, int target, int add)
-{
-  if (ndata > 0x7FFF - 2)
-    error(182 /* "too much data: globals over 32767 bytes" */, NULL);
-  flush_data();
-  bputc(&out, REC_DREL);
-  bputc(&out, kind);
-  if (kind == REL_DSYM) {
-    bputw(&out, target);
-    bputw(&out, add);
-  } else {
-    bputw(&out, target + add);
-  }
-  ndata += 2;
-}
-
-/* Reserve n zero bytes in the data, for a global variable. Returns
- * their data offset. */
-int data_zero(int n)
-{
-  int first = ndata;
-  if (ndata > 0x7FFF - n)
-    error(182 /* "too much data: globals over 32767 bytes" */, NULL);
-  while (n-- > 0)
-    data_byte(0);
-  return first;
-}
-
 /* For a function whose frame is empty (no parameters, locals or
  * temporaries), drop the frame, as PLASMA's compiler does: remove the
  * ENTER, and make each LEAVE a RET. The frame size is only known at the
@@ -280,7 +211,7 @@ static void drop_frame(void)
   int i;
   if (nframe == 0 || frame_at[0] != 1 || fbuf[0] != OP_ENTER)
     fatal(183 /* "internal error: no ENTER at the start of" */,
-          name_of(fn_name[fn]));
+          func_name(fn));
   for (i = 1; i < nframe; i++) {      /* frame_at[0] is the ENTER's */
     fbuf[frame_at[i] - 1] = OP_RET;
     fbuf[frame_at[i]] = OP_RET;
@@ -299,7 +230,7 @@ static void end_function(int frame_size)
   int i;
   if (frame_size > 255)
     error(184 /* "too many parameters and locals in" */,
-          name_of(fn_name[fn]));
+          func_name(fn));
   for (i = 0; i < nframe; i++)
     fbuf[frame_at[i]] = (unsigned char)frame_size;
   if (frame_size == 0)
@@ -307,7 +238,7 @@ static void end_function(int frame_size)
   for (i = 0; i < MAX_LABELS; i++)
     if (!label_placed[i] && label_word[i] != NO_LINK)
       fatal(185 /* "internal error: branch to a label never"
-                   " placed in" */, name_of(fn_name[fn]));
+                   " placed in" */, func_name(fn));
   if (ncode > 0x7FFF - nfbuf)
     fatal(186 /* "too much code" */, NULL);
   fn_code[fn] = ncode;
@@ -406,59 +337,28 @@ static void close_out(const char *suffix)
     fatal(187 /* "error writing" */, stream_name(base_name, suffix));
 }
 
+
 /* After an error: close the output file if it is open, writing out what
  * is buffered, so that a kept stream (-k) is complete up to the error,
  * and so that ProDOS can remove the file. */
 void emit_abort(void)
 {
-  if (out.f)
-    flush_data();
   bclose(&out);
 }
 
-/* Write a symbol's name (a name pool offset) to the summary: its
- * length, then its characters. */
-static void put_name(int name)
+/* Close the stream, and start the symbol summary: its magic and
+ * version. irin.c writes the rest (emit_byte()), from the IR file's. */
+void emit_summary(void)
 {
-  const char *s = name_of(name);
-  int n = (int)strlen(s);
-  bputc(&out, n);
-  bwrite(&out, (const unsigned char *)s, n);
-}
-
-/* Finish and close the stream, and write the symbol summary: the
- * functions, then the global variables (data symbols). */
-void emit_finish(void)
-{
-  int i, flags, off, size, hash, name, nsyms = data_sym_count();
-
-  flush_data();
   close_out(SUFFIX_OBJ);
-
   open_out(base_name, SUFFIX_SYMS);
   bputc(&out, 'C');
   bputc(&out, 'I');
   bputc(&out, OBJ_VERSION);
-  bputw(&out, ndata);
-  bputw(&out, nstrs);
-  bputw(&out, ncode);
-  bputw(&out, nfuncs);
-  bputw(&out, nsyms);
-  for (i = 0; i < nfuncs; i++) {
-    flags = func_sym(i, &hash);
-    bputc(&out, flags);
-    bputc(&out, fn_flags[i] & FN_COUNTED ? fn_nparams[i] : 255);
-    bputw(&out, flags & SYM_DEFINED ? fn_code[i] : 0);
-    bputw(&out, hash);
-    put_name(fn_name[i]);
-  }
-  for (i = 0; i < nsyms; i++) {
-    flags = data_sym(i, &off, &size, &hash, &name);
-    bputc(&out, flags);
-    bputw(&out, off);
-    bputw(&out, size);
-    bputw(&out, hash);
-    put_name(name);
-  }
+}
+
+/* Close the symbol summary. */
+void emit_finish(void)
+{
   close_out(SUFFIX_SYMS);
 }

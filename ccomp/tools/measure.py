@@ -6,8 +6,9 @@ Usage: tools/measure.py [-full]   (after `make`; writes tools/out/)
 Each file in src/ is preprocessed by gcc with the stand-in headers in
 tools/inc/, as the small build (-DCCISH_SMALL, approach.md decision
 21; or the full build, with -full), worked around where ccish still
-lacks something, and compiled with cccomp. Then each of the Apple II
-programs (cccomp, ccrel) is linked with ccrel, with tools/libstub.c
+lacks something, and compiled with cccomp and ccgen. Then each of the
+Apple II programs (cccomp, ccgen, ccrel) is linked with ccrel, with
+tools/libstub.c
 standing in for the C library. The report gives each file's code, data and string sizes
 (from its .syms header) and each program's totals and link workload
 (from ccrel's listing). See approach.md 18.5 and 18.6 E2.
@@ -21,7 +22,7 @@ The workarounds, each something ccish doesn't accept yet:
     gives the same values);
   - parse.c's one struct ?: becomes an if.
 A file that stops on one of ccish's own limits (say, "too many
-variables") is compiled again by a cccomp built from a copy of the
+variables") is compiled again by a cccomp and ccgen built from a copy of the
 sources with those limits raised (BIG_LIMITS), and marked so in the
 report: a limit ccish itself must raise to compile that file.
 """
@@ -36,7 +37,8 @@ OUT = os.path.join(TOOLS, "out")
 FULL = "-full" in sys.argv[1:]      # measure the full build instead
 
 COMMON = ["diag", "bio"]
-COMPILE = ["lex", "name", "type", "parse", "lower", "peep", "emit"]
+FRONT = ["lex", "name", "type", "parse", "irout"]
+BACK = ["irin", "lower", "peep", "emit"]
 # Limits raised for big_cccomp(), and the fatal messages that call
 # for it.
 BIG_LIMITS = {"MAX_FUNCS": 1024, "MAX_VARS": 512, "MAX_LABELS": 512,
@@ -48,7 +50,8 @@ LIMIT_MSGS = ("too many", "is full")
 # The Apple II programs (B3a). ccish, both passes in one, is for the
 # host only: it is too large for one module.
 PROGRAMS = [
-    ("cccomp", ["cccomp"] + COMMON + COMPILE),
+    ("cccomp", ["cccomp"] + COMMON + FRONT),
+    ("ccgen", ["ccgen"] + COMMON + BACK),
     ("ccrel", ["ccrel"] + COMMON + ["link"]),
 ]
 
@@ -109,8 +112,18 @@ def run(args):
     return r.returncode == 0, r.stdout + r.stderr
 
 
+def compile_obj(bindir, name, src):
+    """Compile src into OUT/NAME.obj and .syms with BINDIR's cccomp and
+    ccgen; return (succeeded, messages)."""
+    out = os.path.join(OUT, name)
+    ok, msg = run([os.path.join(bindir, "cccomp"), "-o", out, src])
+    if ok:
+        ok, msg = run([os.path.join(bindir, "ccgen"), out])
+    return ok, msg
+
+
 def build_big():
-    """Build OUT/big/cccomp and OUT/big/ccrel with BIG_LIMITS, from a
+    """Build OUT/big/cccomp, ccgen and ccrel with BIG_LIMITS, from a
     copy of the sources (src/ is left alone), with the message file
     beside them; return the directory."""
     big = os.path.join(OUT, "big")
@@ -129,7 +142,9 @@ def build_big():
             f.write(text)
     src = lambda names: [os.path.join(big, n + ".c") for n in names]
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "cccomp")]
-                   + src(["cccomp"] + COMMON + COMPILE), check=True)
+                   + src(["cccomp"] + COMMON + FRONT), check=True)
+    subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccgen")]
+                   + src(["ccgen"] + COMMON + BACK), check=True)
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccrel")]
                    + src(["ccrel"] + COMMON + ["link"]), check=True)
     return big
@@ -404,12 +419,11 @@ def main():
             with open(os.path.join(OUT, "libstub.c"), "w") as f:
                 f.write(src)
             src = os.path.join(OUT, "libstub.c")
-        args = ["-o", os.path.join(OUT, name), src]
-        ok, msg = run([os.path.join(CCOMP, "cccomp")] + args)
+        ok, msg = compile_obj(CCOMP, name, src)
         if not ok and any(m in msg for m in LIMIT_MSGS):
             over[name] = msg.strip().split(": ", 1)[-1]
             big = big or build_big()
-            ok, msg = run([os.path.join(big, "cccomp")] + args)
+            ok, msg = compile_obj(big, name, src)
         if not ok:
             print("%-10s  FAILED: %s" % (name, msg.strip()))
             failed = True

@@ -1,18 +1,18 @@
 /* The other half of probe: see a.c. */
-int f100198(int n);
-extern int f100286;
-int f100294(int n);
-int f100000 = 4;
+int f108188(int n);
+extern int f108284;
+int f108296(int n);
+int f108198 = 4;
 
-/* n less f100000. */
-int f100199(int n) { return n - f100000; }
+/* n less f108198. */
+int f108189(int n) { return n - f108198; }
 
 int main()
 {
-  puti(f100198(1)); putc(' ');
-  puti(f100286); putc(' ');
-  puti(f100294(3)); putc(' ');
-  puti(f100199(10));
+  puti(f108188(1)); putc(' ');
+  puti(f108284); putc(' ');
+  puti(f108296(3)); putc(' ');
+  puti(f108189(10));
   putln();
   return 0;
 }

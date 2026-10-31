@@ -1,23 +1,12 @@
 /*
- * Stage 2: lowering. Turns IR ops into PLASMA machine ops and chooses
- * their encodings, mostly 1:1. Each IR op is described in ../IR.md.
- *
- * IR ops first wait in a small buffer, so that the parser can still
- * reorder the code of the current expression (approach.md 4(d2)). The
- * parser notes positions in the IR stream (ir_here()), and
- * ir_rotate() exchanges two adjacent blocks of ops that are still in
- * the buffer: *d++ = *s++ is parsed address first, but needs the value
- * first, since PLASMA's stores take the address on top and there is no
- * SWAP. Moving ops is safe because each lowers on its own and branches
- * name labels by number. The buffer is flushed at the end of each full
- * expression and of each function, and when it is full; then
- * ir_holds() tells the parser that code before the flush can no longer
- * move.
+ * Stage 2: lowering, the first stage of the back end (ccgen). Turns IR
+ * ops, as irin.c reads them from the IR file, into PLASMA machine ops
+ * and chooses their encodings, mostly 1:1. Each IR op is described in
+ * ../IR.md. With -i, each op is printed as it is lowered.
  */
 #include <string.h>
 #include "ccish.h"
 
-#ifdef CCISH_LISTING
 /* Each IR op's name, for -i. */
 static const char *const ir_names[] = {
   "FUNC", "ENDFUNC", "CONST", "DATAADDR", "STRADDR", "LOCAL", "SETLOCAL",
@@ -30,7 +19,6 @@ static const char *const ir_names[] = {
   "LABEL", "JUMP", "BRFALSE", "BRTRUE", "JOIN",
   "SEL", "CASES", "CASEVAL", "CASETO"
 };
-#endif
 
 /* PLASMA's comparison op for each IR comparison, or -1. */
 static int compare_op(int op)
@@ -84,37 +72,51 @@ static int simple_op(int op)
   return -1;
 }
 
-#ifdef CCISH_LISTING
-/* Print one IR op, for -i. */
+/* Write s, then n in decimal, to standard output, for -i. No printf:
+ * the small build has none. */
+static void out_num(const char *s, int n)
+{
+  fputs(s, stdout);
+  fputs(num_text(n), stdout);
+}
+
+/* Print one IR op, for -i: "IR", its name padded to 8 characters, and
+ * its operands. */
 static void dump_ir(int op, int a, int f)
 {
-  printf("IR %-8s", ir_names[op]);
+  int n = (int)strlen(ir_names[op]);
+  fputs("IR ", stdout);
+  fputs(ir_names[op], stdout);
+  while (n++ < 8)
+    fputs(" ", stdout);
   switch (op) {
-  case IR_FUNC:     printf(" %s", name_of(fn_name[f])); break;
-  case IR_ENDFUNC:  printf(" frame=%d", a); break;
-  case IR_CONST:    printf(" %d", a); break;
+  case IR_FUNC:     fputs(" ", stdout); fputs(func_name(f), stdout); break;
+  case IR_ENDFUNC:  out_num(" frame=", a); break;
+  case IR_CONST:    out_num(" ", a); break;
   case IR_DATAADDR: case IR_GLOBAL: case IR_SETGLOBAL:
   case IR_GLOBALB: case IR_SETGLOBALB:
-                    if (f >= 0)
-                      printf(" sym%d+%d", f, a);
-                    else
-                      printf(" data+%d", a);
+                    if (f >= 0) {
+                      out_num(" sym", f);
+                      out_num("+", a);
+                    } else {
+                      out_num(" data+", a);
+                    }
                     break;
-  case IR_STRADDR:  printf(" string+%d", a); break;
+  case IR_STRADDR:  out_num(" string+", a); break;
   case IR_LOCAL: case IR_SETLOCAL:
   case IR_LOCALB: case IR_SETLOCALB: case IR_LOCALADDR:
-                    printf(" [%d]", a); break;
-  case IR_CALL:     printf(" %s nargs=%d", name_of(fn_name[f]), a); break;
+                    out_num(" [", a); fputs("]", stdout); break;
+  case IR_CALL:     fputs(" ", stdout); fputs(func_name(f), stdout);
+                    out_num(" nargs=", a); break;
   case IR_LABEL: case IR_JUMP: case IR_BRFALSE: case IR_BRTRUE:
   case IR_SEL: case IR_CASETO:
-                    printf(" L%d", a); break;
-  case IR_JOIN:     printf(" L%d L%d", a, f); break;
+                    out_num(" L", a); break;
+  case IR_JOIN:     out_num(" L", a); out_num(" L", f); break;
   case IR_CASES: case IR_CASEVAL:
-                    printf(" %d", a); break;
+                    out_num(" ", a); break;
   }
-  printf("\n");
+  fputs("\n", stdout);
 }
-#endif
 
 /* The fixup for a global op's address: a data offset (f is -1), or
  * extern global f plus the addend in m->a, which m->fn then names. */
@@ -171,15 +173,14 @@ static void put_simple(int op)
   peep_put(&m);
 }
 
-/* Lower one IR op to machine ops and pass them to the peephole stage. */
-static void lower(int op, int a, int f)
+/* Stage 2's entry: lower one IR op to machine ops and pass them to the
+ * peephole stage. */
+void lower_op(int op, int a, int f)
 {
   Mop m;
 
-#ifdef CCISH_LISTING
   if (opt_ir)
     dump_ir(op, a, f);
-#endif
   if (simple_op(op) >= 0) {
     put_simple(simple_op(op));
     return;
@@ -294,88 +295,4 @@ static void lower(int op, int a, int f)
   peep_put(&m);
   if (op == IR_ENDFUNC)
     peep_flush();
-}
-
-/* The IR ops waiting to be lowered. 64 is far more than a typical
- * statement needs (*d++ = *s++ is 9); see approach.md 4(d2). */
-#define IR_BUF 64
-
-typedef struct {
-  int op, a;
-  int f;          /* a function, or -1 */
-} IrOp;
-
-static IrOp buf[IR_BUF];
-static int nbuf;
-static int base;            /* the IR position of buf[0] */
-
-/* Lower every buffered op, oldest first. Positions keep counting from
- * where they were, so that a mark taken before this is seen as gone. */
-static void lower_all(void)
-{
-  int i;
-  for (i = 0; i < nbuf; i++)
-    lower(buf[i].op, buf[i].a, buf[i].f);
-  base += nbuf;
-  nbuf = 0;
-}
-
-/* End of a full expression (or a function): lower every buffered op.
- * No mark can be in use, so positions start again from 0. */
-void ir_flush(void)
-{
-  lower_all();
-  base = 0;
-}
-
-/* The IR position just after the last op put: where the next op will
- * go. */
-int ir_here(void)
-{
-  return base + nbuf;
-}
-
-/* Is the op at IR position pos (or the position itself, if nothing has
- * been put there yet) still in the buffer, so that it can be moved? */
-int ir_holds(int pos)
-{
-  return pos >= base;
-}
-
-/* Reverse the buffered ops from index i up to (not including) j. */
-static void reverse(int i, int j)
-{
-  IrOp t;
-  while (i < --j) {
-    t = buf[i];
-    buf[i++] = buf[j];
-    buf[j] = t;
-  }
-}
-
-/* Exchange the block of ops from position m0 to m1 with the block from
- * m1 to the end, by reversing each, then both together (Bentley,
- * Programming Pearls, column 2). The caller checks ir_holds(m0). */
-void ir_rotate(int m0, int m1)
-{
-  int i = m0 - base, j = m1 - base;
-  if (i < 0 || i > j || j > nbuf)
-    fatal(175 /* "internal error: bad IR rotation" */, NULL);
-  reverse(i, j);
-  reverse(j, nbuf);
-  reverse(i, nbuf);
-}
-
-/* Stage 2's entry: buffer one IR op. A full buffer is lowered first,
- * and the end of a function flushes everything. */
-void ir_put(int op, int a, int f)
-{
-  if (nbuf == IR_BUF)
-    lower_all();
-  buf[nbuf].op = op;
-  buf[nbuf].a = a;
-  buf[nbuf].f = f;
-  nbuf++;
-  if (op == IR_ENDFUNC)
-    ir_flush();
 }

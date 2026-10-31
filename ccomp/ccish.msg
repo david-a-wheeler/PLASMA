@@ -220,3 +220,4 @@
 221 conflicting types for
 222 too many names shared between objects
 223 too many objects to link
+224 too many function names for ccgen

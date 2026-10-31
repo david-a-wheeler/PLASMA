@@ -2536,7 +2536,7 @@ pass as its own module), C2 (message text out of memory), and C1 (a
 lean self-hosted build). A2/A3 are attractive but risky without
 collision detection; A4 is the C89-sanctioned form.
 
-#### 18.7 The back end as its own program, `ccgen` (designed 2026-10-30; not built yet)
+#### 18.7 The back end as its own program, `ccgen` (designed 2026-10-30; step 1 done 2026-10-31)
 
 Agreed in discussion (18.6 C1, "Direction after measuring", and D3;
 decision 22): stages 2 to 4 (lowering, peephole, emitting) leave
@@ -2881,6 +2881,63 @@ holds:
   66,052. Generated code is unchanged: 269 tests pass, and the
   self-compile inputs compile to byte-identical objects and symbol
   summaries with the old and new compiler.
+
+**Step 1 (the split) is done** (2026-10-31). Choices, open for review:
+- Files as proposed: `src/irout.c` (the IR buffer, moved from lower.c
+  unchanged except that it writes instead of lowering; the data
+  writers and the summary, moved from emit.c), `src/irin.c` (the
+  reader), `src/ccgen.c` (its `main`). lower.c keeps lowering only,
+  with `lower_op()` as its entry. One `ccish.h` still serves both
+  programs (per-stage headers later).
+- The line record holds `src_line` when `IR_FUNC` is put: the line of
+  the function body's `{`. A back-end error reads, for example,
+  `too_large.c:1: error 177: function too large: main`.
+- `ccgen` keeps every function name the IR file names (`MAX_FNAMES`,
+  3,281 bytes, 10% over parse.c's 2,982 for all its functions, a
+  bound), and a full table is a new message, 224 "too many function
+  names for ccgen". `func_name()` gives `?` for a function with no name
+  record (only in a damaged file, which the reader rejects first).
+- `-i` is in both builds of `ccgen`: `dump_ir()` now writes with
+  `fputs()` and `num_text()`, not `printf()`, with the same output
+  (the op name padded to 8). It prints as each op is lowered, which is
+  still the order the ops were read; an `L` record prints as
+  `; line N`. `cccomp` has no `-i` now. `opt_ir` is in every build
+  (diag.c); `CCISH_LISTING` covers only `-l`.
+- Files: `cccomp` removes the `.ir` after an error unless `-k`.
+  `ccgen` removes its `.obj` and `.syms` after an error, unless `-k`,
+  and keeps the `.ir` (for `-i`); after success it removes the `.ir`
+  unless `-k`. `ccish` removes all three, as before (`remove_stream()`
+  in diag.c removes one file). `ccgen output` takes the output name,
+  as `ccrel` does.
+- `fn_code[]` moved from parse.c to emit.c, set to -1 for "not
+  written", so that the summary check (defined exactly when written)
+  is direct.
+- **ccrel's shared-name table grew:** every file still declares all of
+  `ccish.h`'s functions, which the split added to, so linking ccish's
+  programs needs 144 shared names with 1,297 name bytes (it was 131
+  and 1,163), over `MAX_GNAMES` (1,281). `MAX_GSYMS` is now 163 (the
+  first prime 10% above 144) and `MAX_GNAMES` 1,427 (10% above),
+  about 300 bytes more in `ccrel`. The tests built on the limits
+  changed with them (the full table: 163 names; a static name that
+  doesn't fit: 43 long names; `tests/link/probe`'s colliding names,
+  found again for 163 slots; two listings' last lines). Since imports
+  are numbered in slot order, modules' ESDs changed order (accepted
+  once before, for issue 11). Per-stage headers would bring this back
+  down.
+- Tests: `run.sh` compiles objects with `cccomp` then `ccgen`
+  (`cc_obj`); new tests for `ccgen -k`, `-i`'s output (written by hand
+  from IR.md), three damaged IR files (cut short, a wrong version,
+  something after the summary: each reported, no stream files left,
+  the IR file kept), and a back-end error's file and line. 275 pass.
+  Before the change, every test program, link test file and
+  self-compile input (98 files) was compiled with the old compiler;
+  the new `cccomp` and `ccgen`, in both builds, write byte-identical
+  objects and summaries for all of them.
+- **Measured** (small build): `cccomp` 51,372 to **43,406** bytes
+  (code 26,772, data 15,516, strings 1,118); its module file 66,052 to
+  **56,706**. `ccgen` is 18,415 (code 8,469, data 9,317, strings 629;
+  module file 22,163); its data is mostly the function buffer, the
+  names (3.9K) and two file buffers. `ccrel` 14,274 (it was 13,966).
 
 Still open outside this plan: the 6502 stack depth (18.5, "Stack and
 static locals": the depth measurement, `MAX_NEST`, and nest counts in

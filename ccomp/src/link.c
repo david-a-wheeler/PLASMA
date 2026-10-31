@@ -32,10 +32,10 @@
 #include "ccish.h"
 
 #define MAX_OBJS    32      /* objects in one link */
-#define MAX_GSYMS   149     /* names shared between objects: the first
-                             * prime 10% above linking ccish's (131) */
-#define MAX_GNAMES  1281    /* bytes of those names, with their NULs:
-                             * 10% above linking ccish's (1,164) */
+#define MAX_GSYMS   163     /* names shared between objects: the first
+                             * prime 10% above linking ccish's (144) */
+#define MAX_GNAMES  1427    /* bytes of those names, with their NULs:
+                             * 10% above linking ccish's (1,297) */
 
 /* A symbol summary entry of the object being read: a function's, or
  * a global variable's (which has a size and no parameter count). */

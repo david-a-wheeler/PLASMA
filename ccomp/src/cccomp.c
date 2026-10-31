@@ -1,44 +1,39 @@
 /*
- * cccomp: ccish's compile pass as a program of its own (approach.md,
- * "B3"). It compiles one .c file into the stream files, and leaves
- * them for ccrel, the final pass, to turn into a module. On the Apple
- * II, a small driver runs cccomp and then ccrel, and each is freed
- * when it ends, so each has nearly all of memory.
+ * cccomp: ccish's front end as a program of its own (approach.md, "B3"
+ * and 18.7). It parses one .c file into the IR file, NAME.ir, and
+ * leaves it for ccgen, the back end, which writes the stream files for
+ * ccrel. On the Apple II, a small driver runs cccomp, ccgen and then
+ * ccrel, and each is freed when it ends, so each has nearly all of
+ * memory.
  *
- * Usage: cccomp [-i] [-k] [-o output] input.c
- *   -i  print the IR stream between stages 1 and 2
- *   -k  keep the stream files even after an error
- *   -o  output name for the stream files (default: input name without
- *       ".c")
+ * Usage: cccomp [-k] [-o output] input.c
+ *   -k  keep the IR file even after an error
+ *   -o  output name for the IR file (default: input name without ".c")
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "ccish.h"
 
-/* The stream files' output name, to remove them after an error. */
+/* The IR file's output name, to remove it after an error. */
 static const char *base_name;
 
-/* After an error: close the open files, and remove the stream files
- * (unless -k). */
+/* After an error: close the open files, and remove the IR file (unless
+ * -k). */
 void clean_up(void)
 {
   compile_abort();
-  remove_streams(base_name);
+  remove_stream(base_name, SUFFIX_IR);
 }
 
 /* Print the command-line syntax and exit. */
 static void usage(void)
 {
-#ifdef CCISH_LISTING
-  fputs("usage: cccomp [-i] [-k] [-o output] input.c\n", stderr);
-#else
   fputs("usage: cccomp [-k] [-o output] input.c\n", stderr);
-#endif
   exit(2);
 }
 
-/* Compile one .c file into the stream files. */
+/* Parse one .c file into the IR file. */
 int main(int argc, char **argv)
 {
   const char *src = NULL, *outname = NULL;
@@ -46,11 +41,6 @@ int main(int argc, char **argv)
 
   msg_init(argv[0]);
   for (i = 1; i < argc; i++) {
-#ifdef CCISH_LISTING
-    if (!strcmp(argv[i], "-i"))
-      opt_ir = 1;
-    else
-#endif
     if (!strcmp(argv[i], "-k"))
       opt_keep = 1;
     else if (!strcmp(argv[i], "-o") && i + 1 < argc)

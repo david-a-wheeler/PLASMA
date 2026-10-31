@@ -3,16 +3,17 @@
 The IR is the stream of ops that the parser (stage 1, `src/parse.c`)
 sends to the lowering stage (stage 2, `src/lower.c`) by calling
 `ir_put(op, a, sym)`. See [approach.md](approach.md), section 4A, for
-the pipeline as a whole. `ccish -i` prints the stream.
+the pipeline as a whole. `ccgen -i` (and `ccish -i`) prints the
+stream.
 
-**Planned (approach.md 18.7, not built yet):** stages 2 to 4 move to a
-program of their own, `ccgen`. The parser's program, `cccomp`, then
-writes the IR to a file, `NAME.ir`, whose encoding is in
-[OBJECT.md](OBJECT.md), "`NAME.ir`", and `ccgen` reads it and prints it
-(`-i`). The ops and their meanings stay as below. At first the buffer
-("Stage 2's buffer", below) stays with the parser, so the file holds
-the ops in their final order; later the buffer moves to `ccgen`, and
-the parser writes `IR_SWAP` instead ("Planned ops", below).
+**Since 18.7 step 1** (approach.md), stages 2 to 4 are a program of
+their own, `ccgen`. The parser's program, `cccomp`, writes the IR to a
+file, `NAME.ir`, whose encoding is in [OBJECT.md](OBJECT.md),
+"`NAME.ir`"; `ccgen` reads it, lowers each op (`lower_op()`), and
+prints it (`-i`). The ops and their meanings are as below. For now the
+buffer ("The IR buffer", below) stays with the parser, so the file
+holds the ops in their final order; later it moves to `ccgen`, and the
+parser writes `IR_SWAP` instead ("Planned ops", below).
 
 This document describes the ops that exist now (milestones 1 to 3,
 and M4 so far).
@@ -59,24 +60,24 @@ reasons:
    address, which needs the value below the address, is arranged by
    the parser. It emits the address, then the value, as C reads them,
    and then exchanges the two blocks of IR while they are still in
-   stage 2's buffer (`ir_rotate()`; see `IR_STORE`, and approach.md
+   the IR buffer (`ir_rotate()`; see `IR_STORE`, and approach.md
    4(d2)). No pseudo-ops are needed: the parser keeps IR positions in
    its own variables (`ir_here()`). Compound assignment and `++`/`--`
    on a computed address need the address twice, so they still save
    it in a temporary local (4(e)).
 
-## Stage 2's buffer
+## The IR buffer
 
-`ir_put()` doesn't lower an op at once. It holds up to 64 ops, so that
+`ir_put()` (in `src/irout.c`) doesn't write an op at once. It holds up to 64 ops, so that
 the parser can still exchange two adjacent blocks of them
 (`ir_rotate(m0, m1)` turns `[m0, m1) [m1, end)` into
 `[m1, end) [m0, m1)` in place, by three reversals). Moving IR ops is
 safe because each one lowers on its own, and branches name labels by
-number. The buffer is lowered at the end of each full expression
-(`ir_flush()`), at the end of each function, and when it is full.
-After that, `ir_holds()` tells the parser that the code can't move,
-and the parser falls back to temporaries. `ccish -i` prints each op as
-it is lowered, so it shows the final order.
+number. The buffer is written to the IR file at the end of each full
+expression (`ir_flush()`), at the end of each function, and when it is
+full. After that, `ir_holds()` tells the parser that the code can't
+move, and the parser falls back to temporaries. `ccgen -i` prints each
+op as it is lowered, so it shows the final order.
 
 ## Ops
 
@@ -308,7 +309,7 @@ when it sees `=`, but the store needs the value first:
   exchange and the store wait until the parser sees whether the
   assignment's value is used; if it is, a `DUP` goes after `v` first,
   so the value stays below the address: `v DUP e STORE`.
-- If the expression was too long for stage 2's buffer, so that `e`'s
+- If the expression was too long for the IR buffer, so that `e`'s
   code has already been lowered, the parser swaps after the fact with
   two temporary locals: `e v SETLOCAL t1 DROP SETLOCAL t2 DROP LOCAL
   t1 LOCAL t2 STORE`. Temporaries are freed at the end of each full
@@ -652,7 +653,7 @@ stage 4 replaces it with an offset.
 ## Adding ops
 
 New IR ops arrive with the milestones that need them. Reordering
-needs none: it is done by exchanging blocks in stage 2's buffer (M5
+needs none: it is done by exchanging blocks in the IR buffer (M5
 step 4). The `for` increment's side buffer (M10) may add some.
 
 Each new op gets an entry here with the same headings: stack effect,

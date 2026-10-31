@@ -1,7 +1,9 @@
 # ccish stream files (object format)
 
 The compiler proper (stages 1–4) doesn't write the REL module itself.
-It writes a **stream file** and a **symbol summary**, and a separate
+Its front end (`cccomp`) writes an **IR file**, its back end (`ccgen`)
+turns that into a **stream file** and a **symbol summary**, and a
+separate
 **final pass** (`src/link.c`, the program `ccrel`) turns them into the
 module. See [approach.md](approach.md), 18.1, for why. Together the
 two files are ccish's object file format, an **object**. The final
@@ -11,22 +13,21 @@ version number bumped.
 
 For output `NAME`, the files are `NAME.obj` and `NAME.syms`. `ccish`
 removes them after the module is written, and after any error, unless
-`-k` is given; `cccomp` leaves them for `ccrel`, which keeps them. This is format version 4, which adds what linking
+`-k` is given; `ccgen` leaves them for `ccrel`, which keeps them. This
+is format version 4, which adds what linking
 several files needs (approach.md issue 11): data symbols, local
 (`static`) symbols, a relocation to an `extern` global, and type
 hashes. Version 3 had none of these. M5's version 2 had four stream
 files (`.data`, `.drel`, `.strs` and `.code`), which version 3 made
-records in the one stream file, so that the compile pass has only the
-source and one output file open (PLASMA's Apple II file library allows
+records in the one stream file, so that each pass has only one input
+and one output file open (PLASMA's Apple II file library allows
 4 open files; approach.md 18.6 B6a).
 
 All words are 16-bit little-endian. Every file is written once, in
 order, with no seeking, through 512-byte block buffers (`src/bio.c`).
 
-**Planned (approach.md 18.7, not built yet):** the back end becomes a
-program of its own, `ccgen`. Then `cccomp` writes an IR file,
-`NAME.ir` (below), and `ccgen` turns it into `NAME.obj` and
-`NAME.syms`, whose formats don't change.
+The IR file, `NAME.ir` (below), passes from `cccomp` to `ccgen`
+(approach.md 18.7); `ccgen` turns it into `NAME.obj` and `NAME.syms`.
 
 ## `NAME.obj`: the stream
 
@@ -195,7 +196,7 @@ array count (`[` then the element type), so that `extern int a[];`
 matches `int a[10];`; the size field covers that. A hash that comes
 out 0 is written as 1.
 
-## `NAME.ir`: the IR file (designed; not built yet)
+## `NAME.ir`: the IR file
 
 Written by `cccomp` (the front end) and read once, in order, by
 `ccgen` (the back end), which writes `NAME.obj` and `NAME.syms` from

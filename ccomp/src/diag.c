@@ -1,8 +1,9 @@
 /*
  * Diagnostics and other support shared by ccish's programs: ccish
- * (both passes), cccomp (the compile pass) and ccrel (the final pass;
- * approach.md, "B3"). Each program supplies clean_up(), which closes
- * and removes its partial output after an error.
+ * (every pass), cccomp (the front end), ccgen (the back end; approach.md
+ * 18.7) and ccrel (the final pass; approach.md, "B3"). Each program
+ * supplies clean_up(), which closes and removes its partial output
+ * after an error.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,8 +14,8 @@ const char *src_name = "";
 int src_line;
 #ifdef CCISH_LISTING
 int opt_list;
-int opt_ir;
 #endif
+int opt_ir;
 int opt_keep;
 
 /* Return base followed by suffix, in a static buffer that the next
@@ -29,14 +30,20 @@ const char *stream_name(const char *base, const char *suffix)
   return buf;
 }
 
+/* Remove the file of output name base and suffix (such as the IR file),
+ * unless -k asked to keep it. */
+void remove_stream(const char *base, const char *suffix)
+{
+  if (base && !opt_keep)
+    remove(stream_name(base, suffix));
+}
+
 /* Remove the stream file and symbol summary of output name base, unless
  * -k asked to keep them. */
 void remove_streams(const char *base)
 {
-  if (!base || opt_keep)
-    return;
-  remove(stream_name(base, SUFFIX_OBJ));
-  remove(stream_name(base, SUFFIX_SYMS));
+  remove_stream(base, SUFFIX_OBJ);
+  remove_stream(base, SUFFIX_SYMS);
 }
 
 /* The output name for source file src: its name without ".c", in a

@@ -73,7 +73,7 @@
  *
  * Reordering: when an address has been emitted before the parser sees
  * that it is stored into (*d++ = *s++), the value's code is emitted
- * after it, and then the two blocks are exchanged in stage 2's buffer
+ * after it, and then the two blocks are exchanged in the IR buffer
  * (ir_rotate(), approach.md 4(d2)). The parser marks where blocks start
  * with ir_here(). i + p is reordered the same way, to scale i after p.
  *
@@ -109,7 +109,6 @@ char fn_type[MAX_FUNCS];
 int fn_ptypes[MAX_FUNCS];
 char fn_nparams[MAX_FUNCS];
 char fn_flags[MAX_FUNCS];
-int fn_code[MAX_FUNCS];
 int nfuncs;
 
 static int depth;           /* block depth; parameters are at depth 1 */
@@ -174,7 +173,6 @@ static int add_func(const char *name)
   fn_type[nfuncs] = TY_INT;
   fn_ptypes[nfuncs] = -1;
   fn_flags[nfuncs] = 0;
-  fn_code[nfuncs] = 0;
   return nfuncs++;
 }
 
@@ -753,7 +751,7 @@ static void join_label(int from, int to)
  * K_DEREF, with the address on the stack. Storing into it needs the
  * value first and the address on top, and there is no SWAP. So for
  * *f() = e, the parser emits e after the address, then exchanges the
- * two blocks of code while they are still in stage 2's buffer
+ * two blocks of code while they are still in the IR buffer
  * (ir_rotate(), approach.md 4(d2)): "e addr SW", with no temporary.
  * Until it sees whether the assignment's value is used, the result is
  * K_STORE: the address, then the value, are the last code emitted, and
@@ -2503,7 +2501,7 @@ static int copy_func(void)
  * are moved one at a time (LLW b SLW a ...) when that is no bigger
  * than calling memcpy; otherwise memcpy(dst, src, n) is called, with
  * dst's address first. If r's address was already emitted and o's
- * wasn't, the two are exchanged in stage 2's buffer, as for a store
+ * wasn't, the two are exchanged in the IR buffer, as for a store
  * (finish_store()). A struct on the stack (a call's result) is stored
  * word by word, last first. o becomes the result: the object assigned
  * to, not an lvalue (for a K_DEREF, its address was kept with DUP).
@@ -4321,27 +4319,27 @@ static void parse_toplevel(void)
 /* The source file being compiled. */
 static Bfile src_file;
 
-/* The compile pass: compile source file src into the stream files of
- * output name base (approach.md 18.1), for the final pass. */
+/* The front end: compile source file src into the IR file of output
+ * name base (approach.md 18.7), for the back end. */
 void compile_file(const char *src, const char *base)
 {
   src_name = src;
   if (!bopen(&src_file, src, 0))
     fatal(171 /* "cannot open" */, src);
-  emit_open(base);
+  ir_open(base);
   lex_open(&src_file);
   parse_program();
   bclose(&src_file);
   src_line = 0;
-  emit_finish();
+  ir_finish();
 }
 
-/* After an error in the compile pass: close its open files (ProDOS
- * needs it), writing out what the streams hold. */
+/* After an error in the front end: close its open files (ProDOS needs
+ * it), writing out what the IR file holds. */
 void compile_abort(void)
 {
   bclose(&src_file);
-  emit_abort();
+  ir_abort();
 }
 
 /* Stage 1's entry: parse the whole source file. A function called but

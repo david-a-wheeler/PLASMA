@@ -14,12 +14,13 @@
 #                        no messages at all.
 # tests/errors/NAME.c    must fail to compile; stderr must contain the
 #                        text after "// expect: " on the file's first line.
-# Afterward, no stream files may be left over, and -k must keep them.
-# The passes as programs of their own, cccomp then ccrel, must write
-# the same module as ccish for every run test. The message file must
-# agree with the sources (tests/check_msgs.sh). The small build
-# (cccomp-small, ccrel-small) must write the same objects and modules
-# as the full build, for every run test and link test.
+# Afterward, no IR or stream files may be left over, and -k must keep
+# them. The passes as programs of their own, cccomp, ccgen and ccrel,
+# must write the same module as ccish for every run test. The message
+# file must agree with the sources (tests/check_msgs.sh). The small
+# build (cccomp-small, ccgen-small, ccrel-small) must write the same
+# objects and modules as the full build, for every run test and link
+# test.
 
 set -u
 CCISH=./ccish
@@ -30,6 +31,13 @@ fail=0
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
+
+# Compile source $3 into the object of output name $2 (its .obj and
+# .syms) with the front end and back end, cccomp then ccgen; $1 is ""
+# for the full build or "-small" for the small one.
+cc_obj() {
+    ./cccomp$1 -o "$2" "$3" && ./ccgen$1 "$2"
+}
 
 # Check the listing directives in source $1 against listing $2.
 # Prints each problem; returns 1 if there were any.
@@ -167,16 +175,17 @@ limit_test too_large "x = 1000;" 900 "function too large: main"
 limit_test too_many_relocs "puti(1);" 300 \
     "too many calls and data references in main"
 
-# The passes as programs of their own (approach.md, "B3"): for every
-# run test, cccomp then ccrel must write the same module as ccish.
+# The passes as programs of their own (approach.md, "B3", and 18.7):
+# for every run test, cccomp, ccgen and ccrel must write the same module
+# as ccish.
 split_bad=0
 for src in tests/run/*.c; do
     name=$(basename "$src" .c)
     mod=$(echo "$name" | tr 'A-Z' 'a-z')
-    if ! ./cccomp -o "$OUT/split_$mod" "$src" 2>/dev/null \
+    if ! cc_obj "" "$OUT/split_$mod" "$src" 2>/dev/null \
        || ! ./ccrel "$OUT/split_$mod" 2>/dev/null \
        || ! cmp -s "$OUT/split_$mod" "$OUT/$mod"; then
-        echo "FAIL $src: cccomp then ccrel don't write ccish's module"
+        echo "FAIL $src: cccomp, ccgen, ccrel don't write ccish's module"
         split_bad=1
     fi
     rm -f "$OUT/split_$mod.obj" "$OUT/split_$mod.syms"
@@ -192,8 +201,8 @@ small_bad=0
 for src in tests/run/*.c; do
     name=$(basename "$src" .c)
     mod=$(echo "$name" | tr 'A-Z' 'a-z')
-    if ! ./cccomp -o "$OUT/full_$mod" "$src" 2>/dev/null \
-       || ! ./cccomp-small -o "$OUT/small_$mod" "$src" 2>/dev/null \
+    if ! cc_obj "" "$OUT/full_$mod" "$src" 2>/dev/null \
+       || ! cc_obj -small "$OUT/small_$mod" "$src" 2>/dev/null \
        || ! cmp -s "$OUT/full_$mod.obj" "$OUT/small_$mod.obj" \
        || ! cmp -s "$OUT/full_$mod.syms" "$OUT/small_$mod.syms" \
        || ! ./ccrel-small "$OUT/small_$mod" 2>/dev/null \
@@ -210,30 +219,105 @@ if [ $small_bad -eq 0 ]; then
 else
     fail=$((fail + 1))
 fi
-# cccomp leaves the stream file and symbol summary for ccrel, and ccrel
-# keeps them, as a linker keeps its objects.
+# cccomp leaves the IR file for ccgen (approach.md 18.7), which writes
+# the stream file and symbol summary and removes the IR file; ccrel then
+# keeps those, as a linker keeps its objects.
 if ./cccomp -o "$OUT/split_streams" tests/run/hello.c \
+   && [ -s "$OUT/split_streams.ir" ] && [ ! -e "$OUT/split_streams.obj" ] \
+   && ./ccgen "$OUT/split_streams" && [ ! -e "$OUT/split_streams.ir" ] \
    && [ -s "$OUT/split_streams.obj" ] && [ -s "$OUT/split_streams.syms" ] \
    && ./ccrel "$OUT/split_streams" && [ -s "$OUT/split_streams" ] \
    && [ -s "$OUT/split_streams.obj" ] \
    && [ -s "$OUT/split_streams.syms" ]; then
     pass=$((pass + 1))
 else
-    echo "FAIL cccomp/ccrel: stream files not passed on, or not kept"
+    echo "FAIL cccomp/ccgen/ccrel: files not passed on, or not kept"
     fail=$((fail + 1))
 fi
 rm -f "$OUT/split_streams.obj" "$OUT/split_streams.syms"
-# A compile error in cccomp leaves no stream files for ccrel.
+# ccgen -k keeps the IR file.
+if ./cccomp -o "$OUT/keep_ir" tests/run/hello.c \
+   && ./ccgen -k "$OUT/keep_ir" && [ -s "$OUT/keep_ir.ir" ] \
+   && [ -s "$OUT/keep_ir.obj" ]; then
+    pass=$((pass + 1))
+else
+    echo "FAIL ccgen -k: the IR file should be kept"
+    fail=$((fail + 1))
+fi
+rm -f "$OUT/keep_ir.ir" "$OUT/keep_ir.obj" "$OUT/keep_ir.syms"
+# A compile error in cccomp leaves no IR file for ccgen.
 if ./cccomp -o "$OUT/split_err" tests/errors/const_assign.c 2>/dev/null \
-   || [ -e "$OUT/split_err.obj" ] || [ -e "$OUT/split_err.syms" ]; then
-    echo "FAIL cccomp: a compile error must fail and leave no stream files"
+   || [ -e "$OUT/split_err.ir" ]; then
+    echo "FAIL cccomp: a compile error must fail and leave no IR file"
     fail=$((fail + 1))
 else
     pass=$((pass + 1))
 fi
+# ccgen -i prints the IR as it reads it (IR.md; written by hand): the
+# function's line record, then each op. main's body starts at line 2;
+# puti returns nothing; falling off main's end returns 0, which the
+# peephole stage drops later.
+printf 'int main()\n{\n  puti(7);\n  return 0;\n}\n' >"$OUT/ir_dump.c"
+printf '%s\n' '; line 2' 'IR FUNC     main' 'IR CONST    7' \
+    'IR CALL     puti nargs=1' 'IR CONST    0' 'IR RETURN  ' \
+    'IR CONST    0' 'IR RETURN  ' 'IR ENDFUNC  frame=0' >"$OUT/ir_dump.want"
+if ./cccomp -o "$OUT/ir_dump" "$OUT/ir_dump.c" \
+   && ./ccgen -i "$OUT/ir_dump" >"$OUT/ir_dump.got" \
+   && cmp -s "$OUT/ir_dump.want" "$OUT/ir_dump.got"; then
+    pass=$((pass + 1))
+else
+    echo "FAIL ccgen -i: wanted, then got:"
+    sed 's/^/    /' "$OUT/ir_dump.want"
+    echo "    ---"
+    sed 's/^/    /' "$OUT/ir_dump.got"
+    fail=$((fail + 1))
+fi
+rm -f "$OUT/ir_dump.obj" "$OUT/ir_dump.syms"
+# ccgen finds a damaged IR file (OBJECT.md, "What ccgen checks"): cut
+# short, a wrong version, an unknown tag. It writes no stream files,
+# and keeps the IR file.
+ir_damaged_test() {
+    if ./ccgen "$OUT/$1" 2>"$OUT/$1.err"; then
+        echo "FAIL ccgen: accepted an IR file $2"
+        fail=$((fail + 1))
+    elif ! grep -qF "damaged: $OUT/$1.ir" "$OUT/$1.err"; then
+        echo "FAIL ccgen: wrong message for an IR file $2:"
+        sed 's/^/    /' "$OUT/$1.err"
+        fail=$((fail + 1))
+    elif [ -e "$OUT/$1.obj" ] || [ -e "$OUT/$1.syms" ] \
+         || [ ! -e "$OUT/$1.ir" ]; then
+        echo "FAIL ccgen: an IR file $2 left stream files, or was removed"
+        fail=$((fail + 1))
+    else
+        pass=$((pass + 1))
+    fi
+    rm -f "$OUT/$1.ir"
+}
+./cccomp -o "$OUT/ir_cut" tests/run/global_init.c
+size=$(wc -c < "$OUT/ir_cut.ir")
+head -c $((size - 3)) "$OUT/ir_cut.ir" > "$OUT/ir_cut.tmp"
+mv "$OUT/ir_cut.tmp" "$OUT/ir_cut.ir"
+ir_damaged_test ir_cut "cut short"
+./cccomp -o "$OUT/ir_version" tests/run/hello.c
+printf '\377' | dd of="$OUT/ir_version.ir" bs=1 seek=3 conv=notrunc \
+    2>/dev/null
+ir_damaged_test ir_version "with a wrong version"
+./cccomp -o "$OUT/ir_tag" tests/run/hello.c
+printf 'Q' >> "$OUT/ir_tag.ir"
+ir_damaged_test ir_tag "with something after the summary"
+# A back-end error gives the source file and the line where the
+# function starts (the IR file's line record): here, line 1.
+if grep -qF "too_large.c:1: error 177: function too large: main" \
+        "$OUT/too_large.err"; then
+    pass=$((pass + 1))
+else
+    echo "FAIL ccgen: a back-end error should give the file and line:"
+    sed 's/^/    /' "$OUT/too_large.err"
+    fail=$((fail + 1))
+fi
 # ccrel names the file it can't open (not another in the same static
 # buffer: the message is printed after the stream files are removed).
-./cccomp -o "$OUT/noobj" tests/run/hello.c
+cc_obj "" "$OUT/noobj" tests/run/hello.c
 rm -f "$OUT/noobj.obj"
 if ./ccrel "$OUT/noobj" 2>"$OUT/noobj.err"; then
     echo "FAIL ccrel: succeeded without its stream file"
@@ -261,12 +345,12 @@ damaged_test() {
     fi
     rm -f "$OUT/$1.obj" "$OUT/$1.syms"
 }
-./cccomp -o "$OUT/cut" tests/run/global_init.c
+cc_obj "" "$OUT/cut" tests/run/global_init.c
 size=$(wc -c < "$OUT/cut.obj")
 head -c $((size - 3)) "$OUT/cut.obj" > "$OUT/cut.tmp"
 mv "$OUT/cut.tmp" "$OUT/cut.obj"
 damaged_test cut "cut short"
-./cccomp -o "$OUT/badtag" tests/run/global_init.c
+cc_obj "" "$OUT/badtag" tests/run/global_init.c
 printf 'X' >> "$OUT/badtag.obj"
 damaged_test badtag "with an unknown record tag"
 # A summary whose function starts at the code's end, where no function
@@ -277,7 +361,7 @@ damaged_test badtag "with an unknown record tag"
 # counts) and its flags and parameter count. It becomes the code size,
 # bytes 7-8.
 echo 'int main() { return 0; }' >"$OUT/atend.c"
-./cccomp -o "$OUT/atend" "$OUT/atend.c"
+cc_obj "" "$OUT/atend" "$OUT/atend.c"
 dd if="$OUT/atend.syms" of="$OUT/atend.size" bs=1 skip=7 count=2 2>/dev/null
 dd if="$OUT/atend.size" of="$OUT/atend.syms" bs=1 seek=15 conv=notrunc \
    2>/dev/null
@@ -295,8 +379,8 @@ fi
 rm -f "$OUT/atend.obj" "$OUT/atend.syms"
 
 # Linking several objects (approach.md issue 11, "Step 3"): each
-# directory tests/link/NAME holds .c files, compiled by cccomp and linked
-# by ccrel in name order. With a file "expected", the module is run under
+# directory tests/link/NAME holds .c files, compiled by cccomp and ccgen
+# and linked by ccrel in name order. With a file "expected", the module is run under
 # plvm, and its output must equal it; the listing directives of the run
 # tests may be in any of the .c files. With "expect-error", linking must
 # fail with a message containing its text, and leave no module.
@@ -309,7 +393,7 @@ for dir in tests/link/*/; do
     compiled=1
     for src in "$dir"*.c; do
         obj=$OUT/link/${name}_$(basename "$src" .c)
-        if ! ./cccomp -o "$obj" "$src" 2>"$lerr"; then
+        if ! cc_obj "" "$obj" "$src" 2>"$lerr"; then
             echo "FAIL $src: compile error"
             sed 's/^/    /' "$lerr"
             compiled=0
@@ -369,7 +453,8 @@ for dir in tests/link/*/; do
     done
 done
 # The small build links the same: for each link test that links, the
-# small cccomp and ccrel must write the full build's objects and module.
+# small cccomp, ccgen and ccrel must write the full build's objects and
+# module.
 small_bad=0
 for dir in tests/link/*/; do
     [ -f "$dir/expect-error" ] && continue
@@ -377,8 +462,8 @@ for dir in tests/link/*/; do
     full="" small=""
     for src in "$dir"*.c; do
         b=$(basename "$src" .c)
-        if ! ./cccomp -o "$OUT/link/f_${name}_$b" "$src" 2>/dev/null \
-           || ! ./cccomp-small -o "$OUT/link/s_${name}_$b" "$src" \
+        if ! cc_obj "" "$OUT/link/f_${name}_$b" "$src" 2>/dev/null \
+           || ! cc_obj -small "$OUT/link/s_${name}_$b" "$src" \
                 2>/dev/null \
            || ! cmp -s "$OUT/link/f_${name}_$b.obj" \
                 "$OUT/link/s_${name}_$b.obj" \
@@ -408,12 +493,12 @@ else
     fail=$((fail + 1))
 fi
 # The shared-name table full (approach.md issue 11, "Fitting the
-# linker's tables"): 149 names fill all 149 slots and link, and b's use
+# linker's tables"): 163 names fill all 163 slots and link, and b's use
 # of a's g0 is found in the full table; one more name stops the link.
 # The objects are generated, mostly unused declarations, which are
-# shared names too: full_a defines g0 and declares g1..g74, full_b
-# declares g75..g147 and defines use (which calls g0), and full_c
-# declares g75..g149, one too many. (634 name bytes, within 1281.)
+# shared names too: full_a defines g0 and declares g1..g81, full_b
+# declares g82..g161 and defines use (which calls g0), and full_c
+# declares g82..g163, one too many. (704 name bytes, within 1427.)
 gen_decls() {
     i=$2
     while [ "$i" -le "$3" ]; do
@@ -421,30 +506,30 @@ gen_decls() {
         i=$((i + 1))
     done >"$1"
 }
-gen_decls "$OUT/link/full_a.c" 1 74
+gen_decls "$OUT/link/full_a.c" 1 81
 echo 'void g0(void) {}' >>"$OUT/link/full_a.c"
-gen_decls "$OUT/link/full_b.c" 75 147
+gen_decls "$OUT/link/full_b.c" 82 161
 echo 'void g0(void); void use(void) { g0(); }' >>"$OUT/link/full_b.c"
-gen_decls "$OUT/link/full_c.c" 75 149
-if ./cccomp -o "$OUT/link/full_a" "$OUT/link/full_a.c" \
-   && ./cccomp -o "$OUT/link/full_b" "$OUT/link/full_b.c" \
+gen_decls "$OUT/link/full_c.c" 82 163
+if cc_obj "" "$OUT/link/full_a" "$OUT/link/full_a.c" \
+   && cc_obj "" "$OUT/link/full_b" "$OUT/link/full_b.c" \
    && ./ccrel -l -o "$OUT/link/full" "$OUT/link/full_a" "$OUT/link/full_b" \
       >"$OUT/link/full.lst" 2>"$OUT/link/full.err" \
-   && grep -qF "; shared names: 149 of 149 slots" "$OUT/link/full.lst"; then
+   && grep -qF "; shared names: 163 of 163 slots" "$OUT/link/full.lst"; then
     pass=$((pass + 1))
 else
-    echo "FAIL ccrel: 149 shared names don't fill the table and link"
+    echo "FAIL ccrel: 163 shared names don't fill the table and link"
     sed 's/^/    /' "$OUT/link/full.err"
     fail=$((fail + 1))
 fi
-if ./cccomp -o "$OUT/link/full_c" "$OUT/link/full_c.c" \
+if cc_obj "" "$OUT/link/full_c" "$OUT/link/full_c.c" \
    && ! ./ccrel -o "$OUT/link/full_over" "$OUT/link/full_a" \
         "$OUT/link/full_c" 2>"$OUT/link/full_over.err" \
    && grep -qF "too many names shared between objects" \
         "$OUT/link/full_over.err"; then
     pass=$((pass + 1))
 else
-    echo "FAIL ccrel: 150 shared names, wanted 'too many names', got:"
+    echo "FAIL ccrel: 164 shared names, wanted 'too many names', got:"
     sed 's/^/    /' "$OUT/link/full_over.err"
     fail=$((fail + 1))
 fi
@@ -474,8 +559,8 @@ int main()
   return 0;
 }
 EOF
-if ./cccomp -o "$OUT/link/many_a" "$OUT/link/many_a.c" \
-   && ./cccomp -o "$OUT/link/many_b" "$OUT/link/many_b.c" \
+if cc_obj "" "$OUT/link/many_a" "$OUT/link/many_a.c" \
+   && cc_obj "" "$OUT/link/many_b" "$OUT/link/many_b.c" \
    && ./ccrel -o "$OUT/link/many" "$OUT/link/many_a" "$OUT/link/many_b" \
       2>"$OUT/link/many.err" \
    && [ "$(cd "$OUT/link" && timeout 10 "$PLVM" many 2>&1 | tr -d '\r')" \
@@ -511,7 +596,7 @@ rm -f "$OUT"/link/many_[ab].obj "$OUT"/link/many_[ab].syms
     echo '  return 0;'
     echo '}'
 } >"$OUT/link/relocs.c"
-if ./cccomp -o "$OUT/link/relocs" "$OUT/link/relocs.c" \
+if cc_obj "" "$OUT/link/relocs" "$OUT/link/relocs.c" \
       2>"$OUT/link/relocs.err" \
    && ./ccrel "$OUT/link/relocs" 2>>"$OUT/link/relocs.err" \
    && [ "$(cd "$OUT/link" && timeout 10 "$PLVM" relocs 2>&1 | tr -d '\r')" \
@@ -525,9 +610,9 @@ fi
 rm -f "$OUT"/link/relocs.obj "$OUT"/link/relocs.syms
 # A static function's name that doesn't fit after the shared names is
 # listed by its address (approach.md issue 11, "Item 1: the linker's
-# local names"). 38 declared names and the caller, each 31 characters
-# (32 bytes), and main, puti and putc (5 each) take 1263 of the 1281
-# name bytes, leaving 18: too few for the static function's 31-character
+# local names"). 43 declared names and the caller, each 31 characters
+# (32 bytes), and main, puti and putc (5 each) take 1423 of the 1427
+# name bytes, leaving 4: too few for the static function's 31-character
 # name, which is then listed, as defined and as called, by its address.
 # The module still links and runs. The declared names are split
 # between two objects, so that the link has two objects' names.
@@ -538,8 +623,8 @@ gen_long() {
         i=$((i + 1))
     done >"$1"
 }
-gen_long "$OUT/link/nofit_a.c" 1 19
-gen_long "$OUT/link/nofit_b.c" 20 38
+gen_long "$OUT/link/nofit_a.c" 1 22
+gen_long "$OUT/link/nofit_b.c" 23 43
 cat >>"$OUT/link/nofit_b.c" <<'EOF'
 static int static_padded_to_thirty_one_chr(void) { return 7; }
 int caller_padded_to_thirty_one_chr(void)
@@ -552,13 +637,13 @@ int main()
   return 0;
 }
 EOF
-if ./cccomp -o "$OUT/link/nofit_a" "$OUT/link/nofit_a.c" \
+if cc_obj "" "$OUT/link/nofit_a" "$OUT/link/nofit_a.c" \
       2>"$OUT/link/nofit.err" \
-   && ./cccomp -o "$OUT/link/nofit_b" "$OUT/link/nofit_b.c" \
+   && cc_obj "" "$OUT/link/nofit_b" "$OUT/link/nofit_b.c" \
       2>>"$OUT/link/nofit.err" \
    && ./ccrel -l -o "$OUT/link/nofit" "$OUT/link/nofit_a" \
       "$OUT/link/nofit_b" >"$OUT/link/nofit.lst" 2>>"$OUT/link/nofit.err" \
-   && grep -qF "; shared names: 42 of 149 slots, 1263 of 1281" \
+   && grep -qF "; shared names: 47 of 163 slots, 1423 of 1427" \
         "$OUT/link/nofit.lst" \
    && grep -q '^static@\$[0-9A-F]\{4\}:$' "$OUT/link/nofit.lst" \
    && grep -qF '; static@$' "$OUT/link/nofit.lst" \
@@ -608,22 +693,22 @@ else
     fail=$((fail + 1))
 fi
 
-# The stream files (.obj and .syms) must be gone after every compile,
-# successful or not, unless -k keeps them.
-left=$(find "$OUT" -name '*.obj' -o -name '*.syms')
+# The IR files and stream files (.ir, .obj and .syms) must be gone after
+# every compile, successful or not, unless -k keeps them.
+left=$(find "$OUT" -name '*.ir' -o -name '*.obj' -o -name '*.syms')
 if [ -n "$left" ]; then
-    echo "FAIL stream files left behind:"
+    echo "FAIL IR or stream files left behind:"
     echo "$left" | sed 's/^/    /'
     fail=$((fail + 1))
 else
     pass=$((pass + 1))
 fi
 if "$CCISH" -k -o "$OUT/keep" tests/run/hello.c \
-   && [ -s "$OUT/keep" ] && [ -s "$OUT/keep.obj" ] \
-   && [ -s "$OUT/keep.syms" ]; then
+   && [ -s "$OUT/keep" ] && [ -s "$OUT/keep.ir" ] \
+   && [ -s "$OUT/keep.obj" ] && [ -s "$OUT/keep.syms" ]; then
     pass=$((pass + 1))
 else
-    echo "FAIL -k: module and stream files should all exist"
+    echo "FAIL -k: module, IR file and stream files should all exist"
     fail=$((fail + 1))
 fi
 

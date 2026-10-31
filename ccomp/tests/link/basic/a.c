@@ -7,7 +7,7 @@
 // listing-has: object tests/out/link/basic_b:
 // listing-has: ; add
 // listing-has: ; helper
-// listing-has: ; shared names: 12 of 149 slots, 74 of 1281 name bytes
+// listing-has: ; shared names: 12 of 163 slots, 74 of 1427 name bytes
 extern int total;                   /* defined in b.c */
 extern int squares[];               /* b.c gives the size */
 int add(int n);                     /* b.c */

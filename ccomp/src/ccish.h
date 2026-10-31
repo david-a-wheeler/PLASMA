@@ -4,19 +4,23 @@
  * ../../doc/Bytecodes.md for the target format.
  *
  * The compiler is a pipeline of four stages that pass a stream of ops
- * along, with no syntax tree:
+ * along, with no syntax tree. Stage 1 is the front end, the program
+ * cccomp; stages 2 to 4 are the back end, the program ccgen; the IR
+ * goes between them in a file, NAME.ir (approach.md 18.7; formats in
+ * ../OBJECT.md):
  *
  *   parse.c  stage 1: C source -> IR ops        (ir_put)
+ *   irout.c  the IR buffer, and the writer of NAME.ir: IR ops, data,
+ *            strings, and the symbol summary at the end
+ *   irin.c   the reader of NAME.ir                (lower_op)
  *   lower.c  stage 2: IR ops -> machine ops     (peep_put)
  *   peep.c   stage 3: peephole optimization     (emit_put)
  *   emit.c   stage 4: encode bytes, one function at a time, and write
- *            them to the stream file (with the symbol summary at the
- *            end)
+ *            them to the stream file, NAME.obj; then NAME.syms
  *
- * Then a separate final pass, link.c, reads only the stream files and
- * writes the REL module (approach.md 18.1; formats in ../OBJECT.md).
- * It uses none of the compiler's tables, so it can become a separate
- * program (and a linker) later.
+ * Then a separate final pass, link.c (the program ccrel), reads only
+ * the stream files and summaries and writes the REL module (approach.md
+ * 18.1). It uses none of the compiler's tables.
  *
  * Fixed-size tables are used on purpose: the compiler is meant to run
  * on a 64K machine eventually, so its limits should be visible.
@@ -32,7 +36,8 @@
  * valid program doesn't need (approach.md decision 21 and 18.6 C1,
  * "Two builds: the plan"). Code tests these feature macros, never
  * CCISH_SMALL itself:
- *   CCISH_LISTING  -i and -l, and what only they use
+ *   CCISH_LISTING  -l (ccrel's listing), and what only it uses. ccgen's
+ *                  -i is in both builds (approach.md decision 22).
  */
 #ifndef CCISH_SMALL
 #define CCISH_LISTING
@@ -66,6 +71,9 @@
 #define MAX_TAGS     10     /* struct tags, including hidden ones (7) */
 #define MAX_MEMBERS  64     /* struct members, in all structs (51) */
 #define MAX_POOL     6212   /* bytes of names in the name pool (5,647) */
+#define MAX_FNAMES   3281   /* bytes of the function names ccgen keeps,
+                             * with a NUL each (2,982: all of parse.c's
+                             * function symbols, a bound) */
 #define MAX_IDS      268    /* enum constants and typedef names (243) */
 #define MAX_BYVAL    8      /* bytes in a struct passed or returned by value */
 #define MAX_CASES    36     /* case labels in all the switches open at once
@@ -80,11 +88,10 @@ extern const char *src_name;
 extern int src_line;
 #ifdef CCISH_LISTING
 extern int opt_list;        /* -l: print a listing of the generated code */
-extern int opt_ir;          /* -i: print the IR stream */
 #else
 #define opt_list 0          /* no listing in the small build */
-#define opt_ir 0
 #endif
+extern int opt_ir;          /* -i: print the IR as ccgen reads it */
 extern int opt_keep;        /* -k: keep the stream files */
 
 /* Diagnostics take a message number: its text is in the message file,
@@ -98,7 +105,8 @@ void warning(int msg, const char *detail);
 void warning_in(int msg, int part, const char *detail);
 void msg_init(const char *argv0);           /* find ccish.msg */
 const char *stream_name(const char *base, const char *suffix);
-void remove_streams(const char *base);      /* unless -k */
+void remove_stream(const char *base, const char *suffix);  /* unless -k */
+void remove_streams(const char *base);      /* .obj and .syms, unless -k */
 const char *base_of(const char *src);       /* "x.c" -> "x" */
 const char *num_text(int n);                /* n in decimal (no printf) */
 
@@ -241,7 +249,8 @@ int member_off(int m);
  * these parallel arrays (approach.md, "Sym split design"), each
  * MAX_FUNCS long. */
 enum { FN_DECLARED = 1, FN_DEFINED = 2, FN_CALLED = 4, FN_COUNTED = 8,
-       FN_STATIC = 16 };
+       FN_STATIC = 16, FN_NAMED = 32 };   /* FN_NAMED: its name is in
+                                           * the IR file (irout.c) */
 extern int fn_name[MAX_FUNCS];      /* its name: a name pool offset */
 extern char fn_type[MAX_FUNCS];     /* its return type, unqualified (C17
                                      * ignores a return type's
@@ -252,8 +261,6 @@ extern int fn_ptypes[MAX_FUNCS];    /* its parameter types' index in
 extern char fn_nparams[MAX_FUNCS];  /* its parameter count, once known
                                      * (FN_COUNTED) */
 extern char fn_flags[MAX_FUNCS];    /* FN_* */
-extern int fn_code[MAX_FUNCS];      /* once defined: the start of its
-                                     * bytecode in the code segment */
 extern int nfuncs;
 
 void parse_program(void);
@@ -263,11 +270,13 @@ void parse_program(void);
 int  func_sym(int f, int *hash);
 int  data_sym_count(void);
 int  data_sym(int v, int *off, int *size, int *hash, int *name);
-void compile_file(const char *src, const char *base);  /* the compile pass */
+void compile_file(const char *src, const char *base);  /* the front end */
 void compile_abort(void);                   /* after an error */
 
-/* ---------- Stage 1 -> 2: IR ops (lower.c) ----------
- * Each op's meaning, and why it differs from PLASMA's, is in ../IR.md. */
+/* ---------- Stage 1 -> 2: IR ops, through NAME.ir ----------
+ * Each op's meaning, and why it differs from PLASMA's, is in ../IR.md;
+ * the file's format is in ../OBJECT.md. The op numbers are part of the
+ * format: changing them changes IR_VERSION. */
 
 enum {
   IR_FUNC,        /* f: start a function */
@@ -312,14 +321,45 @@ enum {
   /* a case table, after its label: */
   IR_CASES,       /* a = the number of cases that follow */
   IR_CASEVAL,     /* a = one case's value; then: */
-  IR_CASETO       /* a = the label of that case's code */
+  IR_CASETO,      /* a = the label of that case's code */
+  IR_NOPS         /* the number of IR ops */
 };
 
+/* The IR file: the output name plus this suffix, and its format's
+ * version (in its header, after the magic "CIR"). */
+#define SUFFIX_IR   ".ir"
+#define IR_VERSION  1
+
+/* Its record tags besides the stream's D, R and S (below), and the bit
+ * that marks an IR op followed by a one-byte operand. An IR op's tag is
+ * its number, below IR_TAG_END. */
+enum { REC_LINE = 'L', REC_NAME = 'N', REC_WORD = 'W', REC_SECOND = 'X',
+       REC_SUMMARY = 'Y' };
+#define IR_BYTE_OP  0x80
+#define IR_TAG_END  0x40
+
+/* The front end's side (irout.c): the IR buffer, which the parser can
+ * still reorder (ir_rotate()), and the writer of NAME.ir. */
+void ir_open(const char *base);
 void ir_put(int op, int a, int f);   /* f: a function, or -1 */
 void ir_flush(void);
 int ir_here(void);
 int ir_holds(int pos);
 void ir_rotate(int m0, int m1);
+int  data_string(const char *s, int len);   /* pool offset of first char */
+int  data_offset(void);                     /* data bytes written so far */
+void data_byte(int v);
+void data_word(int v);
+void data_addr(int kind, int target, int add);  /* a relocated word */
+int  data_zero(int n);                      /* returns offset of n 0 bytes */
+void ir_finish(void);                       /* the summary, then close */
+void ir_abort(void);                        /* after an error */
+
+/* The back end's side (irin.c): read NAME.ir and pass its ops to stage
+ * 2, writing NAME.obj and NAME.syms. */
+void gen_file(const char *base);
+void gen_abort(void);                       /* after an error */
+const char *func_name(int f);       /* a function's name, for messages */
 
 /* ---------- Stage 2 -> 3 -> 4: machine ops ---------- */
 
@@ -377,6 +417,7 @@ typedef struct {
                    * function */
 } Mop;
 
+void lower_op(int op, int a, int f);    /* lower.c: stage 2's entry */
 void mop_const(Mop *m, int v);         /* lower.c: make m push v */
 int  mop_const_value(Mop *m, int *v);   /* lower.c: does m push a constant? */
 void peep_put(Mop *m);
@@ -384,8 +425,8 @@ void peep_flush(void);
 
 /* ---------- Stage 4: emitter (emit.c) ---------- */
 
-/* Stream file names: the output name plus these suffixes. The compile
- * pass writes one stream of tagged records, then the symbol summary. */
+/* Stream file names: the output name plus these suffixes. The back end
+ * writes one stream of tagged records, then the symbol summary. */
 #define SUFFIX_OBJ  ".obj"
 #define SUFFIX_SYMS ".syms"
 #define OBJ_VERSION 4       /* the format version, in the symbol summary */
@@ -405,16 +446,17 @@ enum { REL_DATA = 1, REL_FUNC = 2, REL_STR = 3, REL_DSYM = 4 };
 enum { SYM_DEFINED = 1, SYM_CALLED = 2, SYM_RETURNS = 4, SYM_LOCAL = 8,
        SYM_CMDSYS = 16, SYM_NOTCMDSYS = 32 };
 
+extern int fn_code[MAX_FUNCS];  /* each function's start in the code
+                                 * segment, once written; else -1 */
+
 void emit_open(const char *base);
 void emit_put(Mop *m);
-int  data_string(const char *s, int len);   /* pool offset of first char */
-int  data_offset(void);                     /* data bytes written so far */
-void data_byte(int v);
-void data_word(int v);
-void data_addr(int kind, int target, int add);  /* a relocated word */
-int  data_zero(int n);                      /* returns offset of n 0 bytes */
-void emit_finish(void);
-void emit_abort(void);                      /* after an error */
+void emit_byte(int c);              /* one byte of a record, as is */
+void emit_word(int v);
+int  emit_code_size(void);          /* code bytes written so far */
+void emit_summary(void);            /* close .obj, start .syms */
+void emit_finish(void);             /* close .syms */
+void emit_abort(void);              /* after an error */
 
 /* ---------- Final pass (link.c) ---------- */
 

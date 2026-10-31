@@ -1,13 +1,13 @@
 /*
  * ccrel: ccish's final pass as a program of its own (approach.md,
  * "B3"), and its linker (issue 11). It reads the stream files that
- * cccomp wrote for one or more compiled files, its objects, and links
+ * ccgen wrote for one or more compiled files, its objects, and links
  * them into one module. The objects are kept, so that a changed file
  * needs only itself compiled again.
  *
  * Usage: ccrel [-l] [-o module] output...
- *   output  an object's output name, as given to cccomp; the objects
- *           are linked in this order
+ *   output  an object's output name, as given to cccomp and ccgen; the
+ *           objects are linked in this order
  *   -l      print a listing of the module's bytecode
  *   -o      module name (default: output, if there is only one)
  */
