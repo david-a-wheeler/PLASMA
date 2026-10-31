@@ -7,7 +7,9 @@
 #   - Each message number in the sources, written as
 #     NUMBER /* "text" */ (the text may be split into several quoted
 #     pieces, as a C string), has exactly the text the file gives it.
-#   - Each number in the file is used somewhere in the sources.
+#   - Each number in the file is used somewhere in the sources, or is
+#     in a range that a source's comment declares as "messages A-B"
+#     (texts looked up by computed number: tok_desc()'s token names).
 #   - No diagnostic call gives a message number without its comment.
 
 set -u
@@ -23,6 +25,15 @@ for f in src/*.c src/*.h; do
     sed -e 's/" *"//g' -e 's|^\([0-9]*\) /\* "|\1 |' -e 's|" \*/$||' \
         -e 's/\\\(["\\]\)/\1/g'
 done > "$TMP"
+# Each number in a declared range, as used, with no text to compare.
+cat src/*.c src/*.h | tr '\n' ' ' | grep -oE 'messages [0-9]+-[0-9]+' |
+    while read -r _ range; do
+        i=${range%-*}
+        while [ "$i" -le "${range#*-}" ]; do
+            echo "$i @range"
+            i=$((i + 1))
+        done
+    done >> "$TMP"
 
 bad=0
 # Numbers given in a diagnostic call with no comment after them.
@@ -58,6 +69,8 @@ awk -v msgfile="$MSG" '
         n = substr($0, 1, index($0, " ") - 1) + 0
         t = substr($0, index($0, " ") + 1)
         used[n] = 1
+        if (t == "@range" && (n in text))
+            next
         if (!(n in text)) {
             print "message " n " is used but not in " msgfile ": " t
             bad = 1

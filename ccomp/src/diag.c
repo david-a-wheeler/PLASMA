@@ -87,7 +87,7 @@ void msg_init(const char *argv0)
 /* Copy message n's text from the message file into buf (size bytes,
  * truncating a longer one), and return 1; or return 0 if the file or
  * the message can't be found. Lines may end in CR, LF or CRLF. */
-static int msg_text(int n, char *buf, int size)
+int msg_text(int n, char *buf, int size)
 {
   FILE *f = fopen(msg_path, "r");
   int c, num, len, found = 0;

@@ -166,37 +166,34 @@ int next_is_rbracket(void)
   return c == ']';
 }
 
-/* The supported keywords' spellings, for messages: in T_INT's order. */
-static const char *const keywords[NKEYWORDS] = {
-  "int", "void", "return", "if", "else", "while", "do", "for", "break",
-  "continue", "char", "sizeof", "static", "const", "volatile", "struct",
-  "switch", "case", "default", "typedef", "enum", "extern", "signed",
-  "unsigned"
-};
+/* The spellings of the supported keywords and the multi-character
+ * operators, for messages, are in the message file, as messages' texts
+ * are, not in cccomp (approach.md, "C2 design"): messages 262-285 are
+ * the keywords, in T_INT's order, and messages 286-307 the operators,
+ * in T_EQ's. */
+#define MSG_KEYWORDS 262
+#define MSG_OPS      286
 
 /* Describe the current token for an error message, e.g. "'while'" or
- * "a number". The result is in a static buffer. */
+ * "a number". The result is in a static buffer. Without the message
+ * file, a keyword or operator is its message's number. */
 const char *tok_desc(void)
 {
   static char buf[MAX_NAME + 16];
-  static const char *const ops[] = {
-    "==", "!=", "<=", ">=", "<<", ">>", "&&", "||", "++", "--",
-    "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=",
-    "->", "..."
-  };
+  int n;
   switch (tok) {
   case T_EOF: return "end of file";
   case T_NUM: return "a number";
   case T_STR: return "a string";
   }
   strcpy(buf, "'");
-  if (tok == T_ID || tok == T_KEYWORD)
+  if (tok == T_ID || tok == T_KEYWORD) {
     strcat(buf, nam_name(tok_val));
-  else if (tok >= T_INT && tok < T_KEYWORD)
-    strcat(buf, keywords[tok - T_INT]);
-  else if (tok >= T_EQ)
-    strcat(buf, ops[tok - T_EQ]);
-  else {
+  } else if (tok >= T_INT) {
+    n = tok >= T_EQ ? MSG_OPS + (tok - T_EQ) : MSG_KEYWORDS + (tok - T_INT);
+    if (!msg_text(n, buf + 1, MAX_NAME + 1))
+      strcpy(buf + 1, num_text(n));
+  } else {
     buf[1] = (char)tok;
     buf[2] = 0;
   }

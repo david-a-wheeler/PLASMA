@@ -1080,6 +1080,22 @@ else
     fail=$((fail + 1))
 fi
 
+# Without the message file, a keyword or operator in a message is its
+# message's number (tok_desc(): 'while' is 267, the keywords being
+# 262-285 in T_INT's order).
+printf 'int main() { return while; }\n' > "$OUT/nomsg/k.c"
+if "$OUT/nomsg/ccish" -o "$OUT/nomsg/k" "$OUT/nomsg/k.c" 2>"$OUT/nomsg/k.err"
+then
+    echo "FAIL no message file: compiled, but should have failed"
+    fail=$((fail + 1))
+elif grep -qF "k.c:1: error 65: '267'" "$OUT/nomsg/k.err"; then
+    pass=$((pass + 1))
+else
+    echo "FAIL no message file: wanted \"error 65: '267'\", got:"
+    sed 's/^/    /' "$OUT/nomsg/k.err"
+    fail=$((fail + 1))
+fi
+
 # A file name over MAX_PATH (128, with its NUL) is "output name too
 # long" (diag.c's buffers are sized for ProDOS paths): here, 133
 # characters for the IR file's name. (Once, removing the files after

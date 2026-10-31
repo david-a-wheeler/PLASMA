@@ -26,6 +26,7 @@ void fatal(int msg, const char *detail);
 void warning(int msg, const char *detail);
 void warning_in(int msg, int part, const char *detail);
 void msg_init(const char *argv0);           /* find ccish.msg */
+int  msg_text(int n, char *buf, int size);  /* message n's text, or 0 */
 const char *stream_name(const char *base, const char *suffix);
 void remove_stream(const char *base, const char *suffix);  /* unless -k */
 void remove_streams(const char *base);      /* .obj and .syms, unless -k */

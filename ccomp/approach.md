@@ -4082,6 +4082,19 @@ them, parse.c's peak of enum constants and typedef names is 184 (was
 217), so `MAX_IDS` is 203 (was 239), 6 bytes each: `cccomp` **34,611**
 (-216, as estimated). 361 tests pass.
 
+**The token names moved to ccish.msg** (2026-10-31). `tok_desc()`
+(tokin.c) spelled the supported keywords and the multi-character
+operators from two tables of strings; they are now messages 262-285
+(the keywords, in `T_INT`'s order) and 286-307 (the operators, in
+`T_EQ`'s), looked up by computed number with diag.c's `msg_text()`,
+now public, only when a message is printed. Without the message file,
+a keyword or operator is shown as its message's number. A source
+comment declares the range ("messages 262-307"), which check_msgs.sh
+now counts as used. New tests: a keyword, a two- and a three-character
+operator in messages, and the number without the message file. 365
+pass. `cccomp` **34,260** (-351: tokin.c's strings went from 319 bytes
+to 55 and its data from 1,086 to 994, for 5 more bytes of code).
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in

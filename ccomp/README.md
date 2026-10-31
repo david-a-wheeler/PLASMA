@@ -471,6 +471,12 @@ write the same text in both places. `make test` runs
 file, that every number used is in the file and every number in the
 file is used, and that the file's numbers ascend.
 
+Messages 262-307 aren't messages but the spellings of C's keywords and
+operators, which `cccomp` prints in a message ("expected an expression,
+not 'while'"), so that `cccomp` keeps none of them either. A comment
+in `src/tokin.c` declares the range ("messages 262-307"), which
+`check_msgs.sh` counts as used.
+
 ## Known limits
 
 * Output has only been tested on the C VM (`plvm`), not yet on a 6502
