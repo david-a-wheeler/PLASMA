@@ -2035,6 +2035,19 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
   distinct that far.
 - **A5. Free names no longer needed** (members and enum constants at a
   file's end; locals already go at each function's end).
+- **A6. Identifiers as numbers** (discussed 2026-10-30; for later,
+  only if about 6K more is needed after 18.7 step 3 and E1): `ccpp`
+  numbers each distinct identifier, and `cccomp` compares numbers and
+  keeps no spellings. The name pool is `cccomp`'s biggest table (name.c
+  has 7,824 bytes of data, mostly `MAX_POOL`, 6,212). A message looks
+  a spelling up in a file only when it is printed, as with
+  `ccish.msg` (C2). To design first: type hashes include struct tag
+  names and must agree between files (so keep a hash of each tag's
+  spelling, not its number); CMDSYS functions, `main`, `memcpy` and
+  `memset` are recognized by spelling (fixed numbers from `ccpp`?);
+  `.syms` and `ccgen` (`-i`, its messages) need function and global
+  names; and `ccpp` has at most 4 files open, so names can't simply go
+  to a file of their own.
 
 **B. Tables.**
 - **B1. The `Sym` split** (decision 15): function and variable tables
@@ -2191,9 +2204,10 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
     would block self-hosting. **Agreed: move the back end (lower.c,
     peep.c, emit.c: about 6.3K code and 3.6K data) into a program of
     its own**, so the pipeline is ccpp, front end, back end, ccrel
-    (D3); the front end writes its IR stream to a file. Design to come,
-    after steps 2 and 3; measure the IR file's size for parse.c first
-    (disk). Also planned: per-stage headers, since every file pays
+    (D3); the front end writes its IR stream to a file. Designed
+    2026-10-30, before steps 2 and 3 (the user's choice of order), as
+    18.7, with the IR file's size for parse.c measured there. Also
+    planned: per-stage headers, since every file pays
     about 2.5K of name pool for `ccish.h`'s declarations.
   - **Static locals for leaf functions (discussed 2026-10-30; an idea
     for later, possibly with new VM opcodes):** leaf (or near-leaf)
@@ -2362,6 +2376,16 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
 - **C5. Restructure ccish's own source for size:** smaller functions,
   table-driven code instead of `switch` chains, `ccish.h` split by
   stage. No language change; gains hard to predict.
+- **C6. Address constants from the expression parser** (discussed
+  2026-10-30; for later, after 18.7 step 4, A): global initializers
+  have their own parser for address constants (`parse_addr()`, 592
+  bytes). Instead the expression parser could make an "address
+  constant" operand (a data or string symbol plus an offset, which
+  constant folding adds to and subtracts from), which an initializer
+  accepts, and which code elsewhere pushes with `DATAADDR`/`STRADDR`.
+  Perhaps 0.3-0.4K net, with no feature lost (any address the folder
+  understands becomes valid, unlike C3's "simpler `parse_addr`").
+  Feasibility to check against `&` and the pending operands.
 
 **D. Program structure.**
 - **D1. One program** (the preference in issue 1): simple and fast, but
@@ -2370,7 +2394,9 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
   already planned.
 - **D3. More passes:** preprocessor to a temporary file, parser to an IR
   file, then a backend. Each fits easily, as in many small-machine C
-  compilers, but floppy I/O makes it much slower.
+  compilers, but floppy I/O makes it much slower. Adopted (2026-10-30):
+  the preprocessor (decision 2) and the back end (`ccgen`, 18.7) are
+  programs of their own.
 - **D4. Overlays** (18.4's three approaches): one logical program, but
   relies on undocumented loader behavior to test on 6502 VMs.
 - **D5. Fall back to 128K** (issue 1, option A): bytecode in auxiliary
@@ -2446,6 +2472,37 @@ is the main problem. Splitting it is one way, but not the only one:
   It shrinks the streams (link.c's `.data`: 29K to well under 1K), but
   not the module, unless PLASMA's loader learns a zero-filled section
   (an upstream change).
+  - **F6a. A zero-filled block without a loader change** (discussed
+    2026-10-30; to do soon, after 18.7 step 3, with E1). Found: 19,283
+    of `cccomp`'s 19,535 data bytes are zeros (measured from the
+    self-compile's `D` records), all in the module file. The Apple
+    loader (`loadmod()` in `src/vmsrc/apple/cmd.pla`) reads the whole
+    file onto the heap (`allocheap()`, a bump allocator), relocates,
+    frees the RLD and ESD (`releaseheap(modend)`), allocates nothing
+    more, and then calls the init function; ccrel's init calls
+    `main`, so the whole program runs inside it. So the zeros and the
+    RLD and ESD are in memory together while loading: `cccomp`'s
+    module file is 66,964 bytes for a 52,272-byte program (the other
+    14.7K is the header, RLD and ESD). The idea: `ccrel` places every
+    global without an initializer (and every such `static` local)
+    after the module image's end, at fixed addresses as now; the file
+    holds only the data with values. The init function first
+    allocates that block, checks that it got the module's end (it
+    wouldn't if a reserved hi-res page made `allocheap()` skip ahead:
+    then stop with an error), clears it (`memset`), and calls `main`.
+    - Gains: the file shrinks by the zeros (about 16K for `cccomp`
+      after the split, more for `ccrel`); the load peak drops by up to
+      the RLD and ESD's size, since the block reuses their space; disk
+      files shrink (E3); generated code is unchanged (`LAW`/`SAW` to
+      fixed addresses); every ccish program gains.
+    - Not changed: the memory needed once running. This answers "can't
+      load", not "too big to run" (E1).
+    - Costs: object format version 5 (a zero-filled size in `.syms`,
+      symbols in that block, a relocation kind for it); about 20 bytes
+      of init code per program.
+    - First task: check plvm's loader (`src/vmsrc/plvm/cmdsys.c`),
+      which every test uses, for the same order (free the RLD, then
+      init, with nothing allocated between).
 - **F7. More storage:** streams on a second drive, or an 800K 3.5" disk
   or a hard disk. No change to ccish, but not every Apple II has them.
   A RAM disk needs 128K, so it is not the 64K answer.
@@ -2460,12 +2517,393 @@ is the main problem. Splitting it is one way, but not the only one:
   `tests/check_msgs.sh` keeps its other checks (every number used is
   in the file, every number in the file is used, numbers unique and
   ascending) but no longer compares comments with the file.
+- **F9. `ccpp` writes tokens, not text** (discussed 2026-10-30;
+  promising, to decide in the `ccpp` design, M8, before it is
+  written). A preprocessor splits the source into tokens anyway; if
+  `ccpp` also turns keywords and operators into one-byte codes,
+  converts numbers, and decodes escapes in strings and characters,
+  `cccomp`'s lexer becomes a small reader of tokens. lex.c is 2,183
+  bytes of code, 426 of data and 358 of strings; perhaps 1.5-2K leaves
+  `cccomp`, which keeps the token names its messages use and the
+  one-token lookahead (`next_is_rbracket()`). The `.i` gets smaller on
+  disk too. Costs: it is no longer text, so `ccpp` needs a text output
+  for debugging; line numbers become records in the token stream. It
+  changes decision 2's "compact text `.i`".
 
 View when listed (not a decision): E1 and E2 first, since they set the
 target; then the biggest levers look like B1 (`Sym` split), B3 (final
 pass as its own module), C2 (message text out of memory), and C1 (a
 lean self-hosted build). A2/A3 are attractive but risky without
 collision detection; A4 is the C89-sanctioned form.
+
+#### 18.7 The back end as its own program, `ccgen` (designed 2026-10-30; not built yet)
+
+Agreed in discussion (18.6 C1, "Direction after measuring", and D3;
+decision 22): stages 2 to 4 (lowering, peephole, emitting) leave
+`cccomp` for a program of their own, which reads the parser's IR from
+a file. The user, on the reasons: the IR printer (`-i`) can come back
+on the Apple II, in the program that reads the IR anyway, and the new
+program has room for many more peephole rules. The file format is in
+[OBJECT.md](OBJECT.md), "`NAME.ir`". Choices below are open for
+review.
+
+**Why.**
+- `cccomp` is too big (18.6 C1: 52,272 bytes in the small build; its
+  module file, 66,964, can't load on a 64K machine) and must still
+  grow (`unsigned`). The three files that move are, measured with
+  `tools/measure.py` (small build): `lower.c` 1,339 bytes of code and
+  388 of data, `peep.c` 2,578 and 104, `emit.c` 2,197 and 3,092. The
+  front end keeps a few hundred bytes of that (the IR buffer, the data
+  writers, the summary), so the estimate is about 5K of code and 3K of
+  data out of `cccomp`, plus `fn_code[]` (604 bytes), which only the
+  back end needs. That alone doesn't make `cccomp` fit: 18.6 C1 step 2
+  (`CCISH_CHECKS`) and F1 (splitting parse.c) are still wanted. They
+  are decided after measuring the split.
+- `ccgen` is small (about 6K of code and 4K of data, plus what is
+  added below), so it has room for `-i`, for more peephole rules, and
+  later perhaps for a window of a whole function instead of 10 ops.
+- The `.ir` file is a stable interface: the back end can be tested on
+  its own, and a native 6502 back end (4A) could be another program
+  reading the same file.
+
+**The pipeline.** `ccpp` (`.c` to `.i`, M8), `cccomp` (`.i` to `.ir`),
+`ccgen` (`.ir` to `.obj` and `.syms`), `ccrel` (objects to the
+module). On the Apple II the `CCISH` driver runs each with `modexec`
+(B3a). The host's `ccish` runs all of them in one program, but through
+the same files, so every test goes through the `.ir` format.
+
+**Where the cut is.**
+- `cccomp` keeps parse.c (with lex.c, name.c, type.c) and **the IR
+  buffer** (`ir_put()`, `ir_here()`, `ir_holds()`, `ir_rotate()`,
+  `ir_flush()`): the parser drives it to reorder code (4(d2)), so it
+  can't move. Where `lower_all()` lowered the buffered ops, it now
+  writes them to the `.ir` file. It also keeps **the data writers**
+  (`data_byte()`, `data_word()`, `data_addr()`, `data_zero()`,
+  `data_string()`, `data_offset()`): the parser calls them as it
+  parses and uses the offsets they return. And it keeps what goes into
+  the symbol summary (`func_sym()`, `data_sym()`).
+- `ccgen` gets `lower()`, peep.c, and emit.c's building of functions
+  (the function buffer, labels and fixup chains, frame sizes,
+  `drop_frame()`, `F` records), plus a reader that copies the data
+  records to `.obj` and writes `.syms`.
+- Proposed files: `src/irout.c` (front end: the buffer and the writer,
+  from lower.c, and the data records and summary, from emit.c),
+  `src/irin.c` (back end: the reader, `-i`, `.syms`), `src/ccgen.c`
+  (its `main`); lower.c keeps only lowering. Per-stage headers (C1
+  note) can come with this or later.
+
+**Questions investigated (2026-10-30).**
+1. **The code offsets in `.syms`.** Could `ccrel` compute each
+   function's offset from the `F` record lengths, so that the front
+   end writes `.syms`? No: `ccrel`'s step 1 lays out the whole module
+   from every `.syms` (code size and function offsets) before it reads
+   any stream, so it would need a fifth read of every `.obj`, on a
+   slow drive. So `ccgen` writes `.syms`. The front end puts the
+   summary at the end of the `.ir` file (record `Y`), with the code
+   size and the function offsets 0, and `ccgen` copies it, filling
+   those in from its own `fn_code[]`. The `.obj` and `.syms` formats
+   don't change, and neither does `ccrel`.
+2. **Names.** `ccgen` has no name pool, but seven of emit.c's messages
+   name the function (177 to 180 and 183 to 185, such as "function too
+   large:"), and `-i` names the function at `FUNC` and at each `CALL`.
+   So the front end writes a name record (`N`) for a function just
+   before the first op that refers to it (its `FUNC` or a `CALL`),
+   noted by a new `fn_flags` bit, `FN_NAMED` (32 is free). `ccgen` keeps
+   the names: an offset per function and the name bytes. The bound,
+   measured: parse.c has 278 function symbols with 2,982 bytes of
+   names (counting a NUL each), so about 3.3K of pool plus 604 bytes of
+   offsets; only functions the IR refers to get a record. (Cheaper, not
+   chosen: keep only the current function's name, and have `-i` show a
+   callee by number.)
+3. **Source lines.** Diagnostics start with the source name and line
+   (`src_name`, `src_line`), and `ccgen` has no lexer. So the file's
+   header holds the source name, and a line record (`L`) before each
+   function gives the line where it starts: `ccgen`'s errors read
+   `x.c:120: error 177: function too large: f`. (Today such an error
+   shows the line the parser had reached, near the function's end.)
+4. **The data records.** The parser writes them while it parses, in
+   the middle of a function's IR (string literals, `static` locals),
+   and their offsets are fixed when written. They stay in the front
+   end, and go into the `.ir` file exactly as in `.obj`; `ccgen` copies
+   each one as it meets it. Only their order among themselves matters,
+   as now, where a function's `S` records come before its `F` record.
+5. **File size** (measured: `cccomp -i` on `tools/out/parse.c`, the
+   self-compile input, which has 12,950 IR ops). The ops alone, by
+   encoding:
+
+   | Encoding | Bytes |
+   |----------|-------|
+   | tag, then each operand the op has as a word (a table per op) | 36,564 |
+   | 2-bit form in the tag: none, byte, word, word and *f* | 27,787 |
+   | **chosen:** tag with a 1-byte operand flag, prefixes for word operands and *f* | 28,177 |
+
+   The whole file for parse.c is then about 45K: the ops, 6.9K of
+   data records (parse.obj has `D` 6,009, `R` 240, `S` 638 bytes), the
+   summary (about 5.6K, as parse.syms's 5,650), at most 3.8K of names
+   and 0.5K of lines. parse.obj is 38,947 bytes, with 32,060 of them in
+   `F` records.
+6. **Disk space at once.** `cccomp` needs the `.i` and the `.ir`;
+   `ccgen` the `.ir`, `.obj` and `.syms` (about 90K for parse.c).
+   Today's compile pass needs the `.i`, `.obj` and `.syms`. Since the
+   `.ir` is about the size of `.obj` and `.syms` together, the peak is
+   about the same, provided the `.i` is removed once `cccomp` is done
+   and the `.ir` once `ccgen` is (unless `-k`). E3's problem (parse.c's
+   source) is unchanged.
+7. **Time.** One more program load, and one more write and read of a
+   file about the size of `.obj`. Not measured on a real drive (M13).
+8. **Open files.** `cccomp` has the `.i` and the `.ir` open; `ccgen`
+   the `.ir` and `.obj`, then the `.ir` and `.syms`. Two each, within
+   the Apple II's 4 (and `ccish.msg` is opened only after an error has
+   closed the others).
+
+**The encoding** (in full in OBJECT.md). Records with a letter tag, as
+in `.obj`; the `D`, `R` and `S` records are byte for byte the same, so
+`ccgen` copies them whole. An IR op is its op number (below `$40`)
+with bit 7 set if a one-byte operand *a* follows. A word operand
+(outside 0 to 255) comes before the op in a `W` prefix, and the second
+operand *f* in an `X` prefix; without them, *a* is 0 and *f* is -1.
+Why this one:
+- Neither the writer nor the reader needs a table of which op takes
+  which operands: the writer picks the form from the values, and the
+  reader fills in *a* and *f* without knowing the op. So `-i` can show
+  any op, and a new op needs no format change.
+- It is 23% smaller than words by table, and only 1.4% (390 bytes for
+  parse.c) bigger than the 2-bit form, which would leave 64 tag values
+  for the ops and the records together: there are 50 ops now, and
+  `unsigned` (M11) would add several. Here ops have `$00`-`$3F` (and
+  `$60`-`$7F` later if needed), and records the capital letters.
+- *a* is 16 bits; a word is read sign-extended, so `CONST -1` stays -1
+  on the host. Lowering uses constants as 16-bit values anyway
+  (`mop_const()`).
+
+**Extra information in the file, to make the programs simpler** (asked
+for in discussion):
+- a header with a magic number, a version, and the source file's name
+  (for messages);
+- `L` records: each function's first line (for messages; per
+  statement later, for `-i` or debugging, if disk allows);
+- `N` records: function names (for messages and `-i`);
+- the `Y` record: the summary in `.syms`'s own layout, so `ccgen`
+  copies it, filling in two kinds of field.
+
+Considered and not added: the frame size in `FUNC` (not known until
+the function ends; `ENDFUNC` has it), and a count of labels per
+function (it would only save clearing the label table).
+
+**`-i` in `ccgen`.** It prints each IR op as it reads it, before
+lowering, in today's form (`IR CALL f nargs=2`), with names from the
+`N` records, and an `L` record as `; line N`. The file holds the ops
+in the order they were lowered before (after rotation), so the output
+is today's, plus the line notes. `-i` is in both builds of `ccgen`
+(the point is to have it on the Apple II), so it leaves
+`CCISH_LISTING`, which then covers `ccrel`'s `-l` only (decision 21
+changes to match). Its cost (`dump_ir()` and the op names) is small,
+and in `ccgen`. `cccomp` loses `-i`; `ccish -i` still works.
+
+**Removing files.** `cccomp` removes the `.ir` after an error (unless
+`-k`). `ccgen` removes `.obj` and `.syms` after an error, and the
+`.ir` after success, unless `-k`: the `.ir` is only an intermediate,
+while `ccrel` keeps its objects because they can be linked again.
+`ccish` removes all of them after success, unless `-k`, as now.
+
+**Checks in `ccgen`.** "compiler stream file is damaged" (188) for a
+wrong magic or version, an unknown tag, a prefix not followed by an
+op, a label number of `MAX_LABELS` or more, a function number beyond
+the summary's count, an op outside a function, a missing summary or
+anything after it, and a function the summary says is defined that has
+no `FUNC` (or the reverse).
+
+**Testing.** Before the change, keep every test's `.obj`, `.syms` and
+module from the current compiler (in the scratchpad); after it, all
+must be byte for byte the same, in both builds: the split moves code
+and should change no output. `run.sh` then runs `cccomp`, `ccgen` and
+`ccrel`. New tests: a damaged `.ir` (cut short; wrong version), a
+back-end error showing the file and line, and `-i`'s output for a
+small file (the expected output written by hand from IR.md).
+
+**Moving more work to `ccgen`** (re-reviewed in discussion,
+2026-10-30). Work that only chooses how code is shaped can move
+behind the `.ir` file as new IR ops. Agreed so far: A and C. Sizes
+are from the self-compile listing (`tools/out/cccomp.lst`); savings
+are estimates, to be measured.
+
+- **A. Reordering moves to `ccgen`: `IR_SWAP`** (agreed). Today the
+  parser reorders code in the 64-op IR buffer (4(d2)), and when the
+  code has already left the buffer it falls back to temporaries, in
+  three places (`finish_store()`, `i + p` in `binary()`,
+  `copy_struct()`). Instead:
+  - The parser emits `IR_SWAP` after the two blocks, with *a* = the
+    length of the top block in IR ops and *f* = the length of the
+    block below it. It still counts ops written (`ir_here()`, and
+    `code_start()` for held constants), so the lengths are
+    subtractions.
+  - `ccgen` keeps the IR buffer (larger, sized by measurement). If both
+    blocks are still in it, it exchanges them there, as `ir_rotate()`
+    does now: no code at all. Otherwise it exchanges the values at run
+    time, through temporaries of its own: slots past the parser's
+    frame, whose offsets it fills in at the function's end, as it
+    already does for the frame size (`drop_frame()` counts them).
+  - *f* = -1 means "don't move code": a call in the right operand
+    must stay before the load (compound assignment, C11 6.5.16.2p3;
+    `compound_elem()`). Then `ccgen` rewrites the swap with the next
+    op where it can (commutative ops drop it, `SUB` becomes `SUB NEG`,
+    `LT` becomes `GT`, `LE` becomes `GE`, and the reverse), and uses
+    temporaries otherwise (`/`, `%`, `<<`, `>>`): today's
+    `reversed_op()` and `swapped_op()`, as peephole rules.
+  - The block below leaves one value. The top block leaves one value,
+    or, for a store whose value is used (`x = *p = e`), the value and
+    its copy: the block then ends in `IR_DUP`, and the run-time
+    exchange keeps both copies below the address.
+  - The front end loses the buffer (316 bytes of code: `ir_put()`,
+    `ir_rotate()`, `reverse()`, `lower_all()`, `ir_holds()`, ...; and
+    384 of data), the three fallbacks, and `reversed_op()` and
+    `swapped_op()` (237 bytes): about 0.6K of code and 0.4K of data.
+    `ccgen` gains about 0.4K.
+  - Later, a VM `SWAP` (issue 21) is a change to `ccgen` alone: the
+    run-time exchange becomes `SWAP`, and a swap before a store can
+    become the reversed stores `SWR`/`SBR`.
+  - With A, the IR ops in the file are no longer in their final order:
+    `-i` shows them as written, with the `SWAP`s.
+- **C. Unsigned comparison ops: `IR_ULT`, `IR_UGT`, `IR_ULE`,
+  `IR_UGE`** (agreed). `compare_pointers()` (167 bytes) flips both
+  operands' sign bits itself today (`CW $8000 XOR` each side, issue
+  21). Instead it emits the op, with *a* = the length of the right
+  operand's block in IR ops, and `ccgen` inserts the flips: after the
+  left operand (before the right block) and after the right one, or
+  through a temporary if the right block has left the buffer. A
+  constant operand is flipped at compile time (`CONST c` becomes
+  `CONST c ^ $8000`). `==` and `!=` need no unsigned form. M11's
+  `unsigned` uses the same ops for `unsigned int`, and VM opcodes
+  `ISULT` and the rest (issue 21) would again be a change to `ccgen`
+  alone.
+- **B. Block copies and fills, as a hint on the call** (agreed as a
+  conditional step: only if `cccomp` still needs space after A and C
+  are measured). A plain `IR_COPY` with both addresses on the stack
+  would lose today's word moves: with no `SWAP` or `OVER`, words can't
+  be moved between two stacked addresses without a call, while the
+  parser now recomputes each address from its variables per word
+  (`a[i] = b[j]`). So instead the parser emits the call it would make
+  anyway (`dst src CONST n CALL memcpy`, or `memset` for zeroing a
+  local array), with a hint op just before it giving the two address
+  blocks' lengths in IR ops, and marking them as safe to recompute
+  (K_VAR and K_ELEM addresses: variables and constants, no calls or
+  stores; *f* = -1 when not, as for an address a call returned).
+  `ccgen` then compares the real encoded size of word moves (each
+  block repeated with the word's offset added; a single local or
+  global address becomes `LLW`/`SLW` and the like) against the call,
+  and keeps the smaller. Ignoring the hint leaves a correct call, so
+  the fallback costs nothing. The front end loses `copy_struct()`'s
+  cost model and word-move loop (`addr_cost()`, `access_cost()`) and
+  `init_zero()`'s choice, about 0.4-0.5K; `ccgen` gains about 0.3K, so
+  the total hardly changes. Generated code improves little: parse.c
+  has 14 `memcpy` calls for struct copies and no `memset`. A struct
+  that a call returns (on the stack) is still stored by the parser.
+  Needs A (the buffer and block lengths in `ccgen`).
+- **Not moved:** constant folding (C needs integer constant
+  expressions in the front end: array sizes, `case` labels, enum
+  values, initializers); `parse_addr()` (address constants; C3 may
+  simplify it); type checks and diagnostics (they need types and
+  exact lines); the pending operands (K_VAR, K_ELEM: what to load at
+  all), frame layout, labels, and the summary's type hashes. Also not
+  worth it: `sort_cases()` (187 bytes; `ccgen` would need about 1K to
+  buffer case tables, and error 140 would lose its line), and
+  dropping unused labels in `ccgen` (it would need a whole function
+  buffered).
+
+**Steps.**
+1. The split itself, with the same output: the two new source files
+   and `ccgen.c`, the Makefile (`ccgen`, `ccgen-small`),
+   `tools/measure.py` (a third program), `run.sh`, and the docs
+   (README usage and layout, IR.md, OBJECT.md, this section's status).
+   It stays a pure move, so that byte-identical output checks it.
+2. Two clean-ups in `ccgen`, worth doing regardless of size (agreed),
+   each with byte-identical output:
+   - **Table-driven lowering:** one table of about 50 entries (each IR
+     op's PLASMA opcode and kind: simple, comparison, branch, operand
+     form) replaces `lower()`'s, `simple_op()`'s, `compare_op()`'s and
+     `branch_op()`'s `switch`es (769 bytes; about 400 saved), leaving
+     only the special cases (`FUNC`, `CONST`, `NOT`, the globals'
+     fixups) in code. The IR-to-PLASMA mapping is then one table, as in
+     IR.md's "Now:" lines, and a new op is one row.
+   - **Parallel arrays instead of `Mop`** in the peephole window
+     (`win[]`) and of `Reloc` in emit.c (decision 15): each
+     `win[i].field` now costs a `MUL` by 10 (24 `MUL`s in peep.c's and
+     emit.c's compiled code; on the 6502 VM a software multiply), in
+     the loop that runs for every op. The rewrite functions take window
+     indexes instead of `Mop *`. Smaller (to be measured) and faster.
+   - **Smaller path buffers in diag.c** (agreed, in every program; also
+     in `cccomp` and `ccrel`): `msg_path[300]`, `stream_name()`'s
+     `buf[300]` and `base_of()`'s `buf[256]` are 856 bytes of data
+     sized for host paths. A ProDOS path is at most 64 characters (128
+     with a prefix), so about 128 each, saving about 450 bytes in each
+     program. A longer name is the existing "output name too long"
+     error (1), or the like for the others; the tests' paths must stay
+     within it, since the host runs the small build too.
+   - **`char` for the parser's tables whose values fit** (decision 15;
+     agreed, done ahead of the split where it checks out): see "Parser
+     tables as `char`" below.
+3. Measure and report `cccomp`'s and `ccgen`'s sizes; then decide
+   `CCISH_CHECKS` (C1 step 2) and splitting parse.c (F1) with the new
+   numbers. New peephole rules come after, one by one: measure, report,
+   ask.
+   - Then **E1** (18.6): measure the real free memory on a 64K PLASMA
+     system, in an emulator. Without it, "is it enough?" (B, the
+     front-end options below) can't be answered.
+4. A: `IR_SWAP`, with the buffer in `ccgen`. Output should stay the
+   same except where a fallback ran (a full buffer, rare).
+5. C: the unsigned comparison ops (now, or at the start of M11).
+6. B, conditional: only if `cccomp` still needs a few hundred bytes
+   after step 5 is measured. If it fits, or is much further off,
+   `CCISH_CHECKS` and F1 come first.
+
+**Parser tables as `char`** (decision 15; done 2026-10-30, ahead of
+the split, in commit e5ca9a1d). Each table was checked for the values it
+holds:
+- `fn_type[]` (return types) and `param_types[]` (parameter types):
+  `char`. Both hold unqualified type handles only (indexes below
+  `MAX_TYPES`, 56): the parser already drops a return type's
+  qualifiers (`const int f(void)` returns an int, as in C17, which
+  ignores them; gcc in C89 mode rejects `const int f(void);` followed
+  by `int f(void) {...}`, in C17 mode accepts it), and parameter types
+  are stored with `unqual()` or from `sig_type()`.
+- `case_label[]`: `char`; labels are below `MAX_LABELS` (104).
+- `label_uses[]` became `label_used[]`, a `char` flag: it was only
+  ever tested for 0, so a count wasn't needed.
+- Kept as `int`: `brk_label[]` and `cont_label[]` (`cont_label` holds
+  -1 for "no loop", which a `char` would read back as 255 in ccish,
+  whose `char` is unsigned; 64 bytes, not worth a sentinel change), and
+  the tables whose values need 16 bits (offsets into the name pool and
+  `param_types[]`, data and frame offsets, sizes, values).
+- Since a host's `char` may be signed, `MAX_TYPES` and `MAX_LABELS`
+  must now stay at most 128 (noted at both in `ccish.h`).
+- Measured (small build): `cccomp` 52,272 to 51,372 bytes (data
+  19,529 to 18,654, code 31,624 to 31,599); its module file 66,964 to
+  66,052. Generated code is unchanged: 269 tests pass, and the
+  self-compile inputs compile to byte-identical objects and symbol
+  summaries with the old and new compiler.
+
+Still open outside this plan: the 6502 stack depth (18.5, "Stack and
+static locals": the depth measurement, `MAX_NEST`, and nest counts in
+`parse_unary()` and statements). It is a correctness problem on the
+target, not a size one, and comes after this work.
+
+**Front-end diet: options for later** (discussed 2026-10-30; not
+decided, except that F9 is promising). Each keeps every feature:
+- **F9 (C):** `ccpp` writes tokens, not text (in 18.6 F).
+- **A6 (A):** identifiers as numbers (in 18.6 A).
+- **C6 (C):** address constants from the expression parser, instead
+  of `parse_addr()` (in 18.6 C).
+
+Also: `ccgen`'s new tables (its IR buffer, the peephole window) are
+sized from measurement, 10-20% above the peaks, like every other
+table. Keeping only the current function's name unless `-i` (about
+3.9K of data) stays an option, only if `ccgen` runs short.
+
+**Open for review:** the name `ccgen` (others: `cclow`, `ccbe`); the
+file names `irout.c` and `irin.c`; `ccgen` removing the `.ir`; line
+records only per function; `ccgen` keeping every name (about 3.9K) or
+only the current function's; A's run-time exchange for a top block
+that ends in `IR_DUP`; the size of `ccgen`'s IR buffer.
 
 ### 19. Target application: a small Unix-like command set (possible, not committed)
 
@@ -2813,7 +3251,14 @@ issue. In summary:
     the diagnostics a valid program never triggers. Both have the same
     limits, and generate the same code for valid programs. The user:
     "Loss of error-detection is sad, but never working on correct code
-    is worse."
+    is worse." Changed by decision 22: `ccgen` keeps `-i` in both
+    builds.
+22. **The back end is a program of its own, `ccgen`** (decided in
+    discussion, 2026-10-30; design in 18.7). `cccomp` parses and
+    writes the IR to a `.ir` file (OBJECT.md); `ccgen` lowers,
+    optimizes and emits it as `.obj` and `.syms`, which `ccrel` links
+    as before. `ccgen` prints the IR (`-i`), on the Apple II too, and
+    has room for more peephole rules.
 
 
 ## Milestones

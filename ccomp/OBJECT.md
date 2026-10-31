@@ -23,6 +23,11 @@ source and one output file open (PLASMA's Apple II file library allows
 All words are 16-bit little-endian. Every file is written once, in
 order, with no seeking, through 512-byte block buffers (`src/bio.c`).
 
+**Planned (approach.md 18.7, not built yet):** the back end becomes a
+program of its own, `ccgen`. Then `cccomp` writes an IR file,
+`NAME.ir` (below), and `ccgen` turns it into `NAME.obj` and
+`NAME.syms`, whose formats don't change.
+
 ## `NAME.obj`: the stream
 
 A sequence of records, until end of file, in the order the compiler
@@ -189,6 +194,143 @@ own qualifiers), then `)`. A data symbol's leaves out its outermost
 array count (`[` then the element type), so that `extern int a[];`
 matches `int a[10];`; the size field covers that. A hash that comes
 out 0 is written as 1.
+
+## `NAME.ir`: the IR file (designed; not built yet)
+
+Written by `cccomp` (the front end) and read once, in order, by
+`ccgen` (the back end), which writes `NAME.obj` and `NAME.syms` from
+it (approach.md 18.7). It holds the IR ops as the parser produced them
+(after any reordering in the IR buffer), whose meanings are in
+[IR.md](IR.md); the data records, as in `NAME.obj`; and the symbol
+summary. It is an intermediate file: `ccgen` removes it after success,
+unless `-k`.
+
+The file starts with a header:
+
+| Size | Field |
+|------|-------|
+| 3 bytes | magic `CIR` |
+| byte | IR format version: 1 |
+| byte | length *n* of the source file's name (at most 255; a longer name is cut) |
+| *n* bytes | the source file's name, as given to `cccomp`, for `ccgen`'s messages |
+
+Then records, until the summary, which is last. Each starts with a
+one-byte tag: a capital letter for most records, as in `NAME.obj`,
+and for an IR op a byte below `$40` or from `$80` to `$BF`:
+
+| Tag | Record |
+|-----|--------|
+| `D`, `R`, `S` | data bytes, an address in the data, a string literal: exactly as in `NAME.obj`, which `ccgen` copies them to whole |
+| `L` | a source line |
+| `N` | a function's name |
+| `W` | prefix: the next op's operand *a*, as a word |
+| `X` | prefix: the next op's second operand *f* |
+| `Y` | the symbol summary; the last record |
+| `$00`-`$3F` | an IR op, with no one-byte operand |
+| `$80`-`$BF` | an IR op plus `$80`, followed by a one-byte operand *a* |
+
+### IR ops
+
+An IR op has an op number, an operand *a* and a second operand *f*
+(`ir_put(op, a, f)`; IR.md). Its op number is the tag (less `$80` if
+bit 7 is set). Its operands come from the tag and from the prefixes
+just before it:
+
+- *a* is 0, or the byte after the tag if bit 7 is set, or the word of
+  a `W` prefix. The writer uses the byte form for 1 to 255, `W` for
+  any other value except 0, and neither for 0. *a* is a 16-bit value,
+  and the reader sign-extends a `W` word, so `CONST -1` is `W FF FF`
+  then `$02`, and reads back as -1.
+- *f* is -1, or the word of an `X` prefix: a function index (`FUNC`,
+  `CALL`), a data symbol index (`DATAADDR` and the global ops, for an
+  `extern` global), or a label (`JOIN`).
+
+The prefixes come in the order `X`, then `W`, right before their op,
+with no other record between. Bit 7 and `W` are never both used for
+one op. So the reader needs no table of which ops take which
+operands, and neither does the writer: it chooses the form from the
+values.
+
+The op numbers are the order of the `IR_*` enum in `src/ccish.h`
+(changing them changes the version):
+
+| Numbers | Ops |
+|---------|-----|
+| `$00`-`$04` | `FUNC`, `ENDFUNC`, `CONST`, `DATAADDR`, `STRADDR` |
+| `$05`-`$09` | `LOCAL`, `SETLOCAL`, `LOCALB`, `SETLOCALB`, `LOCALADDR` |
+| `$0A`-`$0D` | `GLOBAL`, `SETGLOBAL`, `GLOBALB`, `SETGLOBALB` |
+| `$0E`-`$15` | `LOAD`, `LOADB`, `STORE`, `STOREB`, `CALL`, `DROP`, `DUP`, `RETURN` |
+| `$16`-`$1F` | `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, `AND`, `OR`, `XOR`, `SHL`, `SHR` |
+| `$20`-`$25` | `EQ`, `NE`, `LT`, `GT`, `LE`, `GE` |
+| `$26`-`$28` | `NEG`, `COMP`, `NOT` |
+| `$29`-`$2D` | `LABEL`, `JUMP`, `BRFALSE`, `BRTRUE`, `JOIN` |
+| `$2E`-`$31` | `SEL`, `CASES`, `CASEVAL`, `CASETO` |
+
+Planned (approach.md 18.7, A and C), as the next numbers:
+
+| Numbers | Ops |
+|---------|-----|
+| `$32` | `SWAP` (*a* = top block's length in ops, *f* = the block below's, or -1: don't move code) |
+| `$33`-`$36` | `ULT`, `UGT`, `ULE`, `UGE` (*a* = the right operand's block length in ops) |
+
+The rest, to `$3F`, are free for new ops, and `$60`-`$7F` (with
+`$E0`-`$FF`) could be added if those run out.
+
+Examples: `IR_ADD` is `16`. `IR_CONST 0` is `02`. `IR_LOCAL 4` is
+`85 04`. `IR_CONST 1000` is `57 E8 03 02` (`W` $03E8, then `CONST`).
+`IR_CALL` of function 12 with 2 arguments is `58 0C 00 92 02` (`X`
+12, then `CALL` with *a* = 2).
+
+Every op is inside a function, from its `FUNC` to its `ENDFUNC`, and
+functions don't nest. `D`, `R` and `S` records may come anywhere
+between ops, in a function or not (a string literal, a `static`
+local), but not between a prefix and its op.
+
+### `L`: a source line
+
+| Size | Field |
+|------|-------|
+| byte | tag `L` |
+| word | line number |
+
+The source line that `ccgen`'s messages give from here on: one comes
+right before each function's records (its `N`, prefixes and `FUNC`),
+with the line where the function starts. So a back-end error reads
+`x.c:120: error 177: function too large: f`.
+
+### `N`: a function's name
+
+| Size | Field |
+|------|-------|
+| byte | tag `N` |
+| word | function index |
+| byte | name length *n* (1-31) |
+| *n* bytes | name |
+
+One for each function the IR refers to, before the first op that does
+(its `FUNC` or a `CALL`, and before that op's prefixes). `ccgen` keeps
+the names, for its messages and for `-i`.
+
+### `Y`: the symbol summary
+
+| Size | Field |
+|------|-------|
+| byte | tag `Y` |
+| ... | the rest of the file: `NAME.syms` after its magic and version, with the code size and every function's code offset 0 |
+
+`ccgen` writes `NAME.syms` from it: the magic and version, then the
+same bytes, with the code size and each defined function's offset
+filled in, which only it knows.
+
+### What `ccgen` checks
+
+It reports "compiler stream file is damaged" (188) for a wrong magic
+or version; an unknown tag; a prefix not followed by an op; an op
+outside a function; a label of `MAX_LABELS` or more; a function index
+of `MAX_FUNCS` or more (or, at the end, at or beyond the summary's
+count), or one used without an `N` record before it; a
+missing summary, or anything after it; and a function that the
+summary says is defined but has no `FUNC`, or the reverse.
 
 ## The final pass
 

@@ -5,6 +5,15 @@ sends to the lowering stage (stage 2, `src/lower.c`) by calling
 `ir_put(op, a, sym)`. See [approach.md](approach.md), section 4A, for
 the pipeline as a whole. `ccish -i` prints the stream.
 
+**Planned (approach.md 18.7, not built yet):** stages 2 to 4 move to a
+program of their own, `ccgen`. The parser's program, `cccomp`, then
+writes the IR to a file, `NAME.ir`, whose encoding is in
+[OBJECT.md](OBJECT.md), "`NAME.ir`", and `ccgen` reads it and prints it
+(`-i`). The ops and their meanings stay as below. At first the buffer
+("Stage 2's buffer", below) stays with the parser, so the file holds
+the ops in their final order; later the buffer moves to `ccgen`, and
+the parser writes `IR_SWAP` instead ("Planned ops", below).
+
 This document describes the ops that exist now (milestones 1 to 3,
 and M4 so far).
 It grows as milestones add ops.
@@ -603,6 +612,42 @@ Pseudo-ops travel with them: `OP_FUNC_BEGIN`, `OP_FUNC_END` and
 `OP_CASEVAL` and `OP_CASETO`, which produce its bytes but no opcode. All
 are barriers for the peephole stage. A branch machine op's operand is a label number until
 stage 4 replaces it with an offset.
+
+## Planned ops (approach.md 18.7, A and C; not built yet)
+
+### `IR_SWAP` *a* = top block's length, *f* = the block below's length (or -1)
+
+- **Stack:** `( x y -- y x )`, where each of `x` and `y` is the
+  value left by a block of IR ops just before the `SWAP`: the last *a*
+  ops, and the *f* ops before them. The top block may also leave a
+  copy of its value (it ends in `IR_DUP`, for a store whose value is
+  used); both copies end up below `x`.
+- **Lowering (in `ccgen`):** if both blocks are still in its IR
+  buffer, exchange them there, so the `SWAP` costs nothing (what
+  `ir_rotate()` does today, in the parser). If not, or if *f* is -1
+  (the code must not move: a call is involved), rewrite it with the
+  next op (`SWAP ADD` → `ADD`; `SWAP SUB` → `SUB NEG`; `SWAP LT` →
+  `GT`; ...), or exchange the values through `ccgen`'s own frame
+  temporaries.
+- **Why it differs from PLASMA:** PLASMA has no `SWAP` (issue 21).
+  With one, the fallback becomes that opcode, in `ccgen` alone.
+- **Replaces:** the parser's buffer, its `ir_rotate()` calls and
+  their temporary fallbacks, and `reversed_op()`.
+
+### `IR_ULT`, `IR_UGT`, `IR_ULE`, `IR_UGE` *a* = the right operand's block length
+
+- **Stack:** `( x y -- x op y )`, comparing as unsigned 16-bit
+  values; the result is 1 or 0, like the signed comparisons.
+- **Lowering (in `ccgen`):** flip both sign bits and compare signed:
+  `CW $8000 XOR` after `x` (before `y`'s block of *a* ops) and after
+  `y`, then the signed comparison and `NEG`; a constant is flipped at
+  compile time. If `y`'s block has left the buffer, `y` goes through a
+  temporary.
+- **Why it differs from PLASMA:** PLASMA's comparisons are signed. VM
+  opcodes `ISULT` and the rest (issue 21) would make this one op.
+- **Used for:** `<`, `>`, `<=` and `>=` between pointers now (today
+  `compare_pointers()` emits the flips itself), and `unsigned int`
+  from M11.
 
 ## Adding ops
 
