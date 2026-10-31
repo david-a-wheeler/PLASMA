@@ -3487,6 +3487,14 @@ issue. In summary:
     token at a time, aiming at 32K or less. `ccgen` turns ids back
     into spellings for `.syms`. `-E` (text output) is in the full
     build only, easily restored.
+25. **A header per `.c`, and per shared purpose** (decided in
+    discussion, 2026-10-31; "Headers, one per purpose" in the `ccpp`
+    design). Each `.c` includes only the headers it uses. Headers may
+    include headers where that makes strong sense, but ccish's own
+    sources nest includes at most 2 levels, 1 wherever reasonable;
+    `ccpp` nests as deep as the system's open files allow, with a clear
+    message past that. ccish.h is split up in commits of its own,
+    between the `ccpp` steps.
 
 
 ## Milestones
@@ -3689,6 +3697,59 @@ and committed):
   from CCPP.md, except the `.nam` checksum, which `run.sh` computes
   with a few lines of awk, written apart from `ccpp`'s code, so that
   the expected value never comes from the program under test.
+
+*Headers, one per purpose* (decided in discussion, 2026-10-31;
+decision 25). ccish.h is 25,024 bytes (101 prototypes, 20 externs, 44
+`#define`s), and all 18 `.c` files include all of it: bio.c defines
+about 10 functions, but its object lists 124 (the C library stub,
+without ccish.h, lists 25). Every prototype read takes a slot in
+`cccomp`'s function tables (`MAX_FUNCS` 302, about 7 bytes each, and
+`MAX_PARAM_TYPES`), and parse.c, which sets those limits, reads about
+100 it doesn't need. The user: "each FOO.c file should eventually
+have a corresponding FOO.h that defines the interface of each
+function and global type that its .c file actually creates. In cases
+where multiple files need to agree on something, like a token's
+constant value, those should be a .h file corresponding to its
+purpose. Individual .c files would then #include *only* the .h files
+they need."
+- Each `FOO.c` has a `FOO.h` declaring what `FOO.c` defines, and
+  includes it (so its prototypes are checked against its
+  definitions). What several files must agree on goes in a header
+  named for its purpose: the token codes (`ccpp` and `cccomp`), the IR
+  (`cccomp` and `ccgen`), the object format (`ccgen` and `ccrel`), the
+  limits. A `.c` includes only the headers it uses.
+- A header may include another header where that makes strong
+  logical sense. In ccish's own sources, includes nest at most 2
+  levels (a `.c`, a header, a header it includes), and 1 wherever
+  reasonable. Why: `ccpp` has the source and `NAME.i` open, and
+  PLASMA's Apple II file library allows 4 open files, so 2 are left
+  for headers.
+- `ccpp` itself has no fixed nesting limit of 2. Its include stack is
+  sized by a constant (`MAX_INCLUDE`, from measurement and memory:
+  each level costs a 512-byte bio buffer, and ProDOS a 1K buffer of
+  its own), so it nests deeper wherever the system allows more open
+  files (ProDOS itself allows 8). Past `MAX_INCLUDE`, it says the
+  includes nest too deeply; when opening an include fails while
+  others are open, its message says that the file is missing or
+  that too many files are open (exactly which, where the system
+  reports it). `ccish.msg` is opened only after the others are
+  closed, so the message can be printed.
+- Costs accepted: ProDOS allocates in 512-byte blocks (and a file
+  over 512 bytes has an index block too), so perhaps 15 headers waste
+  4-8K of disk; development needs more than a 140K floppy anyway
+  (parse.c's source alone doesn't fit, E3). More files to open, but
+  much less to read.
+- When: new files get their headers from the start (step 1's `ccpp`
+  files and `tokin.c`, and the shared token-code header). Splitting
+  ccish.h is separate commits between `ccpp` steps, not inside one,
+  since changing which prototypes a file reads can renumber its
+  functions and so change `.obj` files that are otherwise the same;
+  each `ccpp` step stays checkable by "objects unchanged", and each
+  split commit by "tests pass, object changes explained". The order:
+  the purpose headers (tokens, IR, objects, limits), then one per
+  `.c`, then ccish.h goes. Then re-measure the limits (`MAX_FUNCS`,
+  `MAX_PARAM_TYPES`, `MAX_NAMES`, `ccpp`'s pool) and report the data
+  saved. Splitting parse.c comes after, as its own work.
 
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
