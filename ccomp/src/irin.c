@@ -148,8 +148,19 @@ const char *func_name(int f)
  *                temporaries (buf_f: the values the top block left)
  * A stash needs the top block still here, and holding no other SWAP
  * that uses a temporary, whose use would overlap.
+ *
+ * The unsigned comparisons (IR_ULT ...; 18.7, C) are signed ones with
+ * both sign bits flipped (XOR $8000), the left operand's before the
+ * right operand's code, which is the a ops just before the comparison.
+ * If those are here, the flip goes in front of them (PRE_FLIP), and the
+ * right one after (U_INLINE), or into the right operand itself if it is
+ * one constant (U_FOLDED). If not, both are flipped afterward, the
+ * right one saved in temporary 1 meanwhile (U_LATE): a stash uses
+ * temporary 0, so the two never overlap.
  */
 enum { SW_DONE, SW_PENDING, SW_FREE, SW_STASH, SW_EXCHANGE };
+enum { U_INLINE, U_FOLDED, U_LATE };
+enum { PRE_STASH = 1, PRE_FLIP = 2 };   /* buf_pre[] bits */
 
 #define IR_BUF 128
 static char buf_op[IR_BUF];
@@ -205,7 +216,7 @@ static void decide(int s, int next)
       if (buf_op[i] == IR_SWAP && buf_a[i] >= SW_STASH)
         break;
     if (i == s) {
-      buf_pre[s - len] = 1;
+      buf_pre[s - len] |= PRE_STASH;
       buf_a[s] = SW_STASH;
       return;
     }
@@ -234,6 +245,34 @@ static int lower_free_swap(int i)
   return 1;
 }
 
+/* Is IR op op one of the unsigned comparisons? */
+static int is_unsigned_cmp(int op)
+{
+  return op >= IR_ULT && op <= IR_UGE;
+}
+
+/* Lower an XOR $8000: flip the top value's sign bit. */
+static void lower_flip(void)
+{
+  lower_op(IR_CONST, -32768, -1);
+  lower_op(IR_XOR, 0, -1);
+}
+
+/* Lower unsigned comparison op, in way how (U_*). */
+static void lower_unsigned(int op, int how)
+{
+  if (how == U_INLINE) {
+    lower_flip();
+  } else if (how == U_LATE) {
+    lower_flip();
+    lower_op(IR_SETLOCAL, FRAME_TEMP(1), -1);
+    lower_op(IR_DROP, 0, -1);
+    lower_flip();
+    lower_op(IR_LOCAL, FRAME_TEMP(1), -1);
+  }
+  lower_op(op, 0, -1);
+}
+
 /* Lower the oldest n held ops (or one more, if a SWAP takes the op
  * after it), keeping the rest. A SWAP is never lowered before it has
  * been decided, with the op after it held. */
@@ -245,11 +284,15 @@ static void lower_held(int n)
     if (op == IR_SWAP && (buf_a[i] == SW_PENDING
                           || (buf_a[i] == SW_FREE && i + 1 >= nbuf)))
       break;
-    if (buf_pre[i]) {
+    if (buf_pre[i] & PRE_STASH) {
       lower_op(IR_SETLOCAL, FRAME_TEMP(0), -1);
       lower_op(IR_DROP, 0, -1);
     }
-    if (op != IR_SWAP) {
+    if (buf_pre[i] & PRE_FLIP)
+      lower_flip();
+    if (is_unsigned_cmp(op)) {
+      lower_unsigned(op, buf_a[i]);
+    } else if (op != IR_SWAP) {
       lower_op(op, buf_a[i], buf_f[i]);
     } else if (buf_a[i] == SW_FREE) {
       i += lower_free_swap(i) - 1;
@@ -271,13 +314,26 @@ static void lower_held(int n)
 
 /* Hold IR op op until it is lowered. A pending SWAP just before it is
  * decided first. A SWAP whose two blocks are here is done at once, by
- * moving them; one that can't be waits. The end of a function lowers
- * all. */
+ * moving them; one that can't be waits. An unsigned comparison's way is
+ * chosen now (in a). The end of a function lowers all. */
 static void hold(int op, int a, int f)
 {
   if (nbuf > 0 && buf_op[nbuf - 1] == IR_SWAP
       && buf_a[nbuf - 1] == SW_PENDING)
     decide(nbuf - 1, op);
+  if (is_unsigned_cmp(op)) {
+    if (a >= 1 && a <= nbuf) {
+      buf_pre[nbuf - a] |= PRE_FLIP;
+      if (a == 1 && buf_op[nbuf - 1] == IR_CONST) {
+        buf_a[nbuf - 1] ^= 0x8000;
+        a = U_FOLDED;
+      } else {
+        a = U_INLINE;
+      }
+    } else {
+      a = U_LATE;
+    }
+  }
   if (op == IR_SWAP) {
     if (f >= 0 && a + f <= nbuf) {
       reverse(nbuf - a - f, nbuf - a);
@@ -330,6 +386,10 @@ static void do_op(int op, int a, int f)
     break;
   case IR_SWAP:
     if (a < 0 || f < -1 || (a == 0 && f >= 0))
+      damaged();
+    break;
+  case IR_ULT: case IR_UGT: case IR_ULE: case IR_UGE:
+    if (a < 0)
       damaged();
     break;
   }

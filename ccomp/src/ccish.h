@@ -334,6 +334,9 @@ enum {
   IR_SWAP,        /* a = the top block's length in IR ops, f = the
                    * block below's, or -1 if code must not move:
                    * exchange the values the two blocks left */
+  /* unsigned comparisons (18.7, C), in the order of LT GT LE GE; a =
+   * the right operand's block length in IR ops, or 0 if not known */
+  IR_ULT, IR_UGT, IR_ULE, IR_UGE,
   IR_NOPS         /* the number of IR ops */
 };
 

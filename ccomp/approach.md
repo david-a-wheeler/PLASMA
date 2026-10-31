@@ -2924,6 +2924,31 @@ review:
   to 26,210, data 15,045 to 14,657; module file 54,997); `ccgen`
   17,490 to 19,645 (the larger buffer, the three ways, the
   temporaries; more than the 0.4K estimated).
+
+**Step 5 (C, unsigned comparisons) is done** (2026-10-31). Choices,
+open for review:
+- `IR_ULT`, `IR_UGT`, `IR_ULE`, `IR_UGE` (`$33`-`$36`, in the order of
+  `LT GT LE GE`), *a* = the length of the right operand's code. The
+  parser no longer flips sign bits (`flip_sign()` is gone, and
+  `compare_pointers()` only checks types and pushes `r`); `binary()`
+  writes the op for `<` `>` `<=` `>=` between pointers. The left
+  operand of a pointer comparison is never a held constant, so the
+  right operand's code is exactly what follows `mid`.
+- `ccgen` flips `x` just before `y`'s code (a `PRE_FLIP` bit on its
+  first op, beside the stash's bit) and `y` after it, or into `y` if it
+  is one constant: the IR the parser wrote before, so the code is the
+  same (all 98 test and self-compile inputs: only step 4's three test
+  changes). If `y`'s code isn't held, both are flipped afterward, `y`
+  saved in temporary 1 (a stash uses temporary 0, so they can nest).
+  New test `unsigned_late.c` (a 199-op right operand; results by hand:
+  `1 0 1`). 277 tests pass.
+- Measured (small build): `cccomp` 41,985 to 41,949 (the parser's flips
+  were small); `ccgen` 19,645 to 19,976. The value is for later: M11's
+  `unsigned int` uses the same ops, and VM opcodes (`ISULT`, issue 21)
+  would be a change to `ccgen` alone.
+- Step 6 (B, the copy hint) stays conditional: `cccomp` is 41,949 bytes
+  and its module file 54,929, but how far that is from fitting waits
+  for E1.
    - **Smaller path buffers in diag.c** (agreed, in every program; also
      in `cccomp` and `ccrel`): `msg_path[300]`, `stream_name()`'s
      `buf[300]` and `base_of()`'s `buf[256]` are 856 bytes of data

@@ -649,22 +649,27 @@ stage 4 replaces it with an offset.
 - **Why it differs from PLASMA:** PLASMA has no `SWAP` (issue 21).
   With one, the exchange becomes that opcode, in `ccgen` alone.
 
-## Planned ops (approach.md 18.7, C; not built yet)
+## Unsigned comparisons: `IR_ULT`, `IR_UGT`, `IR_ULE`, `IR_UGE` *a* = the right operand's block length
 
-### `IR_ULT`, `IR_UGT`, `IR_ULE`, `IR_UGE` *a* = the right operand's block length
+(Approach.md 18.7, C; since step 5.)
 
 - **Stack:** `( x y -- x op y )`, comparing as unsigned 16-bit
-  values; the result is 1 or 0, like the signed comparisons.
-- **Lowering (in `ccgen`):** flip both sign bits and compare signed:
-  `CW $8000 XOR` after `x` (before `y`'s block of *a* ops) and after
-  `y`, then the signed comparison and `NEG`; a constant is flipped at
-  compile time. If `y`'s block has left the buffer, `y` goes through a
-  temporary.
+  values; the result is 1 or 0, like the signed comparisons. *a* is
+  the length of `y`'s code in IR ops, just before the op (0 if not
+  known).
+- **Lowering (in `ccgen`, `src/irin.c`):** flip both sign bits and
+  compare signed. If `y`'s code is still held, `CONST $8000 XOR` goes
+  just before it (flipping `x`) and after it (flipping `y`), or, if
+  `y` is one constant, into that constant: `x CONST $8000 XOR y CONST
+  $8000 XOR ISLT NEG`, exactly what the parser once wrote itself. If
+  not, both are flipped afterward, with `y` saved in `ccgen`'s
+  temporary 1 meanwhile: `CONST $8000 XOR SLW t1 CONST $8000 XOR LLW
+  t1`, then the comparison.
 - **Why it differs from PLASMA:** PLASMA's comparisons are signed. VM
-  opcodes `ISULT` and the rest (issue 21) would make this one op.
-- **Used for:** `<`, `>`, `<=` and `>=` between pointers now (today
-  `compare_pointers()` emits the flips itself), and `unsigned int`
-  from M11.
+  opcodes `ISULT` and the rest (issue 21) would make this one op, a
+  change to `ccgen` alone.
+- **Used for:** `<`, `>`, `<=` and `>=` between pointers, and
+  `unsigned int` from M11.
 
 ## Adding ops
 

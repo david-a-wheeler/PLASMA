@@ -17,7 +17,7 @@ static const char *const ir_names[] = {
   "EQ", "NE", "LT", "GT", "LE", "GE",
   "NEG", "COMP", "NOT",
   "LABEL", "JUMP", "BRFALSE", "BRTRUE", "JOIN",
-  "SEL", "CASES", "CASEVAL", "CASETO", "SWAP"
+  "SEL", "CASES", "CASEVAL", "CASETO", "SWAP", "ULT", "UGT", "ULE", "UGE"
 };
 
 /* How each IR op lowers (lw_kind[]), and the PLASMA opcode it lowers
@@ -52,7 +52,9 @@ static const char lw_kind[IR_NOPS] = {
   L_SIMPLE, L_SIMPLE, L_SPECIAL,            /* NEG, COMP, NOT */
   L_PSEUDO, L_OPERAND, L_OPERAND, L_OPERAND, L_SPECIAL,    /* ... JOIN */
   L_OPERAND, L_PSEUDO, L_PSEUDO, L_PSEUDO,  /* SEL, the case table */
-  L_SPECIAL                                 /* SWAP */
+  L_SPECIAL,                                /* SWAP */
+  L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE    /* ULT ... (irin.c flips
+                                                 * the sign bits first) */
 };
 
 static const unsigned char lw_op[IR_NOPS] = {
@@ -68,7 +70,8 @@ static const unsigned char lw_op[IR_NOPS] = {
   OP_NEG, OP_COMP, 0,
   OP_LABEL & 0xFF, OP_BRNCH, OP_BRFLS, OP_BRTRU, 0,
   OP_SEL, OP_CASES & 0xFF, OP_CASEVAL & 0xFF, OP_CASETO & 0xFF,
-  0
+  0,
+  OP_ISLT, OP_ISGT, OP_ISLE, OP_ISGE
 };
 
 /* Write s, then n in decimal, to standard output, for -i. No printf:
@@ -114,6 +117,8 @@ void dump_ir(int op, int a, int f)
   case IR_CASES: case IR_CASEVAL:
                     out_num(" ", a); break;
   case IR_SWAP:     out_num(" ", a); out_num(" ", f); break;
+  case IR_ULT: case IR_UGT: case IR_ULE: case IR_UGE:
+                    out_num(" ", a); break;
   }
   fputs("\n", stdout);
 }

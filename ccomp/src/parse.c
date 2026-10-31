@@ -2236,15 +2236,6 @@ static const char *op_name(int op)
   return op >= IR_ADD && op <= IR_SHR ? names[op - IR_ADD] : "operator";
 }
 
-/* Flip the top value's sign bit (XOR $8000). Pointers are compared
- * unsigned, as signed values with both sign bits flipped, since PLASMA
- * only has signed comparisons (approach.md, "M4 design"). */
-static void flip_sign(void)
-{
-  put(IR_CONST, -32768, -1);
-  put(IR_XOR, 0, -1);
-}
-
 /* Push integer operand i scaled by the size of what pointer type p
  * points to, for p + i or p - i. */
 static void push_scaled(Operand *i, int p)
@@ -2264,8 +2255,7 @@ static void push_scaled(Operand *i, int p)
 
 /* A comparison with a pointer operand: check the types (equality allows
  * a null pointer constant or a void *; < > <= >= need the same type),
- * then push r. For < > <= >=, the left side's sign was already flipped,
- * so flip r's too. */
+ * then push r. Pointers are compared unsigned (binary()). */
 static void compare_pointers(Operand *o, Operand *r, int op)
 {
   int lt = o->type, rt = value_type(r->type);
@@ -2276,14 +2266,7 @@ static void compare_pointers(Operand *o, Operand *r, int op)
                                : !compatible(lt, rt)) {
     error(84 /* "comparison of incompatible pointer types" */, NULL);
   }
-  if (is_relational(op) && r->kind == K_CONST) {
-    r->val = wrap16((unsigned)r->val ^ 0x8000u);
-    rvalue(r);
-  } else {
-    rvalue(r);
-    if (is_relational(op))
-      flip_sign();
-  }
+  rvalue(r);
 }
 
 /*
@@ -2303,6 +2286,16 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
     rvalue(r);                  /* an error */
   if (is_compare(op) && (is_pointer(lt) || is_pointer(rt))) {
     compare_pointers(o, r, op);
+    /* < > <= >= between pointers are unsigned: IR_ULT and the rest,
+     * with the length of r's code, which ccgen needs to flip both sign
+     * bits (approach.md 18.7, C). */
+    if (is_relational(op)) {
+      put(op - IR_LT + IR_ULT, mid >= 0 ? ir_here() - mid : 0, -1);
+      o->kind = K_VALUE;
+      o->type = TY_INT;
+      o->is_bool = 1;
+      return;
+    }
   } else if (!is_pointer(lt) && !is_pointer(rt)) {
     rvalue(r);
   } else if (is_pointer(lt) && !is_pointer(rt)
@@ -2658,8 +2651,6 @@ static void parse_expr(int min_prec, Operand *o)
       held[nheld++] = o->val;
     } else {
       rvalue(o);
-      if (is_pointer(o->type) && is_relational(ir_op))
-        flip_sign();        /* see compare_pointers() */
       /* All the code since this call began is the left operand. */
       lstart = code_start(m0, h0);
     }
