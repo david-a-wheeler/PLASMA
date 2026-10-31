@@ -2346,9 +2346,9 @@ static void compare_pointers(Operand *o, Operand *r, int op)
  * no positions, or a constant left operand, written at r's start), so
  * that ccgen can flip both sign bits; / % >> become IR_UDIV, IR_UMOD,
  * IR_USHR, which the caller puts, with the a returned: 1 if r is a
- * constant (just written), for ccgen to do it inline. For now they
- * need one, and / and % a power of 2 (approach.md, "unsigned and
- * helper functions design", step 1). */
+ * constant (just written) that ccgen can do inline (a shift count, or a
+ * power of 2 for / and %), else 0, for a call to a helper function
+ * (approach.md, "unsigned and helper functions design"). */
 static int unsigned_op(Operand *o, Operand *r, int *op, int mid)
 {
   int shift = *op == IR_SHL || *op == IR_SHR, k = r->kind, v = r->val;
@@ -2360,12 +2360,10 @@ static int unsigned_op(Operand *o, Operand *r, int *op, int mid)
     *op += IR_ULT - IR_LT;
     put(*op, mid >= 0 && o->kind != K_CONST ? ir_here() - mid : 0, -1);
   } else if (*op == IR_DIV || *op == IR_MOD || *op == IR_SHR) {
-    if (k != K_CONST || (*op != IR_SHR && (v & (v - 1)) != 0))
-      error(228 /* "unsigned / and % by other than a power of 2, and "
-                   "unsigned >> by a variable, are not supported yet" */,
-            NULL);
+    shift = *op == IR_SHR;
     *op = *op == IR_DIV ? IR_UDIV : *op == IR_MOD ? IR_UMOD : IR_USHR;
-    return k == K_CONST;
+    v &= 0xFFFF;                /* 0x8000u is a power of 2 too */
+    return k == K_CONST && (shift || (v != 0 && (v & (v - 1)) == 0));
   }
   return 0;
 }

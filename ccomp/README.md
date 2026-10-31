@@ -267,9 +267,10 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   in an operator, the `int` becomes `unsigned` (so `-1 < 1u` is 0),
   and an integer constant is `unsigned` if it has a `u` suffix, or is
   hex or octal and too big for an `int` (`0x8000`). Comparisons, `/`,
-  `%` and `>>` on `unsigned` values are unsigned. For now, `/` and `%`
-  must be by a power of 2, and `>>` by a constant (other cases are
-  "not supported yet").
+  `%` and `>>` on `unsigned` values are unsigned. By a constant, `>>`
+  (and `/` and `%` by a power of 2) are done inline; otherwise they
+  call small helper functions that the compiler adds to the module
+  (one copy each, however many files use them).
 * Pointers are 16 bits. `&` takes the address of a variable or of
   `*p`, and `*` reaches what a pointer points to, for reading or
   storing. Pointer arithmetic (`p + i`, `i + p`, `p - i`, `p - q`,
@@ -398,6 +399,7 @@ function returns exactly one.
 | `src/parse.c` | Stage 1: parser, producing IR ops |
 | `src/irout.c` | The front end's output: the IR buffer (for reordering), and the writer of the IR file, with the data, strings and symbol summary (see [OBJECT.md](OBJECT.md)) |
 | `src/irin.c` | The back end's input: reads the IR file, copies its data and strings, writes the symbol summary |
+| `src/helper.c` | The back end's helper functions (unsigned `/`, `%`, `>>`), as IR, written into each object that calls one |
 | `src/lower.c` | Stage 2: IR ops to PLASMA machine ops (see [IR.md](IR.md)), and `-i` |
 | `src/peep.c` | Stage 3: peephole optimizer |
 | `src/emit.c` | Stage 4: encoding one function at a time, writing the stream files |

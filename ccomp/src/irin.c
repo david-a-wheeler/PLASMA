@@ -121,10 +121,12 @@ static void read_name(void)
   fnames[fnames_len++] = 0;
 }
 
-/* Function f's name, for messages and -i. */
+/* Function f's name, for messages and -i (or a helper's). */
 const char *func_name(int f)
 {
-  if (f < 0 || f >= MAX_FUNCS || fname_at[f] < 0)
+  if (f >= MAX_FUNCS)
+    return helper_name(f - MAX_FUNCS);
+  if (f < 0 || fname_at[f] < 0)
     return "?";
   return fnames + fname_at[f];
 }
@@ -426,11 +428,11 @@ static void lower_held(int n)
 
 /* Rewrite unsigned op *op (IR_UDIV, IR_UMOD or IR_USHR) on a constant
  * right operand, the held CONST just before it, to be done inline, and
- * return its a: x >> c is USHR with a = c (SHR, then a mask); x / 2^n
- * the same, with the CONST made n; x % 2^n an AND, with the CONST made
- * 2^n - 1. The parser allows nothing else yet (approach.md, "unsigned
- * and helper functions design", step 1). The number of ops held stays
- * the same, as blocks' lengths need. */
+ * return its f: x >> c is USHR with f = c (SHR, then a mask); x / 2^n
+ * the same, with the CONST made n; x % 2^n an AND (f -1), with the
+ * CONST made 2^n - 1. The parser marks only those (a = 1); the rest
+ * call helpers (lower.c). The number of ops held stays the same, as
+ * blocks' lengths need. */
 static int unsigned_const(int *op)
 {
   int c, n = 0;
@@ -447,7 +449,7 @@ static int unsigned_const(int *op)
   if (*op == IR_UMOD) {
     buf_a[nbuf - 1] = c - 1;
     *op = IR_AND;
-    return 0;
+    return -1;
   }
   while (c > 1) {
     c >>= 1;
@@ -467,10 +469,9 @@ static void hold(int op, int a, int f)
   if (nbuf > 0 && buf_op[nbuf - 1] == IR_SWAP
       && buf_a[nbuf - 1] == SW_PENDING)
     decide(nbuf - 1, op);
-  if (op == IR_UDIV || op == IR_UMOD || op == IR_USHR) {
-    if (a != 1)
-      damaged();                /* not by a constant: not yet */
-    a = unsigned_const(&op);
+  if ((op == IR_UDIV || op == IR_UMOD || op == IR_USHR) && a == 1) {
+    f = unsigned_const(&op);
+    a = 0;
   }
   if (is_unsigned_cmp(op)) {
     if (a >= 1 && a <= nbuf) {
@@ -568,13 +569,17 @@ static void do_op(int op, int a, int f)
 }
 
 /* Read the summary, the last record, and write NAME.syms from it, with
- * the code size and the defined functions' offsets filled in. Each
- * function it says is defined must have been written, and no other. */
+ * the code size and the defined functions' offsets filled in, then the
+ * helpers this object holds (written first, after its functions): each
+ * one's number, size, checksum and name. Each function the summary says
+ * is defined must have been written, and no other. */
 static void read_summary(void)
 {
   int nf, nd, i, flags, n, ndefined = 0;
+  const char *s;
   if (in_func)
     damaged();
+  gen_helpers();
   emit_summary();
   emit_word(get_word());        /* data size */
   emit_word(get_word());        /* string pool size */
@@ -611,6 +616,20 @@ static void read_summary(void)
   }
   if (bgetc(&in) != EOF)
     damaged();
+  for (i = n = 0; i < NHELPERS; i++)
+    n += (helper_used >> i) & 1;
+  emit_byte(n);
+  for (i = 0; i < NHELPERS; i++) {
+    if (!(helper_used & (1 << i)))
+      continue;
+    emit_byte(i);
+    emit_word(helper_size[i]);
+    emit_word(helper_sum[i]);
+    s = helper_name(i);
+    emit_byte((int)strlen(s));
+    while (*s)
+      emit_byte(*s++);
+  }
   emit_finish();
 }
 
@@ -624,6 +643,7 @@ void gen_file(const char *base)
   for (i = 0; i < MAX_FUNCS; i++)
     fname_at[i] = -1;
   fnames_len = 0;
+  helper_used = 0;
   nbuf = 0;
   in_func = 0;
   max_func = -1;

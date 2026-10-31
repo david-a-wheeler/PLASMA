@@ -38,7 +38,7 @@ FULL = "-full" in sys.argv[1:]      # measure the full build instead
 
 COMMON = ["diag", "bio"]
 FRONT = ["lex", "name", "type", "parse", "irout"]
-BACK = ["irin", "lower", "peep", "emit"]
+BACK = ["irin", "lower", "peep", "emit", "helper"]
 # Limits raised for big_cccomp(), and the fatal messages that call
 # for it.
 BIG_LIMITS = {"MAX_FUNCS": 1024, "MAX_VARS": 512, "MAX_LABELS": 512,

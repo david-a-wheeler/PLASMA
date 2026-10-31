@@ -3612,6 +3612,45 @@ open for review:
   until step 2: lower.c's `0xFFFF >> a` is now an unsigned shift by a
   variable, which step 1 doesn't do.
 
+**Step 2 (helper functions) is done** (2026-10-31). Choices, open for
+review:
+- `src/helper.c` holds udiv, umod and ushr as IR tables (parallel arrays
+  of op and operand), lowered by `gen_helpers()` just before the
+  summary, as function numbers `HELPER_FN(k)` (`MAX_FUNCS + k`), for
+  each helper the object calls (`helper_used`). Unsigned comparisons in
+  them are written out with their sign flips, since they are lowered
+  directly, not through irin.c's buffer. udiv: d >= $8000 gives n >= d;
+  else q = ((n >> 1) / d) << 1, plus 1 if n - q * d >= d. umod the same
+  for the remainder; ushr shifts once logically, then arithmetically.
+- `lower.c`: `UDIV` and `UMOD`, and `USHR` without a constant count, are
+  a `CALL` with `FIX_HELPER`; irin.c now passes a constant count in *f*
+  (so a count of 0 is told from none). The parser marks a constant
+  (*a* = 1) only when it can be done inline (a shift; a power of 2 for
+  `/` and `%`); message 228 and its test are gone.
+- `emit.c` writes a helper as an `H` record, with no relocations and not
+  in the code size, and keeps its size and checksum (`h * 31 + byte`, as
+  the type hash); irin.c lists the helpers at the summary's end.
+  Object format 5.
+- `ccrel`: `close_syms()` reads the helper list in every pass, and in
+  step 1 notes the first object holding each and checks the others
+  (message 229, with the helper's name); the helpers go after every
+  object's code, before init; `REL_HELPER` resolves to that copy;
+  `copy_helpers()` copies each from its object's stream; each gets an
+  RLD function entry and counts in the header's function count; `-l`
+  lists `helper udiv:` and notes `; helper udiv` at calls.
+- The self-compile found a comma operator (which ccish doesn't support)
+  in my first irin.c; it uses `strlen()` now.
+- Tests: `unsigned_div.c` (by variables, divisors of $8000 and more, 1,
+  shifts by 0 to 15, compound assignment, decimal printing through the
+  helpers; results by hand); `tests/link/helpers` (two objects that both
+  call udiv: one copy in the module, both calls to it); a mismatch (one
+  object's checksum changed: 229). 284 tests pass. Objects for all 98
+  saved inputs are unchanged (only `.syms`: version 5 and the count).
+- Measured (small build): `cccomp` 43,053 (+11 from step 1); `ccgen`
+  21,210 (19,972 before `unsigned`: step 1's lowering and the helpers,
+  155 bytes of code and 336 of tables); `ccrel` 14,520 (+667, more than
+  the 0.3-0.5K estimated).
+
 **M7 design (decided in discussion, 2026-10-29).** `switch`, in one
 step. ccish's own source has 26 switches with 218 case labels (the
 largest has 28), so self-hosting needs it.

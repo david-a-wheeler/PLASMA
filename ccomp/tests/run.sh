@@ -671,6 +671,31 @@ else
     fail=$((fail + 1))
 fi
 rm -f "$OUT"/link/nofit_[ab].obj "$OUT"/link/nofit_[ab].syms
+# Two objects whose copies of a helper differ (compiled by different
+# ccgens) are an error, not a silent merge: here one checksum changes.
+# A summary ends with its helpers: the count, then for each its number,
+# size, checksum, name length and name; for udiv alone, the checksum's
+# low byte is the 7th byte from the end.
+cc_obj "" "$OUT/link/hm_a" tests/link/helpers/a.c
+cc_obj "" "$OUT/link/hm_b" tests/link/helpers/b.c
+size=$(wc -c < "$OUT/link/hm_b.syms")
+b=$(od -An -tu1 -j $((size - 7)) -N1 "$OUT/link/hm_b.syms" | tr -d ' ')
+printf "\\$(printf '%03o' $(( (b + 1) % 256 )))" \
+    | dd of="$OUT/link/hm_b.syms" bs=1 seek=$((size - 7)) conv=notrunc \
+         2>/dev/null
+if ./ccrel -o "$OUT/link/hm" "$OUT/link/hm_a" "$OUT/link/hm_b" \
+       2>"$OUT/link/hm.err"; then
+    echo "FAIL ccrel: linked objects whose helpers differ"
+    fail=$((fail + 1))
+elif grep -qF "helper functions differ between objects" "$OUT/link/hm.err"
+then
+    pass=$((pass + 1))
+else
+    echo "FAIL ccrel: wanted 'helper functions differ', got:"
+    sed 's/^/    /' "$OUT/link/hm.err"
+    fail=$((fail + 1))
+fi
+rm -f "$OUT"/link/hm_[ab].obj "$OUT"/link/hm_[ab].syms
 # Linking several objects needs a module name.
 if ./ccrel "$OUT/a" "$OUT/b" 2>"$OUT/link/noname.err"; then
     echo "FAIL ccrel: linked several objects without -o"

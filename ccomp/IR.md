@@ -678,7 +678,7 @@ stage 4 replaces it with an offset.
 
 ## Unsigned arithmetic: `IR_UDIV`, `IR_UMOD`, `IR_USHR` *a* = 1 if the right operand is a constant
 
-(Approach.md, "`unsigned` and helper functions design"; step 1.)
+(Approach.md, "`unsigned` and helper functions design".)
 
 - **Stack:** `( x y -- x op y )`: `/`, `%` and `>>` on `unsigned`
   operands (for `>>`, an `unsigned` left operand). *a* is 1 when `y` is
@@ -688,8 +688,10 @@ stage 4 replaces it with an offset.
   `SHR` then `CW (0xFFFF >> c) AND`, masking off the copies of the
   sign bit PLASMA's arithmetic `SHR` shifts in; `UDIV` by 2^n makes
   the constant *n* and does the same; `UMOD` by 2^n makes the constant
-  2^n - 1 and is an `AND`. For now the parser allows nothing else
-  ("not supported yet"); step 2 adds helper functions for the rest.
+  2^n - 1 and is an `AND`. Anything else (a value known only at run
+  time, or `/` and `%` by another constant) is a `CALL` to one of
+  `ccgen`'s helper functions, udiv, umod or ushr (`src/helper.c`),
+  which it writes into the object once each (OBJECT.md, `H`).
 - **Why they differ from PLASMA:** PLASMA's `DIV`, `MOD` and `SHR` are
   signed. VM opcodes for them (issue 21) would be a change to `ccgen`
   alone.

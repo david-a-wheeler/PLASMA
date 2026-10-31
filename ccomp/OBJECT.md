@@ -14,10 +14,13 @@ version number bumped.
 For output `NAME`, the files are `NAME.obj` and `NAME.syms`. `ccish`
 removes them after the module is written, and after any error, unless
 `-k` is given; `ccgen` leaves them for `ccrel`, which keeps them. This
-is format version 4, which adds what linking
-several files needs (approach.md issue 11): data symbols, local
-(`static`) symbols, a relocation to an `extern` global, and type
-hashes. Version 3 had none of these. M5's version 2 had four stream
+is format version 5, which adds helper functions (approach.md,
+"`unsigned` and helper functions design"): code `ccgen` writes into
+each object that calls it (an `H` record, below), of which `ccrel`
+keeps one copy. Version 4 added what linking several files needs
+(approach.md issue 11): data symbols, local (`static`) symbols, a
+relocation to an `extern` global, and type hashes; version 3 had none
+of these. M5's version 2 had four stream
 files (`.data`, `.drel`, `.strs` and `.code`), which version 3 made
 records in the one stream file, so that each pass has only one input
 and one output file open (PLASMA's Apple II file library allows
@@ -28,14 +31,6 @@ order, with no seeking, through 512-byte block buffers (`src/bio.c`).
 
 The IR file, `NAME.ir` (below), passes from `cccomp` to `ccgen`
 (approach.md 18.7); `ccgen` turns it into `NAME.obj` and `NAME.syms`.
-
-**Planned: format version 5** (approach.md, "`unsigned` and helper
-functions design"): helper functions that `ccgen` writes into each
-object that uses them, of which `ccrel` keeps one. A new stream record
-`H` (a helper's number, then its bytecode), a relocation kind 5,
-`REL_HELPER` (target: a helper's number), and in `NAME.syms` a list of
-the object's helpers (number, size, checksum, name). Described in full
-below once built.
 
 ## `NAME.obj`: the stream
 
@@ -50,6 +45,7 @@ Each record starts with a one-byte tag, a letter:
 | `R` | a data word that holds an address |
 | `S` | a string literal |
 | `F` | a function |
+| `H` | a helper function |
 
 The `D` and `R` records, in order, make up the data (the global
 variables); the `S` records, in order, make up the string pool; and
@@ -124,9 +120,9 @@ needs a final address:
 
 | Size | Field |
 |------|-------|
-| byte | kind: 1 = data address, 2 = function address, 3 = string address, 4 = data symbol address |
+| byte | kind: 1 = data address, 2 = function address, 3 = string address, 4 = data symbol address, 5 = helper address |
 | word | offset of the word, from the start of this function |
-| word | target: a data offset (kind 1), a function symbol index (kind 2), a string pool offset (kind 3), or a data symbol index (kind 4) |
+| word | target: a data offset (kind 1), a function symbol index (kind 2), a string pool offset (kind 3), a data symbol index (kind 4), or a helper's number (kind 5) |
 
 The word itself is written as 0, except for kind 4, where it holds the
 addend; the final pass fills it in. A function address may refer to a
@@ -141,6 +137,24 @@ lengths of the `F` records before it. The frame sizes in `ENTER` and
 stay within a function, are relative, and are resolved in the
 compiler's function buffer, so they need no records here.
 
+### `H`: a helper function
+
+| Size | Field |
+|------|-------|
+| byte | tag `H` |
+| byte | the helper's number: 0 udiv, 1 umod, 2 ushr |
+| word | code length *L* |
+| *L* bytes | its bytecode |
+
+Unsigned arithmetic that PLASMA has no opcode for: `n / d`, `n % d`
+and `n >> c`, with the two operands as its parameters (the call is
+`CALL` with a kind 5 relocation). `ccgen` writes one, after the
+object's functions, for each helper the object calls. A helper has no
+relocations and isn't part of the object's code segment: `ccrel`
+keeps the first object's copy of each and places it after every
+object's code, and every object's copy must be the same (the summary
+gives its size and checksum).
+
 ## `NAME.syms`: the symbol summary
 
 Written last, when compilation ends. The final pass reads it first, so
@@ -150,7 +164,7 @@ of its own so that the compiler needn't seek back to patch a header.
 | Size | Field |
 |------|-------|
 | 2 bytes | magic `CI` |
-| byte | format version: 4 |
+| byte | format version: 5 |
 | word | data size |
 | word | string pool size |
 | word | code size (the total code length of the `F` records) |
@@ -158,6 +172,18 @@ of its own so that the compiler needn't seek back to patch a header.
 | word | data symbol count *M* |
 | *N* entries | function symbols, in index order |
 | *M* entries | data symbols, in index order |
+| byte | helper count *H* |
+| *H* entries | the helpers in the stream, by number |
+
+Each helper entry:
+
+| Size | Field |
+|------|-------|
+| byte | its number |
+| word | its code length |
+| word | a checksum of its code: `h = (h * 31 + byte) & 0xFFFF`, from 0 |
+| byte | name length *n* (1-31) |
+| *n* bytes | name, for the listing (`udiv`) |
 
 Each function symbol entry:
 
@@ -367,7 +393,10 @@ module. It has at most one input file open at a time, and the module.
    against a global. Then report undefined references, number the
    imports, find `main` (not local), and compute the layout: header,
    dependencies, every object's globals, every object's string pool,
-   one pad byte, then every object's code.
+   one pad byte, then every object's code, then one copy of each
+   helper some object holds (the first object's; two copies whose size
+   or checksum differ are "helper functions differ between objects",
+   229).
 2. Write the module header and dependencies. For each object, read its
    `NAME.syms` again to map its symbols to final addresses (through the
    shared table for those it doesn't define), then its stream for its
@@ -378,15 +407,18 @@ module. It has at most one input file open at a time, and the module.
    time for its `F` records, copying each function with its relocations
    applied and kept for the RLD. With `-l`, list each function as it
    passes (with several objects, each object's functions after an
-   `object NAME:` line). Then add the init function, which calls
-   `main`.
-4. Write the RLD (function entries in code order, then the kept
+   `object NAME:` line). Then copy each helper from the stream of the
+   object it was taken from (listed as `helper NAME:`), then add the
+   init function, which calls `main`.
+4. Write the RLD (function entries in code order, the helpers'
+   included, then the kept
    relocations, those in the data first) and the ESD (imports). With
    `-l`, end the listing with how full the shared-name table is:
    `; shared names: N of M slots, B of C name bytes`.
 
 A kind 1 or 3 target is offset by where its object's data or strings
 start; a kind 4 relocation becomes a kind 1 relocation to the symbol's
-final data offset plus the addend. The final pass checks that the
+final data offset plus the addend; a kind 5 is the helper's address in
+the module, relocated like a function's. The final pass checks that the
 files agree with each other (sizes, offsets, indexes, record tags), and
 reports "compiler stream file is damaged" if not.

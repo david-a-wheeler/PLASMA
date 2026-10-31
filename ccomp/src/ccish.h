@@ -432,7 +432,7 @@ enum {
 
 /* What an operand word refers to, if it needs relocation: a data
  * offset, a function, or an offset in the string pool. */
-enum { FIX_NONE, FIX_DATA, FIX_FUNC, FIX_STR, FIX_DSYM };
+enum { FIX_NONE, FIX_DATA, FIX_FUNC, FIX_STR, FIX_DSYM, FIX_HELPER };
 
 /* Marks an ENTER/LEAVE frame size that is filled in at function end. */
 #define FRAME_LATER (-1)
@@ -466,12 +466,13 @@ void peep_flush(void);
  * writes one stream of tagged records, then the symbol summary. */
 #define SUFFIX_OBJ  ".obj"
 #define SUFFIX_SYMS ".syms"
-#define OBJ_VERSION 4       /* the format version, in the symbol summary */
+#define OBJ_VERSION 5       /* the format version, in the symbol summary */
 #define DATA_RUN    128     /* bytes in one data record at most */
 
 /* Record tags in the stream (see ../OBJECT.md), as letters so that a
  * dump of the file is easy to read. */
-enum { REC_DATA = 'D', REC_DREL = 'R', REC_STR = 'S', REC_FUNC = 'F' };
+enum { REC_DATA = 'D', REC_DREL = 'R', REC_STR = 'S', REC_FUNC = 'F',
+       REC_HELPER = 'H' };
 
 /* Relocation kinds and symbol flags. A REL_DATA target is a data
  * offset, a REL_STR target an offset in the string pool, a REL_FUNC
@@ -479,12 +480,26 @@ enum { REC_DATA = 'D', REC_DREL = 'R', REC_STR = 'S', REC_FUNC = 'F' };
  * index, with an addend. SYM_CALLED is "used" for a data symbol;
  * SYM_RETURNS, SYM_CMDSYS and SYM_NOTCMDSYS (a CMDSYS name declared
  * differently) are for functions. */
-enum { REL_DATA = 1, REL_FUNC = 2, REL_STR = 3, REL_DSYM = 4 };
+enum { REL_DATA = 1, REL_FUNC = 2, REL_STR = 3, REL_DSYM = 4,
+       REL_HELPER = 5 };
 enum { SYM_DEFINED = 1, SYM_CALLED = 2, SYM_RETURNS = 4, SYM_LOCAL = 8,
        SYM_CMDSYS = 16, SYM_NOTCMDSYS = 32 };
 
 extern int fn_code[MAX_FUNCS];  /* each function's start in the code
                                  * segment, once written; else -1 */
+
+/* Helper functions (approach.md, "unsigned and helper functions
+ * design"): code ccgen writes into each object that uses it, as an H
+ * record, of which ccrel keeps one copy. A call to helper k is a CALL
+ * with relocation REL_HELPER, target k. In ccgen, helper k is function
+ * number HELPER_FN(k) while it is lowered (helper.c). */
+enum { HELP_UDIV, HELP_UMOD, HELP_USHR, NHELPERS };
+#define HELPER_FN(k) (MAX_FUNCS + (k))
+extern int helper_used;             /* bit k: helper k is called */
+extern int helper_size[NHELPERS];   /* once written: its bytes */
+extern int helper_sum[NHELPERS];    /* and their checksum */
+void gen_helpers(void);             /* write the helpers used */
+const char *helper_name(int k);
 
 void emit_open(const char *base);
 void emit_put(Mop *m);

@@ -224,4 +224,4 @@
 225 too many run-time swaps in
 226 conflicting or repeated type specifier:
 227 'signed char' is not supported yet
-228 unsigned / and % by other than a power of 2, and unsigned >> by a variable, are not supported yet
+229 helper functions differ between objects (compiled by different ccgens?):

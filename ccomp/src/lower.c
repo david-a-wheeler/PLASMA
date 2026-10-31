@@ -193,6 +193,15 @@ static void put_temp(int op, int k)
   peep_put(&m);
 }
 
+/* Make m a call of helper k, which this object must then hold. */
+static void helper_call(Mop *m, int k)
+{
+  m->op = OP_CALL;
+  m->fix = FIX_HELPER;
+  m->fn = k;
+  helper_used |= 1 << k;
+}
+
 /* Lower the IR ops of kind L_SPECIAL into m (and any ops before it). */
 static void lower_special(Mop *m, int op, int a, int f)
 {
@@ -242,18 +251,24 @@ static void lower_special(Mop *m, int op, int a, int f)
     m->a = 1;
     break;
   case IR_USHR:
-    /* x >> n unsigned, by a constant n (a; irin.c made / by 2^n one
+    /* x >> n unsigned. By a constant n (f; irin.c made / by 2^n one
      * too): PLASMA's SHR is arithmetic, so mask off the copies of the
-     * sign bit it shifts in. */
-    if (a == 0) {
+     * sign bit it shifts in. By a variable: the helper. */
+    if (f < 0) {
+      helper_call(m, HELP_USHR);
+    } else if (f == 0) {
       m->op = OP_SHR;           /* by 0: nothing to mask */
-      break;
+    } else {
+      put_simple(OP_SHR);
+      mop_const(m, 0xFFFF >> f);
+      peep_put(m);
+      memset(m, 0, sizeof(*m));
+      m->op = OP_AND;
     }
-    put_simple(OP_SHR);
-    mop_const(m, 0xFFFF >> a);
-    peep_put(m);
-    memset(m, 0, sizeof(*m));
-    m->op = OP_AND;
+    break;
+  case IR_UDIV: case IR_UMOD:
+    /* By other than a power of 2 (irin.c did those): the helper. */
+    helper_call(m, op == IR_UDIV ? HELP_UDIV : HELP_UMOD);
     break;
   case IR_SWAP:
     /* What irin.c couldn't do by moving code: exchange the top value

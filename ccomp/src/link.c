@@ -80,6 +80,21 @@ static char g_flags[MAX_GSYMS];         /* G_* */
 
 #define NO_OBJ 255
 
+/* The helper functions (approach.md, "unsigned and helper functions
+ * design"), as parallel arrays by helper number: the first object that
+ * holds each (NO_OBJ if none), its size and checksum, which every other
+ * object's copy must match, and its offset in the module's code (after
+ * every object's code). Only the first copy is kept. */
+static unsigned char h_def[NHELPERS];
+static int h_size[NHELPERS];
+static int h_sum[NHELPERS];
+static int h_off[NHELPERS];
+static int nhelpers;            /* helpers in the module */
+#ifdef CCISH_LISTING
+#define MAX_HNAME 8
+static char h_name[NHELPERS][MAX_HNAME + 1];   /* for the listing */
+#endif
+
 /* A name's flags. The first three are what its entries say, over all
  * the objects: it is used; some entry isn't a CMDSYS function; some is a
  * CMDSYS name declared differently. Then: it is a global variable, not a
@@ -244,10 +259,44 @@ static void read_sym(Lsym *s, int data, const char *name)
     damaged(name);
 }
 
-/* Check that the summary (file name) has nothing after its entries, and
- * close it. */
-static void close_syms(const char *name)
+/* Read the list of helpers at the summary's end (file name): each
+ * one's number, size, checksum and name. If keep is set (step 1), note
+ * the first object to hold each, and check that the others' copies
+ * agree. Then check that nothing follows, and close the summary. */
+static void close_syms(const char *name, int keep)
 {
+  int n = bgetc(&in), k, size, sum, len, j;
+  char buf[MAX_NAME + 1];
+  if (n == EOF || n > NHELPERS)
+    damaged(name);
+  while (n-- > 0) {
+    k = bgetc(&in);
+    size = bgetw(&in);
+    sum = bgetw(&in);
+    len = bgetc(&in);
+    if (k < 0 || k >= NHELPERS || len < 1 || len > MAX_NAME)
+      damaged(name);
+    for (j = 0; j < len; j++)
+      buf[j] = (char)bgetc(&in);
+    buf[len] = 0;
+    if (!keep)
+      continue;
+    if (h_def[k] == NO_OBJ) {
+      h_def[k] = (unsigned char)cur;
+      h_size[k] = size;
+      h_sum[k] = sum;
+      nhelpers++;
+#ifdef CCISH_LISTING
+      if (len > MAX_HNAME)
+        len = MAX_HNAME;        /* cut, for the listing only */
+      memcpy(h_name[k], buf, len);
+      h_name[k][len] = 0;
+#endif
+    } else if (h_size[k] != size || h_sum[k] != sum) {
+      error(229 /* "helper functions differ between objects (compiled "
+                   "by different ccgens?):" */, buf);
+    }
+  }
   if (bgetc(&in) != EOF)
     damaged(name);
   bclose(&in);
@@ -362,7 +411,7 @@ static void read_summary(int k)
     else if ((s.flags & SYM_CALLED) && !(s.flags & SYM_DEFINED))
       undefined(172 /* "undefined reference to" */, s.name);
   }
-  close_syms(name);
+  close_syms(name, 1);
 }
 
 /* After step 1: resolve the shared names. A used name that no object
@@ -450,7 +499,7 @@ static void map_object(int k)
 #endif
     }
   }
-  close_syms(name);
+  close_syms(name, 0);
 }
 
 /* ---------- Listing ---------- */
@@ -523,6 +572,8 @@ static const char *reloc_note(int at)
         sprintf(buf, "  ; data+%d", t);
       } else if (lr_kind[i] == REL_STR) {
         sprintf(buf, "  ; string+%d", t);
+      } else if (lr_kind[i] == REL_HELPER) {
+        sprintf(buf, "  ; helper %s", h_name[t]);
       } else {
         strcpy(buf, "  ; ");
         strcat(buf, t < 0 ? "main" : func_label(t));
@@ -676,6 +727,9 @@ static int add_reloc(int kind, int at, int target, int add, int list)
     if (target > strs_size)
       bad_obj();
     target += obj_strs[cur];
+  } else if (kind == REL_HELPER) {
+    if (target >= NHELPERS || h_def[target] == NO_OBJ)
+      bad_obj();
   } else if (kind != REL_FUNC || target >= nfsyms || fmap[target] == -1) {
     bad_obj();
   }
@@ -690,6 +744,8 @@ static int add_reloc(int kind, int at, int target, int add, int list)
     return data_base + target;
   if (kind == REL_STR)
     return strs_base + target;
+  if (kind == REL_HELPER)
+    return subseg + h_off[target];
   v = fmap[target];
   return v < 0 ? 0 : subseg + v;    /* an import: the loader fills it in */
 }
@@ -726,6 +782,9 @@ static void skip_record(int t)
     if ((n = bgetw(&in)) > MAX_FUNC_RELOCS)
       bad_obj();
     bskip(&in, 5 * n);
+  } else if (t == REC_HELPER) {
+    bskip(&in, 1);
+    bskip(&in, bgetw(&in));
   } else {
     bad_obj();
   }
@@ -855,6 +914,49 @@ static void copy_code(int k)
     bad_obj();
 }
 
+/* The tag step 3 reads for the helpers. */
+static const char helper_tags[] = { REC_HELPER, 0 };
+
+/* Copy each helper the module holds into it, after every object's code:
+ * the H record of the first object that holds it. */
+static void copy_helpers(void)
+{
+  int k, t, len, i, c;
+  for (k = 0; k < NHELPERS; k++) {
+    if (h_def[k] == NO_OBJ)
+      continue;
+    cur = h_def[k];
+    open_obj(cur);
+    for (;;) {
+      if (next_record(helper_tags) == EOF)
+        bad_obj();
+      t = bgetc(&in);
+      len = bgetw(&in);
+      if (t == k)
+        break;
+      bskip(&in, len);
+    }
+    if (len != h_size[k] || len > MAX_FUNC_CODE)
+      bad_obj();
+    for (i = 0; i < len; i++) {
+      if ((c = bgetc(&in)) == EOF)
+        bad_obj();
+      fbuf[i] = (unsigned char)c;
+    }
+    bclose(&in);
+#ifdef CCISH_LISTING
+    if (opt_list) {
+      static char label[MAX_HNAME + 8];
+      nlr = 0;
+      strcpy(label, "helper ");
+      strcat(label, h_name[k]);
+      list_code(label, len, h_off[k]);
+    }
+#endif
+    bwrite(&out, fbuf, len);
+  }
+}
+
 /* ---------- Step 4: the RLD, read again from the objects ---------- */
 
 /* Write one 4-byte RLD entry: its type, a word, and a byte. */
@@ -880,7 +982,7 @@ static void def_entries(int k)
     if (i < nfsyms && (s.flags & SYM_DEFINED))
       rld_entry(0x02, subseg + obj_code[k] + s.off, 0);
   }
-  close_syms(name);
+  close_syms(name, 0);
 }
 
 /* Write the RLD entry for a relocation of kind to target (a function
@@ -983,12 +1085,21 @@ void link_module(int n, const char **bases, const char *path)
   nobjs = n;
   for (i = 0; i < MAX_GSYMS; i++)
     g_name[i] = -1;
+  for (i = 0; i < NHELPERS; i++)
+    h_def[i] = NO_OBJ;
+  nhelpers = 0;
   for (k = 0; k < n; k++) {
     obj_name[k] = bases[k];
     read_summary(k);
   }
   resolve();
+  /* The helpers go after every object's code, then init. */
   init_off = obj_code[n];
+  for (i = 0; i < NHELPERS; i++)
+    if (h_def[i] != NO_OBJ) {
+      h_off[i] = init_off;
+      init_off += h_size[i];
+    }
 
   deplen = nimports ? (int)sizeof(dep) - 1 + 1 : 1;   /* name(s) + $00 */
   /* The data segment holds the globals, then the string pool. One pad
@@ -997,7 +1108,7 @@ void link_module(int n, const char **bases, const char *path)
   data_base = MODULE_BASE + hdr + deplen;
   strs_base = data_base + obj_data[n];
   subseg = strs_base + obj_strs[n] + 1;
-  total = obj_code[n] + init_size();
+  total = init_off + init_size();
   if (subseg + total > 0xFFFF)
     fatal(191 /* "module too large" */, NULL);
 
@@ -1008,7 +1119,7 @@ void link_module(int n, const char **bases, const char *path)
   bputw(&out, 0x6502);                    /* magic */
   bputw(&out, 0);                         /* system flags */
   bputw(&out, subseg);
-  bputw(&out, ndefined + (main_sym >= 0));
+  bputw(&out, ndefined + nhelpers + (main_sym >= 0));
   bputw(&out, main_sym >= 0 ? subseg + init_off : 0);
   if (nimports)
     out_dci(dep);
@@ -1023,6 +1134,7 @@ void link_module(int n, const char **bases, const char *path)
   /* Step 3. */
   for (k = 0; k < n; k++)
     copy_code(k);
+  copy_helpers();
   if (main_sym >= 0) {
     int len = init_code(init_off);
 #ifdef CCISH_LISTING
@@ -1037,6 +1149,9 @@ void link_module(int n, const char **bases, const char *path)
    * to main. */
   for (k = 0; k < n; k++)
     def_entries(k);
+  for (i = 0; i < NHELPERS; i++)
+    if (h_def[i] != NO_OBJ)
+      rld_entry(0x02, subseg + h_off[i], 0);
   for (k = 0; k < n; k++)
     reloc_entries(k);
   if (main_sym >= 0)

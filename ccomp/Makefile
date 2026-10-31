@@ -14,7 +14,7 @@ CFLAGS ?= -std=c89 -pedantic -Wall -Wextra -O2
 
 COMMON = src/diag.c src/bio.c
 FRONT  = src/lex.c src/name.c src/type.c src/parse.c src/irout.c
-BACK   = src/irin.c src/lower.c src/peep.c src/emit.c
+BACK   = src/irin.c src/lower.c src/peep.c src/emit.c src/helper.c
 LINK   = src/link.c
 PLVM = ../src/plvm
 

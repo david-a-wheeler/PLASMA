@@ -32,6 +32,8 @@ static const char *base_name;
 static int ncode;               /* bytes of code written so far */
 
 int fn_code[MAX_FUNCS];
+int helper_size[NHELPERS];
+int helper_sum[NHELPERS];
 
 /* The function being built (an index into fn_name[] and the other
  * function arrays), or -1. */
@@ -251,6 +253,26 @@ static void drop_frame(void)
     rel_at[i] -= 3;
 }
 
+/* Write the finished function, helper k, as an H record: its number,
+ * then its code, which has no relocations. It isn't part of the
+ * object's code segment: ccrel places one copy of each helper after
+ * every object's code. Its size and a checksum (h * 31 + byte, as the
+ * type hash) go in the summary, for ccrel to check that the objects'
+ * copies agree. */
+static void write_helper(int k)
+{
+  int i, h = 0;
+  for (i = 0; i < nfbuf; i++)
+    h = (h * 31 + fbuf[i]) & 0xFFFF;
+  helper_size[k] = nfbuf;
+  helper_sum[k] = h;
+  bputc(&out, REC_HELPER);
+  bputc(&out, k);
+  bputw(&out, nfbuf);
+  bwrite(&out, fbuf, nfbuf);
+  fn = -1;
+}
+
 /* Write the finished function to the stream, as an F record. */
 static void end_function(int frame_size)
 {
@@ -271,6 +293,10 @@ static void end_function(int frame_size)
                    " placed in" */, func_name(fn));
   if (ncode > 0x7FFF - nfbuf)
     fatal(186 /* "too much code" */, NULL);
+  if (fn >= MAX_FUNCS) {
+    write_helper(fn - MAX_FUNCS);
+    return;
+  }
   fn_code[fn] = ncode;
   bputc(&out, REC_FUNC);
   bputw(&out, fn);
@@ -345,6 +371,8 @@ void emit_put(Mop *m)
       add_reloc(REL_FUNC, m->fn);
     else if (m->fix == FIX_DSYM)
       add_reloc(REL_DSYM, m->fn);
+    else if (m->fix == FIX_HELPER)
+      add_reloc(REL_HELPER, m->fn);
     code_word(m->fix == FIX_NONE || m->fix == FIX_DSYM ? m->a : 0);
     break;
   case OP_BRNCH: case OP_BRFLS: case OP_BRTRU: case OP_BREQ:
