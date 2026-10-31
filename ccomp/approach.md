@@ -2035,8 +2035,9 @@ mostly messages (8K in `parse.c`), against "well under 40K" free on a
   distinct that far.
 - **A5. Free names no longer needed** (members and enum constants at a
   file's end; locals already go at each function's end).
-- **A6. Identifiers as numbers** (discussed 2026-10-30; for later,
-  only if about 6K more is needed after 18.7 step 3 and E1): `ccpp`
+- **A6. Identifiers as numbers** (discussed 2026-10-30; decided
+  2026-10-31, with F9: see "`ccpp` design" under Milestones, which
+  answers the questions below): `ccpp`
   numbers each distinct identifier, and `cccomp` compares numbers and
   keeps no spellings. The name pool is `cccomp`'s biggest table (name.c
   has 7,824 bytes of data, mostly `MAX_POOL`, 6,212). A message looks
@@ -2518,8 +2519,8 @@ is the main problem. Splitting it is one way, but not the only one:
   in the file, every number in the file is used, numbers unique and
   ascending) but no longer compares comments with the file.
 - **F9. `ccpp` writes tokens, not text** (discussed 2026-10-30;
-  promising, to decide in the `ccpp` design, M8, before it is
-  written). A preprocessor splits the source into tokens anyway; if
+  decided 2026-10-31, with A6: see "`ccpp` design" under
+  Milestones). A preprocessor splits the source into tokens anyway; if
   `ccpp` also turns keywords and operators into one-byte codes,
   converts numbers, and decodes escapes in strings and characters,
   `cccomp`'s lexer becomes a small reader of tokens. lex.c is 2,183
@@ -3100,7 +3101,8 @@ static locals": the depth measurement, `MAX_NEST`, and nest counts in
 target, not a size one, and comes after this work.
 
 **Front-end diet: options for later** (discussed 2026-10-30; not
-decided, except that F9 is promising). Each keeps every feature:
+decided, except F9 and A6, both decided 2026-10-31 in the `ccpp`
+design). Each keeps every feature:
 - **F9 (C):** `ccpp` writes tokens, not text (in 18.6 F).
 - **A6 (A):** identifiers as numbers (in 18.6 A).
 - **C6 (C):** address constants from the expression parser, instead
@@ -3326,7 +3328,8 @@ issue. In summary:
    separate program that writes a compact `.i` file (no comments, few
    spaces, `#line` to keep line numbers), because of memory limits
    (revised 2026-10-29; issues 2, 3). So a build is three programs:
-   preprocessor, `cccomp`, `ccrel`.
+   preprocessor, `cccomp`, `ccrel`. Revised again by decisions 22 and
+   24: four programs, and the `.i` is tokens, not text.
 3. **Architecture:** the four-stage op-stream pipeline (4A), with
    stages as push-style functions in one program.
 4. **No SWAP opcode.** Use spills first, then add block exchange as an
@@ -3477,9 +3480,178 @@ issue. In summary:
     PLASMA lacks is new IR ops, which `ccgen` lowers inline or as calls
     to helper functions it writes into each object that needs them;
     `ccrel` keeps one copy of each. `signed char` is not supported yet.
+24. **`ccpp` preprocesses and lexes; identifiers are numbers** (decided
+    in discussion, 2026-10-31; "`ccpp` design" under Milestones; F9
+    and A6). `ccpp` writes a token stream (`.i`) and the spellings
+    (`.nam`). `cccomp` loses its lexer and name pool and reads one
+    token at a time, aiming at 32K or less. `ccgen` turns ids back
+    into spellings for `.syms`. `-E` (text output) is in the full
+    build only, easily restored.
 
 
 ## Milestones
+
+**`ccpp` design (decided in discussion, 2026-10-31; decision 24; F9
+and A6 in 18.6; this is M8).** The user: "Currently cccomp is too
+big, so I think that *necessitates* that the preprocessor ccpp do the
+cpp preprocessing *and* lexing, generating *tokens*. I want to move the
+lexer entirely into the preprocessor, with the goal of reducing cccomp
+to 32K or less. The cccomp should read token-at-a-time."
+
+*Why both F9 and A6.* `cccomp` is 43,100 bytes in the small build
+(code 27,318, data 14,659, strings 1,123). The lexer alone doesn't
+get it to 32K:
+
+| | Code | Data | Strings | Total |
+|---|---|---|---|---|
+| parse.c | 20,913 | 4,556 | 555 | 26,024 |
+| name.c | 483 | 7,824 | 25 | 8,332 |
+| lex.c | 2,239 | 428 | 363 | 3,030 |
+| the rest | 3,683 | 1,851 | 180 | 5,714 |
+
+Moving lex.c out saves about 2.5K (a small token reader stays). Most
+of name.c's data is the name pool (`MAX_POOL`, 6,212); with
+identifiers as numbers, `cccomp` keeps no spellings, about 6.4K more.
+That gives roughly 34K. For the last 2K, candidates to measure after:
+the token names messages print ("expected `;`") as message numbers in
+`ccish.msg`, and C6 (address constants from the expression parser,
+dropping `parse_addr()`).
+
+*The pipeline.*
+- `ccpp` reads `NAME.c` and its includes; writes `NAME.i`, the token
+  stream, then `NAME.nam`, the spellings.
+- `cccomp` reads `NAME.i` one token at a time (with one token of
+  pushback, for `next_is_rbracket()`) and writes `NAME.ir` with ids
+  where it had names. It reads `NAME.nam` only to print a message.
+- `ccgen` reads `NAME.ir`, then `NAME.nam` once, and writes `.obj` and
+  `.syms` with spellings, as now. `ccrel` doesn't change: objects
+  carry spellings, since an id means something only within one
+  compilation (each file is numbered on its own), and no id may reach
+  an `.obj` or `.syms`.
+- Open files: `ccpp` writes `NAME.nam` after closing every source,
+  from the pool it keeps anyway, so the source, its includes and the
+  `.i` keep the Apple II's 4 files (decision 18; the problem A6 noted).
+  `cccomp` opens `NAME.nam` only after an error, as `ccish.msg`.
+
+*Identifiers.*
+- `ccpp` interns every identifier it meets (ordinary names, macro
+  names, macro parameters, names in `#if`), and an identifier's id is
+  its order in the pool, from 1. Id 0 is "no name" (an unnamed
+  prototype parameter; now -1). So `.nam` is the pool written out in
+  order, and `ccpp` needs no table from ids to names. This means
+  `.nam` also lists names that never reach the stream (macro names,
+  say): a few lines on disk, for no table in memory.
+- Fixed ids, interned first in every file: the 25 CMDSYS functions in
+  `cmdsys_funcs[]` order (1-25), then `main` (26) and `pstr` (27):
+  every name `cccomp` recognizes by spelling. Their strings move to
+  `ccpp`; `find_cmdsys()` becomes a range check. `cccomp` keeps the
+  signatures.
+- `MAX_NAME` (31) is enforced by `ccpp`; readers rely on it (a 32-byte
+  line buffer). `cccomp` has no limit on ids, since it has no table
+  indexed by id; `ccpp`'s pool and id count (`MAX_NAMES`) are sized
+  from measurement, like every table. parse.c's names alone are about
+  5,647 bytes, perhaps 700 ids, so ids are 2 bytes.
+- `cccomp`'s tables hold ids where they held pool offsets, compared
+  the same way.
+- Struct tags: a type hash includes the tag's spelling, so that a
+  struct agrees between files (`type_hash()`). `ccpp` writes the
+  identifier after `struct` (as it emits it, after macro expansion)
+  as a tag token, carrying the id and a hash of the spelling; `cccomp`
+  keeps that hash per tag (2 bytes x `MAX_TAGS`) and uses it in
+  `type_hash()`.
+
+*The token stream* (`NAME.i`; its full encoding goes in OBJECT.md
+with step 1). Binary, one byte per token code:
+- keywords and operators: the code alone;
+- identifier: a code, then the 2-byte id; a tag: its own code, the id
+  and the 2-byte spelling hash;
+- number: a code for signed and one for unsigned (replacing
+  `tok_unsigned`), then the 2-byte value; a character constant is a
+  number;
+- string: a code, a length, then the bytes, escapes decoded; `ccpp`
+  joins adjacent strings (C's phase 6), so `cccomp` needn't;
+- lines: a 1-byte "next line" code for each source line that ends
+  (blank lines too, so lines stay exact with no more), a code with a
+  2-byte line for a jump (after a skipped `#if` block, say), and a
+  code with a 1-byte file number and a 2-byte line on entering or
+  leaving an include;
+- the end: a code, then the stamp (below).
+
+*`NAME.nam`.* Text, one entry per line, ending with `\n`; text so that
+it can be read with any editor, and no larger than length-prefixed
+binary. Identifiers can't hold a newline, so nothing is escaped; nor
+can ProDOS paths.
+
+```
+putc            id 1 (the fixed ids, 1-27)
+putln           id 2
+...
+pstr            id 27
+main_loop       id 28, and so on in pool order
+...
+@ccish.c        file 1 (the source)
+@stdio.h        file 2, and so on in order of first #include
+                a blank line
+=02C4 3F7C      the stamp: the id count, and the checksum, in hex
+```
+
+- Line *n* is id *n*; the files follow, each line starting with `@`,
+  file *k* being the *k*-th. The stream carries file numbers, so
+  `cccomp` keeps only a number and loses its 128-byte `MAX_PATH` name
+  buffer; messages look the file name up like an identifier.
+- The blank line before the stamp is written and checked on reading,
+  so that an off-by-one or other damage (a lost or extra line, a
+  stamp read as a name) is caught rather than quietly mislabeling
+  names (the user's request).
+- The stamp: the id count, and the checksum `h*31+byte` (as for the
+  helpers) over every byte before the blank line. `ccpp` also writes
+  it after the stream's end code; `cccomp` copies it into the `.ir`;
+  `ccgen` reads `.nam` to the end and checks the blank line, the stamp
+  and the end of file, and stops with a message if any is wrong ("is
+  stale or damaged"). So a `.nam` from another run of `ccpp` is never
+  trusted. `cccomp` doesn't check (it reads `.nam` only for messages,
+  where the worst is a wrong name in a message), unless that proves
+  cheap.
+- Readers: `cccomp`, to print a message, scans to id *n* or file *k*
+  (no seek in bio; the error path, so slow is fine). `ccgen` reads it
+  once after the whole `.ir`, when it knows which ids are external
+  (a bitmap, a bit per id), and keeps only those spellings, so it
+  should shrink from keeping every function's name (`MAX_FNAMES`,
+  3,281). `ccgen`'s own messages, its `-i` listing (full build or
+  not) and an `.ir` dumper look names up the same way.
+
+*Directives* (3B's minimal preprocessor): `#include "f"` and `<f>`,
+object-like and function-like `#define`, `#` and `##`, `#undef`,
+`#if`/`#ifdef`/`#ifndef`/`#elif`/`#else`/`#endif` with `defined`,
+`#error`, `#line`. Macro bodies are kept as tokens. `#` and `##` need
+tokens turned back into text (and `##` lexes the pasted text again),
+so `ccpp` has that code in both builds. `#if` needs a small
+expression evaluator of its own, in `ccpp`. The lexer's messages move
+to `ccpp` with their numbers.
+
+*`-E`* (the user: a debug option for "just the preprocessing").
+Writes the stream as text instead (C preprocessor output, comparable
+with `gcc -E`): in the full build only for now, behind one macro
+(`CCISH_TEXT`), self-contained and built on the `#` code, so that
+restoring it on the Apple II means changing one `#if`, "if ccpp turns
+out to easily fit". Report `ccpp`'s small-build size with and without
+it.
+
+*Steps* (to be planned in detail before code; each tested, measured
+and committed):
+1. The token stream and `.nam`: the lexer moves to `ccpp`, which for
+   now has no directives (input as today); `cccomp` reads tokens. To
+   keep the step small, `cccomp` reads `.nam` into its pool at the
+   start, so the parser is unchanged.
+2. Ids in `cccomp`: drop its pool; ids in its tables, fixed ids, tag
+   hashes, messages from `.nam`.
+3. Ids in the `.ir`; `ccgen` reads `.nam`, with the stamp check.
+4. Directives: `#include`, object-like `#define`, `#ifdef`, `#ifndef`,
+   `#else`, `#endif`, `#undef`.
+5. Function-like macros, `#` and `##`.
+6. `#if` and `#elif` with expressions and `defined`, `#error`,
+   `#line`; `-E`.
+7. measure.py runs `ccpp` instead of `gcc -E`; the next 2K, if needed.
 
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
