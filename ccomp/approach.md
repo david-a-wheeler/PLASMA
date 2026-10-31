@@ -3653,6 +3653,43 @@ and committed):
    `#line`; `-E`.
 7. measure.py runs `ccpp` instead of `gcc -E`; the next 2K, if needed.
 
+*Decided in planning step 1* (2026-10-31):
+- One document, `CCPP.md`, describes both `NAME.i` and `NAME.nam`,
+  so that how they work together is clear. It is written first, and
+  the code is checked against it.
+- `cccomp`'s argument becomes the base name, as for `ccgen`: `cccomp
+  [-k] [-o output] input` reads `input.i` and `input.nam`.
+- `MAX_STR` becomes 255 (it was 256, only so that a 256-byte literal
+  could get message 57 from `pstr()` rather than message 12 from the
+  lexer). So every literal fits a PLASMA string; message 57 is
+  retired, and `pstr_too_long.c` tests message 12, which no test
+  covered. A string's length in `NAME.i` is 1 byte. Later, much
+  later, `.ir` and `.obj` `S` records should switch to a 1-byte
+  length too (a version bump in each); it saves a byte per string per
+  file, not much, so it waits.
+- `ccpp` reads a line at a time into a fixed 256-byte buffer (C's
+  phase 2 splicing of backslash-newline goes there too; a longer
+  logical line is an error). A line starting with `#` is a directive,
+  parsed from the buffer; any other line is split into tokens. ccish's
+  own sources have lines of at most 99 characters and no continued
+  lines. A joined string can span lines, so it is built in its own
+  buffer (`MAX_STR`), and when a string ends a line the next line is
+  read before the string is written, so its line is where it ends, as
+  now. Comments that span lines carry their state from line to line.
+- Macro expansion never goes back into the line buffer, so it can't
+  make a line too long: macro bodies are kept as tokens, and their
+  expansion is written as tokens. What expansion does need, sized
+  from measurement in steps 4-5, is a stack of the macros being
+  expanded (a macro being expanded isn't expanded again within
+  itself) and a token buffer for a function-like macro's arguments
+  (expanded before they are substituted, as C says). `#` gives a
+  string, so `MAX_STR` bounds it; `##` spells two tokens into a small
+  buffer and splits it again.
+- Tests: expected `NAME.i` and `NAME.nam` files are written by hand
+  from CCPP.md, except the `.nam` checksum, which `run.sh` computes
+  with a few lines of awk, written apart from `ccpp`'s code, so that
+  the expected value never comes from the program under test.
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in
