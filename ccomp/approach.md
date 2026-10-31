@@ -3975,6 +3975,43 @@ carried out, so message 13 ("not supported yet") is gone.
   build). 361 pass.
 - Sizes (small build): `ccpp` **34,746** (code 14,124, data 19,552).
 
+**`ccpp` step 7 (ccpp preprocesses ccish's own source; its limits
+measured) is done** (2026-10-31). `make measure` no longer uses `gcc
+-E`: measure.py copies src/, tools/inc/ and tools/libstub.c to
+tools/out/, with comments taken out (only so that its regular
+expressions can't match in one) and its workarounds made, and runs
+ccpp on them (`-I tools/out/inc`, `-DCCISH_SMALL`). A ccpp built with
+`CCISH_STATS` (neither build has it: peak counters, and one line on
+stderr) reports how full each of ccpp's tables got, and the report
+lists the most any source needed beside each limit.
+- Checked: every measured source's object is byte-identical whether
+  `gcc -E` or ccpp preprocesses it (25 sources, through the same
+  compiler); so is every input of the test suite. 361 tests pass.
+- Measured peaks, and the limits set from them (ccish.h): the name pool
+  8,179 bytes (parse.c, whose macros' names now count too), limit 9,000;
+  86 macros (pp.c), 96; 274 bytes of macro bodies, 512; groups open 3,
+  8. Expansion texts (15 bytes), arguments' expansions (3), expansions
+  open (2) and argument slots (1) are tiny, since ccish's macros are
+  short; they get room for ordinary programs' macros: 256 bytes each,
+  16 and 32. Open for review: how much room beyond ccish's own use.
+- Includes nest **3** deep (bio.c: ccish.h, its `<stdio.h>`, that one's
+  `<stddef.h>`): with the source and `NAME.i`, 5 open files, one more
+  than PLASMA's Apple II library allows. `MAX_INCLUDE` stays 3 for the
+  host; the header split is to bring ccish's own nesting to 2 (decision
+  25), after which the measurement should show it.
+- `pp_lex()`'s and `##`'s number checks no longer need more than 16
+  bits (they used `long`, which ccish turns into `int`, and an `int` over
+  $FFFF), so a ccish-compiled ccpp still reports "number does not fit".
+- Sizes (small build): `ccpp` **32,472** (code 14,154, data 17,248;
+  the name pool, 9,000, is half the data), `cccomp` 35,630, `ccgen`
+  18,493, `ccrel` 14,520. ccpp still links only with ccrel's
+  shared-name limits raised (1,791 bytes of names shared), which the
+  header split should fix.
+
+**The `ccpp` design is done** (steps 1-7). Next, as decided: split
+ccish.h (decision 25), in commits of its own; then measure the "last
+2K" candidates for `cccomp` (now 35,630 of the 32K goal) and report.
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in

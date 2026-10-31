@@ -48,6 +48,8 @@
  *   CCISH_TEXT     ccpp -E, the token stream as text (ppout.c): for
  *                  debugging, so in the full build only for now; it can
  *                  be put in the small build if ccpp has room.
+ * And one that neither build has: tools/measure.py builds a ccpp with
+ *   CCISH_STATS    report how full ccpp's tables got, for sizing them.
  */
 #ifndef CCISH_SMALL
 #define CCISH_LISTING
@@ -66,22 +68,26 @@
 #define MAX_LINE     255    /* characters in one source line, ccpp's
                              * buffer (99) */
 #define MAX_INCLUDE  3      /* #include files open at once, beside the
-                             * source: PLASMA's Apple II file library
-                             * allows 4 open files, ccpp needs 2 */
-#define MAX_IF_NEST  16     /* #ifdef groups open at once */
-#define MAX_MACROS   128    /* macros defined at once */
-#define MAX_MACRO_BYTES 2048  /* their bodies, as tokens */
-#define MAX_EXPAND   16     /* macro expansions inside one another */
-#define MAX_EXP_BYTES 1024  /* bytes of the expansions and arguments
+                             * source (3, from ccish.h's <stdio.h>'s
+                             * <stddef.h>: one more than the Apple II
+                             * can, with the source and NAME.i; the
+                             * header split is to make it 2) */
+#define MAX_IF_NEST  8      /* #ifdef groups open at once (3) */
+#define MAX_MACROS   96     /* macros defined at once (86, in pp.c) */
+#define MAX_MACRO_BYTES 512 /* their bodies, as tokens (274): room for
+                             * more than ccish's own, which are short */
+#define MAX_EXPAND   16     /* macro expansions inside one another (2) */
+#define MAX_EXP_BYTES 256   /* bytes of the expansions and arguments
                              * being read, and of the arguments' own
-                             * expansions (two buffers) */
-#define MAX_ARG_SLOTS 64    /* arguments of the calls being expanded */
+                             * expansions (two buffers; 15 and 3): room
+                             * for macros longer than ccish's */
+#define MAX_ARG_SLOTS 32    /* arguments of the calls being expanded (1) */
 #define MAX_PP_PARAMS 16    /* parameters of one macro */
 #define MAX_INC_DIRS 8      /* -I directories */
 #define MAX_PP_OPTS  16     /* -D and -U options */
-#define MAX_PP_POOL  7680   /* bytes of ccpp's names and file names,
-                             * with a length byte each (6,890: parse.c,
-                             * preprocessed by gcc) */
+#define MAX_PP_POOL  9000   /* bytes of ccpp's names and file names,
+                             * with a length byte each (8,179: parse.c
+                             * with its headers, macros' names too) */
 #define MAX_FUNCS    302    /* functions (274) */
 #define MAX_VARS     82     /* globals, plus the parameters and locals
                              * visible at once (74) */

@@ -81,6 +81,36 @@ static char pend_first;
 static char pend_lex;
 static char pend_macro;
 
+#ifdef CCISH_STATS
+/* The most each table held (CCISH_STATS): macros, their bytes, sbuf[],
+ * obuf[], the input stack, and argument slots. */
+static int peak[6];
+
+/* Record how full the tables are now. */
+static void note(void)
+{
+  int now[6], i;
+  now[0] = nmacs;
+  now[1] = body_used;
+  now[2] = stop;
+  now[3] = otop;
+  now[4] = nin;
+  now[5] = nslots;
+  for (i = 0; i < 6; i++)
+    if (now[i] > peak[i])
+      peak[i] = now[i];
+}
+
+/* The most table k held (note()'s order). */
+int pp_mac_peak(int k)
+{
+  return peak[k];
+}
+#define NOTE() note()
+#else
+#define NOTE()
+#endif
+
 /* Forget every macro and expansion (for each source file). */
 void pp_mac_init(void)
 {
@@ -257,6 +287,7 @@ void pp_def_end(int id)
   mac_va[nmacs] = (char)def_va;
   mac_on[nmacs] = 0;
   nmacs++;
+  NOTE();
   pp_set_macro(id, 1);
 }
 
@@ -312,6 +343,7 @@ static void push_text(const unsigned char *p, int n, int m, int bar)
   stop = low + n;
   if (m >= 0)
     mac_on[m] = 1;
+  NOTE();
 }
 
 /* The next token, as pp_lex() gives one: the token read ahead, or the
@@ -411,6 +443,7 @@ static int collect(int m)
     a_at[base + n] = a_end[base + n] = stop;  /* no variable arguments */
     n++;
   }
+  NOTE();
   return n;
 }
 
@@ -426,6 +459,7 @@ static void expand_arg(int k)
     otop += encode(obuf + otop, c, pt_val, pt_text, pt_len);
   }
   e_end[k] = otop;
+  NOTE();
   nin--;                        /* the barrier */
 }
 
@@ -486,7 +520,8 @@ static int is_word_char(int c)
 static void paste(int lhs, int rhs)
 {
   static char text[2 * MAX_NAME + 8];
-  int n, k, code, rest = rhs + token_len(sbuf + rhs), v = 0, uns = 0;
+  int n, k, code, rest = rhs + token_len(sbuf + rhs), uns = 0;
+  unsigned v = 0;
   if (sbuf[lhs] == TC_STR || sbuf[rhs] == TC_STR)
     error(254 /* "pasting doesn't give a valid token:" */, "a string");
   decode(sbuf + lhs);
@@ -508,9 +543,9 @@ static void paste(int lhs, int rhs)
     code = pp_word(text, n);
   } else if (text[0] >= '0' && text[0] <= '9') {
     for (k = 0; k < n && text[k] >= '0' && text[k] <= '9'; k++) {
-      v = v * 10 + text[k] - '0';
-      if (v > 0xFFFF || v < 0)
+      if (v > (0xFFFFu - (unsigned)(text[k] - '0')) / 10u)
         error(10 /* "number does not fit in 16 bits" */, NULL);
+      v = v * 10u + (unsigned)(text[k] - '0');
     }
     if (k < n && (text[k] == 'u' || text[k] == 'U')) {
       uns = 1;
@@ -518,7 +553,7 @@ static void paste(int lhs, int rhs)
     }
     if (k < n)
       error(254 /* "pasting doesn't give a valid token:" */, text);
-    pt_val = v;
+    pt_val = (int)v;
     code = uns ? TC_UNUM : TC_NUM;
   } else {
     code = pp_op(text);
@@ -556,6 +591,8 @@ static void call(int m)
   for (i = mac_at[m]; i < mac_at[m] + mac_len[m]; i += token_len(body + i))
     if (body[i] == TC_PARAM && e_at[base + body[i + 1]] < 0)
       expand_arg(base + body[i + 1]);
+  nslots = base + np;
+  NOTE();
   stop = rep = sfloor;
   for (i = mac_at[m]; i < mac_at[m] + mac_len[m]; i += token_len(body + i)) {
     if (body[i] == TC_PASTE) {
@@ -585,6 +622,7 @@ static void call(int m)
     pasting = 0;
     last = k;
   }
+  NOTE();
   otop = otop0;
   nslots = base;
   sfloor = save_floor;

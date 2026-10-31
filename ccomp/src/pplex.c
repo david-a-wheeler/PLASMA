@@ -373,7 +373,7 @@ static int literal_char(void)
  * difference.) */
 static int lex_number(void)
 {
-  long v = 0;
+  unsigned v = 0;
   int base = 10, uns;
   if (ch == '0') {
     getch();
@@ -395,12 +395,13 @@ static int lex_number(void)
       break;
     if (d >= base)
       error(9 /* "bad digit in octal number" */, NULL);
-    v = v * base + d;
-    if (v > 0xFFFF)
+    /* Checked before, so that a 16-bit unsigned can't overflow. */
+    if (v > (0xFFFFu - (unsigned)d) / (unsigned)base)
       error(10 /* "number does not fit in 16 bits" */, NULL);
+    v = v * (unsigned)base + (unsigned)d;
     getch();
   }
-  uns = base != 10 && v > 0x7FFF;
+  uns = base != 10 && v > 0x7FFFu;
   if (ch == 'u' || ch == 'U') {
     getch();
     uns = 1;

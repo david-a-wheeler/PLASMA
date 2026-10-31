@@ -3,16 +3,18 @@
 
 Usage: tools/measure.py [-full]   (after `make`; writes tools/out/)
 
-Each file in src/ is preprocessed by gcc with the stand-in headers in
-tools/inc/, as the small build (-DCCISH_SMALL, approach.md decision
-21; or the full build, with -full), worked around where ccish still
-lacks something, and compiled with ccpp, cccomp and ccgen. Then each
-of the Apple II programs (ccpp, cccomp, ccgen, ccrel) is linked with
-ccrel, with
-tools/libstub.c
-standing in for the C library. The report gives each file's code, data and string sizes
-(from its .syms header) and each program's totals and link workload
-(from ccrel's listing). See approach.md 18.5 and 18.6 E2.
+Each file in src/, and the headers it includes, is copied to
+tools/out/src/ (and tools/inc/'s stand-in headers to tools/out/inc/)
+with its comments taken out and worked around where ccish still lacks
+something, then compiled with ccpp (with -I tools/out/inc), cccomp and
+ccgen, as the small build (-DCCISH_SMALL, approach.md decision 21; or
+the full build, with -full). Then each of the Apple II programs (ccpp,
+cccomp, ccgen, ccrel) is linked with ccrel, with tools/libstub.c
+standing in for the C library. The report gives each file's code,
+data and string sizes (from its .syms header) and each program's
+totals and link workload (from ccrel's listing), and how full ccpp's
+tables got (from a ccpp built with CCISH_STATS). See approach.md
+18.5 and 18.6 E2.
 
 The workarounds, each something ccish doesn't accept yet:
   - long and short become int, and l and L number suffixes go (ccish
@@ -29,6 +31,8 @@ sources with those limits raised (BIG_LIMITS), and marked so in the
 report: a limit ccish itself must raise to compile that file.
 For parse.c, the largest source, the report also gives the sizes of
 ccpp's token stream and name file beside the source text's.
+(Comments are taken out only so that the workarounds, which are
+regular expressions, can't match inside one; ccpp would skip them.)
 """
 import os
 import re
@@ -50,8 +54,19 @@ BACK = ["irin", "lower", "peep", "emit", "helper"]
 BIG_LIMITS = {"MAX_FUNCS": 1024, "MAX_VARS": 512, "MAX_LABELS": 512,
               "MAX_TYPES": 256, "MAX_PARAM_TYPES": 2048, "MAX_TAGS": 64,
               "MAX_MEMBERS": 512, "MAX_POOL": 32000, "MAX_IDS": 1024,
-              "MAX_CASES": 256, "MAX_PP_POOL": 32000}
-LIMIT_MSGS = ("too many", "is full")
+              "MAX_CASES": 256, "MAX_PP_POOL": 32000, "MAX_MACROS": 1024,
+              "MAX_MACRO_BYTES": 32000, "MAX_EXPAND": 64,
+              "MAX_EXP_BYTES": 16000, "MAX_ARG_SLOTS": 256}
+
+# ccpp's tables, in the order a CCISH_STATS ccpp reports them.
+PP_TABLES = [("name pool bytes", "MAX_PP_POOL"), ("macros", "MAX_MACROS"),
+             ("macro body bytes", "MAX_MACRO_BYTES"),
+             ("expansion text bytes", "MAX_EXP_BYTES"),
+             ("argument expansion bytes", "MAX_EXP_BYTES"),
+             ("expansions open", "MAX_EXPAND"),
+             ("argument slots", "MAX_ARG_SLOTS"),
+             ("includes open", "MAX_INCLUDE"), ("groups open", "MAX_IF_NEST")]
+LIMIT_MSGS = ("too many", "is full", "too long", "too deeply")
 
 # The Apple II programs (B3a). ccish, both passes in one, is for the
 # host only: it is too large for one module.
@@ -92,13 +107,36 @@ def flatten_braces(text):
     return "".join(out)
 
 
-def prepare(name):
-    """Preprocess and work around src/NAME.c; return the new file."""
-    text = subprocess.run(
-        ["gcc", "-E", "-P", "-nostdinc", "-I", os.path.join(TOOLS, "inc")]
-        + ([] if FULL else ["-DCCISH_SMALL"])
-        + [os.path.join(CCOMP, "src", name + ".c")],
-        check=True, capture_output=True, text=True).stdout
+def strip_comments(text):
+    """Take out text's comments (each becomes a space, keeping its
+    newlines), but not what looks like one in a literal."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        c = text[i]
+        if c in "\"'":
+            j = i + 1
+            while j < n and text[j] != c and text[j] != "\n":
+                j += 2 if text[j] == "\\" else 1
+            out.append(text[i:j + 1])
+            i = j + 1
+        elif text.startswith("/*", i):
+            j = text.index("*/", i + 2)
+            out.append(" " + "\n" * text.count("\n", i, j))
+            i = j + 2
+        elif text.startswith("//", i):
+            while i < n and text[i] != "\n":
+                i += 1
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def prepare(path, dest):
+    """Copy the file at path to dest, with its comments taken out and
+    the workarounds made."""
+    with open(path) as f:
+        text = strip_comments(f.read())
     text = re.sub(r"\b(long|short)\b", "int", text)
     text = re.sub(r"\bint int\b", "int", text)    # unsigned long int
     text = re.sub(r"\b(0[xX][0-9A-Fa-f]+|[0-9]+)([uU]?)[lL]+([uU]?)\b",
@@ -107,10 +145,30 @@ def prepare(name):
     text = text.replace("*o = take_b ? b : c;",
                         "if (take_b) *o = b; else *o = c;")
     text = flatten_braces(text)
-    path = os.path.join(OUT, name + ".c")
-    with open(path, "w") as f:
+    with open(dest, "w") as f:
         f.write(text)
-    return path
+
+
+def prepare_all():
+    """Prepare every source and header (src/), stand-in header
+    (tools/inc/) and tools/libstub.c, into OUT/src/ and OUT/inc/."""
+    for sub in ("src", "inc"):
+        os.makedirs(os.path.join(OUT, sub), exist_ok=True)
+    for name in os.listdir(os.path.join(CCOMP, "src")):
+        if name.endswith((".c", ".h")):
+            prepare(os.path.join(CCOMP, "src", name),
+                    os.path.join(OUT, "src", name))
+    for name in os.listdir(os.path.join(TOOLS, "inc")):
+        prepare(os.path.join(TOOLS, "inc", name),
+                os.path.join(OUT, "inc", name))
+    prepare(os.path.join(TOOLS, "libstub.c"),
+            os.path.join(OUT, "src", "libstub.c"))
+
+
+def pp_args():
+    """ccpp's options: the stand-in headers, and the build."""
+    return (["-I", os.path.join(OUT, "inc")]
+            + ([] if FULL else ["-DCCISH_SMALL"]))
 
 
 def run(args):
@@ -119,12 +177,13 @@ def run(args):
     return r.returncode == 0, r.stdout + r.stderr
 
 
-def compile_obj(bindir, name, src, keep=False):
-    """Compile src into OUT/NAME.obj and .syms with BINDIR's ccpp,
-    cccomp and ccgen (keeping NAME.i, NAME.nam and NAME.ir if keep);
-    return (succeeded, messages)."""
+def compile_obj(bindir, name, keep=False):
+    """Compile OUT/src/NAME.c into OUT/NAME.obj and .syms with BINDIR's
+    ccpp, cccomp and ccgen (keeping NAME.i, NAME.nam and NAME.ir if
+    keep); return (succeeded, messages)."""
     out = os.path.join(OUT, name)
-    ok, msg = run([os.path.join(bindir, "ccpp"), "-o", out, src])
+    ok, msg = run([os.path.join(bindir, "ccpp"), "-o", out] + pp_args()
+                  + [os.path.join(OUT, "src", name + ".c")])
     if ok:
         ok, msg = run([os.path.join(bindir, "cccomp")]
                       + (["-k"] if keep else []) + [out])
@@ -162,7 +221,30 @@ def build_big():
                    + src(["ccgen"] + COMMON + NAM + BACK), check=True)
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccrel")]
                    + src(["ccrel"] + COMMON + ["link"]), check=True)
+    subprocess.run(["cc", "-O2", "-DCCISH_STATS", "-o",
+                    os.path.join(big, "ccpp-stats")]
+                   + src(["ccpp"] + COMMON + PP), check=True)
     return big
+
+
+def pp_stats(big, name):
+    """How full ccpp's tables got for OUT/src/NAME.c (PP_TABLES' order),
+    from BIG's CCISH_STATS ccpp, or None."""
+    out = os.path.join(OUT, "stats_" + name)
+    ok, msg = run([os.path.join(big, "ccpp-stats"), "-o", out] + pp_args()
+                  + [os.path.join(OUT, "src", name + ".c")])
+    for suffix in (".i", ".nam"):
+        if os.path.exists(out + suffix):
+            os.remove(out + suffix)
+    m = re.search(r"ccpp-stats((?: \d+)+)", msg)
+    return [int(v) for v in m.group(1).split()] if ok and m else None
+
+
+def limit(name):
+    """The value of limit NAME in src/ccish.h."""
+    with open(os.path.join(CCOMP, "src", "ccish.h")) as f:
+        return int(re.search(r"#define %s\s+(\d+)" % name,
+                             f.read()).group(1))
 
 
 FRAME_OPS = {"LLB", "LLW", "SLB", "SLW", "DLB", "DLW", "LLA", "ADDLB",
@@ -422,25 +504,21 @@ def main():
     names = sorted({n for _, files in PROGRAMS for n in files})
     sizes, failed, big, over = {}, False, None, {}
     tok_sizes = None
+    peaks, peak_of = [0] * len(PP_TABLES), [""] * len(PP_TABLES)
+    prepare_all()
+    big = build_big()
 
     print("File        Code    Data  Strings  Functions")
     for name in names + ["libstub"]:
-        src = (os.path.join(TOOLS, "libstub.c") if name == "libstub"
-               else prepare(name))
-        if name == "libstub":
-            src = subprocess.run(
-                ["gcc", "-E", "-P", "-nostdinc", "-I",
-                 os.path.join(TOOLS, "inc"), src],
-                check=True, capture_output=True, text=True).stdout
-            with open(os.path.join(OUT, "libstub.c"), "w") as f:
-                f.write(src)
-            src = os.path.join(OUT, "libstub.c")
+        stats = pp_stats(big, name)
+        for i, v in enumerate(stats or []):
+            if v > peaks[i]:
+                peaks[i], peak_of[i] = v, name
         keep = name == "parse"
-        ok, msg = compile_obj(CCOMP, name, src, keep)
+        ok, msg = compile_obj(CCOMP, name, keep)
         if not ok and any(m in msg for m in LIMIT_MSGS):
             over[name] = msg.strip().split(": ", 1)[-1]
-            big = big or build_big()
-            ok, msg = compile_obj(big, name, src, keep)
+            ok, msg = compile_obj(big, name, keep)
         if not ok:
             print("%-10s  FAILED: %s" % (name, msg.strip()))
             failed = True
@@ -453,14 +531,19 @@ def main():
                  else ""))
         if keep:
             base = os.path.join(OUT, name)
-            tok_sizes = (os.path.getsize(src), os.path.getsize(base + ".i"),
+            tok_sizes = (os.path.getsize(os.path.join(CCOMP, "src",
+                                                      name + ".c")),
+                         os.path.getsize(base + ".i"),
                          os.path.getsize(base + ".nam"))
             for suffix in (".i", ".nam", ".ir"):
                 os.remove(base + suffix)
 
     if tok_sizes:
-        print("\nparse.c: %d bytes preprocessed by gcc -E -P; ccpp's token"
-              " stream %d, name file %d" % tok_sizes)
+        print("\nparse.c: %d bytes of source; ccpp's token stream %d,"
+              " name file %d" % tok_sizes)
+    print("\nccpp's tables: the most one source needed, and the limit:")
+    for (what, lim), v, who in zip(PP_TABLES, peaks, peak_of):
+        print("  %-26s %6d of %6d  (%s)" % (what, v, limit(lim), who))
     for prog, files in PROGRAMS:
         print()
         if any(n not in sizes for n in files):

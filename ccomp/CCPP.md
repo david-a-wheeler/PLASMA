@@ -338,19 +338,21 @@ in `t.i`, low byte first).
 | A line (after joining lines that end in `\`) | 255 characters (`MAX_LINE`) | 233 |
 | A string literal, after joining | 255 bytes (`MAX_STR`) | 12 |
 | An identifier | 31 significant characters (`MAX_NAME`); the rest are ignored | none |
-| `ccpp`'s name pool: every name and file name, a length byte each | `MAX_PP_POOL` bytes | 18 |
+| `ccpp`'s name pool: every name and file name, a length byte each | 9000 bytes (`MAX_PP_POOL`) | 18 |
 | Files `#include`d at once, beside the source | 3 (`MAX_INCLUDE`), or what the system can open | 237, 236 |
-| Groups (`#ifdef` ...) open at once | 16 (`MAX_IF_NEST`) | 243 |
-| Macros defined at once, counting `__CCISH__` | 128 (`MAX_MACROS`) | 244 |
-| Their bodies, as tokens (an identifier or number is 3 bytes) | 2048 bytes (`MAX_MACRO_BYTES`) | 244 |
+| Groups (`#ifdef` ...) open at once | 8 (`MAX_IF_NEST`) | 243 |
+| Macros defined at once, counting `__CCISH__` | 96 (`MAX_MACROS`) | 244 |
+| Their bodies, as tokens (an identifier or number is 3 bytes) | 512 bytes (`MAX_MACRO_BYTES`) | 244 |
 | Macro expansions inside one another, and arguments being expanded | 16 (`MAX_EXPAND`) | 245 |
-| The texts being read and the arguments being collected; the arguments' own expansions | 1024 bytes each (`MAX_EXP_BYTES`) | 256 |
-| Arguments of the calls being expanded | 64 (`MAX_ARG_SLOTS`) | 256 |
+| The texts being read and the arguments being collected; the arguments' own expansions | 256 bytes each (`MAX_EXP_BYTES`) | 256 |
+| Arguments of the calls being expanded | 32 (`MAX_ARG_SLOTS`) | 256 |
 | A macro's parameters | 16 (`MAX_PP_PARAMS`) | 257 |
 | `-I` directories; `-D` and `-U` options | 8 (`MAX_INC_DIRS`); 16 (`MAX_PP_OPTS`) | 248 |
 
-These are first sizes, to be set from measurement once `ccpp` reads
-ccish's own source (step 7).
+These are set from measurement (`make measure` reports how full each
+got for ccish's own sources), with room above, and more room where
+ccish's own use is small (its macros are short), so that ordinary
+programs fit too.
 
 ## Versions
 

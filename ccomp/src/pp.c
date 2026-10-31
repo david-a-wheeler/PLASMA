@@ -30,6 +30,9 @@ static int file_no[MAX_INCLUDE + 1];
 static char file_conds[MAX_INCLUDE + 1];
 static int depth;
 static char cur_path[MAX_PATH];     /* the current file's name */
+#ifdef CCISH_STATS
+static int depth_peak, conds_peak;  /* the most of each at once */
+#endif
 
 enum { C_TAKING, C_WAIT, C_DONE, C_DEAD, C_STATE = 3, C_ELSE = 4 };
 static char cond[MAX_IF_NEST];
@@ -207,6 +210,10 @@ static void do_include(void)
     error(236 /* "cannot open the #include file (missing, or too many "
                  "files open):" */, name);
   depth++;
+#ifdef CCISH_STATS
+  if (depth > depth_peak)
+    depth_peak = depth;
+#endif
   file_no[depth] = pp_add_file(cur_path);
   file_conds[depth] = (char)nconds;
   pp_cur_file = file_no[depth];
@@ -225,6 +232,10 @@ static void open_group(int is_true)
     cond[nconds++] = C_DEAD;
   else
     cond[nconds++] = is_true ? C_TAKING : C_WAIT;
+#ifdef CCISH_STATS
+  if (nconds > conds_peak)
+    conds_peak = nconds;
+#endif
 }
 
 /* #ifdef name or #ifndef name (want 0): open a group. */
@@ -414,6 +425,28 @@ static int end_file(void)
   return 1;
 }
 
+#ifdef CCISH_STATS
+/* Report how full the tables got, on one line of stderr, for
+ * tools/measure.py: the name pool's bytes, then pp_mac_peak()'s, then
+ * the include depth and the groups open. */
+static void report_stats(void)
+{
+  int i;
+  fputs("ccpp-stats", stderr);
+  fputs(" ", stderr);
+  fputs(num_text(pp_pool_used()), stderr);
+  for (i = 0; i < 6; i++) {
+    fputs(" ", stderr);
+    fputs(num_text(pp_mac_peak(i)), stderr);
+  }
+  fputs(" ", stderr);
+  fputs(num_text(depth_peak), stderr);
+  fputs(" ", stderr);
+  fputs(num_text(conds_peak), stderr);
+  fputs("\n", stderr);
+}
+#endif
+
 /* Preprocess source file src into the token stream and name file of
  * output name base. */
 void pp_file(const char *src, const char *base)
@@ -455,6 +488,9 @@ void pp_file(const char *src, const char *base)
   }
   pp_out_finish();
   src_line = 0;
+#ifdef CCISH_STATS
+  report_stats();
+#endif
 }
 
 /* After an error: close the open files, so that ProDOS can remove the

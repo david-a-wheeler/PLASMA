@@ -38,9 +38,10 @@ make            # builds ./ccish, ./ccpp, ./cccomp, ./ccgen and ./ccrel
 make small      # builds ./ccpp-small, ./cccomp-small, ./ccgen-small
                 # and ./ccrel-small
 make test       # also builds ../src/plvm (the C VM), then runs the tests
-make measure    # compiles ccish's own source with ccish, links ccpp,
-                # cccomp, ccgen and ccrel, and reports their sizes (needs
-                # gcc, python3)
+make measure    # compiles ccish's own source with ccish (ccpp
+                # preprocessing it), links ccpp, cccomp, ccgen and ccrel,
+                # and reports their sizes and how full ccpp's tables got
+                # (needs python3)
 ```
 
 The same source makes two builds (approach.md decision 21). The full
@@ -438,7 +439,7 @@ function returns exactly one.
 | `tests/link/` | Programs of several files, linked in name order, each with its expected output (`expected`) or link error (`expect-error`) |
 | `tests/pp/` | Sources, each with the token stream (`.tok`, in hex) and name file (`.nam`) `ccpp` must write for it |
 | `tests/check_msgs.sh` | Checks `ccish.msg` against the message comments in the sources |
-| `tools/measure.py` | `make measure`: compiles ccish's own source with ccish (with workarounds for what it lacks), links the Apple II programs, and reports sizes |
+| `tools/measure.py` | `make measure`: compiles ccish's own source with ccish, ccpp preprocessing it (with workarounds for what it lacks), links the Apple II programs, and reports sizes and how full ccpp's tables got |
 | `tools/inc/`, `tools/libstub.c` | Stand-in C library headers and empty library functions for `measure.py` |
 
 ## Messages

@@ -180,6 +180,14 @@ int pp_name_hash(int id, int *mul)
   return h;
 }
 
+#ifdef CCISH_STATS
+/* The name pool's bytes in use (CCISH_STATS). */
+int pp_pool_used(void)
+{
+  return pool_used;
+}
+#endif
+
 /* The number of ids given so far. */
 int pp_nids(void)
 {
