@@ -3651,6 +3651,15 @@ review:
   155 bytes of code and 336 of tables); `ccrel` 14,520 (+667, more than
   the 0.3-0.5K estimated).
 
+**Step 3 (measuring real `unsigned`) is done, so the design is done**
+(2026-10-31). `tools/measure.py` no longer rewrites `unsigned` as
+`int` or drops `u` suffixes (it still makes `long` and `short` `int`,
+and drops `l` suffixes). Every file compiles. What `unsigned` costs in
+ccish's own code (small build): `cccomp` 43,053 to 43,100 bytes,
+`ccgen` 21,210 to 21,220, `ccrel` unchanged at 14,520. From before
+`unsigned` (step 1's start) to now: `cccomp` 41,965 to 43,100, `ccgen`
+19,972 to 21,220, `ccrel` 13,853 to 14,520.
+
 **M7 design (decided in discussion, 2026-10-29).** `switch`, in one
 step. ccish's own source has 26 switches with 218 case labels (the
 largest has 28), so self-hosting needs it.

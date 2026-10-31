@@ -14,7 +14,8 @@ standing in for the C library. The report gives each file's code, data and strin
 (from ccrel's listing). See approach.md 18.5 and 18.6 E2.
 
 The workarounds, each something ccish doesn't accept yet:
-  - unsigned, long and short become int, and number suffixes go;
+  - long and short become int, and l and L number suffixes go (ccish
+    has unsigned, and u suffixes, but no long);
   - the printf family becomes 0 (in tools/inc/stdio.h), so its calls
     and the C library itself aren't counted;
   - main(argc, argv) is renamed main_args; libstub.c's main calls it;
@@ -92,10 +93,10 @@ def prepare(name):
         + ([] if FULL else ["-DCCISH_SMALL"])
         + [os.path.join(CCOMP, "src", name + ".c")],
         check=True, capture_output=True, text=True).stdout
-    text = re.sub(r"\bunsigned (char|int)\b", r"\1", text)
-    text = re.sub(r"\bunsigned\b", "int", text)
     text = re.sub(r"\b(long|short)\b", "int", text)
-    text = re.sub(r"\b(0[xX][0-9A-Fa-f]+|[0-9]+)[uUlL]+\b", r"\1", text)
+    text = re.sub(r"\bint int\b", "int", text)    # unsigned long int
+    text = re.sub(r"\b(0[xX][0-9A-Fa-f]+|[0-9]+)([uU]?)[lL]+([uU]?)\b",
+                  r"\1\2\3", text)
     text = re.sub(r"\bint main\(int argc", "int main_args(int argc", text)
     text = text.replace("*o = take_b ? b : c;",
                         "if (take_b) *o = b; else *o = c;")
