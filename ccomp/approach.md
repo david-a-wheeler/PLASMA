@@ -4163,6 +4163,46 @@ the heap, through a pointer.* It needs no change to the VM.
   run-time cost, but a fixup list of 2 bytes per reference kept in the
   module, likely 1-2K for `cccomp`, more than the pointers).
 
+**C6 design, and C6 is done** (2026-10-31; C6 in 18.6). Address
+constants come from the expression parser, so global initializers no
+longer need a parser of their own (`parse_addr()`, 592 bytes, and its
+`Init` record are gone): "only do things once", and more of C works.
+- A new operand kind, `K_ADDR`: an address constant, not emitted yet:
+  `off` bytes into this file's data, past an `extern` global's address,
+  or into the string pool (a literal, from `disp` to `val`, for the
+  range check). Made by a string literal, by `&` of a global or static
+  place (which `&m[1][2]` and `&s.x` already are: places at fixed
+  offsets), and by a global array used as a value where it can fold.
+  It folds `+` or `-` a constant (scaled), a constant `+` it, a cast to
+  a pointer type, and a constant `?:`; anything else emits it, through
+  `rvalue()`, as one `DATAADDR` or `STRADDR` with the offset in it.
+- A left operand of `+` or `-` that is one is held back as a left
+  constant is: held entries are whole IR ops now, not only constants.
+  Not for a comparison, since ccgen needs the right operand's code
+  length for an unsigned one, and a held left operand written inside
+  it would change that. Held operands now stop at 8 (`MAX_HELD`): past
+  that, a left operand is just emitted, so `1 + (2 + (3 + ...))` past 8
+  folds no further (it was a fatal "nesting too deep" past `MAX_NEST`,
+  33 entries of data that now cost an IR op each).
+- A global's scalar initializer is an ordinary expression, parsed with
+  code off, that must be a constant or (for a pointer) an address
+  constant; a flag (`want_addr`) has its string literals stored though
+  no code is emitted, and an `extern` global's address marks it used.
+- Newly allowed initializers: `2 + buf`, `&s.y`, `&ps[1].x`,
+  `(char *)&m[1][0] + 2`, `"xyz" + 1`, `m[1] + 2`; still an error:
+  `(int)&x`. In code, `buf + 4` is now one `LA data+4`, and `"abc" + 1`
+  one `LA string+2`.
+- Checked: 89 of the tests' objects are unchanged, and 5 are 2 to 9
+  bytes smaller (strings.c, compound_call.c, struct.c, unsigned_late.c,
+  and the new extern link test); `init_unsupported_addr.c` now tests
+  `(int)&x`, since its `2 + buf` is valid. New tests: a run test of
+  the new initializers and folding, a link test with an extern array's
+  address, and a run test past `MAX_HELD`. 368 pass.
+- Size: less than estimated. parse.c's code is 178 bytes smaller (the
+  new kind's handling cost about 410 of `parse_addr()`'s 592), and its
+  data 24 smaller (whole-op held entries, but 8 of them, not 33).
+  `cccomp` **34,051** (was 34,260).
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in

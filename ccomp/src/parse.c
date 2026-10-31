@@ -88,6 +88,14 @@
  * operand emits nothing and is itself a constant, the held left one is
  * still there and the two are folded.
  *
+ * An address constant (K_ADDR: a global's or a string's address, plus a
+ * constant number of bytes) is pending in the same way (approach.md,
+ * "C6 design"), and held the same way as a left operand: plus or minus
+ * a constant, and casts to a pointer type, fold into it, so &a[2] + 1
+ * or "abc" + 1 is one DATAADDR or STRADDR. A global's initializer is an
+ * ordinary expression, parsed with code off, which must end as a
+ * constant or an address constant.
+ *
  * Each operand carries its C type (see type.c). char is unsigned, and a
  * char value on the stack is always 0 to 255: loads use LLB, and stores
  * into a char keep only the low byte. So a value needs converting to
@@ -607,9 +615,21 @@ static int matches_cmdsys(int f, int c)
  * initialized so has a known value (set_known()). */
 static int init_known, init_val;
 
-/* Left operands held back for folding; see the comment at the top. */
-static int held[MAX_NEST + 1];
+/* Left operands held back for folding (see the comment at the top),
+ * each the IR op that pushes it: a constant, or an address constant's
+ * DATAADDR or STRADDR, with its operands. Held operands nest only as
+ * deep as 1 + (2 + (3 + ...)) does; past MAX_HELD, a left operand is
+ * just emitted, and folds no more. */
+#define MAX_HELD 8
+static char held_op[MAX_HELD];
+static int held_a[MAX_HELD];
+static int held_f[MAX_HELD];
 static int nheld;
+
+/* Above 0 while a global's initializer is parsed for an address
+ * constant: its string literals take data space, though no code is
+ * emitted (suppress). */
+static int want_addr;
 
 /* Above 0 while parsing code that can never run, such as the right side
  * of 0 && x: it is checked, but put() emits nothing. */
@@ -627,9 +647,20 @@ static void put(int op, int a, int f)
   if (suppress)
     return;
   for (i = 0; i < nheld; i++)
-    ir_put(IR_CONST, held[i], -1);
+    ir_put(held_op[i], held_a[i], held_f[i]);
   nheld = 0;
   ir_put(op, a, f);
+}
+
+/* Hold back the op that pushes a left operand (op, a, f), for put() to
+ * write out before any other; return its place. The caller checks that
+ * there is room (nheld < MAX_HELD). */
+static int hold(int op, int a, int f)
+{
+  held_op[nheld] = (char)op;
+  held_a[nheld] = a;
+  held_f[nheld] = f;
+  return nheld++;
 }
 
 /* Where variable v is, as an Operand's global field: 0 in the frame, 1
@@ -849,12 +880,19 @@ enum {
   K_ELEM,         /* the object at base + index * scale + disp */
   K_STORE,        /* an assignment through an address, whose store
                    * waits (m0, m1, mend, stype, vmask) */
-  K_JUMP          /* a condition (&&, ||, ! on them) whose code is
+  K_JUMP,         /* a condition (&&, ||, ! on them) whose code is
                    * emitted: it jumps to label val when false, and
                    * otherwise is true: it falls through, or jumps
                    * to label off, if off isn't -1 (approach.md C4,
                    * "Conditions as jumps") */
+  K_ADDR          /* an address constant, not emitted yet: off bytes
+                   * into the data (global 1), off bytes past extern
+                   * global v's address (global 2 + v), or the string
+                   * pool's offset off (global G_STR: a literal, from
+                   * disp to val, its NUL's end) */
 };
+
+#define G_STR (-1)      /* K_ADDR's global field: the string pool */
 
 typedef struct {
   int kind;
@@ -987,6 +1025,27 @@ static int value_type(int t)
   return is_array(t) ? pointer_to(type_sub(t)) : t;
 }
 
+/* Is o an address constant? A global or static array, whose value is
+ * its address, becomes one. */
+static int addr_const(Operand *o)
+{
+  if (o->kind == K_VAR && o->global && is_array(o->type)) {
+    o->kind = K_ADDR;
+    o->type = value_type(o->type);
+    o->is_bool = 0;
+  }
+  return o->kind == K_ADDR;
+}
+
+/* The IR op that pushes address constant o, with its operands in *a and
+ * *f: STRADDR for a string, DATAADDR for data. */
+static int addr_op(Operand *o, int *a, int *f)
+{
+  *a = o->off;
+  *f = o->global == G_STR ? -1 : data_sym_of(o->global);
+  return o->global == G_STR ? IR_STRADDR : IR_DATAADDR;
+}
+
 /* Is type t (or a qualified one: const unsigned) unsigned int? */
 static int is_uns(int t)
 {
@@ -1088,6 +1147,12 @@ static void rvalue(Operand *o)
     put(IR_CONST, o->val, -1);
     o->is_bool = o->val == 0 || o->val == 1;
     break;
+  case K_ADDR: {
+    int a, f, op = addr_op(o, &a, &f);
+    put(op, a, f);
+    o->is_bool = 0;
+    break;
+  }
   case K_VAR:
     load_var(o->off, o->global, o->type == TY_CHAR);
     o->is_bool = 0;
@@ -1432,6 +1497,8 @@ static void cast(Operand *o, int type)
     o->kind = K_VOID;
   } else if (type == TY_CHAR) {
     to_char(o);
+  } else if (is_pointer(type) && addr_const(o)) {
+    ;                           /* still an address constant */
   } else if (o->kind != K_CONST) {
     rvalue(o);
   }
@@ -1686,9 +1753,13 @@ static void parse_primary(Operand *o)
       next();
       return;
     }
-    /* A literal in code that can never run takes no data space. */
-    put(IR_STRADDR, suppress ? 0 : data_string(tok_text, tok_len),
-        -1);
+    /* An address constant. A literal in code that can never run
+     * takes no data space, unless it is in a global's initializer. */
+    o->kind = K_ADDR;
+    o->global = G_STR;
+    o->off = o->disp = suppress && !want_addr
+                       ? 0 : data_string(tok_text, tok_len);
+    o->val = o->off + tok_len + 1;
     o->type = pointer_to(TY_CHAR);
     next();
     return;
@@ -1924,14 +1995,17 @@ static void address_of(Operand *o)
   if (o->assigned)
     error_in(41 /* "lvalue required as" */,
              196 /* "unary '&' operand" */, NULL);
-  if (o->kind == K_VAR)
+  if (o->kind == K_VAR && o->global)
+    o->kind = K_ADDR;               /* &g, &a[2], &s.x: a constant */
+  else if (o->kind == K_VAR)
     push_var_addr(o->off, o->global);
   else if (o->kind == K_ELEM)
     push_address(o);                /* &*p is p, &a[i] is a + i */
   else if (o->kind != K_DEREF)        /* K_DEREF: already on the stack */
     error_in(41 /* "lvalue required as" */,
              196 /* "unary '&' operand" */, NULL);
-  o->kind = K_VALUE;
+  if (o->kind != K_ADDR)
+    o->kind = K_VALUE;
   o->type = pointer_to(o->type | o->quals);   /* &N is a const int * */
   o->quals = 0;
   o->is_bool = 0;
@@ -2750,7 +2824,8 @@ static void parse_expr(int min_prec, Operand *o)
   }
 
   for (;;) {
-    int mark = -1;
+    int mark = -1, is_addr = 0, a, f, op;
+    Operand addr;
     lstart = -1;
     if (assign_op(&ir_op))
       error_in(41 /* "lvalue required as" */,
@@ -2768,12 +2843,19 @@ static void parse_expr(int min_prec, Operand *o)
       parse_conditional(o);
       continue;
     }
-    if (o->kind == K_CONST && !is_pointer(o->type)) {
+    if (o->kind == K_CONST && !is_pointer(o->type) && nheld < MAX_HELD) {
       /* Hold it back: it may fold with the right operand. */
-      if (nheld > MAX_NEST)
-        fatal(25 /* "nesting too deep" */, NULL);
-      mark = nheld;
-      held[nheld++] = o->val;
+      mark = hold(IR_CONST, o->val, -1);
+    } else if ((ir_op == IR_ADD || ir_op == IR_SUB) && nheld < MAX_HELD
+               && addr_const(o)) {
+      /* An address constant, held back the same way: plus or minus a
+       * constant folds into it. (Not for a comparison, whose right
+       * operand's code ccgen must know the length of.) */
+      op = addr_op(o, &a, &f);
+      addr = *o;
+      is_addr = 1;
+      mark = hold(op, a, f);
+      o->kind = K_VALUE;        /* its value, once put() writes it */
     } else {
       rvalue(o);
       /* All the code since this call began is the left operand. */
@@ -2784,14 +2866,32 @@ static void parse_expr(int min_prec, Operand *o)
     parse_expr(prec + 1, &r);   /* all binary ops are left-assoc */
     if (r.kind == K_CONST && !suppress)
       check_right_const(ir_op, r.val);
-    if (mark >= 0 && nheld > mark) {
+    if (mark >= 0 && nheld > mark && is_addr) {
+      /* The right operand emitted nothing, so the left address
+       * constant is still held: a + c and a - c fold. */
+      if (r.kind == K_CONST && !is_pointer(r.type)) {
+        nheld--;
+        *o = addr;
+        a = wrap16((unsigned)r.val * (unsigned)elem_size(o->type));
+        o->off = wrap16((unsigned)o->off
+                        + (ir_op == IR_ADD ? (unsigned)a : 0u - (unsigned)a));
+        continue;
+      }
+    } else if (mark >= 0 && nheld > mark) {
       /* The right operand emitted nothing, so the left constant
        * is still held. */
       if (is_pointer(value_type(r.type))) {
         if (ir_op == IR_ADD && r.kind != K_VOID) {
-          /* c + p: emit p, then c scaled. */
+          /* c + p: emit p, then c scaled; c + an address constant
+           * folds. */
           Operand c = *o;
           nheld--;
+          if (addr_const(&r)) {
+            a = wrap16((unsigned)c.val * (unsigned)elem_size(r.type));
+            r.off = wrap16((unsigned)r.off + (unsigned)a);
+            *o = r;
+            continue;
+          }
           rvalue(&r);
           push_scaled(&c, r.type);
           put(IR_ADD, 0, -1);
@@ -3730,183 +3830,56 @@ static int parse_params(void)
 /* ---------- Global initializers ----------
  *
  * A global's initial value is computed at compile time and written to
- * the data stream as the global's bytes (approach.md, "M5 design"). An
- * integer goes through the expression parser with code output off, and
- * must fold to a constant. An address goes through parse_addr(), a
- * small parser of its own, which covers what real code uses: a string
- * literal, &name with any constant indexes, an array's name, casts,
- * and + or - a constant. Anything else (2 + buf, &*p) is an error. */
-
-
-/* An initializer's value: an integer, or an address (the start of the
- * global or string at target, in kind's space) plus val bytes. */
-typedef struct {
-  int kind;       /* 0 for an integer, else REL_DATA, REL_STR or
-                   * REL_DSYM */
-  int target;     /* data or string pool offset, or extern global */
-  int val;        /* the integer, or the bytes added to the address */
-  int max;        /* REL_STR: the largest val that stays in the string */
-  int type;
-} Init;
-
-/* Parse a constant expression in an initializer, at precedence prec
- * (or only a unary expression, if prec is above PREC_MUL), with code
- * output off. It must fold to a constant. */
-static void parse_const(int prec, Operand *e)
-{
-  int saved = nheld;
-  if (prec > PREC_MUL) {
-    suppress++;
-    parse_unary(e);
-    suppress--;
-    nheld = saved;
-  } else {
-    parse_skipped(prec, e);
-  }
-  if (e->kind != K_CONST)
-    error(206 /* "initializer is not a constant ccish supports" */,
-          NULL);
-  if (e->nonice)
-    error_in(201 /* "a const variable's value isn't a constant"
-                  " expression in C" */,
-             205 /* "(an initializer here must be one)" */, NULL);
-}
-
-/* Make *a the address of global or static variable s: a data offset,
- * or an extern global's symbol. */
-static void init_target(Init *a, int s)
-{
-  int where = var_where(s);
-  a->kind = where == 1 ? REL_DATA : REL_DSYM;
-  a->target = where == 1 ? var_off[s] : s;
-}
-
-/* Parse an address constant for an initializer into *a, or an integer
- * constant if what follows doesn't start one. With unary set, parse
- * only a unary expression (a cast's operand); otherwise also any + or -
- * constants after it, scaled by the element size, as in C. */
-static void parse_addr(Init *a, int unary)
-{
-  Operand e;
-  int s = tok == T_ID ? find_var(tok_val) : -1;
-  int t, op;
-
-  enter_nest();
-  a->kind = a->target = a->val = 0;
-  if (tok == '(') {
-    next();
-    if (is_type_start()) {
-      /* A cast: of an address, to a pointer type, or of an
-       * integer, to any type. */
-      t = parse_pointers(parse_base_type());
-      expect(')', 59 /* "expected ')' after the type in a cast, not" */);
-      parse_addr(a, 1);
-      if (a->kind == 0) {
-        e.kind = K_CONST;
-        e.val = a->val;
-        e.type = a->type;
-        e.nonice = 0;
-        cast(&e, t);
-        if (e.kind != K_CONST)
-          error(206 /* "initializer is not a constant ccish"
-                       " supports" */, NULL);
-        a->val = e.val;
-      } else if (!is_pointer(t)) {
-        error(206 /* "initializer is not a constant ccish supports" */,
-              NULL);
-      }
-      a->type = unqual(t);
-    } else {
-      parse_addr(a, 0);
-      expect(')', 60 /* "expected ')', not" */);
-    }
-  } else if (tok == T_STR) {
-    a->kind = REL_STR;
-    a->target = data_string(tok_text, tok_len);
-    a->max = tok_len + 1;
-    a->type = pointer_to(TY_CHAR);
-    next();
-  } else if (tok == '&') {
-    /* &name, then any constant indexes: &m[1][2]. */
-    next();
-    s = tok == T_ID ? find_var(tok_val) : -1;
-    if (s < 0 || !var_data(s))
-      error(206 /* "initializer is not a constant ccish supports" */,
-            NULL);
-    next();
-    t = var_type[s];
-    init_target(a, s);
-    while (tok == '[' && is_array(t)) {
-      next();
-      parse_const(PREC_COMMA, &e);
-      if (is_pointer(e.type))
-        error(70 /* "array subscript is not an integer" */, NULL);
-      expect(']', 68 /* "expected ']' after an array index, not" */);
-      t = type_sub(t);
-      a->val += e.val * type_size(t);
-    }
-    a->type = pointer_to(t);
-  } else if (s >= 0 && var_data(s) && is_array(var_type[s])) {
-    /* An array's name: the address of its first element. */
-    init_target(a, s);
-    a->type = value_type(var_type[s]);
-    next();
-  } else {
-    /* An integer, or a pointer from a cast of one. */
-    parse_const(unary ? PREC_MUL + 1 : PREC_ASSIGN, &e);
-    a->val = e.val;
-    a->type = e.type;
-  }
-  while (!unary && (tok == '+' || tok == '-')) {
-    op = tok;
-    next();
-    parse_const(PREC_MUL, &e);
-    if (is_pointer(e.type))
-      error(206 /* "initializer is not a constant ccish supports" */,
-            NULL);
-    if (is_pointer(a->type))
-      e.val *= elem_size(a->type);
-    a->val = wrap16((unsigned)a->val
-                    + (unsigned)(op == '+' ? e.val : -e.val));
-  }
-  nest--;
-}
+ * the data stream as the global's bytes (approach.md, "M5 design"). It
+ * goes through the expression parser with code output off, and must
+ * fold to a constant, or, for a pointer, to an address constant
+ * (K_ADDR): a string literal or a global's address, with any constant
+ * indexes, members, casts to pointers, and + or - a constant (C6).
+ * Anything else (&*p, a pointer variable's value) is an error. */
 
 /* Parse the initializer of one scalar of type type (an int, char or
  * pointer), check it as an assignment, and write it to the data stream.
- * Sets init_known and init_val. */
+ * It is an ordinary expression, parsed with code off (and its string
+ * literals stored, want_addr), which must be a constant or, for a
+ * pointer, an address constant (approach.md, "C6 design"). Sets
+ * init_known and init_val. */
 static void parse_scalar_init(int type)
 {
-  Init a;
   Operand o;
-  if (is_pointer(type)) {
-    parse_addr(&a, 0);
-  } else {
-    parse_const(PREC_ASSIGN, &o);
-    a.kind = 0;
-    a.val = o.val;
-    a.type = o.type;
-  }
-  o.kind = a.kind ? K_VALUE : K_CONST;
-  o.val = a.val;
-  o.type = a.type;
-  o.nonice = 0;
-  o.is_bool = 0;
+  want_addr++;
+  parse_skipped(PREC_ASSIGN, &o);
+  want_addr--;
+  if (is_pointer(type))
+    addr_const(&o);
+  if (o.kind != K_CONST && o.kind != K_ADDR)
+    error(206 /* "initializer is not a constant ccish supports" */, NULL);
+  if (o.nonice && o.kind == K_CONST)
+    error_in(201 /* "a const variable's value isn't a constant"
+                  " expression in C" */,
+             205 /* "(an initializer here must be one)" */, NULL);
   check_assign(type, &o, 198 /* "initialization" */, NULL);
-  init_known = a.kind == 0;
-  init_val = a.val;
-  /* An address must stay within the data written so far (one past
-   * the end is allowed, as in C), or within its string. */
-  if ((a.kind == REL_DATA && (a.target + a.val < 0
-                              || a.target + a.val > data_offset()))
-      || (a.kind == REL_STR && (a.val < 0 || a.val > a.max)))
+  init_known = o.kind == K_CONST;
+  init_val = o.val;
+  if (o.kind == K_CONST) {
+    if (type_size(type) == 1)
+      data_byte(o.val);
+    else
+      data_word(o.val);
+    return;
+  }
+  /* An address must stay within the data written so far (one past the
+   * end is allowed, as in C), or within its string. */
+  if ((o.global == 1 && (o.off < 0 || o.off > data_offset()))
+      || (o.global == G_STR && (o.off < o.disp || o.off > o.val)))
     error(155 /* "initializer address is out of range" */, NULL);
-  if (type_size(type) == 1)
-    data_byte(a.val);
-  else if (a.kind)
-    data_addr(a.kind, a.target, a.val);
-  else
-    data_word(a.val);
+  if (o.global == G_STR) {
+    data_addr(REL_STR, o.off, 0);
+  } else if (o.global == 1) {
+    data_addr(REL_DATA, o.off, 0);
+  } else {
+    var_link[o.global - 2] |= VL_USED;    /* an extern global's */
+    data_addr(REL_DSYM, o.global - 2, o.off);
+  }
 }
 
 /*

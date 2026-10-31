@@ -192,10 +192,13 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   module, so they cost no code. A global without one is zero.
   - Integers and `char`s: any constant expression (`int n = 3 * 4;`,
     `int size = sizeof(int[10]);`).
-  - Pointers: 0, or an *address constant*: a string literal, `&x`
-    with any constant indexes (`&m[1][2]`), an array's name, a cast,
-    and `+` or `-` a constant (`buf + 10`, `(char *)0xC030`). Other
-    forms that C allows, such as `2 + buf`, give "initializer is not a
+  - Pointers: 0, or an *address constant*: a string literal or a
+    global's (or `static` local's) address, with any constant indexes
+    and members (`&m[1][2]`, `&s.y`, `&ps[1].x`), an array's name,
+    casts to pointer types, and `+` or `-` a constant (`buf + 10`,
+    `2 + buf`, `"abc" + 1`, `(char *)0xC030`). The expression parser
+    folds these in code too, so `buf + 10` is one address push. Casting
+    an address to an integer (`(int)&x`) gives "initializer is not a
     constant ccish supports".
   - Arrays: a brace list, one level deep (`int t[5] = {1, 2, 3};`),
     with the rest zero and an optional trailing comma. The size may
