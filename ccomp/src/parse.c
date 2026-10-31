@@ -184,15 +184,15 @@ static void enter_nest(void)
     fatal(25 /* "nesting too deep" */, NULL);
 }
 
-/* The function named name (an id), or -1. */
-/* With CCISH_FAST (build.h), a pointer walks fn_name[]: compiled by
- * ccish, each pass of the scan is 10 ops instead of 12, and every
- * lookup of a function's name scans up to all the functions, but the
- * function is 53 bytes instead of 41 (the end pointer, and the pointer
- * turned back into an index, cost more than the loop saves). Size
- * matters most for now, so the indexed loop is the default
- * (approach.md, "The source rewrites are done"). */
+/* find_func() has two versions. With CCISH_FAST (build.h), a pointer
+ * walks fn_name[]: compiled by ccish, each pass of the scan is 10 ops
+ * instead of 12, and every lookup of a function's name scans up to all
+ * the functions, but the function is 53 bytes instead of 41 (the end
+ * pointer, and the pointer turned back into an index, cost more than
+ * the loop saves). Size matters most for now, so the indexed loop is
+ * the default (approach.md, "The source rewrites are done"). */
 #ifdef CCISH_FAST
+/* The function named name (an id), or -1: the faster version. */
 static int find_func(int name)
 {
   const int *p, *end = fn_name + nfuncs;
@@ -202,6 +202,7 @@ static int find_func(int name)
   return -1;
 }
 #else
+/* The function named name (an id), or -1: the smaller version. */
 static int find_func(int name)
 {
   int f;
