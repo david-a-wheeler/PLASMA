@@ -516,21 +516,22 @@ static void resolve(void)
   }
   for (g = 0; g < MAX_GSYMS; g++) {
     const char *name;
+    int fl = g_flags[g];
     if (g_name[g] < 0)
       continue;
     name = gnames + g_name[g];
     if (g_def[g] != NO_OBJ) {
-      if (!(g_flags[g] & G_DATA) && !strcmp(name, "main"))
+      if (!(fl & G_DATA) && !strcmp(name, "main"))
         main_sym = g;
-    } else if (g_flags[g] & G_USED) {
-      if (g_flags[g] & G_BADCMDSYS)
+    } else if (fl & G_USED) {
+      if (fl & G_BADCMDSYS)
         undefined(173 /* "declaration doesn't match the CMDSYS"
                          " function" */, name);
-      if (g_flags[g] & (G_DATA | G_PLAIN))
+      if (fl & (G_DATA | G_PLAIN))
         undefined(172 /* "undefined reference to" */, name);
       if (nimports >= 255)
         fatal(190 /* "too many imported functions" */, NULL);
-      g_flags[g] |= G_IMPORT;
+      g_flags[g] = (unsigned char)(fl | G_IMPORT);
       g_off[g] = nimports++;
     }
   }
@@ -993,6 +994,7 @@ static void copy_strings(int k)
 static void copy_code(int k)
 {
   int at = 0, idx, len, n, i, c, start;
+  unsigned char *p, *end;
 
   map_object(k);
 #ifdef CCISH_LISTING
@@ -1006,10 +1008,11 @@ static void copy_code(int k)
     if (idx >= nfsyms || fmap[idx] != obj_code[k] + at
         || len > MAX_FUNC_CODE)
       bad_obj();
-    for (i = 0; i < len; i++) {
+    end = fbuf + len;
+    for (p = fbuf; p != end; p++) {
       if ((c = bgetc(&in)) == EOF)
         bad_obj();
-      fbuf[i] = (unsigned char)c;
+      *p = (unsigned char)c;
     }
     start = obj_code[k] + at;
 #ifdef CCISH_LISTING
@@ -1022,17 +1025,18 @@ static void copy_code(int k)
       if (off < 0 || off > len - 2)
         bad_obj();
       /* The word holds an extern global's addend, else 0. */
+      p = fbuf + off;
       v = add_reloc(kind, subseg + start + off, target,
-                    fbuf[off] | (fbuf[off + 1] << 8), opt_list);
+                    p[0] | (p[1] << 8), opt_list);
       if (patch_law) {
         /* A moved global: LA its address becomes LAW its pointer. */
         patch_law = 0;
-        if (off < 1 || fbuf[off - 1] != OP_LA)
+        if (off < 1 || p[-1] != OP_LA)
           bad_obj();
-        fbuf[off - 1] = OP_LAW;
+        p[-1] = OP_LAW;
       }
-      fbuf[off] = (unsigned char)v;
-      fbuf[off + 1] = (unsigned char)(v >> 8);
+      p[0] = (unsigned char)v;
+      p[1] = (unsigned char)(v >> 8);
     }
 #ifdef CCISH_LISTING
     if (opt_list)

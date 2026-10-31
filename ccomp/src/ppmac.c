@@ -269,19 +269,20 @@ void pp_def_token(int code, int val, const unsigned char *s, int n)
  * parameters and body (C11 6.10.3), which is then dropped. */
 void pp_def_end(int id)
 {
-  int m = pp_mac_find(id), n = body_used - def_start, i, last = -1;
+  int m = pp_mac_find(id), n = body_used - def_start, i;
+  unsigned char *p, *last = body, *end = body + body_used;
   if (def_hash)
     error(252 /* "'#' must be followed by a macro parameter" */, NULL);
-  for (i = def_start; i < body_used; i += token_len(body + i)) {
-    if (body[i] == TC_PASTE) {
-      if (i == def_start || i + 1 == body_used)
+  for (p = body + def_start; p != end; p += token_len(p)) {
+    if (*p == TC_PASTE) {
+      if (p == body + def_start || p + 1 == end)
         error(253 /* "'##' can't be at either end of a macro" */, NULL);
-      if (body[last] == TC_PARAM)
-        body[last] = TC_PARAM_RAW;
-      if (body[i + 1] == TC_PARAM)
-        body[i + 1] = TC_PARAM_RAW;
+      if (*last == TC_PARAM)
+        *last = TC_PARAM_RAW;
+      if (p[1] == TC_PARAM)
+        p[1] = TC_PARAM_RAW;
     }
-    last = i;
+    last = p;
   }
   if (m >= 0) {
     if (mac_len[m] != n || mac_np1[m] != def_np + 1 || mac_va[m] != def_va)
@@ -365,7 +366,7 @@ static void push_text(const unsigned char *p, int n, int m, int bar)
  * TC_END at a barrier. */
 static int next_tok(void)
 {
-  int k, c;
+  int k, c, at;
   if (pend_code >= 0) {
     c = pend_code;
     pend_code = -1;
@@ -377,13 +378,14 @@ static int next_tok(void)
   }
   while (nin > 0) {
     k = nin - 1;
-    if (in_at[k] < in_end[k]) {
-      if (sbuf[in_at[k]] == TC_SPACE) {
-        in_at[k]++;
+    at = in_at[k];
+    if (at < in_end[k]) {
+      if (sbuf[at] == TC_SPACE) {
+        in_at[k] = at + 1;
         continue;
       }
-      c = decode(sbuf + in_at[k]);
-      in_at[k] += token_len(sbuf + in_at[k]);
+      c = decode(sbuf + at);
+      in_at[k] = at + token_len(sbuf + at);
       pp_from_lexer = 0;
       pt_first = pt_space = 0;
       if (c == TC_ID || c == TC_KEYWORD)
@@ -501,16 +503,17 @@ static int put_tokens(const unsigned char *p, int n)
 static void put_string(int k)
 {
   static unsigned char str[MAX_STR + 1];
-  int i, n = 0, len;
-  for (i = a_at[k]; i < a_end[k]; i += token_len(sbuf + i)) {
-    if (sbuf[i] == TC_SPACE) {
+  int n = 0, len;
+  const unsigned char *p, *end = sbuf + a_end[k];
+  for (p = sbuf + a_at[k]; p != end; p += token_len(p)) {
+    if (*p == TC_SPACE) {
       if (n >= MAX_STR)
         error(12 /* "string literal too long" */, NULL);
       str[n++] = ' ';
       continue;
     }
-    decode(sbuf + i);
-    len = pp_spell_token(sbuf[i], pt_val, pt_text, pt_len,
+    decode(p);
+    len = pp_spell_token(*p, pt_val, pt_text, pt_len,
                          (char *)str + n, MAX_STR + 1 - n);
     if (len < 0)
       error(12 /* "string literal too long" */, NULL);
@@ -584,8 +587,9 @@ static void paste(int lhs, int rhs)
 /* Where the last token starts of those from sbuf[from] to stop. */
 static int last_token(int from)
 {
-  while (from + token_len(sbuf + from) < stop)
-    from += token_len(sbuf + from);
+  int n;
+  while (from + (n = token_len(sbuf + from)) < stop)
+    from += n;
   return from;
 }
 
@@ -594,7 +598,8 @@ static int last_token(int from)
 static void call(int m)
 {
   int base = nslots, save_floor = sfloor, otop0 = otop, np = mac_np1[m] - 1;
-  int rep, i, k, s, last = -1, lhs = -1, pasting = 0, start;
+  int rep, k, s, c, last = -1, lhs = -1, pasting = 0, start;
+  const unsigned char *b, *end;
   if (collect(m) != np)
     error(251 /* "wrong number of arguments for macro" */,
           pp_id_spelling(mac_id[m]));
@@ -602,30 +607,32 @@ static void call(int m)
   sfloor = stop;                /* keep the arguments */
   for (k = 0; k < np; k++)
     e_at[base + k] = -1;
-  for (i = mac_at[m]; i < mac_at[m] + mac_len[m]; i += token_len(body + i))
-    if (body[i] == TC_PARAM && e_at[base + body[i + 1]] < 0)
-      expand_arg(base + body[i + 1]);
+  end = body + mac_at[m] + mac_len[m];
+  for (b = body + mac_at[m]; b != end; b += token_len(b))
+    if (*b == TC_PARAM && e_at[base + b[1]] < 0)
+      expand_arg(base + b[1]);
   nslots = base + np;
   NOTE();
   stop = rep = sfloor;
-  for (i = mac_at[m]; i < mac_at[m] + mac_len[m]; i += token_len(body + i)) {
-    if (body[i] == TC_PASTE) {
+  for (b = body + mac_at[m]; b != end; b += token_len(b)) {
+    c = *b;
+    if (c == TC_PASTE) {
       lhs = last;
       pasting = 1;
       continue;
     }
     start = stop;
-    s = body[i] == TC_PARAM || body[i] == TC_PARAM_RAW
-        || body[i] == TC_HASH_PARAM ? base + body[i + 1] : 0;
-    if (body[i] == TC_PARAM) {
+    s = c == TC_PARAM || c == TC_PARAM_RAW
+        || c == TC_HASH_PARAM ? base + b[1] : 0;
+    if (c == TC_PARAM) {
       k = put_tokens(obuf + e_at[s], e_end[s] - e_at[s]);
-    } else if (body[i] == TC_PARAM_RAW) {
+    } else if (c == TC_PARAM_RAW) {
       k = put_tokens(sbuf + a_at[s], a_end[s] - a_at[s]);
-    } else if (body[i] == TC_HASH_PARAM) {
+    } else if (c == TC_HASH_PARAM) {
       k = stop;
       put_string(s);
     } else {
-      k = put_tokens(body + i, token_len(body + i));
+      k = put_tokens(b, token_len(b));
     }
     if (pasting && lhs >= 0 && k >= 0) {
       paste(lhs, start);

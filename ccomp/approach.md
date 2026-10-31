@@ -4550,6 +4550,37 @@ above, with these details:
   from `static.c` -20.5% and `heap_globals.c` -19.1% to `rotate.c`
   -0.8%.
 
+**The source rewrites are done** (2026-10-31): loops in ccish's own
+sources where one index walks one array, and uses the element more than
+once, or reloads the same table entry, found with `tools/loops.py`
+and a scan for such loops. Each was measured (function sizes from the
+ccrel listing, small build) and kept only if smaller; each kept one
+also runs fewer ops per pass. Pointer loops end with `!= end`.
+
+| Function | Change | Bytes | Ops in the function |
+|---|---|---|---|
+| ccpp `call()` | a pointer walks the macro's body; its token's code read once | 544 → 495 | 261 → 238 |
+| ccpp `next_tok()` | `in_at[k]` read once into a local | 240 → 220 | 113 → 101 |
+| ccpp `pp_def_end()` | a pointer walks the new body | 351 → 344 | 162 → 158 |
+| ccpp `last_token()` | `token_len()` called once per token, not twice | 41 → 36 | 18 → 16 |
+| ccpp `put_string()` | a pointer walks the argument | 160 → 159 | 76 → 77 (the loop test 3 ops, was 6) |
+| ccrel `resolve()` | `g_flags[g]` read once | 290 → 281 | 135 → 130 |
+| ccrel `copy_code()` | pointers into `fbuf` for the copy and each relocated word | 355 → 345 | 167 → 161 |
+
+ccpp's code is 82 bytes smaller (module file 26,306 → 26,124: fewer
+relocated words, too), ccrel's 19 (14,321 → 14,274). Not kept:
+- cccomp's `find_func()` as a pointer loop over `fn_name`: 2 fewer ops
+  per pass (10, was 12), but 12 bytes bigger (53, was 41), since the
+  end pointer and turning the pointer back into an index (`SUB`, `CN
+  1`, `SHR`) cost more than the loop saves. It is hot (every lookup of
+  a function's name scans up to all the functions), so whether the
+  speed is worth 12 bytes of cccomp is for the user to decide.
+- Loops over parallel arrays (ccgen's `reverse()` and `lower_held()`,
+  `id_find()`, most of the rest): one pointer per array would cost
+  more than the index.
+- `paste()` (only for `##`) and the label chains in emit.c (not array
+  walks).
+
 **C6 design, and C6 is done** (2026-10-31; C6 in 18.6). Address
 constants come from the expression parser, so global initializers no
 longer need a parser of their own (`parse_addr()`, 592 bytes, and its
