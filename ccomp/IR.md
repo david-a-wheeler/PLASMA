@@ -676,6 +676,24 @@ stage 4 replaces it with an offset.
 - **Used for:** `<`, `>`, `<=` and `>=` between pointers, and
   `unsigned int` from M11.
 
+## Unsigned arithmetic: `IR_UDIV`, `IR_UMOD`, `IR_USHR` *a* = 1 if the right operand is a constant
+
+(Approach.md, "`unsigned` and helper functions design"; step 1.)
+
+- **Stack:** `( x y -- x op y )`: `/`, `%` and `>>` on `unsigned`
+  operands (for `>>`, an `unsigned` left operand). *a* is 1 when `y` is
+  one constant, written just before the op; 0 otherwise.
+- **Lowering (in `ccgen`):** by a constant, inline, without changing
+  how many ops are held (blocks' lengths count them): `USHR` by *c* is
+  `SHR` then `CW (0xFFFF >> c) AND`, masking off the copies of the
+  sign bit PLASMA's arithmetic `SHR` shifts in; `UDIV` by 2^n makes
+  the constant *n* and does the same; `UMOD` by 2^n makes the constant
+  2^n - 1 and is an `AND`. For now the parser allows nothing else
+  ("not supported yet"); step 2 adds helper functions for the rest.
+- **Why they differ from PLASMA:** PLASMA's `DIV`, `MOD` and `SHR` are
+  signed. VM opcodes for them (issue 21) would be a change to `ccgen`
+  alone.
+
 ## Adding ops
 
 New IR ops arrive with the milestones that need them. Reordering

@@ -3568,6 +3568,50 @@ them):
 Estimated: `cccomp` +0.5-0.8K, `ccgen` and `ccrel` +0.3-0.5K each; to
 be measured.
 
+**Step 1 (`unsigned` in the parser) is done** (2026-10-31). Choices,
+open for review:
+- `TY_UINT` (index 3, kind `TK_UINT`), hash letter `u`. Keywords
+  `signed` and `unsigned` (`T_SIGNED`, `T_UNSIGNED`); `parse_int_type()`
+  takes `int`, `char`, `signed`, `unsigned` in any order, with
+  qualifiers among them; a repeat or conflict is message 226, `signed
+  char` 227.
+- The lexer sets `tok_unsigned` for a `u`/`U` suffix, or a hex or octal
+  constant over `$7FFF`; message 11's text now says "number suffixes
+  other than u". `tests/run/compare.c`'s `0x8000 < 0` (written for the
+  old difference) became `(int)0x8000 < 0`.
+- `is_uns()`, `arith_type()` (C's usual arithmetic conversions) and
+  `promoted()` (unary operators, a shift's left operand) give result
+  types; `?:` of different integers uses `arith_type()`; `sizeof` is
+  `unsigned`. `fold()` takes an `uns` flag: unsigned `/ % >>` and
+  comparisons.
+- `unsigned_op()` in `binary()`: `< > <= >=` with an unsigned side are
+  `IR_ULT` and the rest (the right operand's length; 0 when the left
+  is a constant, which is written at the right operand's start, so
+  `ccgen` flips afterward); `/ % >>` are `IR_UDIV`, `IR_UMOD`, `IR_USHR`
+  (`$37`-`$39`), with *a* = 1 when the right operand is one constant
+  (the parser says so, rather than `ccgen` guessing from the op before).
+  The `c op x` path writes the unsigned comparison with length 1.
+- `ccgen` (irin.c, `unsigned_const()`) does those by a constant inline,
+  rewriting held ops without changing their number: `USHR c` is `SHR`
+  and a mask (lower.c); `UDIV 2^n` makes the constant n and becomes
+  `USHR`; `UMOD 2^n` makes it 2^n - 1 and becomes `AND`. Anything else
+  is message 228 (in the parser) until step 2; `ccgen` reports one
+  without a constant as damaged.
+- Tests: `unsigned.c` (every spelling, conversions, comparisons, the
+  inline `>> / %`, folding, `sizeof`, compound assignment, a call, `?:`;
+  results by hand, large values printed in hex), and errors
+  `signed_char.c`, `type_specifier_twice.c`, `unsigned_div_var.c` (the
+  last goes away in step 2). 282 tests pass.
+- Generated code: all test objects are as before except `compare.c`
+  (its source changed); the self-compile's diag, lex, link and lower
+  objects changed, since `sizeof` and hex constants over `$7FFF` are
+  now `unsigned`, as in C (`strlen(...) >= sizeof(buf)` is now an
+  unsigned comparison, `0xFFFF >> a` a logical shift).
+- Measured (small build): `cccomp` 41,965 to 43,042 (parse.c's code
+  +984: more than the 0.5-0.8K estimated). `ccgen` can't be measured
+  until step 2: lower.c's `0xFFFF >> a` is now an unsigned shift by a
+  variable, which step 1 doesn't do.
+
 **M7 design (decided in discussion, 2026-10-29).** `switch`, in one
 step. ccish's own source has 26 switches with 218 case labels (the
 largest has 28), so self-hosting needs it.

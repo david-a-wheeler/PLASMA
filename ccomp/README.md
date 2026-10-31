@@ -21,8 +21,13 @@ decision 16):
 * Strict compatibility may have to give way so the compiler fits in
   64K. Then the goal is incompatibilities that are documented and
   unlikely to affect real code. Known differences so far:
-  - until `unsigned` exists, a hex constant such as `0x8000` is the
-    `int` -32768, not an `unsigned`;
+  - a decimal constant over 32767 (such as `40000`) is the `int` with
+    those bits, not a `long` (ccish has no `long`); write `40000u` for
+    the `unsigned` one;
+  - `unsigned char` is plain `char`: ccish doesn't tell the two apart
+    (both are unsigned), so `unsigned char *` and `char *` mix freely;
+  - mixing signed and unsigned gives no warning (gcc's
+    `-Wsign-compare` would);
   - `enum tag` isn't checked against a definition, so ccish accepts
     some wrong programs (a variable of an enum type never defined).
 
@@ -126,9 +131,10 @@ $ ./ccrel -o prog main util && ../src/plvm prog
 
 ## The language so far
 
-* Types `int`, `char`, `void`, structs, pointers to them (`int *`,
-  `char **`, `void *`, `struct node *`, ...), and arrays (`int a[10]`,
-  `char *names[4]`, `int m[3][4]`, `struct pt pts[8]`).
+* Types `int`, `unsigned` (`unsigned int`), `char`, `void`, structs,
+  pointers to them (`int *`, `char **`, `void *`, `struct node *`,
+  ...), and arrays (`int a[10]`, `char *names[4]`, `int m[3][4]`,
+  `struct pt pts[8]`).
 * Function definitions and prototypes returning any of these but an
   array, with parameters of any type but `void`. A struct parameter or
   return value must be at most 8 bytes (see below). An array parameter
@@ -254,7 +260,16 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   `char` by keeping its low byte when it is stored into a `char`,
   passed as a `char` parameter, returned from a `char` function, or
   cast to `char`. In expressions, a `char` is promoted to `int`, as in
-  C.
+  C. `unsigned char` is the same type; `signed char` isn't supported
+  yet.
+* `unsigned` (`unsigned int`, `int unsigned`; `signed int` is `int`)
+  is 16 bits, 0 to 65535. As in C, when an `int` meets an `unsigned`
+  in an operator, the `int` becomes `unsigned` (so `-1 < 1u` is 0),
+  and an integer constant is `unsigned` if it has a `u` suffix, or is
+  hex or octal and too big for an `int` (`0x8000`). Comparisons, `/`,
+  `%` and `>>` on `unsigned` values are unsigned. For now, `/` and `%`
+  must be by a power of 2, and `>>` by a constant (other cases are
+  "not supported yet").
 * Pointers are 16 bits. `&` takes the address of a variable or of
   `*p`, and `*` reaches what a pointer points to, for reading or
   storing. Pointer arithmetic (`p + i`, `i + p`, `p - i`, `p - q`,
@@ -308,8 +323,7 @@ $ ./ccrel -o prog main util && ../src/plvm prog
     `a[i]`, and members `s.m` and `p->m`;
   - `sizeof expr` and `sizeof(type)`, where a type may have `*`s and
     array sizes (`sizeof(char *[4])`). The expression isn't run. The
-    result is an `int` (`unsigned` isn't supported yet), and is a
-    constant, so it can size an array. An array gives its full size, a
+    result is an `unsigned` (C's `size_t`), and is a constant, so it can size an array. An array gives its full size, a
     string literal its length plus 1, and an array parameter 2 (it is a
     pointer);
   - binary `* / % + - << >> & ^ |`;
@@ -317,8 +331,8 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   - assignment `= += -= *= /= %= &= |= ^= <<= >>=`.
 
   `int` is 16 bits, and arithmetic wraps. `/` truncates toward zero, and
-  `>>` of a negative value is arithmetic. Integer comparisons are
-  signed, and
+  `>>` of a negative value is arithmetic. Comparisons of `int`s are
+  signed, of `unsigned` values and pointers unsigned, and
   comparisons, `!`, `&&` and `||` give 1 or 0, as in C (PLASMA's own
   give `$FFFF` for true). `&&`, `||` and `?:` evaluate only the
   operands C says they do.
@@ -336,8 +350,8 @@ $ ./ccrel -o prog main util && ../src/plvm prog
 
 Anything else, such as
 function pointers, declarators in parentheses (`int (*p)[4]`), `goto`,
-`union`, the comma operator, or the types `signed`,
-`unsigned`, `short` and `long`, gives a "not supported yet" error.
+`union`, the comma operator, or the types `signed char`, `short` and
+`long`, gives a "not supported yet" error.
 
 ### Strings and `pstr()`
 

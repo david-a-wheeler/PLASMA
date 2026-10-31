@@ -13,8 +13,8 @@ int main()
   show(a < b); show(a > b); show(a <= 3); show(a >= 4);
   show(a == 3); show(a != 3);
   putln();
-  /* comparisons are signed */
-  show(n < 0); show(n > a); show(-32768 < 32767); show(0x8000 < 0);
+  /* comparisons are signed (0x8000 is unsigned in C, so it is cast) */
+  show(n < 0); show(n > a); show(-32768 < 32767); show((int)0x8000 < 0);
   putln();
   /* constants, and a constant on the left */
   show(2 < 3); show(3 == 4); show(0 < a); show(10 > a);

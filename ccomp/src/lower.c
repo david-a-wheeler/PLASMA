@@ -17,7 +17,8 @@ static const char *const ir_names[] = {
   "EQ", "NE", "LT", "GT", "LE", "GE",
   "NEG", "COMP", "NOT",
   "LABEL", "JUMP", "BRFALSE", "BRTRUE", "JOIN",
-  "SEL", "CASES", "CASEVAL", "CASETO", "SWAP", "ULT", "UGT", "ULE", "UGE"
+  "SEL", "CASES", "CASEVAL", "CASETO", "SWAP", "ULT", "UGT", "ULE", "UGE",
+  "UDIV", "UMOD", "USHR"
 };
 
 /* How each IR op lowers (lw_kind[]), and the PLASMA opcode it lowers
@@ -53,8 +54,9 @@ static const char lw_kind[IR_NOPS] = {
   L_PSEUDO, L_OPERAND, L_OPERAND, L_OPERAND, L_SPECIAL,    /* ... JOIN */
   L_OPERAND, L_PSEUDO, L_PSEUDO, L_PSEUDO,  /* SEL, the case table */
   L_SPECIAL,                                /* SWAP */
-  L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE    /* ULT ... (irin.c flips
+  L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,   /* ULT ... (irin.c flips
                                                  * the sign bits first) */
+  L_SPECIAL, L_SPECIAL, L_SPECIAL           /* UDIV, UMOD, USHR */
 };
 
 static const unsigned char lw_op[IR_NOPS] = {
@@ -71,7 +73,8 @@ static const unsigned char lw_op[IR_NOPS] = {
   OP_LABEL & 0xFF, OP_BRNCH, OP_BRFLS, OP_BRTRU, 0,
   OP_SEL, OP_CASES & 0xFF, OP_CASEVAL & 0xFF, OP_CASETO & 0xFF,
   0,
-  OP_ISLT, OP_ISGT, OP_ISLE, OP_ISGE
+  OP_ISLT, OP_ISGT, OP_ISLE, OP_ISGE,
+  0, 0, 0
 };
 
 /* Write s, then n in decimal, to standard output, for -i. No printf:
@@ -118,6 +121,7 @@ void dump_ir(int op, int a, int f)
                     out_num(" ", a); break;
   case IR_SWAP:     out_num(" ", a); out_num(" ", f); break;
   case IR_ULT: case IR_UGT: case IR_ULE: case IR_UGE:
+  case IR_UDIV: case IR_UMOD: case IR_USHR:
                     out_num(" ", a); break;
   }
   fputs("\n", stdout);
@@ -236,6 +240,20 @@ static void lower_special(Mop *m, int op, int a, int f)
     put_simple(OP_NOT);
     m->op = OP_ANDI;
     m->a = 1;
+    break;
+  case IR_USHR:
+    /* x >> n unsigned, by a constant n (a; irin.c made / by 2^n one
+     * too): PLASMA's SHR is arithmetic, so mask off the copies of the
+     * sign bit it shifts in. */
+    if (a == 0) {
+      m->op = OP_SHR;           /* by 0: nothing to mask */
+      break;
+    }
+    put_simple(OP_SHR);
+    mop_const(m, 0xFFFF >> a);
+    peep_put(m);
+    memset(m, 0, sizeof(*m));
+    m->op = OP_AND;
     break;
   case IR_SWAP:
     /* What irin.c couldn't do by moving code: exchange the top value

@@ -276,6 +276,7 @@ The op numbers are the order of the `IR_*` enum in `src/ccish.h`
 | `$2E`-`$31` | `SEL`, `CASES`, `CASEVAL`, `CASETO` |
 | `$32` | `SWAP` (*a* = top block's length in ops, *f* = the block below's, or -1: don't move code; approach.md 18.7, A) |
 | `$33`-`$36` | `ULT`, `UGT`, `ULE`, `UGE` (*a* = the right operand's block length in ops, or 0; 18.7, C) |
+| `$37`-`$39` | `UDIV`, `UMOD`, `USHR` (*a* = 1 if the right operand is a constant) |
 
 The rest, to `$3F`, are free for new ops, and `$60`-`$7F` (with
 `$E0`-`$FF`) could be added if those run out.

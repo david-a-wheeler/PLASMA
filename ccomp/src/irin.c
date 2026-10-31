@@ -229,7 +229,8 @@ static const char stk_effect[IR_NOPS] = {
   0x00, 0x00, 0x10, 0x10, 0x00,             /* LABEL ... JOIN */
   -1, -1, -1, -1,                           /* SEL, the case table */
   0x22,                                     /* SWAP */
-  0x21, 0x21, 0x21, 0x21                    /* ULT ... */
+  0x21, 0x21, 0x21, 0x21,                   /* ULT ... */
+  0x21, 0x21, 0x21                          /* UDIV, UMOD, USHR */
 };
 
 static char lab_depth[MAX_LABELS];
@@ -423,6 +424,40 @@ static void lower_held(int n)
   nbuf -= i;
 }
 
+/* Rewrite unsigned op *op (IR_UDIV, IR_UMOD or IR_USHR) on a constant
+ * right operand, the held CONST just before it, to be done inline, and
+ * return its a: x >> c is USHR with a = c (SHR, then a mask); x / 2^n
+ * the same, with the CONST made n; x % 2^n an AND, with the CONST made
+ * 2^n - 1. The parser allows nothing else yet (approach.md, "unsigned
+ * and helper functions design", step 1). The number of ops held stays
+ * the same, as blocks' lengths need. */
+static int unsigned_const(int *op)
+{
+  int c, n = 0;
+  if (nbuf == 0 || buf_op[nbuf - 1] != IR_CONST)
+    damaged();
+  c = buf_a[nbuf - 1] & 0xFFFF;
+  if (*op == IR_USHR) {
+    if (c > 15)
+      damaged();
+    return c;
+  }
+  if (c == 0 || (c & (c - 1)) != 0)
+    damaged();
+  if (*op == IR_UMOD) {
+    buf_a[nbuf - 1] = c - 1;
+    *op = IR_AND;
+    return 0;
+  }
+  while (c > 1) {
+    c >>= 1;
+    n++;
+  }
+  buf_a[nbuf - 1] = n;
+  *op = IR_USHR;
+  return n;
+}
+
 /* Hold IR op op until it is lowered. A pending SWAP just before it is
  * decided first. A SWAP whose two blocks are here is done at once, by
  * moving them; one that can't be waits. An unsigned comparison's way is
@@ -432,6 +467,11 @@ static void hold(int op, int a, int f)
   if (nbuf > 0 && buf_op[nbuf - 1] == IR_SWAP
       && buf_a[nbuf - 1] == SW_PENDING)
     decide(nbuf - 1, op);
+  if (op == IR_UDIV || op == IR_UMOD || op == IR_USHR) {
+    if (a != 1)
+      damaged();                /* not by a constant: not yet */
+    a = unsigned_const(&op);
+  }
   if (is_unsigned_cmp(op)) {
     if (a >= 1 && a <= nbuf) {
 #ifdef CCISH_CHECKS
@@ -509,6 +549,10 @@ static void do_op(int op, int a, int f)
     break;
   case IR_ULT: case IR_UGT: case IR_ULE: case IR_UGE:
     if (a < 0)
+      damaged();
+    break;
+  case IR_UDIV: case IR_UMOD: case IR_USHR:
+    if (a < 0 || a > 1)
       damaged();
     break;
   }

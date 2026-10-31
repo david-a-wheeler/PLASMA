@@ -3,9 +3,10 @@
  * plus qualifier bits (Q_CONST, Q_VOLATILE) above it, so a qualified
  * type needs no entry of its own (approach.md, "M5 design"). Equal
  * unqualified types share one entry. The first entries are the basic
- * types, at the fixed indexes TY_VOID, TY_CHAR and TY_INT. Pointer and
- * array types are added as they are needed. A multi-dimensional array
- * is an array of arrays: int m[3][4] is an array of 3 arrays of 4 ints.
+ * types, at the fixed indexes TY_VOID, TY_CHAR, TY_INT and TY_UINT
+ * (unsigned int). Pointer and array types are added as they are
+ * needed. A multi-dimensional array is an array of arrays: int m[3][4]
+ * is an array of 3 arrays of 4 ints.
  *
  * The table is three parallel arrays, one per field, all MAX_TYPES
  * long, indexed by the same entry number (approach.md, decision 15):
@@ -23,10 +24,10 @@
  */
 #include "ccish.h"
 
-static char tkind[MAX_TYPES] = {TK_VOID, TK_CHAR, TK_INT};
+static char tkind[MAX_TYPES] = {TK_VOID, TK_CHAR, TK_INT, TK_UINT};
 static int tsub[MAX_TYPES];     /* a handle, with qualifier bits */
 static int tcount[MAX_TYPES];
-static int ntypes = 3;
+static int ntypes = 4;
 
 static int tg_name[MAX_TAGS];
 static int tg_size[MAX_TAGS];
@@ -65,6 +66,7 @@ int type_size(int t)
   switch (type_kind(t)) {
   case TK_CHAR:  return 1;
   case TK_INT:   return 2;
+  case TK_UINT:  return 2;
   case TK_PTR:   return 2;
   case TK_ARRAY: return type_count(t) * type_size(type_sub(t));
   case TK_STRUCT:
@@ -148,7 +150,8 @@ int hash_byte(int h, int c)
 }
 
 /* Type hash h with type t added, as a canonical string: k and V for
- * const and volatile, then i, c or v, * and the target, [ with the
+ * const and volatile, then i, u (unsigned int), c or v, * and the
+ * target, [ with the
  * count and the element, or s, the tag's name and ';' (a struct is
  * known by its name in every file). */
 int type_hash(int t, int h)
@@ -162,6 +165,7 @@ int type_hash(int t, int h)
   case TK_VOID: return hash_byte(h, 'v');
   case TK_CHAR: return hash_byte(h, 'c');
   case TK_INT:  return hash_byte(h, 'i');
+  case TK_UINT: return hash_byte(h, 'u');
   case TK_PTR:  return type_hash(type_sub(t), hash_byte(h, '*'));
   case TK_ARRAY:
     h = hash_byte(hash_byte(h, '['), type_count(t));

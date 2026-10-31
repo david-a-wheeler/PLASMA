@@ -154,7 +154,8 @@ enum {
   /* keywords supported now, in the order of keywords[] in lex.c */
   T_INT, T_VOID, T_RETURN, T_IF, T_ELSE, T_WHILE, T_DO, T_FOR, T_BREAK,
   T_CONTINUE, T_CHAR, T_SIZEOF, T_STATIC, T_CONST, T_VOLATILE, T_STRUCT,
-  T_SWITCH, T_CASE, T_DEFAULT, T_TYPEDEF, T_ENUM, T_EXTERN,
+  T_SWITCH, T_CASE, T_DEFAULT, T_TYPEDEF, T_ENUM, T_EXTERN, T_SIGNED,
+  T_UNSIGNED,
   /* any other C keyword: reported as "not supported yet" */
   T_KEYWORD,
   /* multi-character operators (not all are supported by the parser yet) */
@@ -166,6 +167,8 @@ enum {
 /* The current token. */
 extern int tok;
 extern int tok_val;                 /* T_NUM value */
+extern int tok_unsigned;            /* T_NUM: it is unsigned (a u suffix,
+                                     * or hex or octal over $7FFF) */
 extern char tok_text[MAX_STR + 1];  /* T_ID / T_KEYWORD name, T_STR bytes */
 extern int tok_len;                 /* T_STR length, not counting a NUL */
 
@@ -208,8 +211,9 @@ void id_hide(int depth);            /* hide those declared deeper */
  * struct type has one entry per tag, made by struct_type().
  * The table is private to type.c; use the functions below. */
 
-enum { TK_VOID, TK_CHAR, TK_INT, TK_PTR, TK_ARRAY, TK_STRUCT };
-enum { TY_VOID, TY_CHAR, TY_INT };          /* indexes of the basic types */
+enum { TK_VOID, TK_CHAR, TK_INT, TK_PTR, TK_ARRAY, TK_STRUCT, TK_UINT };
+/* the basic types' indexes: TY_UINT is unsigned int */
+enum { TY_VOID, TY_CHAR, TY_INT, TY_UINT };
 #define Q_CONST    0x100
 #define Q_VOLATILE 0x200
 #define Q_ALL      0x300
@@ -342,6 +346,10 @@ enum {
   /* unsigned comparisons (18.7, C), in the order of LT GT LE GE; a =
    * the right operand's block length in IR ops, or 0 if not known */
   IR_ULT, IR_UGT, IR_ULE, IR_UGE,
+  /* unsigned arithmetic PLASMA lacks, binary ( x y -- x op y ), for
+   * unsigned operands; ccgen lowers them (approach.md, "unsigned and
+   * helper functions design") */
+  IR_UDIV, IR_UMOD, IR_USHR,
   IR_NOPS         /* the number of IR ops */
 };
 

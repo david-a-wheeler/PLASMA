@@ -8,7 +8,7 @@
 8 bad hexadecimal number
 9 bad digit in octal number
 10 number does not fit in 16 bits
-11 number suffixes and floating point are not supported
+11 number suffixes other than u, and floating point, are not supported
 12 string literal too long
 13 preprocessor directives are not supported yet
 14 empty character constant
@@ -222,3 +222,6 @@
 223 too many objects to link
 224 too many function names for ccgen
 225 too many run-time swaps in
+226 conflicting or repeated type specifier:
+227 'signed char' is not supported yet
+228 unsigned / and % by other than a power of 2, and unsigned >> by a variable, are not supported yet

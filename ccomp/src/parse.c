@@ -419,6 +419,7 @@ static int is_type_start(void)
 {
   return tok == T_INT || tok == T_CHAR || tok == T_VOID || tok == T_CONST
          || tok == T_VOLATILE || tok == T_STRUCT || tok == T_ENUM
+         || tok == T_SIGNED || tok == T_UNSIGNED
          || (tok == T_ID && typedef_type(tok_text) >= 0);
 }
 
@@ -462,9 +463,39 @@ static void parse_typedef(void);
  * declaration may declare with no declarators (struct pt { ... };). */
 static int base_tagged;
 
-/* Parse a basic type name (int, char, void, a struct or enum type, or
- * a typedef name), with any qualifiers before or after it (const char,
- * char const), and return its type. */
+/* Parse int, char, signed and unsigned, in any order, with any
+ * qualifiers among them (unsigned const int), adding those to *q, and
+ * return the type: unsigned int (TY_UINT), int, or char. unsigned char
+ * is plain char, which is unsigned; signed char isn't supported yet. */
+static int parse_int_type(int *q)
+{
+  int base = 0, sign = 0;
+  while (tok == T_INT || tok == T_CHAR || tok == T_SIGNED
+         || tok == T_UNSIGNED || tok == T_CONST || tok == T_VOLATILE) {
+    if (tok == T_CONST || tok == T_VOLATILE) {
+      *q |= parse_quals();
+      continue;
+    }
+    if (tok == T_INT || tok == T_CHAR ? base != 0 : sign != 0)
+      error(226 /* "conflicting or repeated type specifier:" */,
+            tok_desc());
+    if (tok == T_INT || tok == T_CHAR)
+      base = tok;
+    else
+      sign = tok;
+    next();
+  }
+  if (base == T_CHAR) {
+    if (sign == T_SIGNED)
+      error(227 /* "'signed char' is not supported yet" */, NULL);
+    return TY_CHAR;
+  }
+  return sign == T_UNSIGNED ? TY_UINT : TY_INT;
+}
+
+/* Parse a basic type name (int, char, void, unsigned, a struct or enum
+ * type, or a typedef name), with any qualifiers before or after it
+ * (const char, char const), and return its type. */
 static int parse_base_type(void)
 {
   int q = parse_quals(), t = TY_INT;
@@ -473,14 +504,15 @@ static int parse_base_type(void)
     t = parse_struct();
   } else if (tok == T_ENUM) {
     t = parse_enum();
+  } else if (tok == T_INT || tok == T_CHAR || tok == T_SIGNED
+             || tok == T_UNSIGNED) {
+    t = parse_int_type(&q);
   } else {
-    if (tok == T_CHAR)
-      t = TY_CHAR;
-    else if (tok == T_VOID)
+    if (tok == T_VOID)
       t = TY_VOID;
     else if (tok == T_ID && typedef_type(tok_text) >= 0)
       t = typedef_type(tok_text);
-    else if (tok != T_INT)
+    else
       error(33 /* "expected a type, not" */, tok_desc());
     next();
   }
@@ -621,14 +653,28 @@ static void check_right_const(int op, int v)
 
 /* a op b, as the VM computes it: C's rules for a 16-bit int. / truncates
  * toward zero, % has the dividend's sign, >> is arithmetic, and
- * comparisons give 1 or 0. Cases check_right_const() rejects give 0
- * (they only get here in code that can never run). */
-static int fold(int op, int a, int b)
+ * comparisons give 1 or 0. If uns is set, the operation is unsigned
+ * (/, %, >> and the comparisons differ). Cases check_right_const()
+ * rejects give 0 (they only get here in code that can never run). */
+static int fold(int op, int a, int b, int uns)
 {
   unsigned ua = (unsigned)a, ub = (unsigned)b, q;
   if (((op == IR_DIV || op == IR_MOD) && b == 0)
       || ((op == IR_SHL || op == IR_SHR) && (b < 0 || b > 15)))
     return 0;
+  if (uns) {
+    ua &= 0xFFFF;
+    ub &= 0xFFFF;
+    switch (op) {
+    case IR_LT:  return ua < ub;
+    case IR_GT:  return ua > ub;
+    case IR_LE:  return ua <= ub;
+    case IR_GE:  return ua >= ub;
+    case IR_DIV: return wrap16(ua / ub);
+    case IR_MOD: return wrap16(ua % ub);
+    case IR_SHR: return wrap16(ua >> b);
+    }
+  }
   switch (op) {
   case IR_EQ:  return a == b;
   case IR_NE:  return a != b;
@@ -918,6 +964,27 @@ static int is_place(Operand *o)
 static int value_type(int t)
 {
   return is_array(t) ? pointer_to(type_sub(t)) : t;
+}
+
+/* Is type t (or a qualified one: const unsigned) unsigned int? */
+static int is_uns(int t)
+{
+  return unqual(t) == TY_UINT;
+}
+
+/* The type of an arithmetic op's result on integer types a and b, by
+ * C's usual arithmetic conversions: unsigned int if either is, else
+ * int (char promotes to int). */
+static int arith_type(int a, int b)
+{
+  return is_uns(a) || is_uns(b) ? TY_UINT : TY_INT;
+}
+
+/* Integer type t promoted, as for a unary operator or a shift's left
+ * operand: unsigned int stays so, the others become int. */
+static int promoted(int t)
+{
+  return is_uns(t) ? TY_UINT : TY_INT;
 }
 
 /* Make o the K_ELEM at the address in the variable at off (base_arr 0),
@@ -1587,6 +1654,8 @@ static void parse_primary(Operand *o)
   case T_NUM:
     o->kind = K_CONST;          /* emit it later, if needed */
     o->val = wrap16((unsigned)tok_val);
+    if (tok_unsigned)
+      o->type = TY_UINT;
     next();
     return;
   case T_STR:
@@ -1935,7 +2004,7 @@ static void parse_unary(Operand *o)
         o->val = wrap16(~(unsigned)o->val);
       else if (t == '!')
         o->val = !o->val;
-      o->type = TY_INT;
+      o->type = t == '!' ? TY_INT : promoted(o->type);
       return;
     }
     if (t == '!' && o->kind == K_JUMP) {
@@ -1951,7 +2020,8 @@ static void parse_unary(Operand *o)
       return;
     }
     rvalue(o);
-    o->type = TY_INT;           /* a char operand is promoted */
+    /* A char operand is promoted; ! gives an int. */
+    o->type = t == '!' ? TY_INT : promoted(o->type);
     if (t == '-')
       put(IR_NEG, 0, -1);
     else if (t == '~')
@@ -2052,7 +2122,7 @@ static void parse_sizeof(Operand *o)
           NULL);
   o->kind = K_CONST;
   o->val = type_size(t);
-  o->type = TY_INT;
+  o->type = TY_UINT;          /* C's size_t */
   o->nonice = 0;              /* sizeof N is a constant expression */
   o->is_bool = 0;
 }
@@ -2138,8 +2208,8 @@ static int is_void(Operand *o)
 }
 
 /* The type of x ? b : c, given whether b and c are null pointer
- * constants. Integers give their common type, or int if they differ
- * (char and int: C promotes both). A pointer may meet the same type,
+ * constants. Integers give their common type, or if they differ, the
+ * usual arithmetic conversions' (char and int: C promotes both). A pointer may meet the same type,
  * a void * (giving void *), or a null pointer constant. Two pointers
  * give a pointer to a type with the qualifiers of both targets: char *
  * and const char * give const char *. */
@@ -2147,7 +2217,7 @@ static int cond_type(Operand *b, int b_null, Operand *c, int c_null)
 {
   int bt = value_type(b->type), ct = value_type(c->type), q;
   if (!is_pointer(bt) && !is_pointer(ct))
-    return bt == ct ? bt : TY_INT;
+    return bt == ct ? bt : arith_type(bt, ct);
   if (bt == ct)
     return bt;
   if (is_pointer(bt) && is_pointer(ct) && compatible(bt, ct)) {
@@ -2269,6 +2339,37 @@ static void compare_pointers(Operand *o, Operand *r, int op)
   rvalue(r);
 }
 
+/* Push r for binary op *op on integers o and r, and make *op the
+ * unsigned op when the operation is unsigned: when either operand is
+ * unsigned int (for a shift, the left one). < > <= >= become IR_ULT
+ * and the rest, put here with the length of r's code (0 if not known:
+ * no positions, or a constant left operand, written at r's start), so
+ * that ccgen can flip both sign bits; / % >> become IR_UDIV, IR_UMOD,
+ * IR_USHR, which the caller puts, with the a returned: 1 if r is a
+ * constant (just written), for ccgen to do it inline. For now they
+ * need one, and / and % a power of 2 (approach.md, "unsigned and
+ * helper functions design", step 1). */
+static int unsigned_op(Operand *o, Operand *r, int *op, int mid)
+{
+  int shift = *op == IR_SHL || *op == IR_SHR, k = r->kind, v = r->val;
+  rvalue(r);
+  if (!(shift ? is_uns(o->type)
+              : is_uns(o->type) || is_uns(value_type(r->type))))
+    return 0;
+  if (is_relational(*op)) {
+    *op += IR_ULT - IR_LT;
+    put(*op, mid >= 0 && o->kind != K_CONST ? ir_here() - mid : 0, -1);
+  } else if (*op == IR_DIV || *op == IR_MOD || *op == IR_SHR) {
+    if (k != K_CONST || (*op != IR_SHR && (v & (v - 1)) != 0))
+      error(228 /* "unsigned / and % by other than a power of 2, and "
+                   "unsigned >> by a variable, are not supported yet" */,
+            NULL);
+    *op = *op == IR_DIV ? IR_UDIV : *op == IR_MOD ? IR_UMOD : IR_USHR;
+    return k == K_CONST;
+  }
+  return 0;
+}
+
 /*
  * Finish binary op: o's value is on the stack (or held, if a
  * constant), and r has been parsed. Check the operand types, scale
@@ -2279,7 +2380,7 @@ static void compare_pointers(Operand *o, Operand *r, int op)
  */
 static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
 {
-  int lt = o->type, rt = value_type(r->type), n;
+  int lt = o->type, rt = value_type(r->type), n, a = 0;
   int result = TY_INT;
 
   if (r->kind == K_VOID)
@@ -2297,7 +2398,16 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
       return;
     }
   } else if (!is_pointer(lt) && !is_pointer(rt)) {
-    rvalue(r);
+    a = unsigned_op(o, r, &op, mid);
+    if (op >= IR_ULT && op <= IR_UGE) {     /* already put */
+      o->kind = K_VALUE;
+      o->type = TY_INT;
+      o->is_bool = 1;
+      return;
+    }
+    if (!is_compare(op))
+      result = op == IR_SHL || op == IR_SHR || op == IR_USHR
+               ? promoted(lt) : arith_type(lt, rt);
   } else if (is_pointer(lt) && !is_pointer(rt)
              && (op == IR_ADD || op == IR_SUB)) {
     push_scaled(r, lt);         /* p + i, p - i */
@@ -2337,7 +2447,7 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
   } else {
     error(85 /* "invalid operands to binary" */, op_name(op));
   }
-  put(op, 0, -1);
+  put(op, a, -1);
   o->kind = K_VALUE;
   o->type = result;
   o->is_bool = is_compare(op);
@@ -2674,21 +2784,31 @@ static void parse_expr(int min_prec, Operand *o)
           continue;
         }
       } else if (r.kind == K_CONST) {
+        int shift = ir_op == IR_SHL || ir_op == IR_SHR;
         nheld--;
-        o->val = fold(ir_op, o->val, r.val);
-        o->type = TY_INT;
+        o->val = fold(ir_op, o->val, r.val,
+                      shift ? is_uns(o->type)
+                            : is_uns(o->type) || is_uns(r.type));
+        o->type = is_compare(ir_op) ? TY_INT
+                  : shift ? promoted(o->type) : arith_type(o->type, r.type);
         o->nonice |= r.nonice;
         continue;
       } else if (r.kind == K_VAR && swapped_op(ir_op) >= 0) {
         /* c op x: emit x c op' (op' is op with its operands
          * swapped), so that the peephole stage sees the
-         * constant right before the op (1+x: INCR). */
+         * constant right before the op (1+x: INCR). An unsigned
+         * comparison's right operand is then that one constant. */
+        int op = swapped_op(ir_op);
         nheld--;
         rvalue(&r);
         put(IR_CONST, o->val, -1);
-        put(swapped_op(ir_op), 0, -1);
+        if (is_relational(op)
+            && (is_uns(o->type) || is_uns(value_type(r.type))))
+          put(op + IR_ULT - IR_LT, 1, -1);
+        else
+          put(op, 0, -1);
+        o->type = is_compare(ir_op) ? TY_INT : arith_type(o->type, r.type);
         o->kind = K_VALUE;
-        o->type = TY_INT;
         o->is_bool = is_compare(ir_op);
         continue;
       }
@@ -3474,6 +3594,8 @@ static void parse_statement(void)
     return;
   case T_INT:
   case T_CHAR:
+  case T_SIGNED:
+  case T_UNSIGNED:
   case T_VOID:
   case T_CONST:
   case T_VOLATILE:

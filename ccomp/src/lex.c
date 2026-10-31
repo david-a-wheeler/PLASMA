@@ -8,6 +8,7 @@
 
 int tok;
 int tok_val;
+int tok_unsigned;
 char tok_text[MAX_STR + 1];
 int tok_len;
 
@@ -153,7 +154,10 @@ static int literal_char(void)
 }
 
 /* Read a decimal, octal (leading 0) or hex (0x) integer constant into
- * tok_val. It must fit in 16 bits. */
+ * tok_val. It must fit in 16 bits. It is unsigned (tok_unsigned) with
+ * a u or U suffix, or if it is hex or octal and doesn't fit in an int,
+ * as C says. (A decimal one that doesn't fit would be a long in C; here
+ * it is the int with those bits, a documented difference.) */
 static void lex_number(void)
 {
   long v = 0;
@@ -183,9 +187,14 @@ static void lex_number(void)
       error(10 /* "number does not fit in 16 bits" */, NULL);
     getch();
   }
+  tok_unsigned = base != 10 && v > 0x7FFF;
+  if (ch == 'u' || ch == 'U') {
+    getch();
+    tok_unsigned = 1;
+  }
   if (is_alpha(ch) || is_digit(ch) || ch == '.')
-    error(11 /* "number suffixes and floating point are not supported" */,
-          NULL);
+    error(11 /* "number suffixes other than u, and floating point, are "
+                "not supported" */, NULL);
   tok = T_NUM;
   tok_val = (int)v;
 }
@@ -215,11 +224,11 @@ static const char *const keywords[] = {
   /* supported: in the order of T_INT ... T_EXTERN */
   "int", "void", "return", "if", "else", "while", "do", "for", "break",
   "continue", "char", "sizeof", "static", "const", "volatile", "struct",
-  "switch", "case", "default", "typedef", "enum", "extern",
+  "switch", "case", "default", "typedef", "enum", "extern", "signed",
+  "unsigned",
   /* the rest of C89's keywords: recognized so the error is clear */
   "auto", "double",
-  "float", "goto", "long", "register", "short", "signed",
-  "union", "unsigned",
+  "float", "goto", "long", "register", "short", "union",
   NULL
 };
 
@@ -287,6 +296,7 @@ void next(void)
             NULL);
     getch();
     tok = T_NUM;
+    tok_unsigned = 0;
     return;
   }
   c = ch;
