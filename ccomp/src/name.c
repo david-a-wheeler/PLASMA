@@ -11,7 +11,7 @@
 #include "diag.h"
 #include "name.h"
 
-#define MAX_IDS      239    /* enum constants and typedef names (217, in
+#define MAX_IDS      203    /* enum constants and typedef names (184, in
                              * parse.c) */
 
 static int id_nm[MAX_IDS];

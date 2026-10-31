@@ -4074,6 +4074,14 @@ deeper where the system can open more files (decision 25). Every test
 still fits; 361 pass. Sizes (small build): `cccomp` **34,827** (was
 35,630), `ccgen` 18,405, `ccrel` 14,470, `ccpp` 31,688.
 
+**`MAX_STR` moved to cclimits.h** (2026-10-31; the user chose this and
+the token names, below, from the "last 2K" candidates). tokin.h needs
+it, and was the only reason parse.c included token.h, whose 33 enum
+constants (the token stream's codes) parse.c doesn't use. Without
+them, parse.c's peak of enum constants and typedef names is 184 (was
+217), so `MAX_IDS` is 203 (was 239), 6 bytes each: `cccomp` **34,611**
+(-216, as estimated). 361 tests pass.
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in

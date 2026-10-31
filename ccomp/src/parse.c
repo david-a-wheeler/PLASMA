@@ -108,7 +108,6 @@
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
-#include "token.h"
 #include "fixed.h"
 #include "nam.h"
 #include "tokin.h"

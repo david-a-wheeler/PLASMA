@@ -14,6 +14,7 @@
  */
 #include <stdio.h>
 #include "build.h"
+#include "cclimits.h"
 #include "diag.h"
 #include "bio.h"
 #include "token.h"

@@ -1,7 +1,7 @@
 /*
  * ccpp's lexer (pplex.c): the source, a line at a time, as tokens with
  * the codes of the token stream (token.h, ../CCPP.md). Include after
- * bio.h and token.h.
+ * cclimits.h, bio.h and token.h.
  */
 #ifndef PPLEX_H
 #define PPLEX_H

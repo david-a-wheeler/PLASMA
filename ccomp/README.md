@@ -489,7 +489,7 @@ file is used, and that the file's numbers ascend.
     variables visible at once (globals, plus the parameters and locals
     in scope), 401 parameter types in all, 40 distinct types, 6
     struct tags (counting those in blocks that have ended), 32 struct
-    members in all, and 239 enum constants and typedef names visible
+    members in all, and 203 enum constants and typedef names visible
     at once (`MAX_FUNCS`, `MAX_VARS`, `MAX_PARAM_TYPES`, `MAX_TYPES`,
     `MAX_TAGS`, `MAX_MEMBERS`, `MAX_IDS`). The front end keeps no
     names: the preprocessor numbers them (below).

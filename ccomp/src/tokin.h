@@ -1,7 +1,7 @@
 /*
  * cccomp's token reader (tokin.c): the tokens of NAME.i, which ccpp
  * wrote (../CCPP.md), one at a time, as the parser's T_* tokens.
- * Include after token.h.
+ * Include after cclimits.h.
  */
 #ifndef TOKIN_H
 #define TOKIN_H
