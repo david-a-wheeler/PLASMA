@@ -16,7 +16,7 @@
  */
 #include <string.h>
 #include "ccish.h"
-#include "tokin.h"
+#include "nam.h"
 
 /* The IR file, and its output name (for messages). */
 static Bfile out;
@@ -33,36 +33,30 @@ static int ndrun;
 static int nops;                /* IR ops written so far */
 
 /* Create the IR file for output name base, and write its header: the
- * magic, the version, and the source file's name. */
+ * magic, the version, and the stamp of the name file its ids are from
+ * (nam_ids, nam_sum: ../CCPP.md), which ccgen reads too. */
 void ir_open(const char *base)
 {
-  int n = (int)strlen(src_name);
   base_name = base;
   if (!bopen(&out, stream_name(base, SUFFIX_IR), 1))
     fatal(176 /* "cannot create" */, stream_name(base, SUFFIX_IR));
   bwrite(&out, (const unsigned char *)"CIR", 3);
   bputc(&out, IR_VERSION);
-  if (n > 255)
-    n = 255;
-  bputc(&out, n);
-  bwrite(&out, (const unsigned char *)src_name, n);
+  bputw(&out, nam_ids);
+  bputw(&out, nam_sum);
 }
 
-/* Write a name record for function f, if it has none yet, saying
- * whether it returns a value (for ccgen's checks). */
+/* Write a name record for function f, if it has none yet: its name's
+ * id, and whether it returns a value (for ccgen's checks). */
 static void name_func(int f)
 {
-  const char *s;
-  int n;
   if (fn_flags[f] & FN_NAMED)
     return;
   fn_flags[f] |= FN_NAMED;
-  s = tok_name(fn_name[f]);
-  n = (int)strlen(s);
   bputc(&out, REC_NAME);
   bputw(&out, f);
-  bputc(&out, n | (fn_type[f] != TY_VOID ? NAME_RETURNS : 0));
-  bwrite(&out, (const unsigned char *)s, n);
+  bputc(&out, fn_type[f] != TY_VOID ? NAME_RETURNS : 0);
+  bputw(&out, fn_name[f]);
 }
 
 /* Stage 1's output: write one IR op, its records first (a function's
@@ -193,20 +187,11 @@ int data_zero(int n)
 
 /* ---------- The end ---------- */
 
-/* Write a symbol's name (an id) to the summary: its length, then its
- * characters, from the name file. */
-static void put_name(int name)
-{
-  const char *s = tok_name(name);
-  int n = (int)strlen(s);
-  bputc(&out, n);
-  bwrite(&out, (const unsigned char *)s, n);
-}
-
 /* Write the symbol summary as the last record, and close the file: the
  * functions, then the global variables (data symbols), in NAME.syms's
- * layout after its magic and version, with the code size and offsets 0
- * (ccgen fills them in). */
+ * layout after its magic and version, but with the code size and
+ * offsets 0 (ccgen fills them in) and each name as its id (ccgen
+ * spells it). */
 void ir_finish(void)
 {
   int i, flags, off, size, hash, name, nsyms = data_sym_count();
@@ -224,7 +209,7 @@ void ir_finish(void)
     bputc(&out, fn_flags[i] & FN_COUNTED ? fn_nparams[i] : 255);
     bputw(&out, 0);
     bputw(&out, hash);
-    put_name(fn_name[i]);
+    bputw(&out, fn_name[i]);
   }
   for (i = 0; i < nsyms; i++) {
     flags = data_sym(i, &off, &size, &hash, &name);
@@ -232,7 +217,7 @@ void ir_finish(void)
     bputw(&out, off);
     bputw(&out, size);
     bputw(&out, hash);
-    put_name(name);
+    bputw(&out, name);
   }
   if (bclose(&out) != 0)
     fatal(187 /* "error writing" */, stream_name(base_name, SUFFIX_IR));

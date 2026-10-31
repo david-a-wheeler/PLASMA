@@ -41,6 +41,5 @@ void tok_close(void);
 void next(void);                    /* advance to the next token */
 int  next_is_rbracket(void);        /* is the token after this one ']'? */
 const char *tok_desc(void);         /* the current token, for messages */
-const char *tok_name(int name);     /* an id's spelling, for messages */
 
 #endif

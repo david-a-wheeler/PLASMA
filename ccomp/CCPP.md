@@ -29,16 +29,20 @@ NAME.c --ccpp--> NAME.i + NAME.nam --cccomp--> NAME.ir --ccgen--> NAME.obj + NAM
   `output.nam` (the output name is the input's without `.c`, unless
   `-o`). After an error it removes both, unless `-k`.
 - `cccomp [-k] [-o output] input` reads `input.i` and `input.nam`,
-  and writes `output.ir` (the output name is `input` unless `-o`).
-  After it succeeds it removes `input.i` and `input.nam`, unless
-  `-k`; after an error it removes `output.ir` (unless `-k`) and keeps
-  its inputs, as `ccgen` keeps the IR file.
+  and writes `output.ir` (the output name is `input` unless `-o`),
+  whose names are ids from `input.nam`. After it succeeds it removes
+  `input.i`, unless `-k`; after an error it removes `output.ir`
+  (unless `-k`) and keeps its inputs, as `ccgen` keeps the IR file.
+- `ccgen` reads `NAME.ir` and `NAME.nam`, to spell the names it
+  writes into `NAME.syms` and its messages, and removes both after it
+  succeeds, unless `-k` (OBJECT.md).
 - `ccish`, for the host, runs every stage through the same files and
   removes them all, unless `-k`.
 
-`cccomp` never needs an identifier's spelling to compile: it reads one
-only to print a message, and, until step 3 of the `ccpp` design, to
-write functions' and globals' names into `NAME.ir`. A struct's type
+`cccomp` never needs an identifier's spelling: it reads one only to
+print a message. `ccgen` is the first to need spellings, since the
+objects it writes are linked by name; it checks the name file, and its
+stamp against the IR file's, before it reads a name. A struct's type
 hash, which includes its tag's spelling so that it agrees between
 files, comes from the hash `ccpp` writes with each tag (`$09`): adding
 the *n* bytes one at a time to a hash *h* gives *h* × 31^*n* + the
@@ -47,8 +51,9 @@ spelling's own hash.
 **Open files.** `ccpp` has the source, the include files being read,
 and `NAME.i` open; it writes `NAME.nam` last, after closing the
 others. `cccomp` has `NAME.i` and `NAME.ir` open, and opens
-`NAME.nam` for a moment to look a name up. PLASMA's Apple II file
-library allows 4 open files.
+`NAME.nam` to look a name up for a message; `ccgen` has `NAME.ir`,
+its output and `NAME.nam` open. PLASMA's Apple II file library allows
+4 open files.
 
 ## `NAME.i`: the token stream
 
@@ -192,7 +197,8 @@ last line. A reader of both compares them, so that a `NAME.nam` from
 another run of `ccpp` (say, after the source changed and only `ccpp`
 was run again) is never trusted with the ids in `NAME.i`.
 
-**What `cccomp` checks** (step 1):
+**What `cccomp` checks** (and `ccgen`, of the name file, against the
+IR file's stamp):
 - `NAME.i`: its header and version (else message 230, "not a token
   file from ccpp, or the wrong version"); that each code is known,
   that the file doesn't end before `$00`, and that nothing follows its

@@ -95,10 +95,11 @@ nearly all of memory (approach.md, "B3" and 18.7):
 ccpp [-k] [-o output] input.c       the preprocessor and lexer: writes
                                     output.i and output.nam
 cccomp [-k] [-o output] input       the front end: input.i and input.nam
-                                    to output.ir (the inputs are removed
+                                    to output.ir (input.i is removed
                                     unless -k)
-ccgen [-i] [-k] output              the back end: output.ir to the stream
-                                    files (output.ir is removed unless -k)
+ccgen [-i] [-k] output              the back end: output.ir and
+                                    output.nam to the stream files (both
+                                    are removed unless -k)
 ccrel [-l] [-o module] output...    the final pass: links them into a module
 ```
 
@@ -412,7 +413,8 @@ function returns exactly one.
 | `src/pplex.c` | The preprocessor's lexer: a line at a time, into tokens |
 | `src/ppname.c` | The preprocessor's name pool, which gives each identifier its id, and the writer of the name file |
 | `src/ppout.c` | The preprocessor's output: the token stream, joining adjacent strings |
-| `src/tokin.c` | The front end's input: reads the token stream a token at a time, and looks names up in the name file |
+| `src/tokin.c` | The front end's input: reads the token stream a token at a time |
+| `src/nam.c` | The reader of the name file, for the front end's messages and the back end's names |
 | `src/name.c` | The table of enum constants and typedef names (names are ids, numbered by the preprocessor) |
 | `src/fixed.h` | The fixed ids: the names the preprocessor numbers first and the front end knows by number |
 | `src/type.c` | The table of types (parallel arrays), with qualifiers as bits in a type handle, and struct tags and members |
@@ -487,10 +489,10 @@ file is used, and that the file's numbers ascend.
     (`MAX_STR`).
   - An identifier: 31 significant characters (`MAX_NAME`); the rest
     are ignored.
-  - The back end: 3281 bytes of function names, each with a NUL
-    (`MAX_FNAMES`), and 32 operands on its own temporaries in one
-    function (`MAX_TEMP_USES`), which only a reordering it can't do by
-    moving code uses (4 to 6 each).
+  - The back end: 32 operands on its own temporaries in one function
+    (`MAX_TEMP_USES`), which only a reordering it can't do by moving
+    code uses (4 to 6 each). It keeps no names: it spells them from
+    the name file as it writes them.
   - A file name (an output name with its suffix, or the program's own
     directory for `ccish.msg`): 127 characters (`MAX_PATH`), enough for
     ProDOS.

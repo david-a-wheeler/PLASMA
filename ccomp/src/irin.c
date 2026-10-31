@@ -7,25 +7,25 @@
  * they are, in the order met; and the symbol summary at the end becomes
  * NAME.syms, with
  * the code size and each defined function's code offset filled in,
- * which only the back end knows. The file is read once, in order, and
- * every record is checked, so that a damaged file is reported rather
- * than compiled.
+ * which only the back end knows, and each name spelled from the name
+ * file, NAME.nam (../CCPP.md), whose stamp the IR file's header gives.
+ * The file is read once, in order, and every record is checked, so that
+ * a damaged file is reported rather than compiled.
  */
 #include <string.h>
 #include "ccish.h"
+#include "nam.h"
 
 /* The IR file, and its output name (for messages). */
 static Bfile in;
 static const char *base_name;
 
-/* The source file's name, from the header, for messages. */
-static char source[256];
+/* The source file's name, file 1 of the name file, for messages. */
+static char source[MAX_PATH];
 
-/* The functions' names, from the N records: each function's offset in
- * fnames[], or -1 if it has none yet. */
-static int fname_at[MAX_FUNCS];
-static char fnames[MAX_FNAMES];
-static int fnames_len;
+/* The functions' names, from the N records: each one's id, or 0 if it
+ * has none yet. */
+static int fn_id[MAX_FUNCS];
 #ifdef CCISH_CHECKS
 static char fn_returns[MAX_FUNCS];  /* from the name record: 1 if the
                                      * function returns a value */
@@ -86,49 +86,72 @@ static void copy_record(int t)
   }
 }
 
-/* Read the header: the magic, the version, and the source file's name,
- * which messages give from now on. */
+/* Read the header: the magic, the version, and the stamp of the name
+ * file, which must match it; then the source file's name, which
+ * messages give from now on. */
 static void read_header(void)
 {
-  int n, i;
+  int ids, sum;
   if (get_byte() != 'C' || get_byte() != 'I' || get_byte() != 'R'
       || get_byte() != IR_VERSION)
     damaged();
-  n = get_byte();
-  for (i = 0; i < n; i++)
-    source[i] = (char)get_byte();
-  source[n] = 0;
+  ids = get_word();
+  sum = get_word();
+  nam_open(base_name);
+  if (ids != nam_ids || sum != nam_sum)
+    nam_stale();        /* from another run of ccpp */
+  strcpy(source, nam_file(1));
   src_name = source;
 }
 
-/* Read an N record: keep a function's name (and, for the checks,
+/* Read a name, an id, which must be in the name file. */
+static int get_id(void)
+{
+  int id = get_word();
+  if (id < 1 || id > nam_ids)
+    damaged();
+  return id;
+}
+
+/* Read an N record: keep a function's name's id (and, for the checks,
  * whether it returns a value). */
 static void read_name(void)
 {
-  int f = get_word(), c = get_byte(), n = c & NAME_LEN, i;
-  if (f >= MAX_FUNCS || fname_at[f] >= 0 || n < 1)
+  int f = get_word();
+  if (f >= MAX_FUNCS || fn_id[f])
     damaged();
 #ifdef CCISH_CHECKS
-  if (c & ~(NAME_LEN | NAME_RETURNS))
-    damaged();
-  fn_returns[f] = (c & NAME_RETURNS) != 0;
+  {
+    int c = get_byte();
+    if (c & ~NAME_RETURNS)
+      damaged();
+    fn_returns[f] = (c & NAME_RETURNS) != 0;
+  }
+#else
+  get_byte();
 #endif
-  if (fnames_len + n + 1 > MAX_FNAMES)
-    fatal(224 /* "too many function names for ccgen" */, NULL);
-  fname_at[f] = fnames_len;
-  for (i = 0; i < n; i++)
-    fnames[fnames_len++] = (char)get_byte();
-  fnames[fnames_len++] = 0;
+  fn_id[f] = get_id();
 }
 
-/* Function f's name, for messages and -i (or a helper's). */
+/* Function f's name, for messages and -i (or a helper's), from the name
+ * file. */
 const char *func_name(int f)
 {
   if (f >= MAX_FUNCS)
     return helper_name(f - MAX_FUNCS);
-  if (f < 0 || fname_at[f] < 0)
+  if (f < 0 || !fn_id[f])
     return "?";
-  return fnames + fname_at[f];
+  return nam_name(fn_id[f]);
+}
+
+/* Write a symbol's name, read as an id, to NAME.syms: its length, then
+ * its characters. */
+static void put_name(void)
+{
+  const char *s = nam_name(get_id());
+  emit_byte((int)strlen(s));
+  while (*s)
+    emit_byte(*s++);
 }
 
 /*
@@ -530,7 +553,7 @@ static void do_op(int op, int a, int f)
     damaged();                  /* FUNC outside a function, all else in */
   switch (op) {
   case IR_FUNC: case IR_CALL:
-    if (f < 0 || f >= MAX_FUNCS || fname_at[f] < 0)
+    if (f < 0 || f >= MAX_FUNCS || !fn_id[f])
       damaged();
     if (f > max_func)
       max_func = f;
@@ -601,18 +624,14 @@ static void read_summary(void)
     emit_word(flags & SYM_DEFINED ? fn_code[i] : 0);
     ndefined += (flags & SYM_DEFINED) != 0;
     emit_word(get_word());      /* type hash */
-    n = get_byte();
-    emit_byte(n);
-    copy(n);
+    put_name();
   }
   if (ndefined != nwritten)
     damaged();                  /* a function written twice */
   for (i = 0; i < nd; i++) {
     emit_byte(get_byte());      /* flags */
     copy(6);                    /* offset, size, type hash */
-    n = get_byte();
-    emit_byte(n);
-    copy(n);
+    put_name();
   }
   if (bgetc(&in) != EOF)
     damaged();
@@ -641,8 +660,7 @@ void gen_file(const char *base)
 
   base_name = base;
   for (i = 0; i < MAX_FUNCS; i++)
-    fname_at[i] = -1;
-  fnames_len = 0;
+    fn_id[i] = 0;
   helper_used = 0;
   nbuf = 0;
   in_func = 0;
@@ -699,6 +717,7 @@ void gen_file(const char *base)
     }
   }
   bclose(&in);
+  nam_close();
   src_line = 0;
 }
 
@@ -707,5 +726,6 @@ void gen_file(const char *base)
 void gen_abort(void)
 {
   bclose(&in);
+  nam_close();
   emit_abort();
 }

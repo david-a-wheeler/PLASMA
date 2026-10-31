@@ -1,19 +1,23 @@
 /*
  * ccgen: ccish's back end as a program of its own (approach.md 18.7).
- * It reads the IR file, NAME.ir, that cccomp wrote, lowers and
- * optimizes it, and writes the stream file and symbol summary, NAME.obj
- * and NAME.syms, for ccrel. The IR file is removed afterward, unless
- * -k; after an error, it is kept (for -i), and partial output removed.
+ * It reads the IR file, NAME.ir, that cccomp wrote, and the name file,
+ * NAME.nam, that ccpp wrote (for the names' spellings), lowers and
+ * optimizes the IR, and writes the stream file and symbol summary,
+ * NAME.obj and NAME.syms, for ccrel. The IR file and name file are
+ * removed afterward, unless -k; after an error, they are kept (for -i),
+ * and partial output removed.
  *
  * Usage: ccgen [-i] [-k] output
  *   output  the output name given to cccomp
  *   -i      print the IR as it is read
- *   -k      keep the IR file, and the stream files even after an error
+ *   -k      keep the IR file and name file, and the stream files even
+ *           after an error
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "ccish.h"
+#include "token.h"
 
 /* The output name, to remove partial output after an error. */
 static const char *base_name;
@@ -53,5 +57,6 @@ int main(int argc, char **argv)
     usage();
   gen_file(base_name);
   remove_stream(base_name, SUFFIX_IR);
+  remove_stream(base_name, SUFFIX_NAM);
   return 0;
 }

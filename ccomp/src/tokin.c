@@ -3,14 +3,13 @@
  * stream ccpp wrote, NAME.i (../CCPP.md), a token at a time, keeping
  * only the current one, and counts its lines for messages. An
  * identifier is an id there, and the parser uses the id; a spelling is
- * looked up in the name file, NAME.nam, only to be printed (in a
- * message, or for now in the IR file), from the start of the file each
- * time (bio can't seek), through stdio as the message file is, so that
- * it needs no buffer of cccomp's own.
+ * looked up in the name file, NAME.nam (nam.c), only to be printed in a
+ * message.
  */
 #include <string.h>
 #include "ccish.h"
 #include "token.h"
+#include "nam.h"
 #include "tokin.h"
 
 int tok;
@@ -22,33 +21,14 @@ int tok_hsum;
 int tok_hmul;
 
 static Bfile in;            /* NAME.i */
-static FILE *nam;           /* NAME.nam, while a name is looked up */
 static const char *base_name;
 static int at_end;          /* the end code has been read */
-static int nam_ids;         /* the name file's stamp: its id count */
-static int nam_sum;         /* and its checksum */
 static char source[MAX_PATH];   /* file 1's name, for messages */
 
 /* The token stream is damaged: stop. */
 static void damaged(void)
 {
   fatal(231 /* "token file is damaged:" */, stream_name(base_name, SUFFIX_I));
-}
-
-/* Close the name file, if it is open. */
-static void nam_close(void)
-{
-  if (nam)
-    fclose(nam);
-  nam = NULL;
-}
-
-/* The name file is damaged, or from another run of ccpp: stop. */
-static void stale(void)
-{
-  nam_close();
-  fatal(232 /* "name file is stale or damaged:" */,
-        stream_name(base_name, SUFFIX_NAM));
 }
 
 /* The token stream's next byte, which must be there. */
@@ -67,103 +47,6 @@ static int get_word(void)
   return lo | (get_byte() << 8);
 }
 
-/* Open the name file, to read it from the start. */
-static void nam_open(void)
-{
-  nam = fopen(stream_name(base_name, SUFFIX_NAM), "rb");
-  if (!nam)
-    fatal(171 /* "cannot open" */, stream_name(base_name, SUFFIX_NAM));
-}
-
-/* Read the name file's next line into buf (size bytes, with a NUL),
- * without its newline, adding its bytes and newline to checksum *h;
- * return its length. A line that is too long, or the file's end, is
- * damage. */
-static int nam_line(char *buf, int size, int *h)
-{
-  int c, n = 0;
-  for (;;) {
-    c = getc(nam);
-    if (c == EOF || (n >= size - 1 && c != '\n'))
-      stale();
-    *h = (*h * 31 + c) & 0xFFFF;
-    if (c == '\n')
-      break;
-    buf[n++] = (char)c;
-  }
-  buf[n] = 0;
-  return n;
-}
-
-/* Copy entry k of the name file into buf (MAX_PATH bytes): id k if
- * file is 0, or file k, without its '@'. */
-static void nam_entry(int file, int k, char *buf)
-{
-  int n, i = 0, h = 0;
-  nam_open();
-  for (;;) {
-    n = nam_line(buf, MAX_PATH, &h);
-    if (n == 0)
-      stale();          /* the blank line: no such entry */
-    if ((buf[0] == '@') == file && ++i == k)
-      break;
-  }
-  nam_close();
-  if (file)
-    memmove(buf, buf + 1, n);
-  else if (n > MAX_NAME)
-    stale();
-}
-
-/* The value of the 4 upper-case hex digits at s, or -1. */
-static int hex4(const char *s)
-{
-  int i, v = 0, c;
-  for (i = 0; i < 4; i++) {
-    c = s[i];
-    if (c >= '0' && c <= '9')
-      v = v * 16 + c - '0';
-    else if (c >= 'A' && c <= 'F')
-      v = v * 16 + c - 'A' + 10;
-    else
-      return -1;
-  }
-  return v;
-}
-
-/* Check the name file (CCPP.md, "NAME.nam"), before any name in it is
- * used, and keep its stamp in nam_ids and nam_sum, for the token
- * stream's to match at its end. The names come before the files, a
- * blank line follows them, then a stamp that matches the file, and then
- * nothing. */
-static void nam_check(void)
-{
-  char buf[MAX_PATH];
-  int n, h = 0, ids = 0, files = 0, d = 0, before;
-  nam_open();
-  for (;;) {
-    before = h;
-    n = nam_line(buf, MAX_PATH, &h);
-    if (n == 0)
-      break;
-    if (buf[0] == '@')
-      files++;
-    else if (files || n > MAX_NAME)
-      stale();          /* a name after the files, or too long */
-    else
-      ids++;
-  }
-  h = before;           /* the blank line isn't summed */
-  if (nam_line(buf, MAX_PATH, &d) != 12 || buf[0] != '='
-      || buf[1] != '0' + NAM_VERSION || buf[2] != ' ' || buf[7] != ' '
-      || hex4(buf + 3) != ids || hex4(buf + 8) != h || files == 0
-      || getc(nam) != EOF)
-    stale();
-  nam_close();
-  nam_ids = ids;
-  nam_sum = h;
-}
-
 /* Open the token stream and name file of base, check the stream's
  * header and the name file, and read the first token. Messages give the
  * source's name, file 1 of the name file, from now on. */
@@ -177,20 +60,11 @@ void tok_open(const char *base)
       || bgetc(&in) != TOK_VERSION)
     fatal(230 /* "not a token file from ccpp, or the wrong version:" */,
           stream_name(base, SUFFIX_I));
-  nam_check();
-  nam_entry(1, 1, source);
+  nam_open(base);
+  strcpy(source, nam_file(1));
   src_name = source;
   src_line = 1;
   next();
-}
-
-/* The spelling of name (an id), from the name file, in a static buffer
- * that the next call reuses. */
-const char *tok_name(int name)
-{
-  static char buf[MAX_PATH];
-  nam_entry(0, name, buf);
-  return buf;
 }
 
 /* Close the token stream (and the name file, after an error). */
@@ -220,7 +94,7 @@ void next(void)
     if (bgetc(&in) != EOF)
       damaged();
     if (n != nam_ids || i != nam_sum)
-      stale();          /* from another run of ccpp */
+      nam_stale();      /* from another run of ccpp */
     at_end = 1;
     tok = T_EOF;
     return;
@@ -301,7 +175,7 @@ const char *tok_desc(void)
   }
   strcpy(buf, "'");
   if (tok == T_ID || tok == T_KEYWORD)
-    strcat(buf, tok_name(tok_val));
+    strcat(buf, nam_name(tok_val));
   else if (tok >= T_INT && tok < T_KEYWORD)
     strcat(buf, keywords[tok - T_INT]);
   else if (tok >= T_EQ)

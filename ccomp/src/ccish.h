@@ -86,9 +86,6 @@
                              * (393) */
 #define MAX_TAGS     10     /* struct tags, including hidden ones (7) */
 #define MAX_MEMBERS  64     /* struct members, in all structs (51) */
-#define MAX_FNAMES   3281   /* bytes of the function names ccgen keeps,
-                             * with a NUL each (2,982: all of parse.c's
-                             * function symbols, a bound) */
 #define MAX_IDS      280    /* enum constants and typedef names (273, in
                              * tokin.c) */
 #define MAX_BYVAL    8      /* bytes in a struct passed or returned by value */
@@ -329,7 +326,7 @@ enum {
 /* The IR file: the output name plus this suffix, and its format's
  * version (in its header, after the magic "CIR"). */
 #define SUFFIX_IR   ".ir"
-#define IR_VERSION  2
+#define IR_VERSION  3
 
 /* Its record tags besides the stream's D, R and S (below), and the bit
  * that marks an IR op followed by a one-byte operand. An IR op's tag is
@@ -339,9 +336,8 @@ enum { REC_LINE = 'L', REC_NAME = 'N', REC_WORD = 'W', REC_SECOND = 'X',
 #define IR_BYTE_OP  0x80
 #define IR_TAG_END  0x40
 
-/* A name record's length byte: the length (1 to MAX_NAME) in its low
- * bits, and NAME_RETURNS set if the function returns a value. */
-#define NAME_LEN     0x1F
+/* A name record's flags byte: NAME_RETURNS set if the function returns
+ * a value. */
 #define NAME_RETURNS 0x80
 
 /* The front end's side (irout.c): the writer of NAME.ir. */

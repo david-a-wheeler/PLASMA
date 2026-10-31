@@ -395,16 +395,18 @@ else
     fail=$((fail + 1))
 fi
 # ccpp leaves the token stream and name file for cccomp, which removes
-# them and leaves the IR file for ccgen (approach.md 18.7), which writes
-# the stream file and symbol summary and removes the IR file; ccrel then
-# keeps those, as a linker keeps its objects.
+# the token stream and leaves the IR file for ccgen (approach.md 18.7),
+# which writes the stream file and symbol summary and removes the IR
+# file and the name file (it needs the names too); ccrel then keeps
+# those, as a linker keeps its objects.
 if ./ccpp -o "$OUT/split_streams" tests/run/hello.c \
    && [ -s "$OUT/split_streams.i" ] && [ -s "$OUT/split_streams.nam" ] \
    && [ ! -e "$OUT/split_streams.ir" ] \
    && ./cccomp "$OUT/split_streams" && [ ! -e "$OUT/split_streams.i" ] \
-   && [ ! -e "$OUT/split_streams.nam" ] \
+   && [ -s "$OUT/split_streams.nam" ] \
    && [ -s "$OUT/split_streams.ir" ] && [ ! -e "$OUT/split_streams.obj" ] \
    && ./ccgen "$OUT/split_streams" && [ ! -e "$OUT/split_streams.ir" ] \
+   && [ ! -e "$OUT/split_streams.nam" ] \
    && [ -s "$OUT/split_streams.obj" ] && [ -s "$OUT/split_streams.syms" ] \
    && ./ccrel "$OUT/split_streams" && [ -s "$OUT/split_streams" ] \
    && [ -s "$OUT/split_streams.obj" ] \
@@ -415,12 +417,12 @@ else
     fail=$((fail + 1))
 fi
 rm -f "$OUT/split_streams.obj" "$OUT/split_streams.syms"
-# ccgen -k keeps the IR file, and cccomp -k its token stream and name
-# file.
+# ccgen -k keeps the IR file and name file, and cccomp -k its token
+# stream.
 if ./ccpp -o "$OUT/keep_ir" tests/run/hello.c \
    && ./cccomp -k "$OUT/keep_ir" && [ -s "$OUT/keep_ir.i" ] \
-   && [ -s "$OUT/keep_ir.nam" ] \
    && ./ccgen -k "$OUT/keep_ir" && [ -s "$OUT/keep_ir.ir" ] \
+   && [ -s "$OUT/keep_ir.nam" ] \
    && [ -s "$OUT/keep_ir.obj" ]; then
     pass=$((pass + 1))
 else
@@ -476,7 +478,7 @@ fi
 rm -f "$OUT/ir_dump.obj" "$OUT/ir_dump.syms"
 # ccgen finds a damaged IR file (OBJECT.md, "What ccgen checks"): cut
 # short, a wrong version, an unknown tag. It writes no stream files,
-# and keeps the IR file.
+# and keeps the IR file (and the name file).
 ir_damaged_test() {
     if ./ccgen "$OUT/$1" 2>"$OUT/$1.err"; then
         echo "FAIL ccgen: accepted an IR file $2"
@@ -492,7 +494,7 @@ ir_damaged_test() {
     else
         pass=$((pass + 1))
     fi
-    rm -f "$OUT/$1.ir"
+    rm -f "$OUT/$1.ir" "$OUT/$1.nam"
 }
 cc_ir "$OUT/ir_cut" tests/run/global_init.c
 size=$(wc -c < "$OUT/ir_cut.ir")
@@ -509,17 +511,51 @@ ir_damaged_test ir_tag "with something after the summary"
 # The full build's ccgen checks each block it moves (CCISH_CHECKS): a
 # SWAP whose length is wrong, here the top block of *f() = 5 made 2
 # ops long instead of 1 (CONST 5), is a damaged file, not wrong code.
-# The SWAP is the first $B2 byte (IR_SWAP $32 with a byte operand),
-# and its length the byte after it. The small build doesn't check.
+# The SWAP is the first $B2 byte (IR_SWAP $32 with a byte operand)
+# after the 8-byte header (whose stamp could hold one), and its length
+# the byte after it. The small build doesn't check.
 printf 'int g;\nint *f(void) { return &g; }\nint main() { *f() = 5; return 0; }\n' \
     >"$OUT/ir_badswap.c"
 cc_ir "$OUT/ir_badswap" "$OUT/ir_badswap.c"
 at=$(od -An -v -tu1 "$OUT/ir_badswap.ir" \
-     | awk '{ for (i = 1; i <= NF; i++) { if ($i == 178) { print n; exit }
-              n++ } }')
+     | awk '{ for (i = 1; i <= NF; i++) {
+                if ($i == 178 && n >= 8) { print n; exit }
+                n++ } }')
 printf '\002' | dd of="$OUT/ir_badswap.ir" bs=1 seek=$((at + 1)) \
     conv=notrunc 2>/dev/null
 ir_damaged_test ir_badswap "with a wrong SWAP length"
+# ccgen spells the names from the name file, so it checks it too (CCPP.md,
+# "The stamp"): one damaged, and one from another run of ccpp, whose
+# stamp isn't the IR file's. It writes no stream files, and keeps its
+# inputs.
+gen_nam_test() {
+    if ./ccgen "$OUT/$1" 2>"$OUT/$1.err"; then
+        echo "FAIL ccgen: accepted a name file $2"
+        fail=$((fail + 1))
+    elif ! grep -qF "fatal 232: name file is stale or damaged: $OUT/$1.nam" \
+            "$OUT/$1.err"; then
+        echo "FAIL ccgen: wrong message for a name file $2:"
+        sed 's/^/    /' "$OUT/$1.err"
+        fail=$((fail + 1))
+    elif [ -e "$OUT/$1.obj" ] || [ ! -e "$OUT/$1.ir" ] \
+         || [ ! -e "$OUT/$1.nam" ]; then
+        echo "FAIL ccgen: a name file $2 left stream files, or lost an input"
+        fail=$((fail + 1))
+    else
+        pass=$((pass + 1))
+    fi
+    rm -f "$OUT/$1.ir" "$OUT/$1.nam"
+}
+cc_ir "$OUT/gen_nam_bad" tests/run/hello.c
+sed '/^$/d' "$OUT/gen_nam_bad.nam" >"$OUT/gen_nam_bad.tmp"
+mv "$OUT/gen_nam_bad.tmp" "$OUT/gen_nam_bad.nam"
+gen_nam_test gen_nam_bad "without its blank line"
+cc_ir "$OUT/gen_nam_stale" tests/run/hello.c
+cp tests/run/hello.c "$OUT/gen_nam_other.c"
+./ccpp -o "$OUT/gen_nam_other" "$OUT/gen_nam_other.c"
+mv "$OUT/gen_nam_other.nam" "$OUT/gen_nam_stale.nam"
+rm -f "$OUT/gen_nam_other.i"
+gen_nam_test gen_nam_stale "from another run of ccpp"
 # A back-end error gives the source file and the line where the
 # function starts (the IR file's line record): here, line 1.
 if grep -qF "too_large.c:1: error 177: function too large: main" \

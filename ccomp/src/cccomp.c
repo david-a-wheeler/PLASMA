@@ -8,11 +8,10 @@
  * has nearly all of memory.
  *
  * Usage: cccomp [-k] [-o output] input
- *   -k  keep the token stream and name file, and keep the IR file even
- *       after an error
+ *   -k  keep the token stream, and keep the IR file even after an error
  *   -o  output name for the IR file (default: the input name)
- * It reads input.i and input.nam, and removes them once it succeeds
- * (unless -k).
+ * It reads input.i and input.nam, and removes input.i once it succeeds
+ * (unless -k); ccgen needs input.nam too, so it removes that.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,6 +61,5 @@ int main(int argc, char **argv)
   base_name = outname;
   compile_file(src, outname);
   remove_stream(src, SUFFIX_I);
-  remove_stream(src, SUFFIX_NAM);
   return 0;
 }

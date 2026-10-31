@@ -90,8 +90,8 @@ int main(int argc, char **argv)
   pp_file(src, outname);
   compile_file(outname, outname);
   remove_stream(outname, SUFFIX_I);
-  remove_stream(outname, SUFFIX_NAM);
   gen_file(outname);
+  remove_stream(outname, SUFFIX_NAM);
   remove_stream(outname, SUFFIX_IR);
   module_name = outname;
   link_module(1, &outname, outname);

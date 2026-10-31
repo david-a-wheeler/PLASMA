@@ -104,6 +104,7 @@
 #include <string.h>
 #include "ccish.h"
 #include "fixed.h"
+#include "nam.h"
 #include "tokin.h"
 
 /* Functions: see ccish.h. */
@@ -127,7 +128,7 @@ static const char *quote(int name)
 {
   static char buf[MAX_NAME + 3];
   strcpy(buf, "'");
-  strcat(buf, tok_name(name));
+  strcat(buf, nam_name(name));
   strcat(buf, "'");
   return buf;
 }
@@ -425,7 +426,7 @@ static const char *tag_desc(int tag)
   if (tag_name(tag) < 0)
     return "an unnamed struct";
   strcpy(buf, "'struct ");
-  strcat(buf, tok_name(tag_name(tag)));
+  strcat(buf, nam_name(tag_name(tag)));
   strcat(buf, "'");
   return buf;
 }

@@ -219,7 +219,6 @@
 221 conflicting types for
 222 too many names shared between objects
 223 too many objects to link
-224 too many function names for ccgen
 225 too many run-time swaps in
 226 conflicting or repeated type specifier:
 227 'signed char' is not supported yet

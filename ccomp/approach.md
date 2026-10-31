@@ -3827,6 +3827,34 @@ written into the IR file.
   (fixed.h), not enum constants in token.h, since parse.c would
   otherwise have gone over `MAX_IDS` with token.h's codes.
 
+**`ccpp` step 3 (ids in the IR file; `ccgen` reads the name file) is
+done** (2026-10-31). IR format version 3 (OBJECT.md): the header has
+the name file's stamp instead of the source file's name, and the `N`
+records and the summary give each name as its id. `ccgen` checks the
+name file and its stamp against the IR file's before it reads a name,
+spells the names into `NAME.syms` and its messages, and removes the
+name file with the IR file (`cccomp` now removes only the token
+stream). The name file's reader is shared by `cccomp` and `ccgen`
+(src/nam.c).
+- Changed from the design: "keep only the external spellings, with a
+  bitmap" turned out to need about as much memory as before, since
+  `NAME.syms` lists every declared function and global, in function
+  order, and needs them all. Instead the reader keeps its place in the
+  file, reading on from the last lookup and from the top only for an
+  earlier line. Ids are given in the order names are first met, and
+  functions and globals are numbered in the order they are first
+  declared, so the summary's names come nearly in id order and take
+  about one pass (the CMDSYS functions, ids 1-25, called late, restart
+  near the top, which is cheap). `ccgen` keeps only each function's id
+  (`fn_id[]`); `MAX_FNAMES` (3,281) and message 224 are gone.
+- Checked: all 112 inputs the old compiler can still compile give
+  byte-identical `.obj` and `.syms`. New tests: `ccgen` refuses a
+  damaged name file and one from another run of `ccpp`; the bad-SWAP
+  test now skips the IR header, whose stamp could hold a `$B2`. 320
+  pass.
+- Sizes (small build): `ccgen` **18,493** (was 21,220), `cccomp`
+  35,577, `ccpp` 16,229.
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in

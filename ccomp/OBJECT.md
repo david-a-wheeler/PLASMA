@@ -243,14 +243,25 @@ it (approach.md 18.7). It holds the IR ops as the parser produced them
 summary. It is an intermediate file: `ccgen` removes it after success,
 unless `-k`.
 
-The file starts with a header:
+Names in it are ids (version 3): numbers into the name file,
+`NAME.nam`, which `ccpp` wrote with the token stream ([CCPP.md](CCPP.md)).
+`ccgen` reads the name file too, to spell the names in `NAME.syms` and
+its messages, and removes it after success, unless `-k`. The file
+starts with a header:
 
 | Size | Field |
 |------|-------|
 | 3 bytes | magic `CIR` |
-| byte | IR format version: 2 |
-| byte | length *n* of the source file's name (at most 255; a longer name is cut) |
-| *n* bytes | the source file's name, as given to `cccomp`, for `ccgen`'s messages |
+| byte | IR format version: 3 |
+| word | the name file's stamp: its id count |
+| word | and its checksum |
+
+`ccgen` checks the name file as `cccomp` does (CCPP.md, "What `cccomp`
+checks"), and that its stamp is this one, before it reads any name;
+otherwise it stops with message 232, "name file is stale or damaged".
+The source file's name, for its messages, is the name file's file 1.
+(Version 2 had the source file's name here, and spelled every name in
+the file.)
 
 Then records, until the summary, which is last. Each starts with a
 one-byte tag: a capital letter for most records, as in `NAME.obj`,
@@ -338,25 +349,29 @@ with the line where the function starts. So a back-end error reads
 |------|-------|
 | byte | tag `N` |
 | word | function index |
-| byte | name length *n* (1-31) in bits 0-4; bit 7 set if the function returns a value |
-| *n* bytes | name |
+| byte | flags: bit 7 set if the function returns a value; the others 0 |
+| word | the name's id |
 
 One for each function the IR refers to, before the first op that does
 (its `FUNC` or a `CALL`, and before that op's prefixes). `ccgen` keeps
-the names, for its messages and for `-i`. Bit 7 (version 2) is for the
-full build's checks, which need to know how many values a `CALL`
-leaves; it costs no bytes, since a name's length needs only 5 bits.
+each function's id, and spells it from the name file for its messages
+and for `-i`. Bit 7 is for the full build's checks, which need to know
+how many values a `CALL` leaves.
 
 ### `Y`: the symbol summary
 
 | Size | Field |
 |------|-------|
 | byte | tag `Y` |
-| ... | the rest of the file: `NAME.syms` after its magic and version, with the code size and every function's code offset 0 |
+| ... | the rest of the file: `NAME.syms` after its magic and version, with the code size and every function's code offset 0, and each name (a length byte and its characters there) as its id, a word |
 
 `ccgen` writes `NAME.syms` from it: the magic and version, then the
 same bytes, with the code size and each defined function's offset
-filled in, which only it knows.
+filled in, which only it knows, and each name spelled from the name
+file. The name file is read on from the last name looked up, and from
+the top only for an earlier one; since ids are given in the order names
+are first met, which is nearly the summary's order, all the names take
+about one pass over the file.
 
 ### What `ccgen` checks
 
@@ -364,9 +379,10 @@ It reports "compiler stream file is damaged" (188) for a wrong magic
 or version; an unknown tag; a prefix not followed by an op; an op
 outside a function; a label of `MAX_LABELS` or more; a function index
 of `MAX_FUNCS` or more (or, at the end, at or beyond the summary's
-count), or one used without an `N` record before it; a
-missing summary, or anything after it; and a function that the
-summary says is defined but has no `FUNC`, or the reverse.
+count), or one used without an `N` record before it; a name id of 0
+or beyond the name file's count; a missing summary, or anything after
+it; and a function that the summary says is defined but has no `FUNC`,
+or the reverse.
 
 The full build (`CCISH_CHECKS`) also checks each block of ops before
 an `IR_SWAP` moves it, stashes around it, or an unsigned comparison
@@ -376,7 +392,7 @@ it, following branches and labels (`block_ok()` in `src/irin.c`). Only
 a compiler bug (the parser's count of ops disagreeing with the file)
 or a damaged file fails it; then the file is reported as damaged,
 rather than the wrong code moved. It also rejects a name record with
-bits 5 and 6 set. The small build trusts the lengths.
+any flag but bit 7 set. The small build trusts the lengths.
 
 ## The final pass
 

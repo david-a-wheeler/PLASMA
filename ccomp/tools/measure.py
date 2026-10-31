@@ -42,6 +42,7 @@ FULL = "-full" in sys.argv[1:]      # measure the full build instead
 
 COMMON = ["diag", "bio"]
 PP = ["ppname", "pplex", "ppout", "pp"]
+NAM = ["nam"]                       # in both cccomp and ccgen
 FRONT = ["tokin", "name", "type", "parse", "irout"]
 BACK = ["irin", "lower", "peep", "emit", "helper"]
 # Limits raised for big_cccomp(), and the fatal messages that call
@@ -56,8 +57,8 @@ LIMIT_MSGS = ("too many", "is full")
 # host only: it is too large for one module.
 PROGRAMS = [
     ("ccpp", ["ccpp"] + COMMON + PP),
-    ("cccomp", ["cccomp"] + COMMON + FRONT),
-    ("ccgen", ["ccgen"] + COMMON + BACK),
+    ("cccomp", ["cccomp"] + COMMON + NAM + FRONT),
+    ("ccgen", ["ccgen"] + COMMON + NAM + BACK),
     ("ccrel", ["ccrel"] + COMMON + ["link"]),
 ]
 
@@ -120,15 +121,16 @@ def run(args):
 
 def compile_obj(bindir, name, src, keep=False):
     """Compile src into OUT/NAME.obj and .syms with BINDIR's ccpp,
-    cccomp and ccgen (keeping NAME.i and NAME.nam if keep); return
-    (succeeded, messages)."""
+    cccomp and ccgen (keeping NAME.i, NAME.nam and NAME.ir if keep);
+    return (succeeded, messages)."""
     out = os.path.join(OUT, name)
     ok, msg = run([os.path.join(bindir, "ccpp"), "-o", out, src])
     if ok:
         ok, msg = run([os.path.join(bindir, "cccomp")]
                       + (["-k"] if keep else []) + [out])
     if ok:
-        ok, msg = run([os.path.join(bindir, "ccgen"), out])
+        ok, msg = run([os.path.join(bindir, "ccgen")]
+                      + (["-k"] if keep else []) + [out])
     return ok, msg
 
 
@@ -154,9 +156,9 @@ def build_big():
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccpp")]
                    + src(["ccpp"] + COMMON + PP), check=True)
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "cccomp")]
-                   + src(["cccomp"] + COMMON + FRONT), check=True)
+                   + src(["cccomp"] + COMMON + NAM + FRONT), check=True)
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccgen")]
-                   + src(["ccgen"] + COMMON + BACK), check=True)
+                   + src(["ccgen"] + COMMON + NAM + BACK), check=True)
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccrel")]
                    + src(["ccrel"] + COMMON + ["link"]), check=True)
     return big
@@ -452,8 +454,8 @@ def main():
             base = os.path.join(OUT, name)
             tok_sizes = (os.path.getsize(src), os.path.getsize(base + ".i"),
                          os.path.getsize(base + ".nam"))
-            os.remove(base + ".i")
-            os.remove(base + ".nam")
+            for suffix in (".i", ".nam", ".ir"):
+                os.remove(base + suffix)
 
     if tok_sizes:
         print("\nparse.c: %d bytes preprocessed by gcc -E -P; ccpp's token"
