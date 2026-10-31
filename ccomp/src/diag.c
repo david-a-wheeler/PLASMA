@@ -22,7 +22,7 @@ int opt_keep;
  * call reuses. */
 const char *stream_name(const char *base, const char *suffix)
 {
-  static char buf[300];
+  static char buf[MAX_PATH];
   if (strlen(base) + strlen(suffix) >= sizeof(buf))
     fatal(1 /* "output name too long" */, NULL);
   strcpy(buf, base);
@@ -31,10 +31,12 @@ const char *stream_name(const char *base, const char *suffix)
 }
 
 /* Remove the file of output name base and suffix (such as the IR file),
- * unless -k asked to keep it. */
+ * unless -k asked to keep it. A name too long for stream_name() can't
+ * have been created, and is skipped, so that clean_up() never stops on
+ * it while reporting another error. */
 void remove_stream(const char *base, const char *suffix)
 {
-  if (base && !opt_keep)
+  if (base && !opt_keep && strlen(base) + strlen(suffix) < MAX_PATH)
     remove(stream_name(base, suffix));
 }
 
@@ -50,10 +52,12 @@ void remove_streams(const char *base)
  * static buffer. */
 const char *base_of(const char *src)
 {
-  static char buf[256];
+  static char buf[MAX_PATH];
   size_t n = strlen(src);
-  if (n < 3 || strcmp(src + n - 2, ".c") || n - 2 >= sizeof(buf))
+  if (n < 3 || strcmp(src + n - 2, ".c"))
     fatal(2 /* "input name must end in .c, or use -o" */, NULL);
+  if (n - 2 >= sizeof(buf))
+    fatal(1 /* "output name too long" */, NULL);
   memcpy(buf, src, n - 2);
   buf[n - 2] = 0;
   return buf;
@@ -63,7 +67,7 @@ const char *base_of(const char *src)
  * and its text, in ascending order of number (approach.md, "C2
  * design"). It is the only copy of the text, so the programs keep none
  * in memory; a message is looked up only when it is printed. */
-static char msg_path[300] = "ccish.msg";
+static char msg_path[MAX_PATH] = "ccish.msg";
 
 /* Find the message file next to the program, whose name (argv[0]) is
  * argv0: in its directory, or, if it has none, the current one. */
@@ -187,7 +191,8 @@ static void report(const char *kind, int msg, int part, const char *detail)
 }
 
 /* Report a diagnostic of this kind, then remove partial output and
- * exit. The files are closed first, so that printing (which opens the
+ * exit; an error inside clean_up() itself just reports and exits. The
+ * files are closed first, so that printing (which opens the
  * message file) needs no more memory or files. detail is copied first:
  * it may be in a static buffer that clean_up() reuses (stream_name()'s,
  * when removing the stream files). The copy fits in a PLASMA frame (255
@@ -195,13 +200,17 @@ static void report(const char *kind, int msg, int part, const char *detail)
  * host path is cut short. */
 static void stop(const char *kind, int msg, int part, const char *detail)
 {
+  static char stopping;     /* a second stop, from inside clean_up() */
   char copy[200];
   if (detail) {
     strncpy(copy, detail, sizeof(copy) - 1);
     copy[sizeof(copy) - 1] = 0;
     detail = copy;
   }
-  clean_up();
+  if (!stopping) {
+    stopping = 1;
+    clean_up();
+  }
   report(kind, msg, part, detail);
   exit(1);
 }

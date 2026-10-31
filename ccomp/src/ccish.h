@@ -79,6 +79,9 @@
 #define MAX_CASES    36     /* case labels in all the switches open at once
                              * (29); at most 255, a SEL table's limit */
 #define BLOCK        512    /* file I/O buffer size: one ProDOS block */
+#define MAX_PATH     128    /* a file name's characters, with its NUL: a
+                             * ProDOS path has at most 64, or 128 with a
+                             * prefix (diag.c's buffers) */
 
 /* ---------- Diagnostics and program support (diag.c) ----------
  * Shared by the programs ccish (both passes), cccomp (the compile

@@ -2839,6 +2839,16 @@ are estimates, to be measured.
      program. A longer name is the existing "output name too long"
      error (1), or the like for the others; the tests' paths must stay
      within it, since the host runs the small build too.
+     **Done** (2026-10-31): one limit, `MAX_PATH` 128 (`ccish.h`), for
+     all three; a source name too long to make an output name from is
+     now "output name too long" (1), not message 2. Doing it found a
+     bug: an output name too long made `stream_name()` stop, and
+     `clean_up()` then called it again to remove the files, endlessly
+     (a crash). Now `remove_stream()` skips a name too long to exist,
+     and `stop()` doesn't clean up a second time. New test: a 133-
+     character IR file name. Measured: diag.c's data 876 to 405 bytes,
+     code 871 to 900; each program 442 bytes smaller (`cccomp` 42,964,
+     `ccgen` 17,973, `ccrel` 13,832). Output byte-identical.
    - **`char` for the parser's tables whose values fit** (decision 15;
      agreed, done ahead of the split where it checks out): see "Parser
      tables as `char`" below.

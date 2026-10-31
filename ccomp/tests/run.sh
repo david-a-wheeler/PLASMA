@@ -693,6 +693,22 @@ else
     fail=$((fail + 1))
 fi
 
+# A file name over MAX_PATH (128, with its NUL) is "output name too
+# long" (diag.c's buffers are sized for ProDOS paths): here, 133
+# characters for the IR file's name. (Once, removing the files after
+# that error hit the same error again, endlessly.)
+long=$OUT/$(printf '%0120d' 0)
+if ./cccomp -o "$long" tests/run/hello.c 2>"$OUT/long.err"; then
+    echo "FAIL cccomp: accepted an output name over MAX_PATH"
+    fail=$((fail + 1))
+elif grep -qF "output name too long" "$OUT/long.err"; then
+    pass=$((pass + 1))
+else
+    echo "FAIL cccomp: wanted 'output name too long', got:"
+    sed 's/^/    /' "$OUT/long.err"
+    fail=$((fail + 1))
+fi
+
 # The IR files and stream files (.ir, .obj and .syms) must be gone after
 # every compile, successful or not, unless -k keeps them.
 left=$(find "$OUT" -name '*.ir' -o -name '*.obj' -o -name '*.syms')

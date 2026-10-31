@@ -445,6 +445,9 @@ file is used, and that the file's numbers ascend.
   - A string literal: 256 characters (`MAX_STR`).
   - The back end: 3281 bytes of function names, each with a NUL
     (`MAX_FNAMES`).
+  - A file name (an output name with its suffix, or the program's own
+    directory for `ccish.msg`): 127 characters (`MAX_PATH`), enough for
+    ProDOS.
   - A link: 32 objects, and 163 names shared between them, with 1427
     bytes of those names, each with a NUL (`MAX_OBJS`, `MAX_GSYMS`,
     `MAX_GNAMES` in `src/link.c`). `ccrel -l` ends its listing with
