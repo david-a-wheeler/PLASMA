@@ -33,36 +33,16 @@
 
 #include <stdio.h>
 
-/* ---------- Builds ----------
- * The full build (the default) has everything. The small build, for
- * the 64K Apple II, is made with -DCCISH_SMALL, and leaves out what a
- * valid program doesn't need (approach.md decision 21 and 18.6 C1,
- * "Two builds: the plan"). Code tests these feature macros, never
- * CCISH_SMALL itself:
- *   CCISH_LISTING  -l (ccrel's listing), and what only it uses. ccgen's
- *                  -i is in both builds (approach.md decision 22).
- *   CCISH_CHECKS   checks that only a compiler bug or a damaged file
- *                  would fail: so far, ccgen's check of each IR_SWAP's
- *                  and unsigned comparison's blocks (irin.c). Both
- *                  builds write the same files.
- *   CCISH_TEXT     ccpp -E, the token stream as text (ppout.c): for
- *                  debugging, so in the full build only for now; it can
- *                  be put in the small build if ccpp has room.
- * And one that neither build has: tools/measure.py builds a ccpp with
- *   CCISH_STATS    report how full ccpp's tables got, for sizing them.
- */
-#ifndef CCISH_SMALL
-#define CCISH_LISTING
-#define CCISH_CHECKS
-#define CCISH_TEXT
-#endif
+#include "build.h"
 
 /* ---------- Limits ----------
  * Sized just above what ccish's own source needs (approach.md, "Table
  * sizes"), since every byte counts on a 64K machine; the peak each
  * comes from is in parentheses. */
 
-#define MAX_NAME     31     /* significant characters in an identifier */
+#include "cclimits.h"
+#include "obj.h"
+#include "ir.h"
 #define MAX_STR      255    /* bytes in one string literal, so that it
                              * is a PLASMA string too (85) */
 #define MAX_LINE     255    /* characters in one source line, ccpp's
@@ -88,20 +68,13 @@
 #define MAX_PP_POOL  9000   /* bytes of ccpp's names and file names,
                              * with a length byte each (8,179: parse.c
                              * with its headers, macros' names too) */
-#define MAX_FUNCS    302    /* functions (274) */
-#define MAX_VARS     82     /* globals, plus the parameters and locals
-                             * visible at once (74) */
 #define MAX_PARAMS   16
-#define MAX_FUNC_CODE 1280  /* bytecode in one function (1,053) */
-#define MAX_FUNC_RELOCS 128 /* relocations in one function (112) */
 #define MAX_RETURNS  32     /* frame-size bytes (ENTER, LEAVEs) in one
                              * function (23) */
 #define MAX_TEMP_USES 32    /* operands on ccgen's own temporaries in one
                              * function: 4 to 6 for each IR_SWAP done
                              * when the code runs */
 #define MAX_NEST     32     /* nesting of parentheses and blocks */
-#define MAX_LABELS   104    /* branch targets in one function (90); at
-                             * most 128, since case_label[] is char */
 #define MAX_TYPES    56     /* distinct types (46); at most 128, since
                              * char tables (fn_type[], param_types[])
                              * hold unqualified types, and a host's char
@@ -116,9 +89,6 @@
 #define MAX_CASES    36     /* case labels in all the switches open at once
                              * (29); at most 255, a SEL table's limit */
 #define BLOCK        512    /* file I/O buffer size: one ProDOS block */
-#define MAX_PATH     128    /* a file name's characters, with its NUL: a
-                             * ProDOS path has at most 64, or 128 with a
-                             * prefix (diag.c's buffers) */
 
 /* ---------- Diagnostics and program support (diag.c) ----------
  * Shared by the programs ccish (both passes), cccomp (the compile
@@ -282,87 +252,6 @@ int  data_sym(int v, int *off, int *size, int *hash, int *name);
 void compile_file(const char *in, const char *base);   /* the front end */
 void compile_abort(void);                   /* after an error */
 
-/* ---------- Stage 1 -> 2: IR ops, through NAME.ir ----------
- * Each op's meaning, and why it differs from PLASMA's, is in ../IR.md;
- * the file's format is in ../OBJECT.md. The op numbers are part of the
- * format: changing them changes IR_VERSION. */
-
-enum {
-  IR_FUNC,        /* f: start a function */
-  IR_ENDFUNC,     /* a = frame size: end the current function */
-  IR_CONST,       /* a = value: push a constant */
-  IR_DATAADDR,    /* a = data offset: push the address of data */
-  IR_STRADDR,     /* a = string pool offset: push a string's address */
-  IR_LOCAL,       /* a = frame offset: push a local word */
-  IR_SETLOCAL,    /* a = frame offset: store top value there, keep it */
-  IR_LOCALB,      /* a = frame offset: push a local byte (a char) */
-  IR_SETLOCALB,   /* a = frame offset: store the top value's low byte
-                   * there, and keep that byte as the value */
-  IR_LOCALADDR,   /* a = frame offset: push the address of a local */
-  IR_GLOBAL,      /* a = data offset: push a global word */
-  IR_SETGLOBAL,   /* a = data offset: store top value there, keep it */
-  IR_GLOBALB,     /* a = data offset: push a global byte (a char) */
-  IR_SETGLOBALB,  /* a = data offset: store the top value's low byte
-                   * there, and keep that byte as the value */
-  IR_LOAD,        /* ( addr -- word ) load a word */
-  IR_LOADB,       /* ( addr -- byte ) load a byte (a char) */
-  IR_STORE,       /* ( val addr -- ) store a word */
-  IR_STOREB,      /* ( val addr -- ) store val's low byte */
-  IR_CALL,        /* f, a = argument count: call, push the result */
-  IR_DROP,        /* discard the top value */
-  IR_DUP,         /* duplicate the top value */
-  IR_RETURN,      /* return the top value from the current function */
-  /* binary: ( x y -- x op y ) */
-  IR_ADD, IR_SUB, IR_MUL, IR_DIV, IR_MOD,
-  IR_AND, IR_OR, IR_XOR, IR_SHL, IR_SHR,
-  /* comparisons, binary, giving C's 1 or 0 (not PLASMA's $FFFF). LT,
-   * GT and LE, GE stay adjacent pairs, IR_LT even: irin.c reverses one
-   * by flipping bit 0. */
-  IR_EQ, IR_NE, IR_LT, IR_GT, IR_LE, IR_GE,
-  /* unary: ( x -- op x ) */
-  IR_NEG, IR_COMP,
-  IR_NOT,         /* C's !: 1 if x is 0, else 0 (not PLASMA's NOT) */
-  /* control flow; a = label number, local to the function */
-  IR_LABEL,       /* a branch target */
-  IR_JUMP,        /* always branch */
-  IR_BRFALSE,     /* ( x -- ) branch if x is 0 */
-  IR_BRTRUE,      /* ( x -- ) branch if x is not 0 */
-  IR_JOIN,        /* the branches so far to label a go to label f */
-  IR_SEL,         /* ( x -- ) go to the case table at label a (a switch) */
-  /* a case table, after its label: */
-  IR_CASES,       /* a = the number of cases that follow */
-  IR_CASEVAL,     /* a = one case's value; then: */
-  IR_CASETO,      /* a = the label of that case's code */
-  /* reordering (approach.md 18.7, A), done by ccgen: */
-  IR_SWAP,        /* a = the top block's length in IR ops, f = the
-                   * block below's, or -1 if code must not move:
-                   * exchange the values the two blocks left */
-  /* unsigned comparisons (18.7, C), in the order of LT GT LE GE; a =
-   * the right operand's block length in IR ops, or 0 if not known */
-  IR_ULT, IR_UGT, IR_ULE, IR_UGE,
-  /* unsigned arithmetic PLASMA lacks, binary ( x y -- x op y ), for
-   * unsigned operands; ccgen lowers them (approach.md, "unsigned and
-   * helper functions design") */
-  IR_UDIV, IR_UMOD, IR_USHR,
-  IR_NOPS         /* the number of IR ops */
-};
-
-/* The IR file: the output name plus this suffix, and its format's
- * version (in its header, after the magic "CIR"). */
-#define SUFFIX_IR   ".ir"
-#define IR_VERSION  3
-
-/* Its record tags besides the stream's D, R and S (below), and the bit
- * that marks an IR op followed by a one-byte operand. An IR op's tag is
- * its number, below IR_TAG_END. */
-enum { REC_LINE = 'L', REC_NAME = 'N', REC_WORD = 'W', REC_SECOND = 'X',
-       REC_SUMMARY = 'Y' };
-#define IR_BYTE_OP  0x80
-#define IR_TAG_END  0x40
-
-/* A name record's flags byte: NAME_RETURNS set if the function returns
- * a value. */
-#define NAME_RETURNS 0x80
 
 /* The front end's side (irout.c): the writer of NAME.ir. */
 void ir_open(const char *base);
@@ -386,66 +275,7 @@ void dump_ir(int op, int a, int f);         /* lower.c: one op, for -i */
 
 /* ---------- Stage 2 -> 3 -> 4: machine ops ---------- */
 
-/* PLASMA opcodes used so far (see ../../doc/Bytecodes.md). */
-enum {
-  OP_CN = 0x00, OP_MINUS1 = 0x20, OP_BREQ = 0x22, OP_BRNE = 0x24,
-  OP_LA = 0x26, OP_LLA = 0x28, OP_CB = 0x2A,
-  OP_CW = 0x2C, OP_DROP = 0x30, OP_DUP = 0x34, OP_ADDI = 0x38,
-  OP_SUBI = 0x3A, OP_ANDI = 0x3C,
-  OP_ISEQ = 0x40, OP_ISNE = 0x42, OP_ISGT = 0x44, OP_ISLT = 0x46,
-  OP_ISGE = 0x48, OP_ISLE = 0x4A, OP_BRFLS = 0x4C, OP_BRTRU = 0x4E,
-  OP_BRNCH = 0x50, OP_SEL = 0x52,
-  OP_CALL = 0x54, OP_ENTER = 0x58, OP_LEAVE = 0x5A, OP_RET = 0x5C,
-  OP_CFFB = 0x5E, OP_LB = 0x60, OP_LW = 0x62, OP_LLB = 0x64,
-  OP_LLW = 0x66, OP_LAB = 0x68, OP_LAW = 0x6A, OP_DLB = 0x6C,
-  OP_DLW = 0x6E, OP_SB = 0x70, OP_SW = 0x72, OP_SLB = 0x74, OP_SLW = 0x76,
-  OP_SAB = 0x78, OP_SAW = 0x7A, OP_DAB = 0x7C, OP_DAW = 0x7E,
-  OP_NOT = 0x80, OP_ADD = 0x82, OP_SUB = 0x84, OP_MUL = 0x86, OP_DIV = 0x88,
-  OP_MOD = 0x8A, OP_INCR = 0x8C, OP_DECR = 0x8E, OP_NEG = 0x90,
-  OP_COMP = 0x92, OP_AND = 0x94, OP_IOR = 0x96, OP_XOR = 0x98,
-  OP_SHL = 0x9A, OP_SHR = 0x9C, OP_IDXW = 0x9E, OP_ADDLB = 0xB0, OP_ADDLW = 0xB2, OP_ADDAB = 0xB4,
-  OP_ADDAW = 0xB6, OP_IDXLB = 0xB8, OP_IDXLW = 0xBA, OP_IDXAB = 0xBC,
-  OP_IDXAW = 0xBE,
-  /* Pseudo-ops: markers that travel through stages 2-4 in order with
-   * the code, but emit no bytes themselves. */
-  OP_FUNC_BEGIN = 0x100,  /* fn: a function starts here */
-  OP_FUNC_END = 0x101,    /* a = frame size: the function ends here */
-  OP_LABEL = 0x102,       /* a = label number: a branch target is here */
-  /* A SEL's case table (see ../../doc/Bytecodes.md), as data in the
-   * code: */
-  OP_CASES = 0x103,       /* a = the count byte */
-  OP_CASEVAL = 0x104,     /* a = a case's value word */
-  OP_CASETO = 0x105,      /* a = the label its offset word leads to */
-  OP_JOIN = 0x106         /* the branches so far to label a go to
-                           * label fn instead */
-};
-
-/* For a branch op (BRNCH, BRFLS, ...), Mop.a is the label number; stage
- * 4 turns it into a relative offset. */
-
-/* What an operand word refers to, if it needs relocation: a data
- * offset, a function, or an offset in the string pool. */
-enum { FIX_NONE, FIX_DATA, FIX_FUNC, FIX_STR, FIX_DSYM, FIX_HELPER };
-
-/* Marks an ENTER/LEAVE frame size that is filled in at function end. */
-#define FRAME_LATER (-1)
-
-/* A frame operand (LLW, SLW, ...) for one of the back end's own two
- * temporaries, k = 0 or 1, which stage 4 places past the parser's
- * frame when the function ends (IR_SWAP's run-time exchange). */
-#define FRAME_TEMP(k) (-2 - (k))
-
-/* A machine op: 8 bytes in ccish (four words), so that indexing the
- * peephole window is a shift, not a multiply. */
-typedef struct {
-  int op;
-  int a;          /* first operand (byte or word), or data offset */
-  int fix;        /* FIX_* for a word operand */
-  int fn;         /* FIX_FUNC target; FIX_DSYM data symbol (global
-                   * variable), with a the addend; OP_FUNC_BEGIN's
-                   * function; the second operand of ENTER (its
-                   * parameter count) and of OP_JOIN (the label to go to) */
-} Mop;
+#include "mop.h"
 
 void lower_op(int op, int a, int f);    /* lower.c: stage 2's entry */
 void mop_const(Mop *m, int v);         /* lower.c: make m push v */
@@ -455,28 +285,8 @@ void peep_flush(void);
 
 /* ---------- Stage 4: emitter (emit.c) ---------- */
 
-/* Stream file names: the output name plus these suffixes. The back end
- * writes one stream of tagged records, then the symbol summary. */
-#define SUFFIX_OBJ  ".obj"
-#define SUFFIX_SYMS ".syms"
-#define OBJ_VERSION 5       /* the format version, in the symbol summary */
 #define DATA_RUN    128     /* bytes in one data record at most */
 
-/* Record tags in the stream (see ../OBJECT.md), as letters so that a
- * dump of the file is easy to read. */
-enum { REC_DATA = 'D', REC_DREL = 'R', REC_STR = 'S', REC_FUNC = 'F',
-       REC_HELPER = 'H' };
-
-/* Relocation kinds and symbol flags. A REL_DATA target is a data
- * offset, a REL_STR target an offset in the string pool, a REL_FUNC
- * target a function symbol index, and a REL_DSYM target a data symbol
- * index, with an addend. SYM_CALLED is "used" for a data symbol;
- * SYM_RETURNS, SYM_CMDSYS and SYM_NOTCMDSYS (a CMDSYS name declared
- * differently) are for functions. */
-enum { REL_DATA = 1, REL_FUNC = 2, REL_STR = 3, REL_DSYM = 4,
-       REL_HELPER = 5 };
-enum { SYM_DEFINED = 1, SYM_CALLED = 2, SYM_RETURNS = 4, SYM_LOCAL = 8,
-       SYM_CMDSYS = 16, SYM_NOTCMDSYS = 32 };
 
 extern int fn_code[MAX_FUNCS];  /* each function's start in the code
                                  * segment, once written; else -1 */
@@ -486,7 +296,6 @@ extern int fn_code[MAX_FUNCS];  /* each function's start in the code
  * record, of which ccrel keeps one copy. A call to helper k is a CALL
  * with relocation REL_HELPER, target k. In ccgen, helper k is function
  * number HELPER_FN(k) while it is lowered (helper.c). */
-enum { HELP_UDIV, HELP_UMOD, HELP_USHR, NHELPERS };
 #define HELPER_FN(k) (MAX_FUNCS + (k))
 extern int helper_used;             /* bit k: helper k is called */
 extern int helper_size[NHELPERS];   /* once written: its bytes */

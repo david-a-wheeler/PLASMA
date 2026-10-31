@@ -202,10 +202,9 @@ def build_big():
     for name in os.listdir(os.path.join(CCOMP, "src")) + ["../ccish.msg"]:
         with open(os.path.join(CCOMP, "src", name)) as f:
             text = f.read()
-        if name == "ccish.h":
-            for limit, value in BIG_LIMITS.items():
-                text = re.sub(r"(#define %s\s+)\d+" % limit,
-                              r"\g<1>%d" % value, text)
+        for limit, value in BIG_LIMITS.items():
+            text = re.sub(r"(#define %s\s+)\d+" % limit,
+                          r"\g<1>%d" % value, text)
         if name == "link.c":
             # Room for every static name, so the listing names them all.
             text = re.sub(r"(#define MAX_GNAMES\s+)\d+", r"\g<1>32000", text)
@@ -241,10 +240,13 @@ def pp_stats(big, name):
 
 
 def limit(name):
-    """The value of limit NAME in src/ccish.h."""
-    with open(os.path.join(CCOMP, "src", "ccish.h")) as f:
-        return int(re.search(r"#define %s\s+(\d+)" % name,
-                             f.read()).group(1))
+    """The value of limit NAME, #defined in one of the sources."""
+    for file in sorted(os.listdir(os.path.join(CCOMP, "src"))):
+        with open(os.path.join(CCOMP, "src", file)) as f:
+            m = re.search(r"#define %s\s+(\d+)" % name, f.read())
+        if m:
+            return int(m.group(1))
+    raise KeyError(name)
 
 
 FRAME_OPS = {"LLB", "LLW", "SLB", "SLW", "DLB", "DLW", "LLA", "ADDLB",
@@ -299,10 +301,7 @@ def nest_counting():
                 cur = m.group(1)
             if "enter_nest();" in line and cur != "enter_nest":
                 names.add(cur)
-    with open(os.path.join(CCOMP, "src", "ccish.h")) as f:
-        max_nest = int(re.search(r"#define MAX_NEST\s+(\d+)",
-                                 f.read()).group(1))
-    return names, max_nest
+    return names, limit("MAX_NEST")
 
 
 def sccs(nodes, edges):

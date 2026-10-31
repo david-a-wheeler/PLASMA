@@ -4012,6 +4012,22 @@ lists the most any source needed beside each limit.
 ccish.h (decision 25), in commits of its own; then measure the "last
 2K" candidates for `cccomp` (now 35,630 of the 32K goal) and report.
 
+**Header split, commit 1 (the purpose headers)** (2026-10-31). Out of
+ccish.h, each where its text was, so that every object is unchanged
+(checked: `make measure`'s and the tests'):
+- build.h: the build macros (`CCISH_LISTING`, `CCISH_CHECKS`,
+  `CCISH_TEXT`; `CCISH_STATS` described).
+- cclimits.h: the limits every program shares, `MAX_NAME` and
+  `MAX_PATH`.
+- obj.h: the object format, and the limits on one object that cccomp,
+  ccgen and ccrel all check (`MAX_FUNCS`, `MAX_VARS`, `MAX_FUNC_CODE`,
+  `MAX_FUNC_RELOCS`).
+- ir.h: the IR file's ops, records and `MAX_LABELS`.
+- mop.h: ccgen's machine ops and `Mop`.
+- token.h and fixed.h were already purpose headers. measure.py now
+  finds a limit in whichever source defines it, and raises the big
+  build's limits in every file.
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in
