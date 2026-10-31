@@ -39,13 +39,13 @@ static int fn = -1;
 static unsigned char fbuf[MAX_FUNC_CODE];
 static int nfbuf;
 
-typedef struct {
-  int kind;       /* REL_DATA, REL_STR, REL_FUNC or REL_DSYM */
-  int at;         /* offset of the operand word in fbuf */
-  int target;     /* data or string pool offset, or symbol index */
-} Reloc;
-
-static Reloc relocs[MAX_FUNC_RELOCS];
+/* The current function's relocations, as parallel arrays (decision
+ * 15): each one's kind (REL_DATA, REL_STR, REL_FUNC or REL_DSYM), the
+ * fbuf offset of its operand word, and its target (a data or string
+ * pool offset, or a symbol index). */
+static char rel_kind[MAX_FUNC_RELOCS];
+static int rel_at[MAX_FUNC_RELOCS];
+static int rel_target[MAX_FUNC_RELOCS];
 static int nrelocs;
 
 /* Frame-size bytes of the current function, filled in at its end. */
@@ -123,9 +123,9 @@ static void add_reloc(int kind, int target)
   if (nrelocs >= MAX_FUNC_RELOCS)
     error(178 /* "too many calls and data references in" */,
           func_name(fn));
-  relocs[nrelocs].kind = kind;
-  relocs[nrelocs].at = nfbuf;
-  relocs[nrelocs].target = target;
+  rel_kind[nrelocs] = (char)kind;
+  rel_at[nrelocs] = nfbuf;
+  rel_target[nrelocs] = target;
   nrelocs++;
 }
 
@@ -221,7 +221,7 @@ static void drop_frame(void)
   memmove(fbuf, fbuf + 3, nfbuf - 3);
   nfbuf -= 3;
   for (i = 0; i < nrelocs; i++)
-    relocs[i].at -= 3;
+    rel_at[i] -= 3;
 }
 
 /* Write the finished function to the stream, as an F record. */
@@ -248,9 +248,9 @@ static void end_function(int frame_size)
   bwrite(&out, fbuf, nfbuf);
   bputw(&out, nrelocs);
   for (i = 0; i < nrelocs; i++) {
-    bputc(&out, relocs[i].kind);
-    bputw(&out, relocs[i].at);
-    bputw(&out, relocs[i].target);
+    bputc(&out, rel_kind[i]);
+    bputw(&out, rel_at[i]);
+    bputw(&out, rel_target[i]);
   }
   ncode += nfbuf;
   fn = -1;
@@ -277,7 +277,7 @@ void emit_put(Mop *m)
     place_label(m->a);
     return;
   case OP_JOIN:
-    join_labels(m->a, m->b);
+    join_labels(m->a, m->fn);
     return;
   case OP_CASES:                  /* a case table: no opcode byte */
     code_byte(m->a);
@@ -321,7 +321,7 @@ void emit_put(Mop *m)
     break;
   case OP_ENTER:
     frame_byte(m->a);
-    code_byte(m->b);
+    code_byte(m->fn);
     break;
   case OP_LEAVE:
     frame_byte(m->a);

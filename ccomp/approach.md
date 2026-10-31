@@ -2840,6 +2840,24 @@ are estimates, to be measured.
      emit.c's compiled code; on the 6502 VM a software multiply), in
      the loop that runs for every op. The rewrite functions take window
      indexes instead of `Mop *`. Smaller (to be measured) and faster.
+     **Done differently** (2026-10-31; open for review). Checking first
+     showed that peep.c mostly reaches the window through `Mop *`
+     pointers, which are cheap: 78 field accesses, 64 of them `->op`
+     (`LLW a LW`, 3 bytes), which as a parallel array would be
+     `LA w_op IDXLW i LW` (6 bytes): about 200 bytes more, against
+     about 60 saved at the 31 multiplies, and slower. So instead:
+     - `Mop` is 8 bytes, not 10: `b` is gone, and its two uses
+       (`ENTER`'s parameter count, `OP_JOIN`'s second label) are in
+       `fn`, which those ops don't otherwise use. Indexing the window
+       is then `* 8`, which the peephole stage makes `CN 3 SHL`: the
+       same size as `CN 10 MUL`, but a shift, not a multiply. All 31
+       of peep.c's `MUL`s became `SHL`s.
+     - emit.c's `Reloc` table, reached only by index, is parallel
+       arrays, with the kind a `char`: its `MUL`s are gone.
+     Measured: `ccgen` 17,657 to 17,490 bytes (emit.c's data 3,562 to
+     3,434 and code 1,623 to 1,604; the window's data 100 to 80).
+     Output byte-identical. The full conversion of the window stays an
+     option, if speed ever matters more than those 200 bytes.
    - **Smaller path buffers in diag.c** (agreed, in every program; also
      in `cccomp` and `ccrel`): `msg_path[300]`, `stream_name()`'s
      `buf[300]` and `base_of()`'s `buf[256]` are 856 bytes of data

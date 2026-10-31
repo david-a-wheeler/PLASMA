@@ -397,7 +397,7 @@ enum {
   OP_CASEVAL = 0x104,     /* a = a case's value word */
   OP_CASETO = 0x105,      /* a = the label its offset word leads to */
   OP_JOIN = 0x106         /* the branches so far to label a go to
-                           * label b instead */
+                           * label fn instead */
 };
 
 /* For a branch op (BRNCH, BRFLS, ...), Mop.a is the label number; stage
@@ -410,14 +410,16 @@ enum { FIX_NONE, FIX_DATA, FIX_FUNC, FIX_STR, FIX_DSYM };
 /* Marks an ENTER/LEAVE frame size that is filled in at function end. */
 #define FRAME_LATER (-1)
 
+/* A machine op: 8 bytes in ccish (four words), so that indexing the
+ * peephole window is a shift, not a multiply. */
 typedef struct {
   int op;
   int a;          /* first operand (byte or word), or data offset */
-  int b;          /* second operand (ENTER's parameter count) */
   int fix;        /* FIX_* for a word operand */
   int fn;         /* FIX_FUNC target; FIX_DSYM data symbol (global
                    * variable), with a the addend; OP_FUNC_BEGIN's
-                   * function */
+                   * function; the second operand of ENTER (its
+                   * parameter count) and of OP_JOIN (the label to go to) */
 } Mop;
 
 void lower_op(int op, int a, int f);    /* lower.c: stage 2's entry */

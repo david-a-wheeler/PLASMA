@@ -181,7 +181,7 @@ static void lower_special(Mop *m, int op, int a, int f)
     memset(m, 0, sizeof(*m));
     m->op = OP_ENTER;
     m->a = FRAME_LATER;
-    m->b = a;
+    m->fn = a;
     break;
   case IR_ENDFUNC:
     m->op = OP_FUNC_END;
@@ -204,7 +204,7 @@ static void lower_special(Mop *m, int op, int a, int f)
   case IR_JOIN:
     m->op = OP_JOIN;
     m->a = a;
-    m->b = f;
+    m->fn = f;
     break;
   case IR_RETURN:
     m->op = OP_LEAVE;
