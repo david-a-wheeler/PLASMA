@@ -105,7 +105,7 @@
 
 /* Functions: see ccish.h. */
 int fn_name[MAX_FUNCS];
-int fn_type[MAX_FUNCS];
+char fn_type[MAX_FUNCS];
 int fn_ptypes[MAX_FUNCS];
 char fn_nparams[MAX_FUNCS];
 char fn_flags[MAX_FUNCS];
@@ -387,7 +387,7 @@ static int add_static_local(const char *name, int type)
 
 /* Parameter types of declared functions, n at a time; fn_ptypes[] says
  * where a function's start. */
-static int param_types[MAX_PARAM_TYPES];
+static char param_types[MAX_PARAM_TYPES];  /* unqualified types */
 static int nparam_types;
 
 /* Record that f's n parameters have the types of its first n
@@ -684,14 +684,14 @@ static int is_compare(int op)
 
 /* Labels are numbered per function. Stage 4 resolves them. */
 static int nlabels;
-static int label_uses[MAX_LABELS];  /* branches to each label so far */
+static char label_used[MAX_LABELS];  /* some branch to it so far */
 
 /* Allocate a new label in the current function. */
 static int new_label(void)
 {
   if (nlabels >= MAX_LABELS)
     error(36 /* "too many branches in" */, quote(fname(cur_fn)));
-  label_uses[nlabels] = 0;
+  label_used[nlabels] = 0;
   return nlabels++;
 }
 
@@ -699,7 +699,7 @@ static int new_label(void)
 static void branch(int op, int n)
 {
   if (!suppress)
-    label_uses[n]++;
+    label_used[n] = 1;
   put(op, n, -1);
 }
 
@@ -714,7 +714,7 @@ static void place_label(int n)
  * and the peephole stage can drop that code if it is unreachable. */
 static void place_forward(int n)
 {
-  if (label_uses[n] > 0)
+  if (label_used[n])
     place_label(n);
 }
 
@@ -722,10 +722,10 @@ static void place_forward(int n)
  * IR_JOIN; nothing if there are none, or from is -1). */
 static void join_label(int from, int to)
 {
-  if (suppress || from < 0 || label_uses[from] == 0)
+  if (suppress || from < 0 || !label_used[from])
     return;
-  label_uses[to] += label_uses[from];
-  label_uses[from] = 0;
+  label_used[to] = 1;
+  label_used[from] = 0;
   put(IR_JOIN, from, to);
 }
 
@@ -3321,7 +3321,8 @@ static void parse_break_continue(void)
  * start at index sw_first (-1 outside any switch), and sw_default is
  * its default's label (-1 if none yet).
  */
-static int case_val[MAX_CASES], case_label[MAX_CASES];
+static int case_val[MAX_CASES];
+static char case_label[MAX_CASES];
 static int ncases;
 static int sw_first = -1;
 static int sw_default = -1;
@@ -3401,7 +3402,7 @@ static void sort_cases(void)
 static void case_entry(int v, int l)
 {
   if (!suppress)
-    label_uses[l]++;
+    label_used[l] = 1;
   put(IR_CASEVAL, v, -1);
   put(IR_CASETO, l, -1);
 }

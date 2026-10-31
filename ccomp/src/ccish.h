@@ -55,8 +55,12 @@
 #define MAX_RETURNS  32     /* frame-size bytes (ENTER, LEAVEs) in one
                              * function (23) */
 #define MAX_NEST     32     /* nesting of parentheses and blocks */
-#define MAX_LABELS   104    /* branch targets in one function (90) */
-#define MAX_TYPES    56     /* distinct types (46) */
+#define MAX_LABELS   104    /* branch targets in one function (90); at
+                             * most 128, since case_label[] is char */
+#define MAX_TYPES    56     /* distinct types (46); at most 128, since
+                             * char tables (fn_type[], param_types[])
+                             * hold unqualified types, and a host's char
+                             * may be signed */
 #define MAX_PARAM_TYPES 433 /* parameter types of all declared functions
                              * (393) */
 #define MAX_TAGS     10     /* struct tags, including hidden ones (7) */
@@ -239,7 +243,9 @@ int member_off(int m);
 enum { FN_DECLARED = 1, FN_DEFINED = 2, FN_CALLED = 4, FN_COUNTED = 8,
        FN_STATIC = 16 };
 extern int fn_name[MAX_FUNCS];      /* its name: a name pool offset */
-extern int fn_type[MAX_FUNCS];      /* its return type */
+extern char fn_type[MAX_FUNCS];     /* its return type, unqualified (C17
+                                     * ignores a return type's
+                                     * qualifiers), so it fits a char */
 extern int fn_ptypes[MAX_FUNCS];    /* its parameter types' index in
                                      * param_types[] (parse.c), or -1
                                      * until a declaration gives them */
