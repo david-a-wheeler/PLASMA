@@ -13,7 +13,7 @@ CC ?= cc
 CFLAGS ?= -std=c89 -pedantic -Wall -Wextra -O2
 
 COMMON = src/diag.c src/bio.c
-PP     = src/ppname.c src/pplex.c src/ppout.c src/pp.c
+PP     = src/ppname.c src/pplex.c src/ppmac.c src/ppout.c src/pp.c
 NAM    = src/nam.c
 FRONT  = src/tokin.c src/name.c src/type.c src/parse.c src/irout.c
 BACK   = src/irin.c src/lower.c src/peep.c src/emit.c src/helper.c
@@ -21,7 +21,7 @@ LINK   = src/link.c
 PLVM = ../src/plvm
 
 HEADERS = src/ccish.h src/token.h src/fixed.h src/ppname.h src/pplex.h src/ppout.h \
-          src/pp.h src/tokin.h src/nam.h
+          src/pp.h src/ppmac.h src/tokin.h src/nam.h
 
 all: ccish ccpp cccomp ccgen ccrel
 

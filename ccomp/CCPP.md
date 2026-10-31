@@ -25,9 +25,13 @@ files after them (`NAME.ir`, `NAME.obj` and `NAME.syms`).
 NAME.c --ccpp--> NAME.i + NAME.nam --cccomp--> NAME.ir --ccgen--> NAME.obj + NAME.syms --ccrel--> module
 ```
 
-- `ccpp [-k] [-o output] input.c` writes `output.i` and
-  `output.nam` (the output name is the input's without `.c`, unless
-  `-o`). After an error it removes both, unless `-k`.
+- `ccpp [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.c`
+  writes `output.i` and `output.nam` (the output name is the input's
+  without `.c`, unless `-o`). After an error it removes both, unless
+  `-k`. `-I` adds a directory to look for `#include` files in (also
+  written `-Idir`); `-D` defines a macro as `text`, or as 1, and `-U`
+  undefines one, in the order given, before the source (also written
+  `-Dname`, `-Uname`). `ccish` takes them too.
 - `cccomp [-k] [-o output] input` reads `input.i` and `input.nam`,
   and writes `output.ir` (the output name is `input` unless `-o`),
   whose names are ids from `input.nam`. After it succeeds it removes
@@ -55,6 +59,43 @@ others. `cccomp` has `NAME.i` and `NAME.ir` open, and opens
 its output and `NAME.nam` open. PLASMA's Apple II file library allows
 4 open files.
 
+## Preprocessing
+
+`ccpp` carries out these directives (so far: approach.md, "`ccpp`
+design", steps 4-6):
+
+- **`#include "file"`** looks for `file` beside the file that
+  includes it, then in each `-I` directory in order; **`#include
+  <file>`** only in the `-I` directories. Includes nest up to
+  `MAX_INCLUDE` (3) deep beside the source, or fewer if the system
+  can't open that many files (message 236 says the file is missing or
+  too many files are open). Each file read gets a number in
+  `NAME.nam`.
+- **`#define name tokens`** defines an object-like macro; a macro may
+  be defined again only with the same tokens. **`#undef name`**
+  undefines one. A macro's name is an identifier, or one of the C
+  keywords ccish doesn't support (`long`, say), which are names here
+  too; a keyword ccish supports can't be one. Macros are kept as
+  tokens, and an expansion is read again for more macros, but a macro
+  isn't expanded again inside its own expansion (C11 6.10.3.4).
+  `__CCISH__` is defined as 1. Function-like macros come in step 5.
+- **`#ifdef`**, **`#ifndef`**, **`#else`** and **`#endif`** keep or skip
+  groups of lines; a skipped group's lines aren't split into tokens,
+  so they may hold anything (an apostrophe, say), but its conditional
+  directives still count, to find its end. Every group must end in the
+  file it began in. `#if` and `#elif` come in step 6.
+- **`#pragma`** is ignored, for now. A **`#`** alone does nothing.
+  `#error` and `#line` come in step 6; any other directive is an
+  error.
+- A line that ends in a backslash is joined to the next (C's phase 2).
+
+Known differences from C, so far:
+- A comment that begins on a directive's line and continues past it
+  ends the directive there (C treats the comment as a space, so the
+  directive would go on).
+- Extra tokens after `#else`, `#endif`, `#undef` or a file's name are
+  an error, also in a skipped group (C allows them there).
+
 ## `NAME.i`: the token stream
 
 All words are 16-bit little-endian. The file is written once, in
@@ -70,8 +111,8 @@ order, through a 512-byte block buffer (`src/bio.c`).
 |---|---|---|
 | `$00` | the end of the input | the stamp: the id count (word), the checksum (word); nothing may follow |
 | `$01` | the next line | none |
-| `$02` | a jump to a line (reserved: written from step 4, after a skipped `#if` block) | the line (word) |
-| `$03` | a change of file (reserved: written from step 4, on entering or leaving an `#include`) | the file number (byte), the line (word) |
+| `$02` | a jump to a line, over more than 3 lines (below) | the line (word) |
+| `$03` | a change of file: into an `#include`d file, or back | the file number (byte), the line (word) |
 | `$04` | an identifier | its id (word) |
 | `$05` | a number, `int` | its value (word) |
 | `$06` | a number, `unsigned` (a `u` suffix, or a hex or octal constant over `$7FFF`) | its value (word) |
@@ -115,13 +156,19 @@ string has at most 255 bytes (`MAX_STR`), so that every literal is
 also a PLASMA string; a longer one is message 12. It may contain any
 byte, including 0.
 
-**Lines.** `ccpp` writes a `$01` for each newline it passes, in order
-with the tokens: newlines in comments and between joined strings
-too. So the line of a token is 1 plus the number of `$01`s before it.
-Joined strings are written once the next token is known, after the
-`$01`s between them, so a string's line is the line of the token after
-it, as it was when `cccomp` lexed the source itself. (`$02` and `$03`
-set the line, and the file, outright.)
+**Lines.** A reader starts at line 1 of file 1. Before each token,
+`ccpp` brings the reader's file and line up to the token's: a `$01`
+for each line, for up to 3 lines; a `$02` and the line for more (after
+a skipped group, or many blank lines); and a `$03`, with the file's
+number and the line, when the file changes (into an `#include`d file,
+or back). So directives, blank lines and skipped groups cost nothing,
+or 3 bytes. The end code is brought up to date too, so the end's line
+is the last line plus one when the file ends with a newline. Joined
+strings are written once the next token is known, after its line is
+brought up to date, so a string's line is the line of the token after
+it, as it was when `cccomp` lexed the source itself. A line joined to
+the one before it by a backslash counts as that one; the lines after
+it are numbered as in the file.
 
 **Lines for messages.** `cccomp` reports an error at the current
 token's line, and `next_is_rbracket()` asks whether the next code is
@@ -136,18 +183,20 @@ identifier can't contain a newline, and nor can a ProDOS path, so
 nothing is escaped.
 
 ```
-putc            id 1: the fixed ids, 1-27, in every file
+putc            id 1: the fixed ids, 1-31, in every file
 putln           id 2
 ...
 isule           id 25
 main            id 26
 pstr            id 27
-count           id 28: then every other name, in the order ccpp met it
+...
+defined         id 31
+count           id 32: then every other name, in the order ccpp met it
 ...
 @t.c            file 1: the source
 @stdio.h        file 2, and so on, in the order first included
                 a blank line
-=1 001C 3F7C    the stamp: the format version, the id count, the checksum
+=1 0020 3F7C    the stamp: the format version, the id count, the checksum
 ```
 
 **Names.** Line *n* is the spelling of id *n*, from 1 (id 0 is "no
@@ -166,8 +215,10 @@ CMDSYS functions `cccomp` knows (`putc`, `putln`, `puts`, `puti`,
 `heapallocalign`, `heapalloc`, `heaprelease`, `heapavail`, `memset`,
 `memcpy`, `strcpy`, `strcat`, `toupper`, `sext`, `isugt`, `isuge`,
 `isult`, `isule`: ids 1-25), then `main` (26) and `pstr` (27): every
-name C-ish gives a meaning of its own. So `cccomp` knows them by number
-(`src/fixed.h`), with no spellings.
+name C-ish gives a meaning of its own; then `__CCISH__` (28),
+`__FILE__` (29), `__LINE__` (30) and `defined` (31), which `ccpp`
+gives one. So `cccomp` and `ccpp` know them by number (`src/fixed.h`),
+with no spellings.
 
 **Files.** After the names, one line for each source file, starting
 with `@`: file *k* is the *k*-th of them, and file 1 is the source
@@ -227,27 +278,36 @@ writes `t.i`:
 05 00 00       the number 0
 3B 7D          ; }
 01             the next line
-00 1B 00 ss ss the end: 27 ids, and the checksum
+00 1F 00 ss ss the end: 31 ids, and the checksum
 ```
 
-and `t.nam`: the 27 fixed names (`main` is one of them, so no other
-name is added), then `@t.c`, a blank line, and `=1 001B ssss`, where
-`ssss` is the checksum of the 28 lines before the blank line (`ss ss`
+and `t.nam`: the 31 fixed names (`main` is one of them, so no other
+name is added), then `@t.c`, a blank line, and `=1 001F ssss`, where
+`ssss` is the checksum of the 32 lines before the blank line (`ss ss`
 in `t.i`, low byte first).
 
 ## Limits
 
 | Limit | Value | Message |
 |---|---|---|
-| A line (after joining lines that end in `\`, from step 4) | 255 characters | 233 |
+| A line (after joining lines that end in `\`) | 255 characters (`MAX_LINE`) | 233 |
 | A string literal, after joining | 255 bytes (`MAX_STR`) | 12 |
 | An identifier | 31 significant characters (`MAX_NAME`); the rest are ignored | none |
 | `ccpp`'s name pool: every name and file name, a length byte each | `MAX_PP_POOL` bytes | 18 |
+| Files `#include`d at once, beside the source | 3 (`MAX_INCLUDE`), or what the system can open | 237, 236 |
+| Groups (`#ifdef` ...) open at once | 16 (`MAX_IF_NEST`) | 243 |
+| Macros defined at once, counting `__CCISH__` | 128 (`MAX_MACROS`) | 244 |
+| Their bodies, as tokens (an identifier or number is 3 bytes) | 2048 bytes (`MAX_MACRO_BYTES`) | 244 |
+| Macro expansions inside one another | 16 (`MAX_EXPAND`) | 245 |
+| `-I` directories; `-D` and `-U` options | 8 (`MAX_INC_DIRS`); 16 (`MAX_PP_OPTS`) | 248 |
+
+These are first sizes, to be set from measurement once `ccpp` reads
+ccish's own source (step 7).
 
 ## Versions
 
 - **`NAME.i` version 1, `NAME.nam` version 1** (step 1 of the `ccpp`
-  design): the first; step 2 began writing the `$09` tags, reserved
-  from the start. Directives (steps 4-6) will add the `$02` and `$03`
-  records, reserved now too, so the versions shouldn't need to change
-  for them.
+  design): the first; step 2 began writing the `$09` tags, and step 4
+  the `$02` and `$03` records, all reserved from the start. Step 4
+  added four fixed ids (`__CCISH__`, `__FILE__`, `__LINE__`,
+  `defined`: 28-31), which a version-1 reader takes as it finds them.

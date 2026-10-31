@@ -85,8 +85,20 @@ void next(void)
     tok = T_EOF;
     return;
   }
-  while ((c = get_byte()) == TC_NL)
-    src_line++;
+  for (;;) {
+    c = get_byte();
+    if (c == TC_NL) {
+      src_line++;
+    } else if (c == TC_LINE) {
+      src_line = get_word();
+    } else if (c == TC_FILE) {
+      c = get_byte();
+      strcpy(source, nam_file(c));
+      src_line = get_word();
+    } else {
+      break;
+    }
+  }
   switch (c) {
   case TC_END:
     n = get_word();

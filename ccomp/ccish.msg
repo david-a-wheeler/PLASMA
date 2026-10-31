@@ -10,7 +10,7 @@
 10 number does not fit in 16 bits
 11 number suffixes other than u, and floating point, are not supported
 12 string literal too long
-13 preprocessor directives are not supported yet
+13 this preprocessor directive is not supported yet:
 14 empty character constant
 15 multi-character constants are not supported
 16 unexpected '..'
@@ -227,3 +227,17 @@
 231 token file is damaged:
 232 name file is stale or damaged:
 233 line too long (over 255 characters)
+234 unknown preprocessor directive:
+235 expected "file" or <file> after #include
+236 cannot open the #include file (missing, or too many files open):
+237 #include nested too deeply:
+238 expected a macro name after
+239 macro redefined differently:
+240 no #if before
+241 #else after #else
+242 missing #endif at the end of the file
+243 #if nested too deeply
+244 too many macros, or macros too long
+245 macro expansion nested too deeply
+246 extra tokens at the end of the directive:
+248 too many -I, -D and -U options

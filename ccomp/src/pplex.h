@@ -11,8 +11,20 @@ extern int pt_val;                  /* TC_NUM, TC_UNUM value; TC_ID,
 extern unsigned char pt_text[MAX_STR + 1];  /* TC_STR bytes */
 extern int pt_len;                  /* TC_STR length */
 extern int pt_first;                /* the token is its line's first */
+extern int pt_macro;                /* TC_ID, TC_KEYWORD: names a macro */
+
+/* How the lexer reads (pp_mode): ordinary source; a directive's line,
+ * up to its newline; or a group #ifdef leaves out. */
+enum { PM_TEXT, PM_DIRECTIVE, PM_SKIP };
+extern int pp_mode;
 
 void pp_lex_open(Bfile *f);
+void pp_lex_text(const char *s);    /* a -D or -U, as a directive's line */
+void pp_lex_push(Bfile *f);         /* #include f, at the line's end */
+void pp_lex_pop(void);              /* back from it */
 int  pp_lex(void);                  /* the next token's code */
+int  pp_lex_word(char *buf, int size);  /* a directive's name */
+int  pp_lex_header(char *buf, int size, int *angle);  /* "f" or <f> */
+int  pp_lex_next_char(void);        /* the character after the token */
 
 #endif

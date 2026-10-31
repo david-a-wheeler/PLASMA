@@ -3855,6 +3855,57 @@ stream). The name file's reader is shared by `cccomp` and `ccgen`
 - Sizes (small build): `ccgen` **18,493** (was 21,220), `cccomp`
   35,577, `ccpp` 16,229.
 
+**`ccpp` step 4 (`#include`, object-like macros, `#ifdef` groups) is
+done** (2026-10-31). `ccpp` now carries out `#include "f"` and `<f>`,
+`#define` and `#undef` of object-like macros, `#ifdef`, `#ifndef`,
+`#else` and `#endif`, the null directive, and `#pragma` (ignored); it
+joins lines that end in a backslash, takes `-I`, `-D` and `-U` (so does
+`ccish`), and defines `__CCISH__`. CCPP.md, "Preprocessing", says what
+each does. New: src/ppmac.c (the macro table and the expansion stack).
+- The lexer has three modes (pplex.c): ordinary text; a directive's
+  line, which stops at its newline without passing it, so that an
+  `#include` switches files right at the end of its line and the
+  including file's lexer needs nothing saved but its place (no second
+  line buffer); and a skipped group, scanned only for a `#` that
+  starts a line, with no tokens, so that "don't" in a skipped group is
+  no error.
+- Lines are now brought up to date just before each token is written
+  (ppout.c): up to 3 next-line codes, else a `$02` jump, and a `$03` on
+  a change of file. Directives and skipped groups cost nothing in the
+  stream. `cccomp` follows both, and a message names the file a token
+  came from. (A back-end message still names the source, file 1, since
+  the IR file's line records have no file: a function defined in an
+  included file is reported in the wrong file by `ccgen`. Rare; open.)
+- Four more fixed ids, 28-31: `__CCISH__`, `__FILE__`, `__LINE__` and
+  `defined`, for `ccpp` to know by number, as `cccomp` knows `main`.
+  Each name file has them; the test files' ids moved up by 4.
+- Macros are kept as tokens in the token stream's own encoding, so an
+  expansion replays bytes; a name's entry in the pool has a "macro" bit,
+  so an identifier from the lexer is checked against the macro table
+  only if it names one. A macro being expanded isn't expanded again in
+  itself. Unsupported keywords (`long`) may be macro names; supported
+  ones may not.
+- Choices open for review: a comment that starts on a directive's
+  line and goes past it ends the directive (C would go on); extra
+  tokens after `#endif` and the like are an error even in a skipped
+  group; a macro redefined with the same tokens is fine, any other is
+  an error; message 13's text is now "this preprocessor directive is
+  not supported yet:", for `#if`, `#elif`, `#error`, `#line` and
+  function-like macros until steps 5-6.
+- The limits (ccish.h: `MAX_INCLUDE` 3, `MAX_IF_NEST` 16, `MAX_MACROS`
+  128, `MAX_MACRO_BYTES` 2048, `MAX_EXPAND` 16, `MAX_INC_DIRS` 8,
+  `MAX_PP_OPTS` 16) are first guesses, to be measured in step 7.
+- Checked: all 112 inputs give byte-identical objects. New tests: two
+  token streams by hand (directives, and an include), a run test of
+  macros, includes and groups, an error test for each new message,
+  and the options, the macro table full and too many options in
+  run.sh. 340 pass.
+- Sizes (small build): `ccpp` 25,453 (code 8,520, data 15,969: its
+  four file buffers, 2,088, and the macro table, 3,016, are most of the
+  growth), linked only with ccrel's shared-name limits raised (its
+  objects share 1,710 bytes of names; the header split should fix it).
+  `cccomp` 35,630, `ccgen` 18,493.
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in

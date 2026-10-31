@@ -25,6 +25,10 @@ isult
 isule
 main
 pstr
+__CCISH__
+__FILE__
+__LINE__
+defined
 @tests/pp/example.c
 
-=1 001B ssss
+=1 001F ssss

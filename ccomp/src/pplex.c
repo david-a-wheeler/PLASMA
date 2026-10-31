@@ -1,9 +1,19 @@
 /*
  * ccpp's lexer (approach.md, "ccpp design"). Reads the source a line at
- * a time into a fixed buffer, and splits it into tokens: their codes in
- * the token stream (../CCPP.md), with numbers converted, escapes
- * decoded, and identifiers given their ids. Accepts LF, CR and CRLF
- * line endings, and the C95 digraphs.
+ * a time into a fixed buffer, joining a line that ends in a backslash to
+ * the next (C's phase 2), and splits it into tokens: their codes in the
+ * token stream (../CCPP.md), with numbers converted, escapes decoded,
+ * and identifiers given their ids. Accepts LF, CR and CRLF line endings,
+ * and the C95 digraphs.
+ *
+ * It reads in one of three modes (pp_mode), which the driver (pp.c)
+ * sets: PM_TEXT, ordinary source, where newlines are blanks; PM_DIRECTIVE,
+ * a directive's line, which ends at its newline (TC_NL), not passed
+ * until the mode changes, so that an #include can switch files right at
+ * the end of its line; and PM_SKIP, a group that #ifdef and the rest
+ * leave out, where only a '#' that starts a line counts, and the rest is
+ * passed over without being split into tokens (so "don't" isn't an
+ * unterminated literal there).
  */
 #include <string.h>
 #include "ccish.h"
@@ -15,24 +25,38 @@ int pt_val;
 unsigned char pt_text[MAX_STR + 1];
 int pt_len;
 int pt_first;
+int pt_macro;
+int pp_mode;
 
-static Bfile *in;
+static Bfile *in;           /* the file being read, or NULL for a string */
 static unsigned char line[MAX_LINE + 1];  /* the current line, no newline */
 static int line_len;
 static int line_nl;         /* it ended with a newline (not the file's end) */
+static int line_extra;      /* lines joined to it by backslashes */
 static int pos;             /* the next character in line[] */
 static int ch;              /* current character, '\n' at the line's end,
                              * or EOF */
 static int at_line_start;   /* no token yet on this line */
-static int pend_nl;         /* newlines passed, not yet returned as TC_NL */
 
-/* Read the next line into line[]; 0 at the end of the file. */
+/* What an #include saves of the file it is in: where its lexer was, at
+ * the newline that ends the #include line. */
+static Bfile *saved_in[MAX_INCLUDE];
+static int saved_ch[MAX_INCLUDE];
+static int saved_line[MAX_INCLUDE];
+static char saved_extra[MAX_INCLUDE];
+static int nsaved;
+
+/* Read the next line into line[], joining any that end in a backslash;
+ * 0 at the end of the file. */
 static int next_line(void)
 {
   int c;
   line_len = 0;
   line_nl = 0;
+  line_extra = 0;
   pos = 0;
+  if (!in)
+    return 0;
   for (;;) {
     c = bgetc(in);
     if (c == EOF)
@@ -44,6 +68,11 @@ static int next_line(void)
       c = '\n';
     }
     if (c == '\n') {
+      if (line_len > 0 && line[line_len - 1] == '\\') {
+        line_len--;             /* a backslash-newline joins the lines */
+        line_extra++;
+        continue;
+      }
       line_nl = 1;
       return 1;
     }
@@ -59,8 +88,7 @@ static int next_line(void)
 static void getch(void)
 {
   if (ch == '\n') {
-    src_line++;
-    pend_nl++;
+    src_line += 1 + line_extra;
     at_line_start = 1;
     if (!next_line()) {
       ch = EOF;
@@ -81,16 +109,59 @@ static int peek(void)
   return line_nl ? '\n' : EOF;
 }
 
-/* Start reading source from f. */
+/* Start reading source from f, at its first line. */
 void pp_lex_open(Bfile *f)
 {
   in = f;
   src_line = 1;
   at_line_start = 1;
-  pend_nl = 0;
   next_line();
   ch = 0;
   getch();
+}
+
+/* Read the line s (from the command line: -D, -U) as a directive's, up
+ * to its end. */
+void pp_lex_text(const char *s)
+{
+  int n = (int)strlen(s);
+  if (n > MAX_LINE)
+    error(233 /* "line too long (over 255 characters)" */, NULL);
+  in = NULL;
+  memcpy(line, s, n);
+  line_len = n;
+  line_nl = 1;
+  line_extra = 0;
+  pos = 0;
+  ch = 0;
+  getch();
+  pp_mode = PM_DIRECTIVE;
+}
+
+/* At the end of an #include line: keep the place in this file, and start
+ * reading f. */
+void pp_lex_push(Bfile *f)
+{
+  saved_in[nsaved] = in;
+  saved_ch[nsaved] = ch;
+  saved_line[nsaved] = src_line;
+  saved_extra[nsaved] = (char)line_extra;
+  nsaved++;
+  pp_lex_open(f);
+}
+
+/* At the end of an included file: go back to the end of the #include
+ * line that included it. */
+void pp_lex_pop(void)
+{
+  nsaved--;
+  in = saved_in[nsaved];
+  ch = saved_ch[nsaved];
+  src_line = saved_line[nsaved];
+  line_extra = saved_extra[nsaved];
+  line_len = pos = 0;
+  line_nl = 1;
+  at_line_start = 0;
 }
 
 /* Is c a decimal digit? */
@@ -116,11 +187,14 @@ static int hex_val(int c)
   return c - 'A' + 10;
 }
 
-/* Skip blanks and comments. */
+/* Skip blanks and comments: in a directive's line, not its newline. */
 static void skip_blank(void)
 {
   for (;;) {
-    if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\f' || ch == '\v') {
+    if (ch == '\n' && pp_mode == PM_DIRECTIVE) {
+      return;
+    } else if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\f'
+               || ch == '\v') {
       getch();
     } else if (ch == '/' && peek() == '/') {
       while (ch != '\n' && ch != EOF)
@@ -148,6 +222,76 @@ static void skip_blank(void)
       return;
     }
   }
+}
+
+/* In a group being left out: pass over the rest of the line, up to its
+ * newline or a comment, with no errors. A quoted string or character
+ * ends at its closing quote or the line's end. */
+static void skip_rest(void)
+{
+  int q;
+  while (ch != '\n' && ch != EOF && !(ch == '/' && peek() == '*')) {
+    if (ch == '"' || ch == '\'') {
+      q = ch;
+      getch();
+      while (ch != q && ch != '\n' && ch != EOF) {
+        if (ch == '\\')
+          getch();
+        if (ch != '\n' && ch != EOF)
+          getch();
+      }
+      if (ch == q)
+        getch();
+    } else {
+      getch();
+    }
+  }
+}
+
+/* In a directive's line: skip blanks, and read an identifier's
+ * characters as they are (a directive's name: "if" is not the keyword
+ * here) into buf (size bytes); return their number, 0 if there is none. */
+int pp_lex_word(char *buf, int size)
+{
+  int n = 0;
+  skip_blank();
+  while (is_alpha(ch) || is_digit(ch)) {
+    if (n < size - 1)
+      buf[n++] = (char)ch;
+    getch();
+  }
+  buf[n] = 0;
+  return n;
+}
+
+/* In an #include line: skip blanks, and read a file's name, "name" or
+ * <name>, into buf (size bytes); return its length, or -1 if there is
+ * none. *angle says which form it was. */
+int pp_lex_header(char *buf, int size, int *angle)
+{
+  int n = 0, close;
+  skip_blank();
+  if (ch != '"' && ch != '<')
+    return -1;
+  *angle = ch == '<';
+  close = *angle ? '>' : '"';
+  getch();
+  while (ch != close) {
+    if (ch == '\n' || ch == EOF || n >= size - 1)
+      return -1;
+    buf[n++] = (char)ch;
+    getch();
+  }
+  getch();
+  buf[n] = 0;
+  return n;
+}
+
+/* The character right after the last token: '(' just after a macro's
+ * name, with no blank, makes it function-like. */
+int pp_lex_next_char(void)
+{
+  return ch;
 }
 
 /* Read one character of a character or string literal, handling escapes. */
@@ -270,7 +414,8 @@ static const char *const keywords[] = {
 };
 
 /* Read an identifier or keyword, and return its code: a supported
- * keyword's, or TC_ID or TC_KEYWORD with its id in pt_val. */
+ * keyword's, or TC_ID or TC_KEYWORD with its id in pt_val (and in
+ * pt_macro whether it names a macro). */
 static int lex_word(void)
 {
   char word[MAX_NAME + 1];
@@ -286,9 +431,11 @@ static int lex_word(void)
       if (i < NKEYWORDS)
         return TC_KEYWORDS + i;
       pt_val = pp_intern(word, n);
+      pt_macro = pp_macro_flag;
       return TC_KEYWORD;
     }
   pt_val = pp_intern(word, n);
+  pt_macro = pp_macro_flag;
   return TC_ID;
 }
 
@@ -303,21 +450,34 @@ static int accept(int c)
 }
 
 /* The next token: its code, with its value in pt_val (a number, or an
- * id) or its bytes in pt_text and pt_len (a string); TC_NL for each
- * newline passed before it, and TC_END at the end of the file. '#' is a
+ * id) or its bytes in pt_text and pt_len (a string); TC_NL at the end
+ * of a directive's line, and TC_END at the end of the file. '#' is a
  * token, for the caller to treat as a directive if pt_first (it is the
- * line's first). */
+ * line's first). In a group being left out (PM_SKIP), only such a '#',
+ * and TC_END, are returned. */
 int pp_lex(void)
 {
   int c;
-  if (!pend_nl)
+  for (;;) {
     skip_blank();
-  if (pend_nl) {
-    pend_nl--;
-    return TC_NL;
+    if (pp_mode == PM_DIRECTIVE && (ch == '\n' || ch == EOF))
+      return TC_NL;     /* the end of a directive's line */
+    if (ch == EOF)
+      return TC_END;
+    if (pp_mode != PM_SKIP)
+      break;
+    if (at_line_start
+        && (ch == '#' || (ch == '%' && peek() == ':'))) {
+      if (ch == '%')
+        getch();
+      getch();
+      at_line_start = 0;
+      pt_first = 1;
+      return '#';
+    }
+    at_line_start = 0;
+    skip_rest();
   }
-  if (ch == EOF)
-    return TC_END;
   pt_first = at_line_start;
   at_line_start = 0;
   if (is_digit(ch))

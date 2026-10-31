@@ -61,6 +61,15 @@
                              * is a PLASMA string too (85) */
 #define MAX_LINE     255    /* characters in one source line, ccpp's
                              * buffer (99) */
+#define MAX_INCLUDE  3      /* #include files open at once, beside the
+                             * source: PLASMA's Apple II file library
+                             * allows 4 open files, ccpp needs 2 */
+#define MAX_IF_NEST  16     /* #ifdef groups open at once */
+#define MAX_MACROS   128    /* macros defined at once */
+#define MAX_MACRO_BYTES 2048  /* their bodies, as tokens */
+#define MAX_EXPAND   16     /* macro expansions inside one another */
+#define MAX_INC_DIRS 8      /* -I directories */
+#define MAX_PP_OPTS  16     /* -D and -U options */
 #define MAX_PP_POOL  7680   /* bytes of ccpp's names and file names,
                              * with a length byte each (6,890: parse.c,
                              * preprocessed by gcc) */

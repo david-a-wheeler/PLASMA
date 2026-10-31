@@ -25,9 +25,13 @@ isult
 isule
 main
 pstr
+__CCISH__
+__FILE__
+__LINE__
+defined
 s
 p
 ab
 @tests/pp/tag.c
 
-=1 001E ssss
+=1 0022 ssss

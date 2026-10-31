@@ -25,6 +25,10 @@ isult
 isule
 main
 pstr
+__CCISH__
+__FILE__
+__LINE__
+defined
 x
 a_name_that_is_longer_than_thir
 p
@@ -33,4 +37,4 @@ y
 z
 @tests/pp/tokens.c
 
-=1 0021 ssss
+=1 0025 ssss

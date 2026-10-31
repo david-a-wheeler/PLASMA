@@ -41,7 +41,7 @@ OUT = os.path.join(TOOLS, "out")
 FULL = "-full" in sys.argv[1:]      # measure the full build instead
 
 COMMON = ["diag", "bio"]
-PP = ["ppname", "pplex", "ppout", "pp"]
+PP = ["ppname", "pplex", "ppmac", "ppout", "pp"]
 NAM = ["nam"]                       # in both cccomp and ccgen
 FRONT = ["tokin", "name", "type", "parse", "irout"]
 BACK = ["irin", "lower", "peep", "emit", "helper"]
@@ -150,6 +150,7 @@ def build_big():
         if name == "link.c":
             # Room for every static name, so the listing names them all.
             text = re.sub(r"(#define MAX_GNAMES\s+)\d+", r"\g<1>32000", text)
+            text = re.sub(r"(#define MAX_GSYMS\s+)\d+", r"\g<1>1021", text)
         with open(os.path.join(big, os.path.basename(name)), "w") as f:
             f.write(text)
     src = lambda names: [os.path.join(big, n + ".c") for n in names]
