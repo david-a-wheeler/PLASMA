@@ -2,11 +2,11 @@
  * cccomp's token reader (approach.md, "ccpp design"): reads the token
  * stream ccpp wrote, NAME.i (../CCPP.md), a token at a time, keeping
  * only the current one, and counts its lines for messages. An
- * identifier is an id there; its spelling is looked up in the name
- * file, NAME.nam, which is read from the start each time (bio can't
- * seek), through stdio as the message file is, so that it needs no
- * buffer of cccomp's own. For now every identifier's spelling is looked up, so that the
- * parser is unchanged; from step 2, only a message's.
+ * identifier is an id there, and the parser uses the id; a spelling is
+ * looked up in the name file, NAME.nam, only to be printed (in a
+ * message, or for now in the IR file), from the start of the file each
+ * time (bio can't seek), through stdio as the message file is, so that
+ * it needs no buffer of cccomp's own.
  */
 #include <string.h>
 #include "ccish.h"
@@ -18,6 +18,8 @@ int tok_val;
 int tok_unsigned;
 char tok_text[MAX_STR + 1];
 int tok_len;
+int tok_hsum;
+int tok_hmul;
 
 static Bfile in;            /* NAME.i */
 static FILE *nam;           /* NAME.nam, while a name is looked up */
@@ -182,6 +184,15 @@ void tok_open(const char *base)
   next();
 }
 
+/* The spelling of name (an id), from the name file, in a static buffer
+ * that the next call reuses. */
+const char *tok_name(int name)
+{
+  static char buf[MAX_PATH];
+  nam_entry(0, name, buf);
+  return buf;
+}
+
 /* Close the token stream (and the name file, after an error). */
 void tok_close(void)
 {
@@ -215,11 +226,18 @@ void next(void)
     return;
   case TC_ID:
   case TC_KEYWORD:
-    tok = c == TC_ID ? T_ID : T_KEYWORD;
-    n = get_word();
-    if (n < 1)
+  case TC_TAG:
+    /* A struct's tag, and only that, has its spelling's hash. */
+    if ((c == TC_TAG) != (tok == T_STRUCT && c != TC_KEYWORD))
       damaged();
-    nam_entry(0, n, tok_text);
+    tok = c == TC_KEYWORD ? T_KEYWORD : T_ID;
+    tok_val = get_word();
+    if (tok_val < 1 || tok_val > nam_ids)
+      damaged();
+    if (c == TC_TAG) {
+      tok_hsum = get_word();
+      tok_hmul = get_word();
+    }
     return;
   case TC_NUM:
   case TC_UNUM:
@@ -283,7 +301,7 @@ const char *tok_desc(void)
   }
   strcpy(buf, "'");
   if (tok == T_ID || tok == T_KEYWORD)
-    strcat(buf, tok_text);
+    strcat(buf, tok_name(tok_val));
   else if (tok >= T_INT && tok < T_KEYWORD)
     strcat(buf, keywords[tok - T_INT]);
   else if (tok >= T_EQ)

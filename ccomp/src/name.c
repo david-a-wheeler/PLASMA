@@ -1,77 +1,12 @@
 /*
- * The name pool: each name stored once, as a NUL-terminated string in
- * one char array, so a table holds a 2-byte offset instead of a 32-byte
- * name (approach.md, "M6 design"). Struct tags and members use it, and
- * so does the table of enum constants and typedef names below; the
- * symbol tables can later (approach.md 18.4).
- *
- * That table is parallel arrays (approach.md, "enum and typedef
- * design"): entry i has name id_nm[i] (a pool offset), value id_v[i],
- * kind id_k[i] (ID_*), and block depth id_d[i] (-1 once hidden).
+ * The table of enum constants and typedef names (approach.md, "enum and
+ * typedef design"), as parallel arrays: entry i has name id_nm[i] (an
+ * id, the number ccpp gave the name: ../CCPP.md), value id_v[i], kind
+ * id_k[i] (ID_*), and block depth id_d[i] (-1 once hidden). Names need
+ * no pool of their own: cccomp keeps no spellings (approach.md, "ccpp
+ * design").
  */
-#include <string.h>
 #include "ccish.h"
-
-static char pool[MAX_POOL];
-static int pool_used;
-
-/* The offset of name s in the pool, or -1 if it isn't there. */
-int name_find(const char *s)
-{
-  int i = 0;
-  while (i < pool_used) {
-    if (!strcmp(pool + i, s))
-      return i;
-    i += (int)strlen(pool + i) + 1;
-  }
-  return -1;
-}
-
-/* The offset of name s in the pool, adding it if it isn't there. */
-int intern(const char *s)
-{
-  int i = name_find(s), n = (int)strlen(s) + 1;
-  if (i >= 0)
-    return i;
-  if (pool_used + n > MAX_POOL)
-    fatal(18 /* "too many names" */, "(the name pool is full)");
-  memcpy(pool + pool_used, s, n);
-  pool_used += n;
-  return pool_used - n;
-}
-
-/* Where the pool ends now: a mark, taken before a function's
- * parameters and locals add their names (approach.md, "Sym split
- * design"). */
-int pool_mark(void)
-{
-  return pool_used;
-}
-
-/* At the end of a function, release the names added since mark: its
- * parameters', locals' and block-scope names, which nothing uses any
- * more (their tags and enum constants are hidden). The names of
- * functions first seen inside it (CMDSYS functions, declared by their
- * first call or a struct copy) must stay, so they are moved down to
- * mark, in order. */
-void pool_release(int mark)
-{
-  int f, n;
-  for (f = 0; f < nfuncs; f++)
-    if (fn_name[f] >= mark) {
-      n = (int)strlen(pool + fn_name[f]) + 1;
-      memmove(pool + mark, pool + fn_name[f], n);
-      fn_name[f] = mark;
-      mark += n;
-    }
-  pool_used = mark;
-}
-
-/* The name at offset n of the pool. */
-const char *name_of(int n)
-{
-  return pool + n;
-}
 
 static int id_nm[MAX_IDS];
 static int id_v[MAX_IDS];

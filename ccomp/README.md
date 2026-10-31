@@ -413,7 +413,8 @@ function returns exactly one.
 | `src/ppname.c` | The preprocessor's name pool, which gives each identifier its id, and the writer of the name file |
 | `src/ppout.c` | The preprocessor's output: the token stream, joining adjacent strings |
 | `src/tokin.c` | The front end's input: reads the token stream a token at a time, and looks names up in the name file |
-| `src/name.c` | The name pool: each struct tag and member name stored once |
+| `src/name.c` | The table of enum constants and typedef names (names are ids, numbered by the preprocessor) |
+| `src/fixed.h` | The fixed ids: the names the preprocessor numbers first and the front end knows by number |
 | `src/type.c` | The table of types (parallel arrays), with qualifiers as bits in a type handle, and struct tags and members |
 | `src/parse.c` | Stage 1: parser, producing IR ops |
 | `src/irout.c` | The front end's output: the IR buffer (for reordering), and the writer of the IR file, with the data, strings and symbol summary (see [OBJECT.md](OBJECT.md)) |
@@ -475,11 +476,10 @@ file is used, and that the file's numbers ascend.
     variables visible at once (globals, plus the parameters and locals
     in scope), 433 parameter types in all, 56 distinct types, 10
     struct tags (counting those in blocks that have ended), 64 struct
-    members in all, 280 enum constants and typedef names visible at
-    once, and 6300 bytes of distinct names, each with a NUL, not
-    counting those of a function's parameters and locals after it ends
-    (`MAX_FUNCS`, `MAX_VARS`, `MAX_PARAM_TYPES`, `MAX_TYPES`,
-    `MAX_TAGS`, `MAX_MEMBERS`, `MAX_IDS`, `MAX_POOL`).
+    members in all, and 280 enum constants and typedef names visible
+    at once (`MAX_FUNCS`, `MAX_VARS`, `MAX_PARAM_TYPES`, `MAX_TYPES`,
+    `MAX_TAGS`, `MAX_MEMBERS`, `MAX_IDS`). The front end keeps no
+    names: the preprocessor numbers them (below).
   - The preprocessor: 7680 bytes of distinct names and file names, a
     length byte each (`MAX_PP_POOL`), and source lines of 255
     characters (`MAX_LINE`).

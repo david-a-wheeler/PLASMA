@@ -22,7 +22,8 @@ enum {
   TC_UNUM = 0x06,         /* an unsigned (word) */
   TC_STR = 0x07,          /* a length (byte), then the bytes */
   TC_KEYWORD = 0x08,      /* an unsupported keyword's id (word) */
-  TC_TAG = 0x09,          /* a struct tag: id, spelling hash (words) */
+  TC_TAG = 0x09,          /* a struct tag: id, its spelling's hash and
+                           * 31^length (words) */
   TC_KEYWORDS = 0x80      /* the supported keywords, in CCPP.md's order */
 };
 
@@ -33,8 +34,8 @@ enum {
   TC_ANDEQ, TC_OREQ, TC_XOREQ, TC_SHLEQ, TC_SHREQ, TC_ARROW, TC_ELLIPSIS
 };
 
+#define TC_STRUCT    (TC_KEYWORDS + 15)   /* struct, for TC_TAG */
 #define NKEYWORDS    24       /* supported keywords: int ... unsigned */
 #define NOPS         22       /* operators: == ... "..." */
-#define NFIXED       27       /* fixed ids: the CMDSYS functions, main, pstr */
 
 #endif

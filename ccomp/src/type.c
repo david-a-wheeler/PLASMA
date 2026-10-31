@@ -14,9 +14,11 @@
  * (for a struct, its tag), and tcount[i] its element count.
  *
  * Struct tags and members are parallel arrays too (approach.md, "M6
- * design"). Tag i has name tg_name[i] (an offset in the name pool, or
- * -1 if anonymous), size tg_size[i] (-1 until its member list is
- * complete), and block depth tg_depth[i] (-1 once hidden). Member i
+ * design"). Tag i has name tg_name[i] (an id, or -1 if anonymous), size
+ * tg_size[i] (-1 until its member list is complete), block depth
+ * tg_depth[i] (-1 once hidden), and its name's hash, tg_hsum[i] and
+ * tg_hmul[i], for type hashes (ccpp gives them, since cccomp has no
+ * spellings). Member i
  * belongs to tag mb_tag[i], and has name mb_name[i], type mb_type[i]
  * and byte offset mb_off[i]. A struct's members are in order, but not
  * always next to each other, since a struct may be defined inside
@@ -32,6 +34,8 @@ static int ntypes = 4;
 static int tg_name[MAX_TAGS];
 static int tg_size[MAX_TAGS];
 static char tg_depth[MAX_TAGS];
+static unsigned tg_hsum[MAX_TAGS];
+static unsigned tg_hmul[MAX_TAGS];
 static int ntags;
 
 static char mb_tag[MAX_MEMBERS];
@@ -156,7 +160,7 @@ int hash_byte(int h, int c)
  * known by its name in every file). */
 int type_hash(int t, int h)
 {
-  const char *name;
+  int tag;
   if (t & Q_CONST)
     h = hash_byte(h, 'k');
   if (t & Q_VOLATILE)
@@ -171,10 +175,13 @@ int type_hash(int t, int h)
     h = hash_byte(hash_byte(h, '['), type_count(t));
     return type_hash(type_sub(t), hash_byte(h, type_count(t) >> 8));
   }
+  /* The name's bytes, added one at a time with hash_byte(), would give
+   * h * 31^n + the name's own hash from 0: ccpp gives both parts
+   * (CCPP.md, TC_TAG). */
   h = hash_byte(h, 's');
-  if (tag_name(struct_tag(t)) >= 0)
-    for (name = name_of(tag_name(struct_tag(t))); *name; name++)
-      h = hash_byte(h, *name);
+  tag = struct_tag(t);
+  if (tg_name[tag] >= 0)
+    h = (int)(((unsigned)h * tg_hmul[tag] + tg_hsum[tag]) & 0xFFFFu);
   return hash_byte(h, ';');
 }
 
@@ -197,12 +204,15 @@ int struct_tag(int t)
   return type_sub(t);
 }
 
-/* A new, incomplete tag named name (-1 for none), visible at depth. */
-int tag_new(int name, int depth)
+/* A new, incomplete tag named name (-1 for none), visible at depth;
+ * hsum and hmul are its name's hash (see type_hash()). */
+int tag_new(int name, int depth, int hsum, int hmul)
 {
   if (ntags >= MAX_TAGS)
     fatal(22 /* "too many structs" */, NULL);
   tg_name[ntags] = name;
+  tg_hsum[ntags] = (unsigned)hsum;
+  tg_hmul[ntags] = (unsigned)hmul;
   tg_size[ntags] = -1;
   tg_depth[ntags] = (char)depth;
   return ntags++;
@@ -231,7 +241,7 @@ void tag_hide(int depth)
       tg_depth[i] = -1;
 }
 
-/* The name of tag (a name pool offset), or -1 if anonymous. */
+/* The name of tag (an id), or -1 if anonymous. */
 int tag_name(int tag)
 {
   return tg_name[tag];

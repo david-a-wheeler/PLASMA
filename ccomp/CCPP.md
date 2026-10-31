@@ -37,8 +37,12 @@ NAME.c --ccpp--> NAME.i + NAME.nam --cccomp--> NAME.ir --ccgen--> NAME.obj + NAM
   removes them all, unless `-k`.
 
 `cccomp` never needs an identifier's spelling to compile: it reads one
-only to print a message (and, for now, to keep its name pool; that
-goes in step 2 of the `ccpp` design).
+only to print a message, and, until step 3 of the `ccpp` design, to
+write functions' and globals' names into `NAME.ir`. A struct's type
+hash, which includes its tag's spelling so that it agrees between
+files, comes from the hash `ccpp` writes with each tag (`$09`): adding
+the *n* bytes one at a time to a hash *h* gives *h* × 31^*n* + the
+spelling's own hash.
 
 **Open files.** `ccpp` has the source, the include files being read,
 and `NAME.i` open; it writes `NAME.nam` last, after closing the
@@ -68,7 +72,7 @@ order, through a 512-byte block buffer (`src/bio.c`).
 | `$06` | a number, `unsigned` (a `u` suffix, or a hex or octal constant over `$7FFF`) | its value (word) |
 | `$07` | a string literal | its length (byte, 0-255), then its bytes |
 | `$08` | a C keyword ccish doesn't support (`float`, `union`, ...) | its id (word), for the message's spelling |
-| `$09` | a struct tag (reserved: written from step 2) | its id (word), a hash of its spelling (word) |
+| `$09` | a struct tag: an identifier right after `struct` (no other identifier is written so) | its id (word); the hash *h* of its spelling, from 0, for each byte *b*: *h* = (*h* × 31 + *b*) mod 65536 (word); and 31^*n* mod 65536, for its *n* bytes (word) |
 | `$20`-`$7E` | a one-character token, as itself: one of `! % & ( ) * + , - . / : ; < = > ? [ ] ^ { \| } ~` | none |
 | `$80`-`$BF` | a supported keyword (table below) | none |
 | `$C0`-`$DF` | an operator of more than one character (table below) | none |
@@ -157,8 +161,8 @@ CMDSYS functions `cccomp` knows (`putc`, `putln`, `puts`, `puti`,
 `heapallocalign`, `heapalloc`, `heaprelease`, `heapavail`, `memset`,
 `memcpy`, `strcpy`, `strcat`, `toupper`, `sext`, `isugt`, `isuge`,
 `isult`, `isule`: ids 1-25), then `main` (26) and `pstr` (27): every
-name that `cccomp` recognizes by its spelling. So `cccomp` can know
-them by number (from step 2).
+name C-ish gives a meaning of its own. So `cccomp` knows them by number
+(`src/fixed.h`), with no spellings.
 
 **Files.** After the names, one line for each source file, starting
 with `@`: file *k* is the *k*-th of them, and file 1 is the source
@@ -237,6 +241,7 @@ in `t.i`, low byte first).
 ## Versions
 
 - **`NAME.i` version 1, `NAME.nam` version 1** (step 1 of the `ccpp`
-  design): the first. Directives (steps 4-6) will add the `$02` and
-  `$03` records, and step 2 the `$09`; each is reserved now, so the
-  versions shouldn't need to change for them.
+  design): the first; step 2 began writing the `$09` tags, reserved
+  from the start. Directives (steps 4-6) will add the `$02` and `$03`
+  records, reserved now too, so the versions shouldn't need to change
+  for them.

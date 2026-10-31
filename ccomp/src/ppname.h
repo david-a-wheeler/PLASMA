@@ -11,6 +11,7 @@ void pp_names_init(void);                 /* the fixed ids, 1-NFIXED */
 int  pp_intern(const char *s, int n);     /* the id of s (n chars) */
 int  pp_add_file(const char *path);       /* a file's number, from 1 */
 int  pp_nids(void);                       /* ids given so far */
+int  pp_name_hash(int id, int *mul);      /* a tag's hash, for TC_TAG */
 int  pp_names_write(Bfile *f);            /* NAME.nam; the checksum */
 
 #endif

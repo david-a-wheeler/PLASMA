@@ -86,8 +86,6 @@
                              * (393) */
 #define MAX_TAGS     10     /* struct tags, including hidden ones (7) */
 #define MAX_MEMBERS  64     /* struct members, in all structs (51) */
-#define MAX_POOL     6300   /* bytes of names in the name pool (6,218);
-                             * it goes in step 2 of the ccpp design */
 #define MAX_FNAMES   3281   /* bytes of the function names ccgen keeps,
                              * with a NUL each (2,982: all of parse.c's
                              * function symbols, a bound) */
@@ -156,14 +154,9 @@ void bwrite(Bfile *b, const unsigned char *p, int n);
 int  bclose(Bfile *b);
 
 /* ---------- Names (name.c) ----------
- * The name pool holds each name once, as a NUL-terminated string; a
- * name is its offset in the pool (approach.md, "M6 design"). */
-
-int name_find(const char *s);       /* its offset, or -1 if not there */
-int intern(const char *s);          /* its offset, added if needed */
-const char *name_of(int n);
-int pool_mark(void);                /* before a function's own names */
-void pool_release(int mark);        /* after it: keeps function names */
+ * A name is its id, the number ccpp gave it (../CCPP.md): cccomp keeps
+ * no spellings, and looks one up in the name file only to print it
+ * (tok_name(), in tokin.c). -1 is no name. */
 
 /* Enum constants and typedef names: the ordinary identifiers that
  * aren't variables or functions. Each has a value (a constant's value,
@@ -222,7 +215,9 @@ int type_hash(int t, int h);    /* a type hash with type t added */
 int is_struct(int t);
 int struct_type(int tag);   /* the struct type of tag */
 int struct_tag(int t);      /* the tag of struct type t */
-int tag_new(int name, int depth);
+int tag_new(int name, int depth, int hsum, int hmul);  /* its spelling's
+                                     * hash (the token's tok_hsum and
+                                     * tok_hmul) */
 int tag_find(int name, int depth);  /* innermost visible tag named
                                      * name, at depth or any depth if
                                      * depth < 0; -1 if none */
@@ -244,7 +239,7 @@ int member_off(int m);
 enum { FN_DECLARED = 1, FN_DEFINED = 2, FN_CALLED = 4, FN_COUNTED = 8,
        FN_STATIC = 16, FN_NAMED = 32 };   /* FN_NAMED: its name is in
                                            * the IR file (irout.c) */
-extern int fn_name[MAX_FUNCS];      /* its name: a name pool offset */
+extern int fn_name[MAX_FUNCS];      /* its name: an id */
 extern char fn_type[MAX_FUNCS];     /* its return type, unqualified (C17
                                      * ignores a return type's
                                      * qualifiers), so it fits a char */

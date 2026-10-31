@@ -16,6 +16,7 @@
  */
 #include <string.h>
 #include "ccish.h"
+#include "tokin.h"
 
 /* The IR file, and its output name (for messages). */
 static Bfile out;
@@ -56,7 +57,7 @@ static void name_func(int f)
   if (fn_flags[f] & FN_NAMED)
     return;
   fn_flags[f] |= FN_NAMED;
-  s = name_of(fn_name[f]);
+  s = tok_name(fn_name[f]);
   n = (int)strlen(s);
   bputc(&out, REC_NAME);
   bputw(&out, f);
@@ -192,11 +193,11 @@ int data_zero(int n)
 
 /* ---------- The end ---------- */
 
-/* Write a symbol's name (a name pool offset) to the summary: its
- * length, then its characters. */
+/* Write a symbol's name (an id) to the summary: its length, then its
+ * characters, from the name file. */
 static void put_name(int name)
 {
-  const char *s = name_of(name);
+  const char *s = tok_name(name);
   int n = (int)strlen(s);
   bputc(&out, n);
   bwrite(&out, (const unsigned char *)s, n);

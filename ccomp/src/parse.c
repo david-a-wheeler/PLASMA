@@ -55,7 +55,7 @@
  *     checked as strictly as C says, and an array used as a value is a
  *     pointer to its first element.
  * A function must be declared before it is called (no implicit
- * declarations), except the CMDSYS functions in cmdsys_funcs[] below,
+ * declarations), except the CMDSYS functions in cmdsys_sigs[] below,
  * which their first call declares. A function called but not defined
  * in the file must be one of those; it is imported from CMDSYS.
  *
@@ -103,6 +103,7 @@
  */
 #include <string.h>
 #include "ccish.h"
+#include "fixed.h"
 #include "tokin.h"
 
 /* Functions: see ccish.h. */
@@ -120,13 +121,13 @@ static int cur_fn = -1;     /* the function being parsed, or -1 */
 static int in_params;       /* parsing a function's parameter list */
 static int nest;            /* current nesting depth, to limit recursion */
 
-/* Return name in single quotes, for error messages. The result is in a
- * static buffer. */
-static const char *quote(const char *name)
+/* Return the spelling of name (an id) in single quotes, for error
+ * messages. The result is in a static buffer. */
+static const char *quote(int name)
 {
   static char buf[MAX_NAME + 3];
   strcpy(buf, "'");
-  strcat(buf, name);
+  strcat(buf, tok_name(name));
   strcat(buf, "'");
   return buf;
 }
@@ -155,33 +156,27 @@ static void enter_nest(void)
     fatal(25 /* "nesting too deep" */, NULL);
 }
 
-/* The function named name, or -1. */
-static int find_func(const char *name)
+/* The function named name (an id), or -1. */
+static int find_func(int name)
 {
-  int n = name_find(name), f;
+  int f;
   for (f = 0; f < nfuncs; f++)
-    if (fn_name[f] == n)
+    if (fn_name[f] == name)
       return f;
   return -1;
 }
 
 /* Add a function, not yet declared or defined, with an unknown
  * parameter count, and return it. */
-static int add_func(const char *name)
+static int add_func(int name)
 {
   if (nfuncs >= MAX_FUNCS)
     fatal(26 /* "too many functions" */, NULL);
-  fn_name[nfuncs] = intern(name);
+  fn_name[nfuncs] = name;
   fn_type[nfuncs] = TY_INT;
   fn_ptypes[nfuncs] = -1;
   fn_flags[nfuncs] = 0;
   return nfuncs++;
-}
-
-/* The name of function f. */
-static const char *fname(int f)
-{
-  return name_of(fn_name[f]);
 }
 
 /* Function f's parameter count, or -1 if it isn't known yet. */
@@ -211,25 +206,23 @@ static void set_nparams(int f, int n)
  * strcpy() copies PLASMA strings. divmod() returns two values and is
  * left out.
  */
-static const struct { const char *name, *sig; } cmdsys_funcs[] = {
-  {"putc", "vc"}, {"putln", "v"}, {"puts", "vS"}, {"puti", "vi"},
-  {"putb", "vi"}, {"puth", "vi"}, {"getc", "i"}, {"gets", "sc"},
-  {"call", "iiiiii"}, {"syscall", "iip"}, {"heapmark", "p"},
-  {"heapallocalign", "piip"}, {"heapalloc", "pi"}, {"heaprelease", "ip"},
-  {"heapavail", "i"}, {"memset", "vpii"}, {"memcpy", "vpPi"},
-  {"strcpy", "ssS"}, {"strcat", "ssS"}, {"toupper", "ii"}, {"sext", "ii"},
-  {"isugt", "iii"}, {"isuge", "iii"}, {"isult", "iii"}, {"isule", "iii"},
-  {NULL, NULL}
+static const char *const cmdsys_sigs[NCMDSYS] = {
+  "vc", "v", "vS", "vi",                /* putc putln puts puti */
+  "vi", "vi", "i", "sc",                /* putb puth getc gets */
+  "iiiiii", "iip", "p",                 /* call syscall heapmark */
+  "piip", "pi", "ip",                   /* heapallocalign heapalloc
+                                         * heaprelease */
+  "i", "vpii", "vpPi",                  /* heapavail memset memcpy */
+  "ssS", "ssS", "ii", "ii",             /* strcpy strcat toupper sext */
+  "iii", "iii", "iii", "iii"            /* isugt isuge isult isule */
 };
 
-/* The index of name in cmdsys_funcs[], or -1 if it isn't there. */
-static int find_cmdsys(const char *name)
+/* The index of name (an id) in cmdsys_sigs[], or -1 if it isn't a
+ * CMDSYS function: they are the fixed ids 1 to NCMDSYS, in that order
+ * (CCPP.md, "The fixed ids"). */
+static int find_cmdsys(int name)
 {
-  int i;
-  for (i = 0; cmdsys_funcs[i].name; i++)
-    if (!strcmp(cmdsys_funcs[i].name, name))
-      return i;
-  return -1;
+  return name >= 1 && name <= NCMDSYS ? name - 1 : -1;
 }
 
 /*
@@ -238,7 +231,7 @@ static int find_cmdsys(const char *name)
  * from 0 to nglobals; a function's parameters and locals are above
  * them, up to nvars, innermost last, and are popped when it ends (no
  * locals exist while globals are declared). Variable v has name
- * var_name[v] (a name pool offset, or -1 for an unnamed prototype
+ * var_name[v] (an id, or -1 for an unnamed prototype
  * parameter), type var_type[v], offset var_off[v] (a frame offset, or
  * with V_DATA a data offset), and flags var_flags[v]: the block depth it
  * was declared at (V_DEPTH; 0 for a global), V_DATA if it is in the data
@@ -262,14 +255,14 @@ static int nvars, nglobals;
 enum { VL_STATIC = 1, VL_USED = 2, VL_EXTERN = 4 };
 static char var_link[MAX_VARS];
 
-/* The innermost visible variable named name, or -1. */
-static int find_var(const char *name)
+/* The innermost visible variable named name (an id), or -1. */
+static int find_var(int name)
 {
-  int n = name_find(name), v;
-  if (n < 0)
+  int v;
+  if (name < 0)
     return -1;
   for (v = nvars - 1; v >= 0; v--)
-    if (var_name[v] == n)
+    if (var_name[v] == name)
       return v;
   return -1;
 }
@@ -291,9 +284,9 @@ static int var_data(int v)
  * declared deeper (typedef int T; void f() { int T; } makes T a
  * variable inside f). They can't be at the same depth: that is a
  * redeclaration. */
-static int find_id(const char *name)
+static int find_id(int name)
 {
-  int i = id_find(name_find(name)), v;
+  int i = id_find(name), v;
   if (i < 0)
     return -1;
   v = find_var(name);
@@ -304,7 +297,7 @@ static int find_id(const char *name)
 
 /* The type a visible typedef named name stands for, or -1 if name
  * isn't one. */
-static int typedef_type(const char *name)
+static int typedef_type(int name)
 {
   int i = find_id(name);
   return i >= 0 && id_kind(i) == ID_TYPEDEF ? id_val(i) : -1;
@@ -313,16 +306,16 @@ static int typedef_type(const char *name)
 /* Report a redeclaration if an enum constant or typedef named name was
  * declared at the current depth (where a variable, function or another
  * of them named name is about to be). */
-static void check_not_id(const char *name)
+static void check_not_id(int name)
 {
-  int i = id_find(name_find(name));
+  int i = id_find(name);
   if (i >= 0 && id_depth(i) == depth)
     error(27 /* "redeclaration of" */, quote(name));
 }
 
 /* Report a redeclaration if a variable named name was declared at
  * the current depth, or, at file scope, a function. */
-static void check_not_var(const char *name)
+static void check_not_var(int name)
 {
   int v = find_var(name);
   if (v >= 0 && var_depth(v) == depth)
@@ -331,18 +324,18 @@ static void check_not_var(const char *name)
     error(27 /* "redeclaration of" */, quote(name));
 }
 
-/* Push a variable named name ("" for an unnamed prototype parameter)
- * of type type at the current depth, at offset off, with flags (V_DATA
- * or 0), and return it. */
-static int push_var(const char *name, int type, int off, int flags)
+/* Push a variable named name (an id, or -1 for an unnamed prototype
+ * parameter) of type type at the current depth, at offset off, with
+ * flags (V_DATA or 0), and return it. */
+static int push_var(int name, int type, int off, int flags)
 {
-  if (name[0]) {
+  if (name >= 0) {
     check_not_var(name);
     check_not_id(name);
   }
   if (nvars >= MAX_VARS)
     fatal(28 /* "too many variables" */, NULL);
-  var_name[nvars] = name[0] ? intern(name) : -1;
+  var_name[nvars] = name;
   var_type[nvars] = type;
   var_off[nvars] = off;
   var_flags[nvars] = (char)(depth | flags);
@@ -353,7 +346,7 @@ static int push_var(const char *name, int type, int off, int flags)
 /* Declare a global variable of the given type, at the next data
  * offset. The caller then writes its bytes to the data stream: its
  * initial value, or zeros. */
-static int add_global(const char *name, int type)
+static int add_global(int name, int type)
 {
   if (nvars != nglobals)
     fatal(29 /* "internal error: a global declared among locals" */, NULL);
@@ -363,12 +356,12 @@ static int add_global(const char *name, int type)
 
 /* Declare a local (or parameter) of the given type at the current
  * depth, and give it a frame slot of size bytes. An unnamed prototype
- * parameter has the name "". */
-static int add_local(const char *name, int type, int size)
+ * parameter has the name -1. */
+static int add_local(int name, int type, int size)
 {
   int v = push_var(name, type, frame_next, 0);
   if (frame_next + size > 255)
-    error(30 /* "too many local variables in" */, quote(fname(cur_fn)));
+    error(30 /* "too many local variables in" */, quote(fn_name[cur_fn]));
   frame_next += size;
   if (frame_next > frame_max)
     frame_max = frame_next;
@@ -380,7 +373,7 @@ static int add_local(const char *name, int type, int size)
  * global (V_DATA, at the next data offset), so it keeps its value
  * between calls and takes no frame space. The caller then writes its
  * bytes to the data stream: its initial value, or zeros. */
-static int add_static_local(const char *name, int type)
+static int add_static_local(int name, int type)
 {
   return push_var(name, type, data_offset(), V_DATA);
 }
@@ -404,7 +397,7 @@ static void set_param_types(int f, int n)
       if (param_types[fn_ptypes[f] + i]
           != unqual(var_type[nglobals + i]))
         error(31 /* "conflicting parameter types for" */,
-              quote(fname(f)));
+              quote(fn_name[f]));
     return;
   }
   if (nparam_types + n > MAX_PARAM_TYPES)
@@ -421,7 +414,7 @@ static int is_type_start(void)
   return tok == T_INT || tok == T_CHAR || tok == T_VOID || tok == T_CONST
          || tok == T_VOLATILE || tok == T_STRUCT || tok == T_ENUM
          || tok == T_SIGNED || tok == T_UNSIGNED
-         || (tok == T_ID && typedef_type(tok_text) >= 0);
+         || (tok == T_ID && typedef_type(tok_val) >= 0);
 }
 
 /* Describe tag for a message: 'struct name', or an unnamed struct. The
@@ -432,7 +425,7 @@ static const char *tag_desc(int tag)
   if (tag_name(tag) < 0)
     return "an unnamed struct";
   strcpy(buf, "'struct ");
-  strcat(buf, name_of(tag_name(tag)));
+  strcat(buf, tok_name(tag_name(tag)));
   strcat(buf, "'");
   return buf;
 }
@@ -511,8 +504,8 @@ static int parse_base_type(void)
   } else {
     if (tok == T_VOID)
       t = TY_VOID;
-    else if (tok == T_ID && typedef_type(tok_text) >= 0)
-      t = typedef_type(tok_text);
+    else if (tok == T_ID && typedef_type(tok_val) >= 0)
+      t = typedef_type(tok_val);
     else
       error(33 /* "expected a type, not" */, tok_desc());
     next();
@@ -535,7 +528,7 @@ static int parse_pointers(int t)
   return t;
 }
 
-/* The type a letter stands for in a cmdsys_funcs[] signature: S and P
+/* The type a letter stands for in a cmdsys_sigs[] signature: S and P
  * are the const forms of s and p, for what a function only reads. */
 static int sig_type(char c)
 {
@@ -550,10 +543,10 @@ static int sig_type(char c)
   return TY_INT;
 }
 
-/* Declare f as CMDSYS function c of cmdsys_funcs[], with its types. */
+/* Declare f as CMDSYS function c of cmdsys_sigs[], with its types. */
 static void declare_cmdsys(int f, int c)
 {
-  const char *sig = cmdsys_funcs[c].sig;
+  const char *sig = cmdsys_sigs[c];
   int i, n = (int)strlen(sig) - 1;
   if (nparam_types + n > MAX_PARAM_TYPES)
     fatal(32 /* "too many function parameters in all" */, NULL);
@@ -569,7 +562,7 @@ static void declare_cmdsys(int f, int c)
  * types that were never declared (int memset();) match. */
 static int matches_cmdsys(int f, int c)
 {
-  const char *sig = cmdsys_funcs[c].sig;
+  const char *sig = cmdsys_sigs[c];
   int i, n = (int)strlen(sig) - 1;
   if (fn_type[f] != sig_type(sig[0]) || nparams_of(f) != n)
     return 0;
@@ -736,7 +729,7 @@ static char label_used[MAX_LABELS];  /* some branch to it so far */
 static int new_label(void)
 {
   if (nlabels >= MAX_LABELS)
-    error(36 /* "too many branches in" */, quote(fname(cur_fn)));
+    error(36 /* "too many branches in" */, quote(fn_name[cur_fn]));
   label_used[nlabels] = 0;
   return nlabels++;
 }
@@ -888,8 +881,8 @@ static void parse_unary(Operand *o);
 static void parse_postfix(Operand *o);
 static void parse_sizeof(Operand *o);
 static int parse_dims(int t, int may_omit);
-static int parse_local_init(int type, const char *name, int base);
-static int parse_global_init(int type, const char *name);
+static int parse_local_init(int type, int name, int base);
+static int parse_global_init(int type, int name);
 static void binary(Operand *o, Operand *r, int op, int lstart, int mid);
 static void finish_store(Operand *o, int keep);
 static void offset_place(Operand *o, int off);
@@ -1104,7 +1097,7 @@ static int new_temp(void)
 {
   int off = frame_next;
   if (frame_next + 2 > 255)
-    error(30 /* "too many local variables in" */, quote(fname(cur_fn)));
+    error(30 /* "too many local variables in" */, quote(fn_name[cur_fn]));
   frame_next += 2;
   if (frame_next > frame_max)
     frame_max = frame_next;
@@ -1576,14 +1569,14 @@ static void parse_call(int f, Operand *o)
       if (fn_ptypes[f] >= 0 && nargs < nparams_of(f)) {
         strcpy(where, num_text(nargs + 1));
         strcat(where, " of ");
-        strcat(where, quote(fname(f)));
+        strcat(where, quote(fn_name[f]));
         check_assign(param_types[fn_ptypes[f] + nargs], &a,
                      200 /* "argument" */, where);
       }
       if (is_struct(a.type)) {
         if (fn_ptypes[f] < 0)
           error(53 /* "passing a struct needs a prototype for" */,
-                quote(fname(f)));
+                quote(fn_name[f]));
         push_struct_words(&a);
       } else {
         rvalue(&a);
@@ -1599,7 +1592,7 @@ static void parse_call(int f, Operand *o)
     set_nparams(f, nargs);      /* first use fixes the count */
   else if (nparams_of(f) != nargs)
     error(55 /* "wrong number of arguments in call to" */,
-          quote(fname(f)));
+          quote(fn_name[f]));
   fn_flags[f] |= FN_CALLED;
   if (!suppress)
     ncalls++;
@@ -1637,8 +1630,7 @@ static int want_place;
  * by need_lvalue()), incremented, or the operand of &, so &N works. */
 static void parse_primary(Operand *o)
 {
-  char name[MAX_NAME + 1];
-  int c, f, v, place = want_place;
+  int name, c, f, v, place = want_place;
 
   if (tok != '(')
     want_place = 0;
@@ -1691,7 +1683,7 @@ static void parse_primary(Operand *o)
     nest--;
     return;
   case T_ID:
-    strcpy(name, tok_text);
+    name = tok_val;
     next();
     c = find_id(name);
     if (c >= 0) {
@@ -1706,7 +1698,7 @@ static void parse_primary(Operand *o)
       return;
     }
     if (tok == '(') {
-      if (!strcmp(name, "pstr")) {
+      if (name == ID_PSTR) {
         parse_pstr();
         o->type = pointer_to(TY_CHAR);
         return;
@@ -1964,9 +1956,9 @@ static void parse_member(Operand *o, int arrow)
   if (tag_size(tag) < 0)
     error(75 /* "member access into the incomplete type" */,
           tag_desc(tag));
-  m = member_find(tag, name_find(tok_text));
+  m = member_find(tag, tok_val);
   if (m < 0) {
-    strcpy(msg, quote(tok_text));
+    strcpy(msg, quote(tok_val));
     strcat(msg, " in ");
     strcat(msg, tag_desc(tag));
     error(214 /* "no member named" */, msg);
@@ -2550,10 +2542,10 @@ static void push_place_addr(Operand *o)
  * in C's order. A value it returns is dropped. */
 static int copy_func(void)
 {
-  int f = find_func("memcpy");
+  int f = find_func(ID_MEMCPY);
   if (f < 0) {
-    f = add_func("memcpy");
-    declare_cmdsys(f, find_cmdsys("memcpy"));
+    f = add_func(ID_MEMCPY);
+    declare_cmdsys(f, find_cmdsys(ID_MEMCPY));
   } else if (nparams_of(f) != 3) {
     error(86 /* "a struct copy calls memcpy(dst, src, n), but this "
                 "program declares memcpy differently" */, NULL);
@@ -2858,9 +2850,9 @@ static int parse_dims(int t, int may_omit)
 }
 
 /* Parse the start of a declarator after the base type base: any '*'s,
- * then the name, which is copied to name. Returns the type so far; any
- * array sizes come after the name. */
-static int parse_declarator(int base, char *name)
+ * then the name, whose id is stored in *name. Returns the type so far;
+ * any array sizes come after the name. */
+static int parse_declarator(int base, int *name)
 {
   int type = parse_pointers(base);
   if (tok == '(')
@@ -2868,7 +2860,7 @@ static int parse_declarator(int base, char *name)
           "(such as int (*p)[4])");
   if (tok != T_ID)
     error(93 /* "expected a name, not" */, tok_desc());
-  strcpy(name, tok_text);
+  *name = tok_val;
   next();
   return type;
 }
@@ -2893,8 +2885,7 @@ static int parse_var_type(int type, int may_omit)
  * the same tag is caught. */
 static void parse_members(int tag)
 {
-  char name[MAX_NAME + 1];
-  int off = 0, base, t;
+  int name, off = 0, base, t;
 
   enter_nest();
   tag_set_size(tag, -2);
@@ -2908,7 +2899,7 @@ static void parse_members(int tag)
       error(96 /* "expected a struct member, not" */, tok_desc());
     base = parse_base_type();
     for (;;) {
-      t = parse_declarator(base, name);
+      t = parse_declarator(base, &name);
       if (tok == '(')
         error(97 /* "a struct member can't be a function:" */,
               quote(name));
@@ -2917,11 +2908,11 @@ static void parse_members(int tag)
         error(98 /* "a struct member can't have type void" */, NULL);
       need_complete(t, 208 /* "a struct member can't have the"
                               " incomplete type" */);
-      if (member_find(tag, name_find(name)) >= 0)
+      if (member_find(tag, name) >= 0)
         error(99 /* "duplicate struct member" */, quote(name));
       if (off > MAX_OBJECT - type_size(t))
         error(100 /* "struct too large (over 32767 bytes)" */, NULL);
-      member_add(tag, intern(name), t, off);
+      member_add(tag, name, t, off);
       off += type_size(t);
       if (tok != ',')
         break;
@@ -2949,11 +2940,13 @@ static void parse_members(int tag)
  */
 static int parse_struct(void)
 {
-  int name = -1, tag = -1;
+  int name = -1, tag = -1, hsum = 0, hmul = 1;
 
   next();                         /* struct */
   if (tok == T_ID) {
-    name = intern(tok_text);
+    name = tok_val;
+    hsum = tok_hsum;
+    hmul = tok_hmul;
     next();
     tag = tag_find(name, tok == '{' || tok == ';' ? depth : -1);
   } else if (tok != '{') {
@@ -2961,7 +2954,7 @@ static int parse_struct(void)
           tok_desc());
   }
   if (tag < 0) {
-    tag = tag_new(name, depth);
+    tag = tag_new(name, depth, hsum, hmul);
     if (in_params && name >= 0)
       warning(103 /* "declared in a parameter list, so not visible "
                      "outside it:" */, tag_desc(tag));
@@ -3002,9 +2995,9 @@ static int parse_enum(void)
   while (tok != '}') {
     if (tok != T_ID)
       error(107 /* "expected an enum constant, not" */, tok_desc());
-    check_not_var(tok_text);
-    check_not_id(tok_text);
-    name = intern(tok_text);
+    check_not_var(tok_val);
+    check_not_id(tok_val);
+    name = tok_val;
     next();
     if (tok == '=') {
       next();
@@ -3038,26 +3031,25 @@ static int parse_enum(void)
  * may be repeated with the same type, as C11 allows. */
 static void parse_typedef(void)
 {
-  char name[MAX_NAME + 1];
-  int base, t, i;
+  int name, base, t, i;
 
   next();                         /* typedef */
   if (!is_type_start())
     error(111 /* "expected a type after 'typedef', not" */, tok_desc());
   base = parse_base_type();
   for (;;) {
-    t = parse_declarator(base, name);
+    t = parse_declarator(base, &name);
     if (tok == '(')
       error(112 /* "typedefs of function types are not supported" */,
             NULL);
     t = parse_dims(t, 0);
-    i = id_find(name_find(name));
+    i = id_find(name);
     if (i >= 0 && id_depth(i) == depth) {
       if (id_kind(i) != ID_TYPEDEF || id_val(i) != t)
         error(27 /* "redeclaration of" */, quote(name));
     } else {
       check_not_var(name);
-      id_add(intern(name), ID_TYPEDEF, t, depth);
+      id_add(name, ID_TYPEDEF, t, depth);
     }
     if (tok != ',')
       break;
@@ -3117,9 +3109,8 @@ static void parse_declaration(int is_static)
   }
   for (;;) {
     Operand v, e;
-    int s;
-    char name[MAX_NAME + 1];
-    int type = parse_var_type(parse_declarator(base, name), 1), braced;
+    int s, name;
+    int type = parse_var_type(parse_declarator(base, &name), 1), braced;
     if (tok == '(')
       error(114 /* "local function declarations are not supported" */,
             NULL);
@@ -3527,7 +3518,7 @@ static void parse_switch(void)
 static void parse_statement(void)
 {
   Operand o;
-  if (tok == T_ID && typedef_type(tok_text) >= 0) {
+  if (tok == T_ID && typedef_type(tok_val) >= 0) {
     parse_declaration(0);       /* T x; with a typedef name T */
     return;
   }
@@ -3573,7 +3564,7 @@ static void parse_statement(void)
     } else {
       if (fn_type[cur_fn] == TY_VOID)
         error(145 /* "void function returns a value:" */,
-              quote(fname(cur_fn)));
+              quote(fn_name[cur_fn]));
       begin_expr();
       parse_expr(PREC_COMMA, &o);
       check_assign(fn_type[cur_fn], &o, 199 /* "return" */, NULL);
@@ -3665,8 +3656,7 @@ static int parse_params(void)
     return -1;
   }
   for (;;) {
-    char name[MAX_NAME + 1];
-    int type;
+    int name, type;
     if (tok == T_ELLIPSIS)
       error(150 /* "variable argument lists are not supported yet" */,
             NULL);
@@ -3684,9 +3674,9 @@ static int parse_params(void)
     }
     if (n >= MAX_PARAMS)
       fatal(153 /* "too many parameters" */, NULL);
-    name[0] = '\0';             /* a prototype may leave it out */
+    name = -1;                  /* a prototype may leave it out */
     if (tok == T_ID) {
-      strcpy(name, tok_text);
+      name = tok_val;
       next();
     }
     /* An array parameter is a pointer to its first element, as in
@@ -3771,7 +3761,7 @@ static void init_target(Init *a, int s)
 static void parse_addr(Init *a, int unary)
 {
   Operand e;
-  int s = tok == T_ID ? find_var(tok_text) : -1;
+  int s = tok == T_ID ? find_var(tok_val) : -1;
   int t, op;
 
   enter_nest();
@@ -3812,7 +3802,7 @@ static void parse_addr(Init *a, int unary)
   } else if (tok == '&') {
     /* &name, then any constant indexes: &m[1][2]. */
     next();
-    s = tok == T_ID ? find_var(tok_text) : -1;
+    s = tok == T_ID ? find_var(tok_val) : -1;
     if (s < 0 || !var_data(s))
       error(206 /* "initializer is not a constant ccish supports" */,
             NULL);
@@ -3904,7 +3894,7 @@ static void parse_scalar_init(int type)
  */
 static int init_local;          /* initializing a local array */
 static int init_base;           /* its frame offset */
-static const char *init_name;   /* its name, for messages */
+static int init_name;           /* its name (an id), for messages */
 static int held_char = -1;      /* a char constant to be stored with the
                                  * next one, at frame offset held_at */
 static int held_at;
@@ -3963,9 +3953,9 @@ static void init_byte(int off, int v)
  * program hasn't used it yet; or -1 if the program has its own. */
 static int cmdsys_memset(void)
 {
-  int f = find_func("memset"), c = find_cmdsys("memset");
+  int f = find_func(ID_MEMSET), c = find_cmdsys(ID_MEMSET);
   if (f < 0) {
-    f = add_func("memset");
+    f = add_func(ID_MEMSET);
     declare_cmdsys(f, c);
   } else if ((fn_flags[f] & FN_DEFINED) || !matches_cmdsys(f, c)) {
     return -1;
@@ -4118,7 +4108,7 @@ static void init_flat(int t, int off)
  * for a char array, a string literal. Returns the type, with an array
  * size that was left out filled in from the initializer. Whatever the
  * list doesn't reach is zero. */
-static int parse_aggr_init(int type, const char *name)
+static int parse_aggr_init(int type, int name)
 {
   int esize;
 
@@ -4153,7 +4143,7 @@ static int parse_aggr_init(int type, const char *name)
 /* Parse the initializer of a global of type type, named name, and
  * write its bytes to the data stream. Returns the type, with an array
  * size that was left out filled in. */
-static int parse_global_init(int type, const char *name)
+static int parse_global_init(int type, int name)
 {
   if (is_array(type) || is_struct(type)) {
     init_local = 0;
@@ -4175,7 +4165,7 @@ static int parse_global_init(int type, const char *name)
 /* Parse the brace initializer of a local array or struct of type type,
  * named name, at frame offset base, as stores into the frame. Returns
  * the type, with an array size that was left out filled in. */
-static int parse_local_init(int type, const char *name, int base)
+static int parse_local_init(int type, int name, int base)
 {
   init_local = 1;
   init_base = base;
@@ -4204,7 +4194,7 @@ static int same_global_type(int a, int b)
  * one of its declarations are extern, as in C; the last gives it its
  * storage. Linkage follows C11 6.2.2: extern after static keeps it
  * static, and static after a declaration that isn't is an error. */
-static int declare_global(const char *name, int type, int storage)
+static int declare_global(int name, int type, int storage)
 {
   int s = find_var(name);
   if (s < 0) {
@@ -4237,7 +4227,7 @@ static int declare_global(const char *name, int type, int storage)
  * the first declarator's type and name, with storage class storage
  * (T_STATIC, T_EXTERN or 0): int x = 1, *p = &x, buf[100]; A global
  * without an initializer is zero when the module loads. */
-static void parse_globals(int base, int type, char *name, int storage)
+static void parse_globals(int base, int type, int name, int storage)
 {
   int s;
   for (;;) {
@@ -4264,7 +4254,7 @@ static void parse_globals(int base, int type, char *name, int storage)
     if (tok != ',')
       break;
     next();
-    type = parse_declarator(base, name);
+    type = parse_declarator(base, &name);
   }
   expect(';', 118 /* "expected ';' after declaration, not" */);
 }
@@ -4275,8 +4265,7 @@ static void parse_globals(int base, int type, char *name, int storage)
  * global without storage, and changes nothing on a function. */
 static void parse_toplevel(void)
 {
-  int base, type, nparams, pwords, i, f, mark, storage = 0;
-  char name[MAX_NAME + 1];
+  int base, type, nparams, pwords, i, f, name, storage = 0;
 
   depth = 0;                      /* file scope, for tags and names */
   if (tok == T_TYPEDEF) {
@@ -4302,7 +4291,7 @@ static void parse_toplevel(void)
     next();                     /* struct pt { ... }; declares only */
     return;
   }
-  type = parse_declarator(base, name);
+  type = parse_declarator(base, &name);
   if (tok != '(') {
     parse_globals(base, type, name, storage);
     return;
@@ -4321,7 +4310,6 @@ static void parse_toplevel(void)
                    " of" */, quote(name));
     fn_flags[f] |= FN_STATIC;
   }
-  mark = pool_mark();             /* its own names are released after */
 
   cur_fn = f;                     /* for messages about its variables */
   in_params = 1;
@@ -4331,12 +4319,12 @@ static void parse_toplevel(void)
   if (tok == ';') {
     /* A prototype. "()" leaves the parameter count unspecified. */
     if ((fn_flags[f] & FN_DECLARED) && fn_type[f] != type)
-      error(165 /* "conflicting declaration of" */, quote(fname(f)));
+      error(165 /* "conflicting declaration of" */, quote(fn_name[f]));
     fn_type[f] = type;
     if (nparams >= 0) {
       if (nparams_of(f) >= 0 && nparams_of(f) != nparams)
         error(166 /* "conflicting parameter count for" */,
-              quote(fname(f)));
+              quote(fn_name[f]));
       set_nparams(f, nparams);
       set_param_types(f, nparams);
     }
@@ -4346,7 +4334,6 @@ static void parse_toplevel(void)
     nvars = nglobals;
     tag_hide(0);                /* tags declared in the parameters */
     id_hide(0);
-    pool_release(mark);
     return;
   }
   if (nparams < 0)
@@ -4357,15 +4344,15 @@ static void parse_toplevel(void)
   for (i = nglobals; i < nvars; i++)
     if (var_name[i] < 0)
       error(168 /* "parameter name missing in definition of" */,
-            quote(fname(f)));
+            quote(fn_name[f]));
   if (fn_flags[f] & FN_DEFINED)
-    error(104 /* "redefinition of" */, quote(fname(f)));
+    error(104 /* "redefinition of" */, quote(fn_name[f]));
   if ((fn_flags[f] & FN_DECLARED) && fn_type[f] != type)
-    error(165 /* "conflicting declaration of" */, quote(fname(f)));
+    error(165 /* "conflicting declaration of" */, quote(fn_name[f]));
   if (nparams_of(f) >= 0 && nparams_of(f) != nparams)
     error(169 /* "parameter count differs from earlier use of" */,
-          quote(fname(f)));
-  if (!strcmp(fname(f), "main") && nparams != 0)
+          quote(fn_name[f]));
+  if (fn_name[f] == ID_MAIN && nparams != 0)
     error(170 /* "main with parameters is not supported yet" */, NULL);
   set_param_types(f, nparams);
   fn_type[f] = type;
@@ -4386,10 +4373,8 @@ static void parse_toplevel(void)
   nvars = nglobals;
   tag_hide(0);
   id_hide(0);
-  pool_release(mark);
 }
 
-/* The source file being compiled. */
 /* The front end: compile the token stream and name file of input
  * name in (ccpp's NAME.i and NAME.nam) into the IR file of output name
  * base (approach.md 18.7), for the back end. */
@@ -4434,7 +4419,7 @@ int func_sym(int f, int *hash)
     flags |= SYM_RETURNS;
   if (fn_flags[f] & FN_STATIC)
     flags |= SYM_LOCAL;
-  c = find_cmdsys(fname(f));
+  c = find_cmdsys(fn_name[f]);
   if (c >= 0)
     flags |= matches_cmdsys(f, c) ? SYM_CMDSYS : SYM_NOTCMDSYS;
   *hash = 0;

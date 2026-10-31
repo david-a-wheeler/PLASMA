@@ -28,16 +28,19 @@ enum {
 
 /* The current token. */
 extern int tok;
-extern int tok_val;                 /* T_NUM value */
+extern int tok_val;                 /* T_NUM value; T_ID, T_KEYWORD id */
 extern int tok_unsigned;            /* T_NUM: it is unsigned (a u suffix,
                                      * or hex or octal over $7FFF) */
-extern char tok_text[MAX_STR + 1];  /* T_ID / T_KEYWORD name, T_STR bytes */
+extern char tok_text[MAX_STR + 1];  /* T_STR bytes */
 extern int tok_len;                 /* T_STR length, not counting a NUL */
+extern int tok_hsum, tok_hmul;      /* T_ID after T_STRUCT: the tag's
+                                     * spelling's hash (CCPP.md) */
 
 void tok_open(const char *base);    /* NAME.i and NAME.nam; the first token */
 void tok_close(void);
 void next(void);                    /* advance to the next token */
 int  next_is_rbracket(void);        /* is the token after this one ']'? */
 const char *tok_desc(void);         /* the current token, for messages */
+const char *tok_name(int name);     /* an id's spelling, for messages */
 
 #endif

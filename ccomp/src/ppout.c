@@ -15,12 +15,14 @@ static const char *base_name;
 static unsigned char str[MAX_STR];  /* the string being joined */
 static int str_len;
 static int str_held;                /* a string is in str[] */
+static int last;                    /* the last code written, but TC_NL */
 
 /* Create the token stream for output name base, and write its header. */
 void pp_out_open(const char *base)
 {
   base_name = base;
   str_held = 0;
+  last = 0;
   if (!bopen(&out, stream_name(base, SUFFIX_I), 1))
     fatal(176 /* "cannot create" */, stream_name(base, SUFFIX_I));
   bwrite(&out, (const unsigned char *)"CTK", 3);
@@ -41,10 +43,11 @@ static void flush_str(void)
 /* Write a token: code, with its value val (a number or an id) or, for a
  * string, its n bytes at s. A string is joined to one held before it;
  * newlines are written at once, so that a string's line is that of the
- * token after it. */
+ * token after it. An identifier after "struct" is a tag, with its
+ * spelling's hash (CCPP.md, TC_TAG). */
 void pp_out(int code, int val, const unsigned char *s, int n)
 {
-  int i;
+  int i, mul, hash;
   if (code == TC_NL) {
     bputc(&out, TC_NL);
     return;
@@ -61,6 +64,16 @@ void pp_out(int code, int val, const unsigned char *s, int n)
     return;
   }
   flush_str();
+  if (code == TC_ID && last == TC_STRUCT) {
+    hash = pp_name_hash(val, &mul);
+    bputc(&out, TC_TAG);
+    bputw(&out, val);
+    bputw(&out, hash);
+    bputw(&out, mul);
+    last = TC_TAG;
+    return;
+  }
+  last = code;
   bputc(&out, code);
   if (code == TC_ID || code == TC_NUM || code == TC_UNUM
       || code == TC_KEYWORD)

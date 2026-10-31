@@ -9,6 +9,7 @@
 #include <string.h>
 #include "ccish.h"
 #include "token.h"
+#include "fixed.h"
 #include "ppname.h"
 
 #define ENT_FILE 0x80           /* in a length byte: a file's name */
@@ -98,6 +99,27 @@ int pp_add_file(const char *path)
     return k;
   add(path, n, ENT_FILE);
   return find(path, n, ENT_FILE);
+}
+
+/* The hash of id's spelling, as cccomp's type hashes need it for a
+ * struct tag (CCPP.md, TC_TAG): adding its n bytes one at a time to a
+ * hash h, as h = h * 31 + byte, gives h * *mul + the result, where
+ * *mul is 31^n; all mod 65536. */
+int pp_name_hash(int id, int *mul)
+{
+  int i = 0, k = 0, len, j, h = 0, m = 1;
+  for (;;) {
+    len = pool[i] & ENT_LEN;
+    if (!(pool[i] & ENT_FILE) && ++k == id)
+      break;
+    i += len + 1;
+  }
+  for (j = 1; j <= len; j++) {
+    h = (h * 31 + pool[i + j]) & 0xFFFF;
+    m = (m * 31) & 0xFFFF;
+  }
+  *mul = m;
+  return h;
 }
 
 /* The number of ids given so far. */

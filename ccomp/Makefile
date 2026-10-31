@@ -19,7 +19,7 @@ BACK   = src/irin.c src/lower.c src/peep.c src/emit.c src/helper.c
 LINK   = src/link.c
 PLVM = ../src/plvm
 
-HEADERS = src/ccish.h src/token.h src/ppname.h src/pplex.h src/ppout.h \
+HEADERS = src/ccish.h src/token.h src/fixed.h src/ppname.h src/pplex.h src/ppout.h \
           src/pp.h src/tokin.h
 
 all: ccish ccpp cccomp ccgen ccrel

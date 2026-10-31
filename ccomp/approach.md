@@ -3799,6 +3799,34 @@ stdio) and the parser interns it as before; step 2 removes that.
   - Joining lines that end in `\` is left to step 4, with the
     directives that need it.
 
+**`ccpp` step 2 (ids in `cccomp`) is done** (2026-10-31). The parser
+works on ids: every table that held a name pool offset (functions,
+variables, struct tags and members, enum constants and typedef names)
+holds the id, and name.c keeps only the table of enum constants and
+typedef names. The name pool, `intern()`, `pool_mark()` and
+`pool_release()` are gone. The CMDSYS table is signatures only, found
+by id (`src/fixed.h`: ids 1-25), and `main`, `pstr`, `memcpy` and
+`memset` are known by id. A spelling is looked up in the name file
+only for a message (`tok_name()`), and, until step 3, for the names
+written into the IR file.
+- Struct tags: `ccpp` writes an identifier right after `struct` as a
+  `$09` tag, with its spelling's hash and 31^length (CCPP.md), and the
+  type hash adds those (h × 31^n + the spelling's hash), which is what
+  adding the bytes one at a time gave; so type hashes, and the objects,
+  are unchanged. `cccomp` refuses a token stream whose tag codes
+  disagree with the `struct`s.
+- Checked: all 111 inputs give byte-identical `.obj` and `.syms`
+  (parse.c and tokin.c now need `cccomp`'s new limits, so the old one
+  can't compile them). New test: `tests/pp/tag.c`. 318 pass.
+- Sizes (small build): `cccomp` **35,635** (code 26,038, data 8,773,
+  strings 824), from 42,373: name.c's data went from 7,984 to 1,682,
+  and parse.c lost its CMDSYS names (strings 555 to 295). `ccpp` 16,229.
+  About 3.6K is still to go for 32K; step 3 should save a little more
+  (the IR file's names), and then the candidates listed above.
+- `MAX_POOL` is gone. The fixed ids are `#define`s in their own header
+  (fixed.h), not enum constants in token.h, since parse.c would
+  otherwise have gone over `MAX_IDS` with token.h's codes.
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in
