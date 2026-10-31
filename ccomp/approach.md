@@ -2825,6 +2825,15 @@ are estimates, to be measured.
      only the special cases (`FUNC`, `CONST`, `NOT`, the globals'
      fixups) in code. The IR-to-PLASMA mapping is then one table, as in
      IR.md's "Now:" lines, and a new op is one row.
+     **Done** (2026-10-31): `lw_kind[]` and `lw_op[]`, parallel `char`
+     arrays; the kinds are simple, comparison (then `NEG`), with
+     operand *a*, global (*a* relocated as data; `DATAADDR` is one,
+     as `LA`), pseudo-op (`$100` plus the table's byte: the pseudo-ops
+     keep their numbers, since peep.c tests `op >= OP_FUNC_BEGIN`),
+     and special: `FUNC`, `ENDFUNC`, `CONST`, `STRADDR`, `CALL`,
+     `JOIN`, `RETURN` and `NOT`, in `lower_special()`. Measured:
+     lower.c's code 1,429 to 1,013 bytes, data 100 to 200, so `ccgen`
+     316 bytes smaller (17,657). Output byte-identical.
    - **Parallel arrays instead of `Mop`** in the peephole window
      (`win[]`) and of `Reloc` in emit.c (decision 15): each
      `win[i].field` now costs a `MUL` by 10 (24 `MUL`s in peep.c's and

@@ -20,57 +20,54 @@ static const char *const ir_names[] = {
   "SEL", "CASES", "CASEVAL", "CASETO"
 };
 
-/* PLASMA's comparison op for each IR comparison, or -1. */
-static int compare_op(int op)
-{
-  switch (op) {
-  case IR_EQ: return OP_ISEQ;
-  case IR_NE: return OP_ISNE;
-  case IR_LT: return OP_ISLT;
-  case IR_GT: return OP_ISGT;
-  case IR_LE: return OP_ISLE;
-  case IR_GE: return OP_ISGE;
-  }
-  return -1;
-}
+/* How each IR op lowers (lw_kind[]), and the PLASMA opcode it lowers
+ * to (lw_op[]), as parallel arrays indexed by IR op:
+ *   L_SIMPLE   that opcode, with no operand
+ *   L_COMPARE  that comparison, then NEG: PLASMA's comparisons give
+ *              $FFFF for true, on every VM, and NEG makes it C's 1 (when
+ *              the result only feeds a branch, the peephole stage removes
+ *              the NEG)
+ *   L_OPERAND  that opcode, with the IR op's operand a (a frame offset,
+ *              or a branch's label)
+ *   L_GLOBAL   that opcode, the absolute-address form, with a's address
+ *              relocated as data (data_fix())
+ *   L_PSEUDO   the pseudo-op $100 + that, with operand a
+ *   L_SPECIAL  lowered by lower_special()
+ * The stores keep their value (DLW, DLB, DAW, DAB): an assignment's
+ * value can be used, and when it isn't, the following DROP lets the
+ * peephole stage make the plain store (SLW, ...). DLB keeps the stored
+ * byte, which is the value C gives an assignment to a char. */
+enum { L_SIMPLE, L_COMPARE, L_OPERAND, L_GLOBAL, L_PSEUDO, L_SPECIAL };
 
-/* PLASMA's branch op for each IR branch, or -1. */
-static int branch_op(int op)
-{
-  switch (op) {
-  case IR_JUMP:    return OP_BRNCH;
-  case IR_BRFALSE: return OP_BRFLS;
-  case IR_BRTRUE:  return OP_BRTRU;
-  case IR_SEL:     return OP_SEL;
-  }
-  return -1;
-}
+static const char lw_kind[IR_NOPS] = {
+  L_SPECIAL, L_SPECIAL, L_SPECIAL,          /* FUNC, ENDFUNC, CONST */
+  L_GLOBAL, L_SPECIAL,                      /* DATAADDR, STRADDR */
+  L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,   /* locals */
+  L_GLOBAL, L_GLOBAL, L_GLOBAL, L_GLOBAL,   /* globals */
+  L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,   /* LOAD ... STOREB */
+  L_SPECIAL, L_SIMPLE, L_SIMPLE, L_SPECIAL, /* CALL, DROP, DUP, RETURN */
+  L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,        /* ADD ... */
+  L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,        /* ... SHR */
+  L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,
+  L_SIMPLE, L_SIMPLE, L_SPECIAL,            /* NEG, COMP, NOT */
+  L_PSEUDO, L_OPERAND, L_OPERAND, L_OPERAND, L_SPECIAL,    /* ... JOIN */
+  L_OPERAND, L_PSEUDO, L_PSEUDO, L_PSEUDO   /* SEL, the case table */
+};
 
-/* PLASMA opcode for each IR op that maps to a single operand-free op. */
-static int simple_op(int op)
-{
-  switch (op) {
-  case IR_DROP: return OP_DROP;
-  case IR_DUP:  return OP_DUP;
-  case IR_LOAD:   return OP_LW;
-  case IR_LOADB:  return OP_LB;
-  case IR_STORE:  return OP_SW;
-  case IR_STOREB: return OP_SB;
-  case IR_ADD:  return OP_ADD;
-  case IR_SUB:  return OP_SUB;
-  case IR_MUL:  return OP_MUL;
-  case IR_DIV:  return OP_DIV;
-  case IR_MOD:  return OP_MOD;
-  case IR_AND:  return OP_AND;
-  case IR_OR:   return OP_IOR;
-  case IR_XOR:  return OP_XOR;
-  case IR_SHL:  return OP_SHL;
-  case IR_SHR:  return OP_SHR;
-  case IR_NEG:  return OP_NEG;
-  case IR_COMP: return OP_COMP;
-  }
-  return -1;
-}
+static const unsigned char lw_op[IR_NOPS] = {
+  0, 0, 0,
+  OP_LA, 0,
+  OP_LLW, OP_DLW, OP_LLB, OP_DLB, OP_LLA,
+  OP_LAW, OP_DAW, OP_LAB, OP_DAB,
+  OP_LW, OP_LB, OP_SW, OP_SB,
+  0, OP_DROP, OP_DUP, 0,
+  OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD,
+  OP_AND, OP_IOR, OP_XOR, OP_SHL, OP_SHR,
+  OP_ISEQ, OP_ISNE, OP_ISLT, OP_ISGT, OP_ISLE, OP_ISGE,
+  OP_NEG, OP_COMP, 0,
+  OP_LABEL & 0xFF, OP_BRNCH, OP_BRFLS, OP_BRTRU, 0,
+  OP_SEL, OP_CASES & 0xFF, OP_CASEVAL & 0xFF, OP_CASETO & 0xFF
+};
 
 /* Write s, then n in decimal, to standard output, for -i. No printf:
  * the small build has none. */
@@ -173,124 +170,81 @@ static void put_simple(int op)
   peep_put(&m);
 }
 
-/* Stage 2's entry: lower one IR op to machine ops and pass them to the
- * peephole stage. */
-void lower_op(int op, int a, int f)
+/* Lower the IR ops of kind L_SPECIAL into m (and any ops before it). */
+static void lower_special(Mop *m, int op, int a, int f)
 {
-  Mop m;
-
-  if (opt_ir)
-    dump_ir(op, a, f);
-  if (simple_op(op) >= 0) {
-    put_simple(simple_op(op));
-    return;
-  }
-  if (compare_op(op) >= 0) {
-    /* PLASMA's comparisons give $FFFF for true, on every VM; NEG
-     * makes that C's 1. When the result only feeds a branch, the
-     * peephole stage removes the NEG. */
-    put_simple(compare_op(op));
-    put_simple(OP_NEG);
-    return;
-  }
-  memset(&m, 0, sizeof(m));
-  if (branch_op(op) >= 0) {
-    m.op = branch_op(op);
-    m.a = a;
-    peep_put(&m);
-    return;
-  }
   switch (op) {
   case IR_FUNC:
-    m.op = OP_FUNC_BEGIN;
-    m.fn = f;
-    peep_put(&m);
-    memset(&m, 0, sizeof(m));
-    m.op = OP_ENTER;
-    m.a = FRAME_LATER;
-    m.b = a;
+    m->op = OP_FUNC_BEGIN;
+    m->fn = f;
+    peep_put(m);
+    memset(m, 0, sizeof(*m));
+    m->op = OP_ENTER;
+    m->a = FRAME_LATER;
+    m->b = a;
     break;
   case IR_ENDFUNC:
-    m.op = OP_FUNC_END;
-    m.a = a;
-    m.fn = f;
+    m->op = OP_FUNC_END;
+    m->a = a;
+    m->fn = f;
     break;
   case IR_CONST:
-    mop_const(&m, a);
+    mop_const(m, a);
     break;
-  case IR_DATAADDR:
   case IR_STRADDR:
-    m.op = OP_LA;
-    m.a = a;
-    m.fix = op == IR_STRADDR ? FIX_STR : data_fix(&m, f);
-    break;
-  case IR_LOCAL:
-    m.op = OP_LLW;
-    m.a = a;
-    break;
-  case IR_SETLOCAL:
-    /* Store and keep the value: an assignment's value can be used.
-     * When it isn't, the following DROP lets the peephole stage
-     * turn DLW + DROP into SLW. */
-    m.op = OP_DLW;
-    m.a = a;
-    break;
-  case IR_LOCALB:
-    m.op = OP_LLB;
-    m.a = a;
-    break;
-  case IR_SETLOCALB:
-    /* DLB keeps the stored byte, which is the value C gives an
-     * assignment to a char. */
-    m.op = OP_DLB;
-    m.a = a;
-    break;
-  case IR_LOCALADDR:
-    m.op = OP_LLA;
-    m.a = a;
-    break;
-  case IR_GLOBAL: case IR_SETGLOBAL: case IR_GLOBALB: case IR_SETGLOBALB:
-    /* The absolute-address forms of LLW, DLW, LLB and DLB, with the
-     * address relocated as data. As for locals, a store keeps its
-     * value, and DAW + DROP becomes SAW. */
-    m.op = op == IR_GLOBAL ? OP_LAW : op == IR_SETGLOBAL ? OP_DAW
-         : op == IR_GLOBALB ? OP_LAB : OP_DAB;
-    m.a = a;
-    m.fix = data_fix(&m, f);
+    m->op = OP_LA;
+    m->a = a;
+    m->fix = FIX_STR;
     break;
   case IR_CALL:
-    m.op = OP_CALL;
-    m.fix = FIX_FUNC;
-    m.fn = f;
-    break;
-  case IR_LABEL:
-    m.op = OP_LABEL;
-    m.a = a;
+    m->op = OP_CALL;
+    m->fix = FIX_FUNC;
+    m->fn = f;
     break;
   case IR_JOIN:
-    m.op = OP_JOIN;
-    m.a = a;
-    m.b = f;
-    break;
-  case IR_CASES: case IR_CASEVAL: case IR_CASETO:
-    m.op = op == IR_CASES ? OP_CASES
-         : op == IR_CASEVAL ? OP_CASEVAL : OP_CASETO;
-    m.a = a;
+    m->op = OP_JOIN;
+    m->a = a;
+    m->b = f;
     break;
   case IR_RETURN:
-    m.op = OP_LEAVE;
-    m.a = FRAME_LATER;
+    m->op = OP_LEAVE;
+    m->a = FRAME_LATER;
     break;
   case IR_NOT:
     /* C's !x is 1 or 0. PLASMA's NOT gives $FFFF (6502 VMs) or 1
      * (C VM) for true, so mask it: NOT then AND 1 gives 1 or 0 on
      * every VM, in two ops. */
     put_simple(OP_NOT);
-    m.op = OP_ANDI;
-    m.a = 1;
+    m->op = OP_ANDI;
+    m->a = 1;
     break;
   default:
     fatal(174 /* "internal error: unknown IR op" */, NULL);
+  }
+}
+
+/* Stage 2's entry: lower one IR op to machine ops and pass them to the
+ * peephole stage, as lw_kind[] and lw_op[] say. */
+void lower_op(int op, int a, int f)
+{
+  Mop m;
+  int kind = lw_kind[op];
+
+  if (opt_ir)
+    dump_ir(op, a, f);
+  memset(&m, 0, sizeof(m));
+  m.op = lw_op[op];
+  if (kind == L_COMPARE) {
+    put_simple(m.op);
+    m.op = OP_NEG;
+  } else if (kind == L_SPECIAL) {
+    lower_special(&m, op, a, f);
+  } else if (kind != L_SIMPLE) {
+    m.a = a;
+    if (kind == L_PSEUDO)
+      m.op += 0x100;
+    else if (kind == L_GLOBAL)
+      m.fix = data_fix(&m, f);
   }
   peep_put(&m);
   if (op == IR_ENDFUNC)
