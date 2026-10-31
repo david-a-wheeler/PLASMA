@@ -3471,9 +3471,102 @@ issue. In summary:
     optimizes and emits it as `.obj` and `.syms`, which `ccrel` links
     as before. `ccgen` prints the IR (`-i`), on the Apple II too, and
     has room for more peephole rules.
+23. **`unsigned`, with helper functions merged by the linker**
+    (decided in discussion, 2026-10-31; "`unsigned` and helper
+    functions design" under Milestones). `unsigned` arithmetic that
+    PLASMA lacks is new IR ops, which `ccgen` lowers inline or as calls
+    to helper functions it writes into each object that needs them;
+    `ccrel` keeps one copy of each. `signed char` is not supported yet.
 
 
 ## Milestones
+
+**`unsigned` and helper functions design (decided in discussion,
+2026-10-31; pulled forward from M11, since ccish's own source uses
+`unsigned` about 60 times, including `/` and `%` by variables in
+`fold()`).** The user: "We know it won't load as-is. We also know we
+need a preprocessor, as well as support for unsigned." `unsigned`
+first: it is contained, self-hosting needs it, and it doesn't depend on
+the preprocessor's design (F9).
+
+*The language.*
+- New basic type `TY_UINT` (16 bits): `unsigned`, `unsigned int`,
+  `int unsigned`. `unsigned char` is `char` (ccish's plain `char` is
+  already unsigned, issue 7; ccish doesn't tell the two apart, a
+  documented difference). `signed int` and `signed` are `int`;
+  `signed char` is "not supported yet" (it needs sign extension).
+  `short` and `long` stay unsupported. The type hash's letter for it
+  is `u`.
+- C's usual arithmetic conversions: `char` promotes to `int`; `int`
+  meeting `unsigned` in a binary operator becomes `unsigned`; the
+  result of `== != < > <= >=` is `int`. Assignment, arguments and
+  returns convert silently, as C does (the same bits). Casts retype.
+- Constants: a `u` or `U` suffix makes one `unsigned`; an unsuffixed
+  hex or octal constant that doesn't fit in `int` (`0x8000` and up) is
+  `unsigned`, as C says, which removes a documented difference. A
+  decimal constant over 32767 stays the known difference (it would be
+  `long`). `sizeof` is `unsigned` (`size_t`), as in C.
+- Constant folding follows the operands' type: unsigned `/`, `%`,
+  `>>` and comparisons when either side is `unsigned`.
+- No warning for mixing signed and unsigned yet (gcc's
+  `-Wsign-compare`); possible later.
+
+*The IR.* `+ - * & | ^ << ~ == !=` are the same bits as for `int`.
+`< > <= >=` are `IR_ULT` and the rest (18.7, C). New ops `IR_UDIV`,
+`IR_UMOD` and `IR_USHR` (`$37`-`$39`), binary, `( x y -- x op y )`,
+which the parser writes for unsigned `/`, `%` and `>>` (and `/=`, `%=`,
+`>>=`). `ccgen` lowers `USHR` by a constant inline (`SHR n` then a
+mask), and the rest as calls to helper functions; VM opcodes for them
+(issue 21) would be a change to `ccgen` alone.
+
+*Helper functions.* Code that `ccgen` supplies, called like a
+function, written into each object that uses it, of which `ccrel`
+keeps one copy (like a linker's COMDAT sections). The front end never
+names them; the IR ops are the interface.
+- Helpers are numbered (0 udiv, 1 umod, 2 ushr). A call to one is a
+  `CALL` with a new relocation kind, `REL_HELPER` (5), whose target is
+  the helper's number: not a reserved function number, since function
+  numbers are positions in `.syms`, checked against its count, and a
+  "negative" 16-bit index would need special cases in every check.
+- Each helper is a short table of IR ops in `ccgen`, lowered through
+  its own stages like a function; a helper is a leaf with no
+  relocations. Unsigned division uses the signed `DIV`, without
+  branches: q = ((n >> 1) / d) << 1 (logical shift), then one more if
+  the remainder is still at least d, with d >= $8000 as its own case
+  (q is then n >= d).
+- Object format version 5: a new stream record `H` (a helper's number,
+  then its bytecode), written once per object for each helper it uses,
+  after its functions; and in `.syms`, a list of the helpers the
+  object defines: number, size, a 16-bit checksum of the bytes, and a
+  name for the listing (`udiv` ...). `ccrel` needs the sizes in its
+  first step, before it reads any stream.
+- `ccrel` keeps the first object's copy of each helper, places it once
+  after every object's code (before init), resolves `REL_HELPER` to it,
+  and gives it an RLD function entry. Two objects whose copies differ
+  in size or checksum (different `ccgen`s) are an error, not a silent
+  merge. `-l` lists a helper by its name.
+- Considered: `ccrel` holding the helpers' code itself (nothing
+  duplicated, simpler formats). Not chosen: two programs would then
+  have to agree on each helper's calling convention, and no module
+  could be built without `ccrel`'s copies; this way `ccgen` alone knows
+  them, for a few dozen bytes of disk per object that uses one.
+
+*Steps*, each tested and committed (the order of the first two changed
+from the discussion: helpers are tested best from C programs that need
+them):
+1. `unsigned` in the parser: types, conversions, constants, folding,
+   `sizeof`, the new IR ops, `USHR` by a constant inline. Unsigned `/`,
+   `%` and `>>` by a variable are "not supported yet" until step 2.
+2. The helper system: format version 5, `REL_HELPER`, `H` records, the
+   helpers, merging and checks in `ccrel`, the listing; then unsigned
+   `/`, `%` and `>>` everywhere. Tests: programs that divide, a link of
+   two objects that both use a helper (one copy kept), and a mismatch.
+3. `tools/measure.py` stops rewriting `unsigned` as `int` and stops
+   dropping number suffixes, so the self-compile measures what
+   `unsigned` really costs in ccish's own code.
+
+Estimated: `cccomp` +0.5-0.8K, `ccgen` and `ccrel` +0.3-0.5K each; to
+be measured.
 
 **M7 design (decided in discussion, 2026-10-29).** `switch`, in one
 step. ccish's own source has 26 switches with 218 case labels (the

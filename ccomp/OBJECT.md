@@ -29,6 +29,14 @@ order, with no seeking, through 512-byte block buffers (`src/bio.c`).
 The IR file, `NAME.ir` (below), passes from `cccomp` to `ccgen`
 (approach.md 18.7); `ccgen` turns it into `NAME.obj` and `NAME.syms`.
 
+**Planned: format version 5** (approach.md, "`unsigned` and helper
+functions design"): helper functions that `ccgen` writes into each
+object that uses them, of which `ccrel` keeps one. A new stream record
+`H` (a helper's number, then its bytecode), a relocation kind 5,
+`REL_HELPER` (target: a helper's number), and in `NAME.syms` a list of
+the object's helpers (number, size, checksum, name). Described in full
+below once built.
+
 ## `NAME.obj`: the stream
 
 A sequence of records, until end of file, in the order the compiler
