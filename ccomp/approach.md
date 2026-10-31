@@ -3944,6 +3944,37 @@ rewritten around one input stack (CCPP.md, "Preprocessing"):
   ccrel's limits raised. Its limits are first guesses, to be measured in
   step 7.
 
+**`ccpp` step 6 (`#if`, `#elif`, `#error`, `#line`, `__FILE__`,
+`__LINE__`, `-E`) is done** (2026-10-31). Every directive is now
+carried out, so message 13 ("not supported yet") is gone.
+- `#if` and `#elif` (new src/ppif.c): the line's tokens with macros
+  expanded, `defined` read without expansion, and any name left 0;
+  precedence climbing over C's operators but assignment, `++`, `--`
+  and the comma; `&&`, `||` and `?:` don't evaluate what they skip,
+  so a division by zero there is no error. The arithmetic is ccish's
+  16-bit `int` and `unsigned`, with C's conversions, kept as 16 bits in
+  an `int` and read as signed where it matters, so that the same code
+  is right on the host and under ccish (C says `intmax_t`: a documented
+  difference). An `#elif` after a kept branch isn't evaluated, and
+  neither is an `#if` in a skipped group.
+- `#line n "file"` sets the next line's number (allowing for a joined
+  line) and the file's name, a new file number in `NAME.nam`.
+  `__LINE__` and `__FILE__` are replaced as they are read.
+- `-E`, as decided, is in the full build only, behind one macro,
+  `CCISH_TEXT`, all of it in ppout.c: tokens as text, a space between
+  them, newlines to keep lines, and gcc's line markers for a change of
+  file or a jump of more than 8 lines. It costs 1,392 bytes (full
+  build 36,138, small 34,746), most of it a 1K buffer for spelling a
+  string; restoring it on the Apple II is defining `CCISH_TEXT` in the
+  small build.
+- Checked: all 113 inputs give byte-identical objects. New tests: a run
+  test of `#if` (each check prints 1; worked out by hand), a token
+  stream for `#line`, `__LINE__` and `__FILE__`, error tests for the
+  new messages (258-261) and for a call cut off by a directive's end,
+  and `-E` against text written by hand (and refused by the small
+  build). 361 pass.
+- Sizes (small build): `ccpp` **34,746** (code 14,124, data 19,552).
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in

@@ -33,6 +33,8 @@ int  pp_lex(void);                  /* the next token's code */
 int  pp_lex_word(char *buf, int size);  /* a directive's name */
 int  pp_lex_header(char *buf, int size, int *angle);  /* "f" or <f> */
 int  pp_lex_next_char(void);        /* the character after the token */
+const char *pp_lex_rest(void);      /* the rest of a directive's line */
+void pp_lex_set_line(int n);        /* #line n */
 int  pp_word(const char *word, int n);  /* a word's code, as lexed */
 int  pp_op(const char *s);          /* an operator's code, or -1 */
 int  pp_spell_token(int code, int val, const unsigned char *s, int n,

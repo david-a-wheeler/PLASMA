@@ -41,7 +41,7 @@ OUT = os.path.join(TOOLS, "out")
 FULL = "-full" in sys.argv[1:]      # measure the full build instead
 
 COMMON = ["diag", "bio"]
-PP = ["ppname", "pplex", "ppmac", "ppout", "pp"]
+PP = ["ppname", "pplex", "ppmac", "ppif", "ppout", "pp"]
 NAM = ["nam"]                       # in both cccomp and ccgen
 FRONT = ["tokin", "name", "type", "parse", "irout"]
 BACK = ["irin", "lower", "peep", "emit", "helper"]

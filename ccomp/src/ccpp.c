@@ -3,8 +3,10 @@
  * (approach.md, "ccpp design"). It turns one .c file into its token
  * stream, NAME.i, and its name file, NAME.nam (../CCPP.md), for cccomp.
  *
- * Usage: ccpp [-k] [-o output] [-I dir] [-D name[=text]] [-U name]
+ * Usage: ccpp [-E] [-k] [-o output] [-I dir] [-D name[=text]] [-U name]
  *             input.c
+ *   -E  write the tokens as text to the standard output, as gcc -E
+ *       does, instead of NAME.i and NAME.nam (full build only)
  *   -k  keep the output files even after an error
  *   -o  output name (default: input name without ".c")
  *   -I  a directory to look for #include files in, after the including
@@ -18,6 +20,7 @@
 #include "ccish.h"
 #include "token.h"
 #include "pp.h"
+#include "ppout.h"
 
 /* The output name, to remove the outputs after an error. */
 static const char *base_name;
@@ -34,8 +37,13 @@ void clean_up(void)
 /* Print the command-line syntax and exit. */
 static void usage(void)
 {
+#ifdef CCISH_TEXT
+  fputs("usage: ccpp [-E] [-k] [-o output] [-I dir] [-D name[=text]]"
+        " [-U name] input.c\n", stderr);
+#else
   fputs("usage: ccpp [-k] [-o output] [-I dir] [-D name[=text]]"
         " [-U name] input.c\n", stderr);
+#endif
   exit(2);
 }
 
@@ -47,6 +55,11 @@ int main(int argc, char **argv)
 
   msg_init(argv[0]);
   for (i = 1; i < argc; i++) {
+#ifdef CCISH_TEXT
+    if (!strcmp(argv[i], "-E"))
+      pp_opt_text = 1;
+    else
+#endif
     if (!strcmp(argv[i], "-k"))
       opt_keep = 1;
     else if (!strcmp(argv[i], "-o") && i + 1 < argc)

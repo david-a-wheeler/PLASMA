@@ -10,7 +10,6 @@
 10 number does not fit in 16 bits
 11 number suffixes other than u, and floating point, are not supported
 12 string literal too long
-13 this preprocessor directive is not supported yet:
 14 empty character constant
 15 multi-character constants are not supported
 16 unexpected '..'
@@ -250,3 +249,7 @@
 255 bad macro parameter list
 256 macro expansion too long
 257 too many macro parameters
+258 #error:
+259 bad expression in #if
+260 #elif after #else
+261 bad #line

@@ -291,6 +291,40 @@ else
 fi
 set --
 
+# ccpp -E (full build only: CCISH_TEXT) writes the tokens as text, a
+# space between them, each on its source line, with a line marker for a
+# change of file; and no token stream or name file. (Written by hand.)
+mkdir -p "$OUT/ppe"
+printf '#define TWO 2\nint b;\n' >"$OUT/ppe/e.h"
+printf '%s\n' '#define N 4' 'int a = N;' '#include "e.h"' '' \
+    'int c = "x" "y" + TWO;' >"$OUT/ppe/e.c"
+{
+    printf '\nint a = N ;\n' | sed 's/N/4/'
+    printf '# 2 "%s"\n' "$OUT/ppe/e.h"
+    printf 'int b ;\n'
+    printf '# 5 "%s"\n' "$OUT/ppe/e.c"
+    printf 'int c = "xy" + 2 ;\n'
+} >"$OUT/ppe/e.want"
+if ./ccpp -E -o "$OUT/ppe/e" "$OUT/ppe/e.c" >"$OUT/ppe/e.got" \
+        2>"$OUT/ppe/e.err" \
+   && cmp -s "$OUT/ppe/e.want" "$OUT/ppe/e.got" \
+   && [ ! -e "$OUT/ppe/e.i" ] && [ ! -e "$OUT/ppe/e.nam" ]; then
+    pass=$((pass + 1))
+else
+    echo "FAIL ccpp -E: wanted, then got:"
+    sed 's/^/    /' "$OUT/ppe/e.want"
+    echo "    ---"
+    sed 's/^/    /' "$OUT/ppe/e.got" "$OUT/ppe/e.err"
+    fail=$((fail + 1))
+fi
+# The small build has no -E.
+if ./ccpp-small -E -o "$OUT/ppe/s" "$OUT/ppe/e.c" >/dev/null 2>&1; then
+    echo "FAIL ccpp-small: accepted -E"
+    fail=$((fail + 1))
+else
+    pass=$((pass + 1))
+fi
+
 # cccomp finds a damaged or stale name file (CCPP.md, "What cccomp
 # checks"): each change below is made to hello.c's, which must then be
 # refused with message 232, leaving no IR file.

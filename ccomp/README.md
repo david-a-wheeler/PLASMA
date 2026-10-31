@@ -92,7 +92,7 @@ module. On the Apple II each will run separately, so that each has
 nearly all of memory (approach.md, "B3" and 18.7):
 
 ```
-ccpp [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.c
+ccpp [-E] [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.c
                                     the preprocessor and lexer: writes
                                     output.i and output.nam
 cccomp [-k] [-o output] input       the front end: input.i and input.nam
@@ -105,11 +105,12 @@ ccrel [-l] [-o module] output...    the final pass: links them into a module
 ```
 
 `ccpp` carries out `#include`, `#define` (object-like and function-like
-macros, with `#`, `##` and `__VA_ARGS__`), `#undef`, `#ifdef`,
-`#ifndef`, `#else` and `#endif` so far, and ignores `#pragma` (CCPP.md,
-"Preprocessing"); `#if` and the rest come in the next step of
-approach.md's "`ccpp` design". `-I`, `-D` and `-U` work as usual, for
-`ccish` too.
+macros, with `#`, `##` and `__VA_ARGS__`), `#undef`, `#if`, `#ifdef`,
+`#ifndef`, `#elif`, `#else`, `#endif`, `#error` and `#line`, knows
+`__FILE__`, `__LINE__` and `__CCISH__`, and ignores `#pragma` (CCPP.md,
+"Preprocessing"). `-I`, `-D` and `-U` work as usual, for `ccish` too.
+`ccpp -E` (full build only) writes the tokens as text instead, as
+`gcc -E` does.
 
 ### Linking several files
 
@@ -414,6 +415,7 @@ function returns exactly one.
 | `src/bio.c` | File I/O through 512-byte block buffers |
 | `src/token.h` | The token stream's codes, shared by `ccpp` and `cccomp` (see [CCPP.md](CCPP.md)) |
 | `src/pp.c` | The preprocessor's driver: the directives, `#include` files and groups, and the source's tokens, with macros expanded, to the token stream |
+| `src/ppif.c` | The preprocessor's `#if` expressions |
 | `src/ppmac.c` | The preprocessor's macros: the table of `#define`s, kept as tokens, and their expansion: calls, arguments, `#` and `##` |
 | `src/pplex.c` | The preprocessor's lexer: a line at a time, into tokens |
 | `src/ppname.c` | The preprocessor's name pool, which gives each identifier its id, and the writer of the name file |

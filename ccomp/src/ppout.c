@@ -6,10 +6,18 @@
  * lines, a line's number for more (after a skipped group, say), and a
  * file's number and line on a change of file. At the end, the name file,
  * NAME.nam, and the stamp both files carry.
+ *
+ * With -E (pp_opt_text, in the full build only: CCISH_TEXT), the tokens
+ * are written as text to the standard output instead, as gcc -E writes
+ * them: a space between tokens, newlines to keep their lines, and a
+ * line marker, # line "file", for a change of file or a long jump. All
+ * of it is in the CCISH_TEXT parts below, so that it can be put in the
+ * small build too by defining CCISH_TEXT there.
  */
 #include "ccish.h"
 #include "token.h"
 #include "ppname.h"
+#include "pplex.h"
 #include "ppout.h"
 #include "pp.h"
 
@@ -23,6 +31,48 @@ static int last;                    /* the last code written, but lines' */
 static int out_file;                /* the file and line a reader of the */
 static int out_line;                /* stream is at */
 
+#ifdef CCISH_TEXT
+int pp_opt_text;
+static int text_col;                /* tokens written on the line */
+
+/* -E: bring the text's line up to the current one: newlines for up to
+ * 8 lines, else a line marker. */
+static void text_sync(void)
+{
+  char path[MAX_PATH];
+  if (pp_cur_file == out_file && src_line >= out_line
+      && src_line - out_line <= 8) {
+    for (; out_line < src_line; out_line++) {
+      fputs("\n", stdout);
+      text_col = 0;
+    }
+    return;
+  }
+  if (text_col)
+    fputs("\n", stdout);
+  pp_file_path(pp_cur_file, path);
+  fputs("# ", stdout);
+  fputs(num_text(src_line), stdout);
+  fputs(" \"", stdout);
+  fputs(path, stdout);
+  fputs("\"\n", stdout);
+  text_col = 0;
+  out_file = pp_cur_file;
+  out_line = src_line;
+}
+
+/* -E: write a token as source, after a space if it isn't the line's
+ * first. */
+static void put_text(int code, int val, const unsigned char *s, int n)
+{
+  static char buf[4 * MAX_STR + 3];
+  if (text_col++)
+    fputs(" ", stdout);
+  pp_spell_token(code, val, s, n, buf, sizeof(buf));
+  fputs(buf, stdout);
+}
+#endif
+
 /* Create the token stream for output name base, and write its header. */
 void pp_out_open(const char *base)
 {
@@ -31,6 +81,11 @@ void pp_out_open(const char *base)
   last = 0;
   out_file = 1;
   out_line = 1;
+#ifdef CCISH_TEXT
+  text_col = 0;
+  if (pp_opt_text)
+    return;
+#endif
   if (!bopen(&out, stream_name(base, SUFFIX_I), 1))
     fatal(176 /* "cannot create" */, stream_name(base, SUFFIX_I));
   bwrite(&out, (const unsigned char *)"CTK", 3);
@@ -40,6 +95,12 @@ void pp_out_open(const char *base)
 /* Bring the stream's file and line up to the current ones. */
 static void sync(void)
 {
+#ifdef CCISH_TEXT
+  if (pp_opt_text) {
+    text_sync();
+    return;
+  }
+#endif
   if (pp_cur_file != out_file) {
     bputc(&out, TC_FILE);
     bputc(&out, pp_cur_file);
@@ -62,10 +123,16 @@ static void flush_str(void)
 {
   if (!str_held)
     return;
+  str_held = 0;
+#ifdef CCISH_TEXT
+  if (pp_opt_text) {
+    put_text(TC_STR, 0, str, str_len);
+    return;
+  }
+#endif
   bputc(&out, TC_STR);
   bputc(&out, str_len);
   bwrite(&out, str, str_len);
-  str_held = 0;
 }
 
 /* Write a token: code, with its value val (a number or an id) or, for a
@@ -89,6 +156,12 @@ void pp_out(int code, int val, const unsigned char *s, int n)
   }
   sync();
   flush_str();
+#ifdef CCISH_TEXT
+  if (pp_opt_text) {
+    put_text(code, val, s, n);
+    return;
+  }
+#endif
   if (code == TC_ID && last == TC_STRUCT) {
     hash = pp_name_hash(val, &mul);
     bputc(&out, TC_TAG);
@@ -112,6 +185,13 @@ void pp_out_finish(void)
   int sum;
   sync();
   flush_str();
+#ifdef CCISH_TEXT
+  if (pp_opt_text) {
+    if (text_col)
+      fputs("\n", stdout);
+    return;
+  }
+#endif
   if (!bopen(&nam, stream_name(base_name, SUFFIX_NAM), 1))
     fatal(176 /* "cannot create" */, stream_name(base_name, SUFFIX_NAM));
   sum = pp_names_write(&nam);

@@ -23,6 +23,7 @@
 #include <string.h>
 #include "ccish.h"
 #include "token.h"
+#include "fixed.h"
 #include "ppname.h"
 #include "pplex.h"
 #include "ppmac.h"
@@ -380,7 +381,7 @@ static int collect(int m)
   a_at[base] = stop;
   for (;;) {
     c = next_tok();
-    if (c == TC_END)
+    if (c == TC_END || c == TC_NL)
       error(249 /* "unterminated call of macro" */,
             pp_id_spelling(mac_id[m]));
     if (c == '#' && pp_from_lexer && pt_first)
@@ -590,14 +591,30 @@ static void call(int m)
   push_text(sbuf + rep, stop - rep, m, 0);
 }
 
+/* The next token without macros expanded (for defined, in #if). */
+int pp_next_raw(void)
+{
+  return next_tok();
+}
+
 /* The next token, with macros expanded (pp_lex()'s, from the lexer or
  * an expansion; pp_from_lexer says which); TC_END at the end of the
- * file, or of an argument being expanded. */
+ * file, or of an argument being expanded. __LINE__ is the current line,
+ * and __FILE__ the current file's name. */
 int pp_next(void)
 {
   int c, m, id, first, lex, code;
   for (;;) {
     code = next_tok();
+    if (code == TC_ID && !pt_macro && pt_val == ID_LINE) {
+      pt_val = src_line;
+      return TC_NUM;
+    }
+    if (code == TC_ID && !pt_macro && pt_val == ID_FILE) {
+      pt_len = (int)strlen(src_name);
+      memcpy(pt_text, src_name, pt_len);
+      return TC_STR;
+    }
     if ((code != TC_ID && code != TC_KEYWORD) || !pt_macro)
       return code;
     m = pp_mac_find(pt_val);

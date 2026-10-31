@@ -61,8 +61,8 @@ its output and `NAME.nam` open. PLASMA's Apple II file library allows
 
 ## Preprocessing
 
-`ccpp` carries out these directives (so far: approach.md, "`ccpp`
-design", steps 4-6):
+`ccpp` carries out these directives (approach.md, "`ccpp` design",
+steps 4-6):
 
 - **`#include "file"`** looks for `file` beside the file that
   includes it, then in each `-I` directory in order; **`#include
@@ -90,17 +90,31 @@ design", steps 4-6):
   be a name, a decimal number or an operator. The replacement is read
   again for more macros, with what follows it, but a macro isn't
   expanded again inside its own expansion (C11 6.10.3.4).
-- **`#ifdef`**, **`#ifndef`**, **`#else`** and **`#endif`** keep or skip
-  groups of lines; a skipped group's lines aren't split into tokens,
-  so they may hold anything (an apostrophe, say), but its conditional
-  directives still count, to find its end. Every group must end in the
-  file it began in. `#if` and `#elif` come in step 6.
-- **`#pragma`** is ignored, for now. A **`#`** alone does nothing.
-  `#error` and `#line` come in step 6; any other directive is an
-  error.
+- **`#if`**, **`#ifdef`**, **`#ifndef`**, **`#elif`**, **`#else`** and
+  **`#endif`** keep or skip groups of lines; a skipped group's lines
+  aren't split into tokens, so they may hold anything (an apostrophe,
+  say), but its conditional directives still count, to find its end.
+  Every group must end in the file it began in. `#if` and `#elif`
+  take an integer expression, with its macros expanded and
+  `defined(name)` or `defined name` 1 if `name` is a macro, else 0;
+  any name left is 0. It has C's operators but the assignments, `++`,
+  `--` and the comma, and `&&`, `||` and `?:` don't evaluate what they
+  skip (`0 && 1 / 0` is no error). An `#elif` after a branch was kept
+  isn't evaluated at all.
+- **`#error text`** stops, with the text (message 258).
+- **`#line number`** makes the next line that number, and **`#line
+  number "file"`** also names the file so from here on (in messages,
+  `__FILE__` and the line records).
+- **`__LINE__`** is the current line's number, and **`__FILE__`** the
+  current file's name, as a string.
+- **`#pragma`** is ignored, for now. A **`#`** alone does nothing. Any
+  other directive is an error.
 - A line that ends in a backslash is joined to the next (C's phase 2).
 
 Known differences from C, so far:
+- `#if` arithmetic is ccish's own: 16-bit `int` and `unsigned`, with
+  C's usual conversions (C says the widest types, `intmax_t` and
+  `uintmax_t`), so `0x7FFF + 1 < 0` is true here.
 - `#` spells a number in decimal (`0x10` as `16`, a character
   constant `'A'` as `65`), a string with `\n`, `\t`, `\r`, `\"` and
   `\\` escaped and any other unprintable byte in octal, and puts a space
@@ -114,6 +128,18 @@ Known differences from C, so far:
   directive would go on).
 - Extra tokens after `#else`, `#endif`, `#undef` or a file's name are
   an error, also in a skipped group (C allows them there).
+
+### `-E`: the tokens as text
+
+`ccpp -E` (in the full build only, for now: `CCISH_TEXT`) writes the
+tokens as C source to the standard output, as `gcc -E` does, instead
+of `NAME.i` and `NAME.nam`: a space between tokens, each on its own
+line (newlines for up to 8 lines), and a line marker, `# line
+"file"`, for a change of file or a longer jump. Tokens are spelled as
+`#` spells them (numbers in decimal), and adjacent strings are already
+joined. All of it is in `src/ppout.c`'s `CCISH_TEXT` parts, so that the
+small build can have it too by defining `CCISH_TEXT` there; it costs
+about 1.4K.
 
 ## `NAME.i`: the token stream
 

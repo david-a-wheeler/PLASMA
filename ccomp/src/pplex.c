@@ -292,6 +292,27 @@ int pp_lex_header(char *buf, int size, int *angle)
   return n;
 }
 
+/* In a directive's line: the rest of it, as it is, after any blanks
+ * (#error's text). The line is then at its end. */
+const char *pp_lex_rest(void)
+{
+  int start;
+  skip_blank();
+  if (ch == '\n' || ch == EOF)
+    return "";
+  start = pos - 1;
+  line[line_len] = 0;
+  pos = line_len;
+  ch = line_nl ? '\n' : EOF;
+  return (const char *)line + start;
+}
+
+/* #line n: make the next line number n. */
+void pp_lex_set_line(int n)
+{
+  src_line = n - 1 - line_extra;
+}
+
 /* The character right after the last token: '(' just after a macro's
  * name, with no blank, makes it function-like. */
 int pp_lex_next_char(void)

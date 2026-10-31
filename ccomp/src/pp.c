@@ -1,9 +1,9 @@
 /*
  * ccpp's driver (approach.md, "ccpp design"): reads the source's tokens
  * from the lexer (or a macro's expansion) and writes them to the token
- * stream, and carries out the directives: #include, #define and #undef,
- * and #ifdef, #ifndef, #else and #endif. #if, #elif, #error and #line
- * come in a later step; #pragma is ignored.
+ * stream, and carries out the directives: #include, #define, #undef,
+ * #if, #ifdef, #ifndef, #elif, #else, #endif, #error and #line; #pragma
+ * is ignored.
  *
  * The groups #ifdef and the rest open are a stack (cond[]): each one's
  * state is C_TAKING (its tokens are kept), C_WAIT (skipped, no branch
@@ -17,6 +17,7 @@
 #include "ppname.h"
 #include "pplex.h"
 #include "ppmac.h"
+#include "ppif.h"
 #include "ppout.h"
 #include "pp.h"
 
@@ -214,17 +215,80 @@ static void do_include(void)
   pp_lex_push(&files[depth]);
 }
 
-/* #ifdef name or #ifndef name (want 0): open a group. */
-static void do_ifdef(int want, const char *name)
+/* Open a group: kept if is_true, unless the group around it is
+ * skipped. */
+static void open_group(int is_true)
 {
-  int id = macro_name(name), def = pp_is_macro(id);
-  end_directive(name);
   if (nconds >= MAX_IF_NEST)
     fatal(243 /* "#if nested too deeply" */, NULL);
   if (!taking())
     cond[nconds++] = C_DEAD;
   else
-    cond[nconds++] = def == want ? C_TAKING : C_WAIT;
+    cond[nconds++] = is_true ? C_TAKING : C_WAIT;
+}
+
+/* #ifdef name or #ifndef name (want 0): open a group. */
+static void do_ifdef(int want, const char *name)
+{
+  int id = macro_name(name), def = pp_is_macro(id);
+  end_directive(name);
+  open_group(def == want);
+}
+
+/* #if expression: open a group (the expression is read only if the
+ * group around it is kept). */
+static void do_if(void)
+{
+  if (!taking()) {
+    open_group(0);
+    pp_mode = PM_SKIP;
+    return;
+  }
+  open_group(pp_if_expr());
+}
+
+/* #elif expression: the group's next branch, kept if no branch before
+ * it was and the expression is true (read only then). */
+static void do_elif(void)
+{
+  if (nconds == 0)
+    error(240 /* "no #if before" */, "#elif");
+  if (cond[nconds - 1] & C_ELSE)
+    error(260 /* "#elif after #else" */, NULL);
+  if ((cond[nconds - 1] & C_STATE) == C_TAKING)
+    cond[nconds - 1] = C_DONE;
+  else if ((cond[nconds - 1] & C_STATE) == C_WAIT) {
+    cond[nconds - 1] = pp_if_expr() ? C_TAKING : C_WAIT;
+    return;
+  }
+  pp_mode = PM_SKIP;            /* the line isn't read */
+}
+
+/* #error text: stop, with the text. */
+static void do_error(void)
+{
+  error(258 /* "#error:" */, pp_lex_rest());
+}
+
+/* #line number "file": the next line has that number, and, with a
+ * file's name, the current file is called that from here on. */
+static void do_line(void)
+{
+  int c = pp_next(), n = pt_val;
+  if ((c != TC_NUM && c != TC_UNUM) || n == 0)
+    error(261 /* "bad #line" */, NULL);
+  c = pp_next();
+  if (c == TC_STR) {
+    if (pt_len >= MAX_PATH)
+      fatal(1 /* "output name too long" */, NULL);
+    memcpy(cur_path, pt_text, pt_len);
+    cur_path[pt_len] = 0;
+    file_no[depth] = pp_cur_file = pp_add_file(cur_path);
+    c = pp_next();
+  }
+  if (c != TC_NL)
+    error(261 /* "bad #line" */, NULL);
+  pp_lex_set_line(n);
 }
 
 /* #else: the group's last branch. */
@@ -269,6 +333,14 @@ static void directive(void)
     do_ifdef(1, "#ifdef");
   } else if (!strcmp(name, "ifndef")) {
     do_ifdef(0, "#ifndef");
+  } else if (!strcmp(name, "if")) {
+    do_if();
+    if (pp_mode == PM_SKIP)
+      return;
+  } else if (!strcmp(name, "elif")) {
+    do_elif();
+    if (pp_mode == PM_SKIP)
+      return;
   } else if (!strcmp(name, "else")) {
     do_else();
   } else if (!strcmp(name, "endif")) {
@@ -286,10 +358,10 @@ static void directive(void)
   } else if (!strcmp(name, "pragma")) {
     while (pp_lex() != TC_NL)
       ;                         /* ignored, for now */
-  } else if (!strcmp(name, "if") || !strcmp(name, "elif")
-             || !strcmp(name, "error") || !strcmp(name, "line")) {
-    error(13 /* "this preprocessor directive is not supported yet:" */,
-          hashed);
+  } else if (!strcmp(name, "error")) {
+    do_error();
+  } else if (!strcmp(name, "line")) {
+    do_line();
   } else {
     error(234 /* "unknown preprocessor directive:" */, hashed);
   }

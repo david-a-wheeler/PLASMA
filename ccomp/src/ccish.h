@@ -45,10 +45,14 @@
  *                  would fail: so far, ccgen's check of each IR_SWAP's
  *                  and unsigned comparison's blocks (irin.c). Both
  *                  builds write the same files.
+ *   CCISH_TEXT     ccpp -E, the token stream as text (ppout.c): for
+ *                  debugging, so in the full build only for now; it can
+ *                  be put in the small build if ccpp has room.
  */
 #ifndef CCISH_SMALL
 #define CCISH_LISTING
 #define CCISH_CHECKS
+#define CCISH_TEXT
 #endif
 
 /* ---------- Limits ----------
