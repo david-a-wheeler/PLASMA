@@ -90,6 +90,8 @@ static void copy_record(int t)
     n = get_byte();
     emit_byte(n);
     copy(n == REL_DSYM ? 4 : 2);
+  } else if (t == REC_ZERO) {
+    emit_word(get_word());
   } else {
     n = get_word();
     emit_word(n);
@@ -266,7 +268,8 @@ static const char stk_effect[IR_NOPS] = {
   -1, -1, -1, -1,                           /* SEL, the case table */
   0x22,                                     /* SWAP */
   0x21, 0x21, 0x21, 0x21,                   /* ULT ... */
-  0x21, 0x21, 0x21                          /* UDIV, UMOD, USHR */
+  0x21, 0x21, 0x21,                         /* UDIV, UMOD, USHR */
+  0x01                                      /* HEAPADDR */
 };
 
 static char lab_depth[MAX_LABELS];
@@ -619,6 +622,7 @@ static void read_summary(void)
   emit_word(get_word());        /* string pool size */
   get_word();                   /* code size: 0 */
   emit_word(emit_code_size());
+  emit_word(get_word());        /* zero-filled (BSS) size */
   nf = get_word();
   nd = get_word();
   if (nf > MAX_FUNCS || max_func >= nf)
@@ -709,7 +713,7 @@ void gen_file(const char *base)
     }
     if (prefixed)
       damaged();                /* a prefix not followed by its op */
-    if (t == REC_DATA || t == REC_DREL || t == REC_STR) {
+    if (t == REC_DATA || t == REC_DREL || t == REC_STR || t == REC_ZERO) {
       copy_record(t);
     } else if (t == REC_LINE) {
       src_line = get_word();

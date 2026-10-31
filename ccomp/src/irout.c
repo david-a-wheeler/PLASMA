@@ -184,15 +184,23 @@ void data_addr(int kind, int target, int add)
   ndata += 2;
 }
 
-/* Reserve n zero bytes in the data, for a global variable. Returns
- * their data offset. */
+/* Reserve n zero bytes in the data, for a global variable: a Z record
+ * of n, unless n is so small that the bytes are shorter. Returns their
+ * data offset. */
 int data_zero(int n)
 {
   int first = ndata;
   if (ndata > 0x7FFF - n)
     error(182 /* "too much data: globals over 32767 bytes" */, NULL);
-  while (n-- > 0)
-    data_byte(0);
+  if (n < 4) {
+    while (n-- > 0)
+      data_byte(0);             /* shorter than a Z record */
+    return first;
+  }
+  flush_data();
+  bputc(&out, REC_ZERO);
+  bputw(&out, n);
+  ndata += n;
   return first;
 }
 
@@ -212,6 +220,7 @@ void ir_finish(void)
   bputw(&out, ndata);
   bputw(&out, nstrs);
   bputw(&out, 0);
+  bputw(&out, bss_size());
   bputw(&out, nfuncs);
   bputw(&out, nsyms);
   for (i = 0; i < nfuncs; i++) {

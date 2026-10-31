@@ -14,7 +14,11 @@ version number bumped.
 For output `NAME`, the files are `NAME.obj` and `NAME.syms`. `ccish`
 removes them after the module is written, and after any error, unless
 `-k` is given; `ccgen` leaves them for `ccrel`, which keeps them. This
-is format version 5, which adds helper functions (approach.md,
+is format version 6, which adds zero-filled globals (approach.md,
+"Large zero-filled data on the heap"): a `Z` record for a run of zero
+bytes, the summary's zero-filled size, and data symbol flags 64 and 128, so that
+`ccrel` can move large zero-filled globals to the heap (below,
+"Zero-filled globals"). Version 5 added helper functions (approach.md,
 "`unsigned` and helper functions design"): code `ccgen` writes into
 each object that calls it (an `H` record, below), of which `ccrel`
 keeps one copy. Version 4 added what linking several files needs
@@ -46,15 +50,17 @@ Each record starts with a one-byte tag, a letter:
 |-----|--------|
 | `D` | a run of data bytes |
 | `R` | a data word that holds an address |
+| `Z` | a run of zero data bytes |
 | `S` | a string literal |
 | `F` | a function |
 | `H` | a helper function |
 
-The `D` and `R` records, in order, make up the data (the global
+The `D`, `R` and `Z` records, in order, make up the data (the global
 variables); the `S` records, in order, make up the string pool; and
 the `F` records, in order, make up the code. The final pass reads the
 stream three times, once for each, skipping the other records, and a
-fourth time for the `R` records and the `F` records' relocations,
+fourth time for the `R` records and the `F` records' relocations (and
+the `D` and `Z` records, to know each `R` record's offset),
 which give the RLD's relocations. The RLD's function entries come from
 the `.syms` files (each defined function's offset).
 
@@ -67,8 +73,20 @@ the `.syms` files (each defined function's offset).
 | *n* bytes | the next bytes of the data |
 
 The global variables' bytes, in the order they appear in the source:
-each global's initial value, or zero bytes of its size if it has none.
-A long run is split into several records.
+each global's initial value, or zero bytes of its size if it has none
+(a run of 4 or more zeros is a `Z` record instead). A long run is split
+into several records. A large zero-filled global isn't in the data at
+all (below, "Zero-filled globals").
+
+### `Z`: zero bytes
+
+| Size | Field |
+|------|-------|
+| byte | tag `Z` |
+| word | count *n* |
+
+The next *n* bytes of the data are 0: a global with no initializer, or
+the zeros that end an initializer (`char buf[100] = "hi";`).
 
 ### `R`: an address in the data
 
@@ -83,8 +101,8 @@ It stands for the next two bytes of the data (`char *p = "hi";`,
 `int *q = &x;`), so its offset is where it falls among the `D` and `R`
 records. The final pass writes the address there, and adds an RLD entry
 so that the loader can adjust it. Kind 4 is the address of a global
-declared `extern` and not (yet) defined in this file, plus the addend
-(`int *q = &ext[3];`).
+declared `extern` and not (yet) defined in this file, or of a zero-filled one,
+plus the addend (`int *q = &ext[3];`).
 
 Data offsets elsewhere count from the first byte of the data. Its
 length is the data size.
@@ -131,8 +149,10 @@ The word itself is written as 0, except for kind 4, where it holds the
 addend; the final pass fills it in. A function address may refer to a
 function defined later in the file, or to an import, which the loader
 fills in. A data symbol address (kind 4) refers to a global declared
-`extern`, used before any definition in this file: a reference to a
-global with storage here is kind 1.
+`extern`, used before any definition in this file, or to a zero-filled
+global (in code, its word is always the operand of an `LA` with addend
+0, which `ccrel` may make an `LAW`: "Zero-filled globals", below): a
+reference to another global with storage here is kind 1.
 
 The function's code offset in the code segment is the sum of the
 lengths of the `F` records before it. The frame sizes in `ENTER` and
@@ -167,10 +187,11 @@ of its own so that the compiler needn't seek back to patch a header.
 | Size | Field |
 |------|-------|
 | 2 bytes | magic `CI` |
-| byte | format version: 5 |
+| byte | format version: 6 |
 | word | data size |
 | word | string pool size |
 | word | code size (the total code length of the `F` records) |
+| word | zero-filled size: the total size of the data symbols with flag 64 defined here |
 | word | function symbol count *N* |
 | word | data symbol count *M* |
 | *N* entries | function symbols, in index order |
@@ -204,8 +225,8 @@ numbers them; every global is listed, static locals aren't):
 
 | Size | Field |
 |------|-------|
-| byte | flags: 1 = defined here, 2 = used, 8 = local (`static`) |
-| word | data offset, if defined; otherwise 0 |
+| byte | flags: 1 = defined here, 2 = used, 8 = local (`static`), 64 = zero-filled, 128 = its address is in this object's data |
+| word | data offset, if defined (with flag 64, an offset in the zero-filled space instead); otherwise 0 |
 | word | size in bytes, or 0 if unknown (`extern int a[];`) |
 | word | type hash |
 | byte | name length *n* (1–31) |
@@ -233,6 +254,15 @@ array count (`[` then the element type), so that `extern int a[];`
 matches `int a[10];`; the size field covers that. A hash that comes
 out 0 is written as 1.
 
+**Zero-filled globals.** A global array or struct with no initializer,
+of at least `BSS_MIN` (256) bytes, isn't in the data: it has flag 64,
+and its offset is in the object's zero-filled space, whose size the
+summary gives. Every reference to it, in code and data, is a kind 4
+relocation, to its symbol. A global declared `extern` may get flag 64
+from the object that defines it. Flag 128 says that an initializer in
+this object holds its address (`int *p = big + 3;`), or, for an
+`extern` one, may.
+
 ## `NAME.ir`: the IR file
 
 Written by `cccomp` (the front end) and read once, in order, by
@@ -252,7 +282,7 @@ starts with a header:
 | Size | Field |
 |------|-------|
 | 3 bytes | magic `CIR` |
-| byte | IR format version: 3 |
+| byte | IR format version: 4 |
 | word | the name file's stamp: its id count |
 | word | and its checksum |
 
@@ -269,7 +299,7 @@ and for an IR op a byte below `$40` or from `$80` to `$BF`:
 
 | Tag | Record |
 |-----|--------|
-| `D`, `R`, `S` | data bytes, an address in the data, a string literal: exactly as in `NAME.obj`, which `ccgen` copies them to whole |
+| `D`, `R`, `Z`, `S` | data bytes, an address in the data, zero bytes, a string literal: exactly as in `NAME.obj`, which `ccgen` copies them to whole |
 | `L` | a source line |
 | `N` | a function's name |
 | `W` | prefix: the next op's operand *a*, as a word |
@@ -317,6 +347,7 @@ The op numbers are the order of the `IR_*` enum in `src/ir.h`
 | `$32` | `SWAP` (*a* = top block's length in ops, *f* = the block below's, or -1: don't move code; approach.md 18.7, A) |
 | `$33`-`$36` | `ULT`, `UGT`, `ULE`, `UGE` (*a* = the right operand's block length in ops, or 0; 18.7, C) |
 | `$37`-`$39` | `UDIV`, `UMOD`, `USHR` (*a* = 1 if the right operand is a constant) |
+| `$3A` | `HEAPADDR` (*f* = a data symbol index; version 4) |
 
 The rest, to `$3F`, are free for new ops, and `$60`-`$7F` (with
 `$E0`-`$FF`) could be added if those run out.
@@ -327,7 +358,7 @@ Examples: `IR_ADD` is `16`. `IR_CONST 0` is `02`. `IR_LOCAL 4` is
 12, then `CALL` with *a* = 2).
 
 Every op is inside a function, from its `FUNC` to its `ENDFUNC`, and
-functions don't nest. `D`, `R` and `S` records may come anywhere
+functions don't nest. `D`, `R`, `Z` and `S` records may come anywhere
 between ops, in a function or not (a string literal, a `static`
 local), but not between a prefix and its op.
 
@@ -410,9 +441,11 @@ module. It has at most one input file open at a time, and the module.
    either is 255), flag 4 and type hash (unless either is 0), a
    global's type hash and size (unless either is 0), and a function
    against a global. Then report undefined references, number the
-   imports, find `main` (not local), and compute the layout: header,
-   dependencies, every object's globals, every object's string pool,
-   one pad byte, then every object's code, then one copy of each
+   imports, find `main` (not local), place the zero-filled globals
+   (below), and compute the layout: header, dependencies, every
+   object's globals, the zero-filled globals that stay, the pointer
+   words, every object's string pool, one pad byte, then every
+   object's code, then one copy of each
    helper some object holds (the first object's; two copies whose size
    or checksum differ are "helper functions differ between objects",
    229).
@@ -421,14 +454,16 @@ module. It has at most one input file open at a time, and the module.
    shared table for those it doesn't define), then its stream for its
    `D` and `R` records, writing the data with each `R` record's address
    filled in and kept for the RLD. Then read each stream again for its
-   `S` records, writing the string pools.
+   `S` records, writing the string pools, after the zero-filled globals
+   that stay and the pointer words (zeros in the file).
 3. For each object, map its symbols again, and read its stream a third
    time for its `F` records, copying each function with its relocations
    applied and kept for the RLD. With `-l`, list each function as it
    passes (with several objects, each object's functions after an
    `object NAME:` line). Then copy each helper from the stream of the
    object it was taken from (listed as `helper NAME:`), then add the
-   init function, which calls `main`.
+   init function, which sets up the moved globals (below) and calls
+   `main`.
 4. Write the RLD (function entries in code order, the helpers'
    included, then the kept
    relocations, those in the data first) and the ESD (imports). With
@@ -441,3 +476,25 @@ final data offset plus the addend; a kind 5 is the helper's address in
 the module, relocated like a function's. The final pass checks that the
 files agree with each other (sizes, offsets, indexes, record tags), and
 reports "compiler stream file is damaged" if not.
+
+**Zero-filled globals** (approach.md, "Large zero-filled data on the
+heap"). Each one (flag 64) whose address no object's initializer holds (flag 128 in no
+entry for it) moves to the heap: `ccrel` gives it a **pointer word**,
+after the data, and turns each code reference to it, an `LA` of its
+address, into an `LAW` of its pointer word. A program's moved globals
+are one block, which the init function takes from `heapalloc` and
+zeroes with `memset` before it calls `main`, then points each pointer
+word at its global. It first checks, with `heapavail` and `isult`, that
+the heap holds the block and 512 bytes more for `main`'s frames; if not,
+it prints `not enough memory` and returns -1, so that the loader
+reports an error and `main` never runs. (`heapavail` comes first
+because plvm's `heapalloc` stops the VM when the heap is full, and the
+Apple's can wrap past `$FFFF`.) A zero-filled global that doesn't move
+gets zero bytes after every object's data. So the module file holds
+neither: it is smaller, and so is the memory the loader needs to read
+it in. At most 32 globals move ("too many large globals to move to the
+heap", 308), of at most 65,023 bytes in all ("too much data to move to
+the heap", 309). The `LAW` costs about 24 cycles more than the `LA`
+did, and a moved global's element at a constant index, or a struct
+member, takes an `LAW`, an `ADDI` or `CW` and `ADD`, and a load or
+store, where an `LAB` or `SAW` would have done.

@@ -300,9 +300,12 @@ static int rewrite_load_store(Mop *a, Mop *b)
   /* CW addr LB -> LAB addr (also LW, SB, SW, after CB or CFFB, or LA
    * for a data address): a load or store through a constant address
    * is one op, such as reading the speaker at $C030. Not after CN or
-   * MINUS1, which are shorter than LAB's address word. */
-  if (absolute_op(b->op) >= 0 && (a->op == OP_CW || a->op == OP_CB
-                                  || a->op == OP_CFFB || a->op == OP_LA)) {
+   * MINUS1, which are shorter than LAB's address word, nor for an
+   * object that may move to the heap (FIX_HEAP), whose LA ccrel may
+   * turn into an LAW. */
+  if (absolute_op(b->op) >= 0 && a->fix != FIX_HEAP
+      && (a->op == OP_CW || a->op == OP_CB || a->op == OP_CFFB
+          || a->op == OP_LA)) {
     if (a->op != OP_LA) {
       mop_const_value(a, &v);
       a->a = v;

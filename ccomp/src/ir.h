@@ -71,13 +71,18 @@ enum {
    * unsigned operands; ccgen lowers them (approach.md, "unsigned and
    * helper functions design") */
   IR_UDIV, IR_UMOD, IR_USHR,
+  /* f = data symbol: push the address of a global that may move to
+   * the heap (approach.md, "Large zero-filled data on the heap"):
+   * always an LA of the symbol itself, which ccrel may turn into an
+   * LAW of its pointer word, so never folded into another op */
+  IR_HEAPADDR,
   IR_NOPS         /* the number of IR ops */
 };
 
 /* The IR file: the output name plus this suffix, and its format's
  * version (in its header, after the magic "CIR"). */
 #define SUFFIX_IR   ".ir"
-#define IR_VERSION  3
+#define IR_VERSION  4
 
 /* Its record tags besides the stream's D, R and S (below), and the bit
  * that marks an IR op followed by a one-byte operand. An IR op's tag is

@@ -29,6 +29,7 @@ void parse_program(void);
  * hash and name (an id). */
 int  func_sym(int f, int *hash);
 int  data_sym_count(void);
+int  bss_size(void);                /* the zero-filled space's bytes */
 int  data_sym(int v, int *off, int *size, int *hash, int *name);
 void compile_file(const char *in, const char *base);   /* the front end */
 void compile_abort(void);                   /* after an error */

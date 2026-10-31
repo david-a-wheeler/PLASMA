@@ -28,7 +28,7 @@ static const char *const ir_names[] = {
   "NEG", "COMP", "NOT",
   "LABEL", "JUMP", "BRFALSE", "BRTRUE", "JOIN",
   "SEL", "CASES", "CASEVAL", "CASETO", "SWAP", "ULT", "UGT", "ULE", "UGE",
-  "UDIV", "UMOD", "USHR"
+  "UDIV", "UMOD", "USHR", "HEAPADDR"
 };
 
 /* How each IR op lowers (lw_kind[]), and the PLASMA opcode it lowers
@@ -66,7 +66,8 @@ static const char lw_kind[IR_NOPS] = {
   L_SPECIAL,                                /* SWAP */
   L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,   /* ULT ... (irin.c flips
                                                  * the sign bits first) */
-  L_SPECIAL, L_SPECIAL, L_SPECIAL           /* UDIV, UMOD, USHR */
+  L_SPECIAL, L_SPECIAL, L_SPECIAL,          /* UDIV, UMOD, USHR */
+  L_SPECIAL                                 /* HEAPADDR */
 };
 
 static const unsigned char lw_op[IR_NOPS] = {
@@ -84,7 +85,8 @@ static const unsigned char lw_op[IR_NOPS] = {
   OP_SEL, OP_CASES & 0xFF, OP_CASEVAL & 0xFF, OP_CASETO & 0xFF,
   0,
   OP_ISLT, OP_ISGT, OP_ISLE, OP_ISGE,
-  0, 0, 0
+  0, 0, 0,
+  OP_LA
 };
 
 /* Write s, then n in decimal, to standard output, for -i. No printf:
@@ -118,6 +120,7 @@ void dump_ir(int op, int a, int f)
                     }
                     break;
   case IR_STRADDR:  out_num(" string+", a); break;
+  case IR_HEAPADDR: out_num(" sym", f); break;
   case IR_LOCAL: case IR_SETLOCAL:
   case IR_LOCALB: case IR_SETLOCALB: case IR_LOCALADDR:
                     out_num(" [", a); fputs("]", stdout); break;
@@ -237,6 +240,11 @@ static void lower_special(Mop *m, int op, int a, int f)
     m->op = OP_LA;
     m->a = a;
     m->fix = FIX_STR;
+    break;
+  case IR_HEAPADDR:
+    m->op = OP_LA;
+    m->fix = FIX_HEAP;
+    m->fn = f;
     break;
   case IR_CALL:
     m->op = OP_CALL;

@@ -299,3 +299,5 @@
 305 >>=
 306 ->
 307 ...
+308 too many large globals to move to the heap
+309 too much data to move to the heap

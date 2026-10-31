@@ -384,7 +384,7 @@ void emit_put(Mop *m)
       add_reloc(REL_STR, m->a);
     else if (m->fix == FIX_FUNC)
       add_reloc(REL_FUNC, m->fn);
-    else if (m->fix == FIX_DSYM)
+    else if (m->fix == FIX_DSYM || m->fix == FIX_HEAP)
       add_reloc(REL_DSYM, m->fn);
     else if (m->fix == FIX_HELPER)
       add_reloc(REL_HELPER, m->fn);

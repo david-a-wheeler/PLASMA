@@ -4096,7 +4096,7 @@ pass. `cccomp` **34,260** (-351: tokin.c's strings went from 319 bytes
 to 55 and its data from 1,086 to 994, for 5 more bytes of code).
 
 **Large zero-filled data on the heap (designed in discussion,
-2026-10-31; not yet built).** The user's real goal is self-hosting on
+2026-10-31; option 1 is built: see below).** The user's real goal is self-hosting on
 a 64K Apple II, beside ProDOS, the VM, the zero page, the stacks and
 the text screen; 32K for each program was a proxy for that. Measured
 (small build), the bigger obstacle is loading: PLASMA's loader reads a
@@ -4162,6 +4162,59 @@ the heap, through a pointer.* It needs no change to the VM.
 - **Rejected for now:** patching each reference at start-up instead (no
   run-time cost, but a fixup list of 2 bytes per reference kept in the
   module, likely 1-2K for `cccomp`, more than the pointers).
+
+**Option 1 is built** (2026-10-31), as designed, with `BSS_MIN` 256
+(obj.h), and these details (OBJECT.md, "Zero-filled globals"; IR.md,
+`IR_HEAPADDR`):
+- A new IR op, `IR_HEAPADDR` (IR version 4), pushes a global that may
+  move; ccgen lowers it to `LA` with a new fixup, `FIX_HEAP`, a kind 4
+  relocation with addend 0, which the peephole stage never folds into
+  an absolute load or store. Loads, stores and addresses of such a
+  global go `HEAPADDR`, `CONST off ADD`, then `LOAD` or `STORE`.
+- A run of 4 or more zeros is a `Z` record (object version 6). A
+  qualifying global gets no data at all: an offset in the object's
+  zero-filled space, a new summary word, and flag 64; flag 128 says an
+  initializer holds its address. cccomp sets 128 when it parses such
+  an initializer, so ccrel needn't look for those relocations.
+- The init function checks `heapavail` against the block plus 512
+  bytes for `main`'s frames (with `isult`: both are unsigned) before
+  the `heapalloc`, since plvm's `heapalloc` stops the VM when the heap
+  is full and the Apple's (cmd.pla) can wrap past `$FFFF`; on failure
+  it prints `not enough memory` and returns -1, so the loader reports
+  an error. The loader frees the RLD and ESD before init runs, so the
+  block starts right after the module.
+- ccrel moves at most 32 globals (`MAX_MOVED`; message 308), of at most
+  65,023 bytes in all (309). A zero-filled global that stays (its
+  address is in data) gets zeros after every object's data, then come
+  the pointer words, then the strings.
+- New tests: a run test (zero at the start, constant and variable
+  indexes, a char store, a big struct's members, a static, one that
+  stays), and link tests of extern ones (one staying), a heap too small
+  for them, and the two limits. 373 pass.
+
+Measured (small build, ccish compiling itself; before, then after):
+
+| Program | Data | Code | In all | Module file |
+|---|---|---|---|---|
+| `ccpp` | 16,464 → 3,364 | 14,154 → 14,154 | 31,688 → 18,588 | 39,363 → 26,486 |
+| `cccomp` | 7,643 → 3,172 | 25,854 → 26,341 | 34,051 → 30,067 | 46,514 → 42,975 |
+| `ccgen` | 6,687 → 2,223 | 10,980 → 11,070 | 18,398 → 14,040 | 23,480 → 19,373 |
+| `ccrel` | 7,727 → 1,989 | 6,547 → 7,968 | 14,470 → 10,239 | 17,858 → 14,475 |
+
+"In all" no longer counts the moved data, which the heap still needs
+at run time: run-time memory is about the same, but the memory needed
+to load each program drops by about its moved data. cccomp's code grew
+487 bytes (its parse.c and irout.c changes, and constant-index
+accesses to moved tables); ccrel's 1,421 (the placing, patching and
+init code).
+
+Op counts (plvm, counting every op executed, of the run tests): only 4
+of the 59 change. `heap_globals.c` 9,302 → 9,391 (+1%: the init code,
+about 30 ops, and constant-index accesses, with its 599 `LA`s now
+`LAW`s); `globals.c` 954 → 979 (+2.6%); and two that use an `extern`
+array of unknown size, which cccomp must treat as one that may move
+though it doesn't: `extern.c` 73 → 84 and `extern_ops.c` 48 → 56,
+where `LAB tab+k` became `LA`, `ADDI`, `LB`.
 
 **C6 design, and C6 is done** (2026-10-31; C6 in 18.6). Address
 constants come from the expression parser, so global initializers no

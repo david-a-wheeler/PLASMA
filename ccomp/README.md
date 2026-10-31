@@ -189,7 +189,14 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   nothing. An `extern` with an initializer, and `extern` in a block,
   aren't supported. `sizeof` an array of unknown size is an error.
 * Global initializers, computed at compile time and stored in the
-  module, so they cost no code. A global without one is zero.
+  module, so they cost no code. A global without one is zero. A large
+  one without one (an array or struct of 256 bytes or more, whose
+  address no initializer holds) isn't in the module file at all: the
+  module takes it from the heap when it loads, and zeroes it, so the
+  file is smaller, and so is the memory needed to load it. It is
+  reached through a pointer, a little slower (OBJECT.md, "Zero-filled
+  globals"). If the heap can't hold such globals, the program prints
+  `not enough memory` and doesn't run.
   - Integers and `char`s: any constant expression (`int n = 3 * 4;`,
     `int size = sizeof(int[10]);`).
   - Pointers: 0, or an *address constant*: a string literal or a

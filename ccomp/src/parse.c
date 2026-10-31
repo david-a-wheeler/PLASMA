@@ -281,10 +281,16 @@ static int nvars_peak;              /* the most visible at once */
 /* A global's linkage, for the symbol summary (approach.md issue 11):
  * VL_STATIC if it is local to the file, VL_USED if code or data refers
  * to it, and VL_EXTERN while it is declared extern with no storage in
- * this file (var_off[] is then 0, the base of an addend). 0 for a
- * local. */
-enum { VL_STATIC = 1, VL_USED = 2, VL_EXTERN = 4 };
+ * this file (var_off[] is then 0, the base of an addend). VL_BSS if it
+ * is defined with no initializer and is at least BSS_MIN bytes, so has
+ * no data bytes, only an offset (var_off[]) in the file's zero-filled
+ * space, and may move to the heap (approach.md, "Large zero-filled data
+ * on the heap"); VL_INDATA if an initializer holds its address, which
+ * stops that. 0 for a local. */
+enum { VL_STATIC = 1, VL_USED = 2, VL_EXTERN = 4, VL_BSS = 8,
+       VL_INDATA = 16 };
 static char var_link[MAX_VARS];
+static int bss_next;                /* the zero-filled space so far */
 
 /* The innermost visible variable named name (an id), or -1. */
 static int find_var(int name)
@@ -664,11 +670,13 @@ static int hold(int op, int a, int f)
 }
 
 /* Where variable v is, as an Operand's global field: 0 in the frame, 1
- * in this file's data, or 2 + v for a global declared extern with no
- * storage here, which is then used (unless no code is emitted). */
+ * in this file's data, or 2 + v for a global reached through its symbol,
+ * which is then used (unless no code is emitted): one declared extern
+ * with no storage here, or one in the zero-filled space (VL_BSS), whose
+ * address only ccrel knows. */
 static int var_where(int v)
 {
-  if (!(var_link[v] & VL_EXTERN))
+  if (!(var_link[v] & (VL_EXTERN | VL_BSS)))
     return var_data(v);
   if (!suppress)
     var_link[v] |= VL_USED;
@@ -961,34 +969,75 @@ static int data_sym_of(int global)
   return global >= 2 ? global - 2 : -1;
 }
 
-/* Push the variable at off, where global says (var_where()): a word,
- * or a byte if is_char. */
-static void load_var(int off, int global, int is_char)
+/* May the global that global (an Operand's field) names move to the
+ * heap? One in this file's zero-filled space may, and so may an extern
+ * array or struct that may be one in another file: of unknown size, or
+ * of at least BSS_MIN bytes. Its address is then always pushed as
+ * IR_HEAPADDR, the one form ccrel can patch, with any offset added
+ * after. */
+static int movable(int global)
 {
-  if (global)
-    put(is_char ? IR_GLOBALB : IR_GLOBAL, off, data_sym_of(global));
-  else
-    put(is_char ? IR_LOCALB : IR_LOCAL, off, -1);
+  int v = global - 2, t;
+  if (global < 2)
+    return 0;
+  t = var_type[v];
+  if (var_link[v] & VL_BSS)
+    return 1;
+  return (is_array(t) || is_struct(t))
+         && (type_size(t) == 0 || type_size(t) >= BSS_MIN);
 }
 
-/* Push the address of the variable at off (a global's or a local's). */
+/* Push the address of the variable at off (a global's or a local's).
+ * For a global that may move, the address and the offset are apart. */
 static void push_var_addr(int off, int global)
 {
-  if (global)
+  if (movable(global)) {
+    put(IR_HEAPADDR, 0, global - 2);
+    if (off != 0) {
+      put(IR_CONST, off, -1);
+      put(IR_ADD, 0, -1);
+    }
+  } else if (global) {
     put(IR_DATAADDR, off, data_sym_of(global));
-  else
+  } else {
     put(IR_LOCALADDR, off, -1);
+  }
+}
+
+/* Push the variable at off, where global says (var_where()): a word,
+ * or a byte if is_char; through its address, for a global that may
+ * move. */
+static void load_var(int off, int global, int is_char)
+{
+  if (movable(global)) {
+    push_var_addr(off, global);
+    put(is_char ? IR_LOADB : IR_LOAD, 0, -1);
+  } else if (global) {
+    put(is_char ? IR_GLOBALB : IR_GLOBAL, off, data_sym_of(global));
+  } else {
+    put(is_char ? IR_LOCALB : IR_LOCAL, off, -1);
+  }
 }
 
 /* Store the top value into the variable o (a K_VAR), keeping the stored
- * value (for a char, its low byte) on the stack. */
+ * value (for a char, its low byte) on the stack: through its address,
+ * after a copy of the value, for a global that may move. */
 static void store_var(Operand *o)
 {
   int c = o->type == TY_CHAR;
-  if (o->global)
+  if (movable(o->global)) {
+    if (c) {
+      put(IR_CONST, 0xFF, -1);
+      put(IR_AND, 0, -1);       /* the byte a char store keeps */
+    }
+    put(IR_DUP, 0, -1);
+    push_var_addr(o->off, o->global);
+    put(c ? IR_STOREB : IR_STORE, 0, -1);
+  } else if (o->global) {
     put(c ? IR_SETGLOBALB : IR_SETGLOBAL, o->off, data_sym_of(o->global));
-  else
+  } else {
     put(c ? IR_SETLOCALB : IR_SETLOCAL, o->off, -1);
+  }
 }
 
 /* The highest offset a variable can have: 255 in the frame, and 32767
@@ -1038,11 +1087,15 @@ static int addr_const(Operand *o)
 }
 
 /* The IR op that pushes address constant o, with its operands in *a and
- * *f: STRADDR for a string, DATAADDR for data. */
+ * *f: STRADDR for a string, DATAADDR for data, or HEAPADDR for a global
+ * that may move (whose offset must then be 0: push_var_addr() adds
+ * one). */
 static int addr_op(Operand *o, int *a, int *f)
 {
   *a = o->off;
   *f = o->global == G_STR ? -1 : data_sym_of(o->global);
+  if (o->global != G_STR && movable(o->global))
+    return IR_HEAPADDR;
   return o->global == G_STR ? IR_STRADDR : IR_DATAADDR;
 }
 
@@ -1147,12 +1200,13 @@ static void rvalue(Operand *o)
     put(IR_CONST, o->val, -1);
     o->is_bool = o->val == 0 || o->val == 1;
     break;
-  case K_ADDR: {
-    int a, f, op = addr_op(o, &a, &f);
-    put(op, a, f);
+  case K_ADDR:
+    if (o->global == G_STR)
+      put(IR_STRADDR, o->off, -1);
+    else
+      push_var_addr(o->off, o->global);
     o->is_bool = 0;
     break;
-  }
   case K_VAR:
     load_var(o->off, o->global, o->type == TY_CHAR);
     o->is_bool = 0;
@@ -1831,7 +1885,8 @@ static void parse_primary(Operand *o)
       o->kind = K_VAR;        /* load it later, if needed */
       o->type = unqual(var_type[v]);
       o->quals = var_type[v] & Q_ALL;
-      o->off = var_off[v];
+      /* A zero-filled global is reached through its symbol. */
+      o->off = var_link[v] & VL_BSS ? 0 : var_off[v];
       o->global = var_where(v);
       return;
     }
@@ -2847,10 +2902,13 @@ static void parse_expr(int min_prec, Operand *o)
       /* Hold it back: it may fold with the right operand. */
       mark = hold(IR_CONST, o->val, -1);
     } else if ((ir_op == IR_ADD || ir_op == IR_SUB) && nheld < MAX_HELD
-               && addr_const(o)) {
+               && addr_const(o)
+               && (o->off == 0 || o->global == G_STR
+                   || !movable(o->global))) {
       /* An address constant, held back the same way: plus or minus a
        * constant folds into it. (Not for a comparison, whose right
-       * operand's code ccgen must know the length of.) */
+       * operand's code ccgen must know the length of; nor one that may
+       * move with an offset already, which takes more than one op.) */
       op = addr_op(o, &a, &f);
       addr = *o;
       is_addr = 1;
@@ -3877,7 +3935,9 @@ static void parse_scalar_init(int type)
   } else if (o.global == 1) {
     data_addr(REL_DATA, o.off, 0);
   } else {
-    var_link[o.global - 2] |= VL_USED;    /* an extern global's */
+    /* An extern global's or a zero-filled one's: through its symbol,
+     * and now it can't move to the heap. */
+    var_link[o.global - 2] |= VL_USED | VL_INDATA;
     data_addr(REL_DSYM, o.global - 2, o.off);
   }
 }
@@ -4249,7 +4309,19 @@ static void parse_globals(int base, int type, int name, int storage)
     } else if (storage != T_EXTERN) {
       if (is_array(type) && type_count(type) == 0)
         error(87 /* "array size missing" */, NULL);
-      data_zero(type_size(type));
+      if ((is_array(type) || is_struct(type))
+          && type_size(type) >= BSS_MIN) {
+        /* In the zero-filled space, with no data bytes: ccrel places
+         * it, maybe on the heap. */
+        if (bss_next > 0x7FFF - type_size(type))
+          error(182 /* "too much data: globals over 32767 bytes" */,
+                NULL);
+        var_link[s] |= VL_BSS;
+        var_off[s] = bss_next;
+        bss_next += type_size(type);
+      } else {
+        data_zero(type_size(type));
+      }
     }
     if (tok != ',')
       break;
@@ -4464,6 +4536,12 @@ int data_sym_count(void)
   return nglobals;
 }
 
+/* The size of the file's zero-filled space (its VL_BSS globals). */
+int bss_size(void)
+{
+  return bss_next;
+}
+
 /* Global v's SYM_* flags for the symbol summary, with its data offset
  * (if defined), size (0 if an array's size is unknown), type hash
  * (leaving out an array's size, so that int a[] matches int a[10]) and
@@ -4477,6 +4555,10 @@ int data_sym(int v, int *off, int *size, int *hash, int *name)
     flags |= SYM_CALLED;
   if (var_link[v] & VL_STATIC)
     flags |= SYM_LOCAL;
+  if (var_link[v] & VL_BSS)
+    flags |= SYM_BSS;           /* var_off[] is in the zero-filled space */
+  if (var_link[v] & VL_INDATA)
+    flags |= SYM_INDATA;
   *off = flags & SYM_DEFINED ? var_off[v] : 0;
   *size = is_array(t) && type_count(t) == 0 ? 0 : type_size(t);
   if (is_array(t)) {

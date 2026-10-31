@@ -10,7 +10,7 @@
 enum {
   OP_CN = 0x00, OP_MINUS1 = 0x20, OP_BREQ = 0x22, OP_BRNE = 0x24,
   OP_LA = 0x26, OP_LLA = 0x28, OP_CB = 0x2A,
-  OP_CW = 0x2C, OP_DROP = 0x30, OP_DUP = 0x34, OP_ADDI = 0x38,
+  OP_CW = 0x2C, OP_CS = 0x2E, OP_DROP = 0x30, OP_DUP = 0x34, OP_ADDI = 0x38,
   OP_SUBI = 0x3A, OP_ANDI = 0x3C,
   OP_ISEQ = 0x40, OP_ISNE = 0x42, OP_ISGT = 0x44, OP_ISLT = 0x46,
   OP_ISGE = 0x48, OP_ISLE = 0x4A, OP_BRFLS = 0x4C, OP_BRTRU = 0x4E,
@@ -45,7 +45,8 @@ enum {
 
 /* What an operand word refers to, if it needs relocation: a data
  * offset, a function, or an offset in the string pool. */
-enum { FIX_NONE, FIX_DATA, FIX_FUNC, FIX_STR, FIX_DSYM, FIX_HELPER };
+enum { FIX_NONE, FIX_DATA, FIX_FUNC, FIX_STR, FIX_DSYM, FIX_HELPER,
+       FIX_HEAP };    /* FIX_HEAP: IR_HEAPADDR's symbol, never folded */
 
 /* Marks an ENTER/LEAVE frame size that is filled in at function end. */
 #define FRAME_LATER (-1)

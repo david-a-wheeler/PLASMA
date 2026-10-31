@@ -27,6 +27,15 @@
  * In steps 2 to 4, each object's summary is read again just before its
  * stream, to map its own symbol numbers to final addresses, so only
  * one object's map is in memory.
+ *
+ * A global defined with no data bytes (SYM_BSS: zero-filled, at least
+ * BSS_MIN bytes) is placed in step 1 (approach.md, "Large zero-filled
+ * data on the heap"). If no object's data holds its address
+ * (SYM_INDATA), it moves to the heap: it gets a pointer word in the
+ * data, each LA of it becomes an LAW of that word, and the init
+ * function allocates every moved object in one block, clears it, and
+ * fills in the pointer words, before it calls main. Otherwise it stays
+ * in the module, as zeros after every object's data.
  */
 #include <stdio.h>
 #include <string.h>
@@ -45,6 +54,7 @@
                              * 10% above linking ccish's (1,297) */
 #define MAX_SEL_TABLES 32   /* SEL case tables the listing of one
                              * function waits for at once */
+#define MAX_MOVED   32      /* globals moved to the heap in one module */
 
 /* A symbol summary entry of the object being read: a function's, or
  * a global variable's (which has a size and no parameter count). */
@@ -62,7 +72,19 @@ static int nfsyms, ndsyms;
 
 /* The object being read (an index in obj_name[]), and its sizes. */
 static int cur;
-static int data_size, strs_size, code_size;
+static int data_size, strs_size, code_size, bss_size;
+
+/* The zero-filled globals (SYM_BSS): those moved to the heap, each with
+ * a pointer word, by its number (mv_size[]: its bytes), and the bytes of
+ * those that stay, after every object's data. obj_mv[k] and obj_zs[k]
+ * are where object k's own (static) ones start, in each. */
+static int mv_size[MAX_MOVED];
+static int nmoved;
+static unsigned mv_total;            /* and all their bytes */
+#define HEAP_SPARE 512               /* heap init leaves for main's frames */
+static int zstay;
+static int obj_mv[MAX_OBJS + 1], obj_zs[MAX_OBJS + 1];
+static int patch_law;               /* add_reloc() met a moved global */
 
 /* The objects, by output name as given to cccomp, and where each one's
  * data, strings and code start in the module's (as offsets from the
@@ -85,7 +107,7 @@ static int g_off[MAX_GSYMS];    /* if defined: offset in its object's
                                  * code or data; if imported: ESD index */
 static unsigned char g_def[MAX_GSYMS];  /* defining object, or NO_OBJ */
 static unsigned char g_desc[MAX_GSYMS]; /* object of the description */
-static char g_flags[MAX_GSYMS];         /* G_* */
+static unsigned char g_flags[MAX_GSYMS];    /* G_* */
 
 #define NO_OBJ 255
 
@@ -107,9 +129,12 @@ static char h_name[NHELPERS][MAX_HNAME + 1];   /* for the listing */
 /* A name's flags. The first three are what its entries say, over all
  * the objects: it is used; some entry isn't a CMDSYS function; some is a
  * CMDSYS name declared differently. Then: it is a global variable, not a
- * function; the function returns a value; it is imported. */
+ * function; the function returns a value; it is imported; it is
+ * zero-filled (SYM_BSS), and after step 1 its g_off is its place: a
+ * moved global's number, or its offset after every object's data;
+ * some object's data holds its address (so it stays). */
 enum { G_USED = 1, G_PLAIN = 2, G_BADCMDSYS = 4, G_DATA = 8,
-       G_RETURNS = 16, G_IMPORT = 32 };
+       G_RETURNS = 16, G_IMPORT = 32, G_BSS = 64, G_INDATA = 128 };
 
 static int ngsyms;          /* slots in use */
 static char gnames[MAX_GNAMES];
@@ -236,6 +261,7 @@ static const char *open_syms(int k)
   data_size = bgetw(&in);
   strs_size = bgetw(&in);
   code_size = bgetw(&in);
+  bss_size = bgetw(&in);
   nfsyms = bgetw(&in);
   ndsyms = bgetw(&in);
   if (nfsyms > MAX_FUNCS)
@@ -264,7 +290,10 @@ static void read_sym(Lsym *s, int data, const char *name)
   /* A function has at least one byte of code, so it can't start at
    * the code's end. */
   if ((s->flags & SYM_DEFINED)
-      && (data ? s->off > data_size : s->off >= code_size))
+      && (!data ? s->off >= code_size
+          : s->flags & SYM_BSS ? s->size < BSS_MIN
+                                 || s->off > bss_size - s->size
+          : s->off > data_size))
     damaged(name);
 }
 
@@ -369,7 +398,7 @@ static void add_global(Lsym *s, int data)
   if (g < 0)
     g = gsym_add(s->name);
   if (g_desc[g] == NO_OBJ) {
-    g_flags[g] = (char)kind;
+    g_flags[g] = (unsigned char)kind;
     g_count[g] = count;
     g_hash[g] = s->hash;
     g_desc[g] = (unsigned char)cur;
@@ -389,7 +418,11 @@ static void add_global(Lsym *s, int data)
   if (s->flags & SYM_DEFINED) {
     g_def[g] = (unsigned char)cur;
     g_off[g] = s->off;
+    if (s->flags & SYM_BSS)
+      g_flags[g] |= G_BSS;
   }
+  if (s->flags & SYM_INDATA)
+    g_flags[g] |= G_INDATA;
   if (s->flags & SYM_CALLED)
     g_flags[g] |= G_USED;
   if (s->flags & SYM_NOTCMDSYS)
@@ -398,10 +431,30 @@ static void add_global(Lsym *s, int data)
     g_flags[g] |= G_PLAIN;
 }
 
+/* Place a zero-filled global of size bytes: on the heap unless indata
+ * (an initializer holds its address). Returns its place: its moved
+ * number, or its offset after every object's data. */
+static int place_zero(int size, int indata)
+{
+  if (indata) {
+    zstay += size;
+    if (zstay > 0x7FFF)
+      fatal(182 /* "too much data: globals over 32767 bytes" */, NULL);
+    return zstay - size;
+  }
+  if (nmoved >= MAX_MOVED)
+    fatal(308 /* "too many large globals to move to the heap" */, NULL);
+  if ((unsigned)size > 0xFFFFu - HEAP_SPARE - mv_total)
+    fatal(309 /* "too much data to move to the heap" */, NULL);
+  mv_total += size;
+  mv_size[nmoved] = size;
+  return nmoved++;
+}
+
 /* Step 1 for object k: read its symbol summary, lay it out after the
- * objects before it, and add its non-local symbols to the table of
- * shared names. A local symbol that is used but not defined is an
- * undefined reference. */
+ * objects before it, place its own zero-filled globals, and add its
+ * non-local symbols to the table of shared names. A local symbol that is
+ * used but not defined is an undefined reference. */
 static void read_summary(int k)
 {
   const char *name = open_syms(k);
@@ -411,6 +464,8 @@ static void read_summary(int k)
   obj_data[k + 1] = obj_data[k] + data_size;
   obj_strs[k + 1] = obj_strs[k] + strs_size;
   obj_code[k + 1] = obj_code[k] + code_size;
+  obj_mv[k] = nmoved;
+  obj_zs[k] = zstay;
   for (i = 0; i < nfsyms + ndsyms; i++) {
     read_sym(&s, i >= nfsyms, name);
     if ((s.flags & SYM_DEFINED) && i < nfsyms)
@@ -419,8 +474,20 @@ static void read_summary(int k)
       add_global(&s, i >= nfsyms);
     else if ((s.flags & SYM_CALLED) && !(s.flags & SYM_DEFINED))
       undefined(172 /* "undefined reference to" */, s.name);
+    else if ((s.flags & (SYM_DEFINED | SYM_BSS)) == (SYM_DEFINED | SYM_BSS))
+      place_zero(s.size, s.flags & SYM_INDATA);
   }
   close_syms(name, 1);
+}
+
+/* Make CMDSYS function name, which the init function calls, used (an
+ * import, unless a program defines its own). */
+static void use_cmdsys(const char *name)
+{
+  int g = gsym_find(name);
+  if (g < 0)
+    g = gsym_add(name);
+  g_flags[g] |= G_USED;
 }
 
 /* After step 1: resolve the shared names. A used name that no object
@@ -429,6 +496,16 @@ static void read_summary(int k)
 static void resolve(void)
 {
   int g;
+  for (g = 0; g < MAX_GSYMS; g++)
+    if (g_name[g] >= 0 && (g_flags[g] & G_BSS))
+      g_off[g] = place_zero(g_count[g], g_flags[g] & G_INDATA);
+  if (nmoved > 0) {
+    use_cmdsys("heapavail");
+    use_cmdsys("isult");
+    use_cmdsys("heapalloc");
+    use_cmdsys("memset");
+    use_cmdsys("puts");
+  }
   for (g = 0; g < MAX_GSYMS; g++) {
     const char *name;
     if (g_name[g] < 0)
@@ -479,7 +556,7 @@ static void map_object(int k)
 {
   const char *name = open_syms(k);
   Lsym s;
-  int i, g, v;
+  int i, g, v, mv = obj_mv[k], zs = obj_zs[k];
 
 #ifdef CCISH_LISTING
   lnames_len = gnames_len;
@@ -488,11 +565,23 @@ static void map_object(int k)
     int data = i >= nfsyms;
     read_sym(&s, data, name);
     v = -1;
-    if (s.flags & SYM_DEFINED) {
+    g = -1;
+    if (!(s.flags & SYM_LOCAL) && ((g = gsym_find(s.name)) < 0))
+      damaged(name);
+    if (data && (s.flags & (SYM_DEFINED | SYM_BSS)) == (SYM_DEFINED | SYM_BSS)
+        && g < 0) {
+      /* A zero-filled static, placed in step 1's order. */
+      v = s.flags & SYM_INDATA ? obj_data[nobjs] + zs : -2 - mv;
+      if (s.flags & SYM_INDATA)
+        zs += s.size;
+      else
+        mv++;
+    } else if (data && g >= 0 && (g_flags[g] & G_BSS)) {
+      v = g_flags[g] & G_INDATA ? obj_data[nobjs] + g_off[g]
+                                : -2 - g_off[g];
+    } else if (s.flags & SYM_DEFINED) {
       v = s.off + (data ? obj_data[k] : obj_code[k]);
-    } else if (!(s.flags & SYM_LOCAL)) {
-      if ((g = gsym_find(s.name)) < 0)
-        damaged(name);
+    } else if (g >= 0) {
       if (g_def[g] != NO_OBJ)
         v = g_off[g] + (data ? obj_data[g_def[g]] : obj_code[g_def[g]]);
       else if (g_flags[g] & G_IMPORT)
@@ -584,9 +673,10 @@ static const char *reloc_note(int at)
       } else if (lr_kind[i] == REL_HELPER) {
         sprintf(buf, "  ; helper %s", h_name[t]);
       } else {
+        /* t < 0: init's call to shared name -2 - t. */
         strcpy(buf, "  ; ");
-        strcat(buf, t < 0 ? "main" : func_label(t));
-        if (t >= 0 && fmap[t] < -1)
+        strcat(buf, t < 0 ? gnames + g_name[-2 - t] : func_label(t));
+        if (t >= 0 ? fmap[t] < -1 : (g_flags[-2 - t] & G_IMPORT) != 0)
           strcat(buf, " (import)");
       }
       return buf;
@@ -719,11 +809,19 @@ static void out_dci(const char *name)
  * listing if list. The record is checked first. Its target is an
  * offset in the object's data or strings, or a symbol of the object's,
  * through fmap[] and dmap[]. A REL_DSYM (data symbol target, plus add)
- * becomes the REL_DATA it stands for. */
+ * becomes the REL_DATA it stands for: for a global moved to the heap
+ * (dmap[] -2 - its number), its pointer word's, and patch_law is set,
+ * since the LA before the word must become an LAW. */
 static int add_reloc(int kind, int at, int target, int add, int list)
 {
   int v;
-  if (kind == REL_DSYM) {
+  if (kind == REL_DSYM && target < ndsyms && dmap[target] < -1) {
+    if (add != 0)
+      bad_obj();
+    kind = REL_DATA;
+    target = obj_data[nobjs] + zstay + 2 * (-2 - dmap[target]);
+    patch_law = 1;
+  } else if (kind == REL_DSYM) {
     if (target >= ndsyms || dmap[target] < 0)
       bad_obj();
     kind = REL_DATA;
@@ -760,10 +858,10 @@ static int add_reloc(int kind, int at, int target, int add, int list)
 }
 
 /* The tags each step reads from the stream; it skips the others. */
-static const char data_tags[] = { REC_DATA, REC_DREL, 0 };
+static const char data_tags[] = { REC_DATA, REC_DREL, REC_ZERO, 0 };
 static const char str_tags[] = { REC_STR, 0 };
 static const char func_tags[] = { REC_FUNC, 0 };
-static const char rld_tags[] = { REC_DATA, REC_DREL, REC_FUNC, 0 };
+static const char rld_tags[] = { REC_DATA, REC_DREL, REC_ZERO, REC_FUNC, 0 };
 
 /* Open object k's stream file for reading, from its start. */
 static void open_obj(int k)
@@ -794,6 +892,8 @@ static void skip_record(int t)
   } else if (t == REC_HELPER) {
     bskip(&in, 1);
     bskip(&in, bgetw(&in));
+  } else if (t == REC_ZERO) {
+    bskip(&in, 2);
   } else {
     bad_obj();
   }
@@ -820,9 +920,9 @@ static void copy_bytes(int n)
   }
 }
 
-/* Copy object k's data into the module: its stream's D records, with
- * each R record's word given its final value (an address, kept for the
- * RLD). */
+/* Copy object k's data into the module: its stream's D records, each
+ * Z record's zeros, and each R record's word given its final value (an
+ * address, kept for the RLD). */
 static void copy_data(int k)
 {
   int at = 0, t, n, kind, target, add;
@@ -834,6 +934,12 @@ static void copy_data(int k)
         bad_obj();
       copy_bytes(n);
       at += n;
+    } else if (t == REC_ZERO) {
+      if ((n = bgetw(&in)) > data_size - at)
+        bad_obj();
+      at += n;
+      while (n-- > 0)
+        bputc(&out, 0);
     } else {
       kind = bgetc(&in);
       target = bgetw(&in);
@@ -842,6 +948,8 @@ static void copy_data(int k)
         bad_obj();
       bputw(&out, add_reloc(kind, data_base + obj_data[k] + at, target,
                             add, 0));
+      if (patch_law)
+        bad_obj();              /* a moved global's address in data */
       at += 2;
     }
   }
@@ -908,6 +1016,13 @@ static void copy_code(int k)
       /* The word holds an extern global's addend, else 0. */
       v = add_reloc(kind, subseg + start + off, target,
                     fbuf[off] | (fbuf[off + 1] << 8), opt_list);
+      if (patch_law) {
+        /* A moved global: LA its address becomes LAW its pointer. */
+        patch_law = 0;
+        if (off < 1 || fbuf[off - 1] != OP_LA)
+          bad_obj();
+        fbuf[off - 1] = OP_LAW;
+      }
       fbuf[off] = (unsigned char)v;
       fbuf[off + 1] = (unsigned char)(v >> 8);
     }
@@ -1025,6 +1140,8 @@ static void reloc_entries(int k)
       n = bgetc(&in);
       bskip(&in, n);
       at += n;
+    } else if (t == REC_ZERO) {
+      at += bgetw(&in);
     } else if (t == REC_DREL) {
       kind = bgetc(&in);
       target = bgetw(&in);
@@ -1050,21 +1167,81 @@ static void reloc_entries(int k)
   bclose(&in);
 }
 
-/* The init function runs when the module loads: call main, discard its
- * result, and return 0. A positive init result would be read as "keep
- * the module" flags. Init must be the last bytecode. */
-static int init_code(int init_off)
+/* What init prints if the heap can't hold the moved globals. */
+static const char no_memory[] = "not enough memory\r";
+
+/* The init function's relocated words: each one's fbuf offset, and the
+ * shared name it calls, or -1 for a pointer word's address. */
+#define MAX_INIT_RELOCS (MAX_MOVED + 8)
+static int ir_at[MAX_INIT_RELOCS];
+static int ir_g[MAX_INIT_RELOCS];
+static int nir;
+
+/* Append op and its word w to the init function in fbuf at *n; the
+ * word is relocated, to a call of shared name g, or (g -1) to an
+ * address in data. */
+static void init_op(int *n, int op, int w, int g)
 {
-  int n = 0, v = subseg + obj_code[g_def[main_sym]] + g_off[main_sym];
-#ifdef CCISH_LISTING
-  nlr = 0;
-  keep_reloc(REL_FUNC, subseg + init_off + 1, -1);
-#else
-  (void)init_off;
-#endif
-  fbuf[n++] = OP_CALL;
-  fbuf[n++] = (unsigned char)v;
-  fbuf[n++] = (unsigned char)(v >> 8);
+  if (g >= 0)
+    w = g_flags[g] & G_IMPORT ? 0
+        : subseg + obj_code[g_def[g]] + g_off[g];
+  ir_at[nir] = *n + 1;
+  ir_g[nir++] = g;
+  fbuf[(*n)++] = (unsigned char)op;
+  fbuf[(*n)++] = (unsigned char)w;
+  fbuf[(*n)++] = (unsigned char)(w >> 8);
+}
+
+/* Append op and its unrelocated word w to the init function. */
+static void init_word(int *n, int op, int w)
+{
+  fbuf[(*n)++] = (unsigned char)op;
+  fbuf[(*n)++] = (unsigned char)w;
+  fbuf[(*n)++] = (unsigned char)(w >> 8);
+}
+
+/* The init function runs when the module loads. If globals were moved
+ * to the heap, it checks that the heap holds their block and
+ * HEAP_SPARE more (or prints no_memory and returns -1, an error), takes
+ * the block from heapalloc, zeroes it, and points each pointer word at
+ * its global. (It asks heapavail first: plvm's heapalloc stops the VM
+ * when the heap is full, and the Apple's can wrap past $FFFF.) Then it
+ * calls main, discards its result, and returns 0. A positive init
+ * result would be read as "keep the module" flags. Init must be the
+ * last bytecode. */
+static int init_code(void)
+{
+  int n = 0, i, pw = data_base + obj_data[nobjs] + zstay;
+  nir = 0;
+  if (nmoved > 0) {
+    init_op(&n, OP_CALL, 0, gsym_find("heapavail"));
+    init_word(&n, OP_CW, (int)mv_total + HEAP_SPARE);
+    init_op(&n, OP_CALL, 0, gsym_find("isult"));
+    /* To ok: past this word, the CS, CALL, MINUS1 and RET. */
+    init_word(&n, OP_BRFLS, 2 + (1 + sizeof(no_memory)) + 3 + 1 + 1);
+    fbuf[n++] = OP_CS;
+    fbuf[n++] = sizeof(no_memory) - 1;
+    for (i = 0; no_memory[i]; i++)
+      fbuf[n++] = no_memory[i];
+    init_op(&n, OP_CALL, 0, gsym_find("puts"));
+    fbuf[n++] = OP_MINUS1;
+    fbuf[n++] = OP_RET;
+    /* ok: */
+    init_word(&n, OP_CW, (int)mv_total);
+    init_op(&n, OP_CALL, 0, gsym_find("heapalloc"));
+    init_op(&n, OP_DAW, pw, -1);
+    for (i = 1; i < nmoved; i++) {
+      init_word(&n, OP_CW, mv_size[i - 1]);
+      fbuf[n++] = OP_ADD;
+      init_op(&n, OP_DAW, pw + 2 * i, -1);
+    }
+    fbuf[n++] = OP_DROP;
+    init_op(&n, OP_LAW, pw, -1);
+    fbuf[n++] = OP_CN;
+    init_word(&n, OP_CW, (int)mv_total);
+    init_op(&n, OP_CALL, 0, gsym_find("memset"));
+  }
+  init_op(&n, OP_CALL, 0, main_sym);
   if (g_flags[main_sym] & G_RETURNS)
     fbuf[n++] = OP_DROP;
   fbuf[n++] = OP_CN;
@@ -1076,7 +1253,29 @@ static int init_code(int init_off)
  * no main. */
 static int init_size(void)
 {
-  return main_sym < 0 ? 0 : 6 - !(g_flags[main_sym] & G_RETURNS);
+  int n;
+  if (main_sym < 0)
+    return 0;
+  n = 6 - !(g_flags[main_sym] & G_RETURNS);
+  if (nmoved > 0)
+    n += 3 + 3 + 3 + 3 + 1 + sizeof(no_memory) + 3 + 1 + 1
+         + 3 + 3 + 3 + 7 * (nmoved - 1) + 1 + 3 + 1 + 3 + 3;
+  return n;
+}
+
+/* Write the RLD entries for the init function at code-segment offset
+ * init_off, and keep them for the listing. */
+static void init_entries(int init_off)
+{
+  int i, at, g;
+  for (i = 0; i < nir; i++) {
+    at = subseg + init_off + ir_at[i];
+    g = ir_g[i];
+    if (g >= 0 && (g_flags[g] & G_IMPORT))
+      rld_entry(0x91, at - MODULE_BASE, g_off[g]);
+    else
+      rld_entry(0x81, at - MODULE_BASE, 0);
+  }
 }
 
 /* Run the final pass: link the n objects whose output names (as given
@@ -1115,7 +1314,7 @@ void link_module(int n, const char **bases, const char *path)
    * byte between it and the bytecode keeps data from ever sharing an
    * address with the first function. */
   data_base = MODULE_BASE + hdr + deplen;
-  strs_base = data_base + obj_data[n];
+  strs_base = data_base + obj_data[n] + zstay + 2 * nmoved;
   subseg = strs_base + obj_strs[n] + 1;
   total = init_off + init_size();
   if (subseg + total > 0xFFFF)
@@ -1136,6 +1335,8 @@ void link_module(int n, const char **bases, const char *path)
 
   for (k = 0; k < n; k++)
     copy_data(k);
+  for (i = zstay + 2 * nmoved; i > 0; i--)
+    bputc(&out, 0);                       /* zero-filled; pointer words */
   for (k = 0; k < n; k++)
     copy_strings(k);
   bputc(&out, 0);                         /* pad */
@@ -1145,8 +1346,16 @@ void link_module(int n, const char **bases, const char *path)
     copy_code(k);
   copy_helpers();
   if (main_sym >= 0) {
-    int len = init_code(init_off);
+    int len = init_code();
 #ifdef CCISH_LISTING
+    nlr = 0;
+    for (i = 0; i < nir; i++)
+      if (ir_g[i] < 0)
+        keep_reloc(REL_DATA, subseg + init_off + ir_at[i],
+                   (fbuf[ir_at[i]] | (fbuf[ir_at[i] + 1] << 8))
+                   - data_base);
+      else
+        keep_reloc(REL_FUNC, subseg + init_off + ir_at[i], -2 - ir_g[i]);
     if (opt_list)
       list_code("(init)", len, init_off);
 #endif
@@ -1164,7 +1373,7 @@ void link_module(int n, const char **bases, const char *path)
   for (k = 0; k < n; k++)
     reloc_entries(k);
   if (main_sym >= 0)
-    rld_entry(0x81, subseg + init_off + 1 - MODULE_BASE, 0);
+    init_entries(init_off);
   bputc(&out, 0);
 
   /* ESD: imports, in import order (slot order). */

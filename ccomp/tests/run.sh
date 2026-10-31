@@ -718,14 +718,14 @@ damaged_test badtag "with an unknown record tag"
 # A summary whose function starts at the code's end, where no function
 # can (it has at least one byte), is found damaged as it is read: the
 # message names the summary, not the stream file. The only symbol is
-# main; its offset is bytes 15-16, after the 13-byte header (C I
-# version, then five words: data, strings and code sizes, symbol
-# counts) and its flags and parameter count. It becomes the code size,
-# bytes 7-8.
+# main; its offset is bytes 17-18, after the 15-byte header (C I
+# version, then six words: data, strings, code and zero-filled sizes,
+# symbol counts) and its flags and parameter count. It becomes the code
+# size, bytes 7-8.
 echo 'int main() { return 0; }' >"$OUT/atend.c"
 cc_obj "" "$OUT/atend" "$OUT/atend.c"
 dd if="$OUT/atend.syms" of="$OUT/atend.size" bs=1 skip=7 count=2 2>/dev/null
-dd if="$OUT/atend.size" of="$OUT/atend.syms" bs=1 seek=15 conv=notrunc \
+dd if="$OUT/atend.size" of="$OUT/atend.syms" bs=1 seek=17 conv=notrunc \
    2>/dev/null
 rm -f "$OUT/atend.size"
 if ./ccrel "$OUT/atend" 2>"$OUT/atend.err"; then
