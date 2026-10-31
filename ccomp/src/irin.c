@@ -281,7 +281,8 @@ static const char stk_effect[IR_NOPS] = {
   0x22,                                     /* SWAP */
   0x21, 0x21, 0x21, 0x21,                   /* ULT ... */
   0x21, 0x21, 0x21,                         /* UDIV, UMOD, USHR */
-  0x01                                      /* HEAPADDR */
+  0x01,                                     /* HEAPADDR */
+  -1, -1, -1, -1                            /* loop markers: never held */
 };
 
 static char lab_depth[MAX_LABELS];
@@ -565,6 +566,159 @@ static void hold(int op, int a, int f)
     lower_held(nbuf);
 }
 
+/*
+ * Loops (approach.md, "Loop design"). The parser writes a loop in
+ * source order, between markers that name its labels:
+ *   LOOP Ltest Lbrk  test  LOOPSTEP Lcont Lbrk  step
+ *   LOOPBODY Lbody Ltest  body  LOOPEND Lcont Lbrk
+ * where the test branches to Lbody when true. Here the test and step
+ * are held (lp_op[] and the rest) instead of lowered, and lowered after
+ * the body, so that each pass runs one branch:
+ *   BRNCH Ltest  Lbody: body  Lcont: step  Ltest: test  Lbrk:
+ * The entry BRNCH is left out when the test is just a jump to Lbody
+ * (for (;;)), and a held loop's labels are placed only if something
+ * branches to them (lab_ref[]), since a label stops the peephole
+ * stage's patterns, and code after a jump that no label follows can
+ * be dropped (while (0)). Loops nest: held headers form a stack in lp_op[], one
+ * loop's test from lp_test[d], its step from lp_step[d], up to the
+ * next loop's or nlp; only the innermost open header is ever filling.
+ * A header that doesn't fit, or a loop nested more than LOOP_NEST deep,
+ * is lowered in place, as the jumps around the step would have been
+ * (no held state is needed then: the markers name every label):
+ *   Ltest: test  BRNCH Lbrk  Lcont: step  BRNCH Ltest
+ *   Lbody: body  BRNCH Lcont  Lbrk:
+ */
+#define LOOP_BUF  64        /* held ops, for every open loop's header */
+#define LOOP_NEST 8         /* loops held at once */
+static char lp_op[LOOP_BUF];
+static int lp_a[LOOP_BUF];
+static int lp_f[LOOP_BUF];
+static int nlp;
+static int lp_test[LOOP_NEST];  /* where each open loop's test starts */
+static int lp_step[LOOP_NEST];  /* and its step, or -1 until LOOPSTEP */
+static int lp_ltest[LOOP_NEST]; /* its test's label */
+static int lp_lcont[LOOP_NEST]; /* and its continue and break labels, */
+static int lp_lbrk[LOOP_NEST];  /* from LOOPSTEP */
+static char lp_held[LOOP_NEST]; /* its header is held */
+static int lp_depth;            /* loops open */
+static int lp_fill;             /* the innermost header is being held */
+static char lab_ref[MAX_LABELS];    /* a branch to it has been read */
+
+/* Hold a jump to label n. */
+static void jump(int n)
+{
+  lab_ref[n] = 1;
+  hold(IR_JUMP, n, -1);
+}
+
+/* Hold label n, if something branches to it. */
+static void label(int n)
+{
+  if (lab_ref[n])
+    hold(IR_LABEL, n, -1);
+}
+
+/* Lower held ops from from up to (not including) to. */
+static void replay(int from, int to)
+{
+  for (; from < to; from++)
+    hold(lp_op[from], lp_a[from], lp_f[from]);
+}
+
+/* The innermost loop's header doesn't fit: lower what it holds, and
+ * the rest of the loop in place. */
+static void loop_overflow(void)
+{
+  int d = lp_depth - 1, t = lp_test[d], s = lp_step[d];
+  hold(IR_LABEL, lp_ltest[d], -1);
+  replay(t, s < 0 ? nlp : s);
+  if (s >= 0) {
+    jump(lp_lbrk[d]);
+    hold(IR_LABEL, lp_lcont[d], -1);
+    replay(s, nlp);
+  }
+  nlp = t;
+  lp_held[d] = 0;
+  lp_fill = 0;
+}
+
+/* Hold IR op op (with a and f) of the header being filled. */
+static void keep(int op, int a, int f)
+{
+  if (nlp == LOOP_BUF) {
+    loop_overflow();
+    hold(op, a, f);
+    return;
+  }
+  lp_op[nlp] = (char)op;
+  lp_a[nlp] = a;
+  lp_f[nlp] = f;
+  nlp++;
+}
+
+/* Lay out a loop at its marker op, with labels a and f. */
+static void loop_op(int op, int a, int f)
+{
+  int d = lp_depth - 1, held;
+  if (op == IR_LOOP) {
+    if (lp_fill)
+      damaged();                /* a loop in a header */
+    d = lp_depth++;
+    if (d < LOOP_NEST) {
+      lp_held[d] = 1;
+      lp_test[d] = nlp;
+      lp_step[d] = -1;
+      lp_ltest[d] = a;
+      lp_fill = 1;
+    } else {
+      hold(IR_LABEL, a, -1);
+    }
+    return;
+  }
+  if (d < 0)
+    damaged();                  /* a marker outside a loop */
+  held = d < LOOP_NEST && lp_held[d];
+  if (held != lp_fill && op != IR_LOOPEND)
+    damaged();                  /* a marker where it can't be */
+  if (op == IR_LOOPSTEP) {
+    if (held) {
+      lp_step[d] = nlp;
+      lp_lcont[d] = a;
+      lp_lbrk[d] = f;
+    } else {
+      jump(f);
+      hold(IR_LABEL, a, -1);
+    }
+  } else if (op == IR_LOOPBODY) {
+    if (held) {
+      lp_fill = 0;
+      if (lp_step[d] < 0)
+        damaged();
+      if (lp_step[d] - lp_test[d] != 1 || lp_op[lp_test[d]] != IR_JUMP
+          || lp_a[lp_test[d]] != a)
+        jump(f);                /* enter at the test */
+      label(a);
+    } else {
+      jump(f);
+      hold(IR_LABEL, a, -1);
+    }
+  } else {
+    if (lp_fill)
+      damaged();
+    if (held) {
+      label(a);
+      replay(lp_step[d], nlp);
+      label(lp_ltest[d]);
+      replay(lp_test[d], lp_step[d]);
+      nlp = lp_test[d];
+    } else {
+      jump(a);
+    }
+    label(f);
+    lp_depth--;
+  }
+}
+
 /* Is label n one that the function buffer has room for? */
 static int good_label(int n)
 {
@@ -575,6 +729,7 @@ static int good_label(int n)
  * for lowering. */
 static void do_op(int op, int a, int f)
 {
+  int i;
   if (op >= IR_NOPS || (op == IR_FUNC) == in_func)
     damaged();                  /* FUNC outside a function, all else in */
   switch (op) {
@@ -589,7 +744,8 @@ static void do_op(int op, int a, int f)
     if (!good_label(a))
       damaged();
     break;
-  case IR_JOIN:
+  case IR_JOIN: case IR_LOOP: case IR_LOOPSTEP: case IR_LOOPBODY:
+  case IR_LOOPEND:
     if (!good_label(a) || !good_label(f))
       damaged();
     break;
@@ -609,12 +765,26 @@ static void do_op(int op, int a, int f)
   if (op == IR_FUNC) {
     in_func = 1;
     nwritten++;
+    for (i = 0; i < MAX_LABELS; i++)
+      lab_ref[i] = 0;
   } else if (op == IR_ENDFUNC) {
+    if (lp_depth)
+      damaged();                /* a loop not ended */
     in_func = 0;
   }
+  if (op == IR_JUMP || op == IR_BRFALSE || op == IR_BRTRUE
+      || op == IR_SEL || op == IR_CASETO)
+    lab_ref[a] = 1;
+  else if (op == IR_JOIN)
+    lab_ref[f] = 1;             /* a's branches go to f */
   if (opt_ir)
     dump_ir(op, a, f);
-  hold(op, a, f);
+  if (op >= IR_LOOP)
+    loop_op(op, a, f);
+  else if (lp_fill)
+    keep(op, a, f);
+  else
+    hold(op, a, f);
 }
 
 /* Read the summary, the last record, and write NAME.syms from it, with
@@ -690,6 +860,9 @@ void gen_file(const char *base)
     fn_id[i] = 0;
   helper_used = 0;
   nbuf = 0;
+  nlp = 0;
+  lp_depth = 0;
+  lp_fill = 0;
   in_func = 0;
   max_func = -1;
   nwritten = 0;

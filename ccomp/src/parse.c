@@ -3462,16 +3462,44 @@ static void parse_if(void)
   }
 }
 
-/* while (c) s:  Ltop: c BRFLS Lbrk  s  BRNCH Ltop  Lbrk: */
+/*
+ * Loops (approach.md, "Loop design"). The parser writes a loop's parts
+ * in source order between loop markers, which name its labels, and
+ * ccgen lays it out with the test at the bottom:
+ *   BRNCH Ltest  Lbody: s  Lcont: step  Ltest: c BRTRU Lbody  Lbrk:
+ * So the test is a true-sense branch to the body, and a while loop has
+ * an empty step. ccgen writes the jumps and labels.
+ */
+
+/* Write the marker after a loop's step, and parse its body, with
+ * labels from loop_labels() (body, test, continue, break); then its
+ * end marker. */
+static void loop_rest(int *l)
+{
+  put(IR_LOOPBODY, l[0], l[1]);
+  loop_body(l[3], l[2]);
+  put(IR_LOOPEND, l[2], l[3]);
+}
+
+/* Make a loop's labels (body, test, continue, break), and write its
+ * first marker. */
+static void loop_labels(int *l)
+{
+  int i;
+  for (i = 0; i < 4; i++)
+    l[i] = new_label();
+  put(IR_LOOP, l[1], l[3]);
+}
+
+/* while (c) s */
 static void parse_while(void)
 {
-  int top = new_label(), brk = new_label();
+  int l[4];
   next();                         /* "while" */
-  place_label(top);
-  parse_paren_cond(brk, 0);
-  loop_body(brk, top);
-  branch(IR_JUMP, top);
-  place_forward(brk);
+  loop_labels(l);
+  parse_paren_cond(l[0], 1);
+  put(IR_LOOPSTEP, l[2], l[3]);
+  loop_rest(l);
 }
 
 /* do s while (c);  Ltop: s  Lcont: c BRTRU Ltop  Lbrk: */
@@ -3488,20 +3516,13 @@ static void parse_do(void)
   place_forward(brk);
 }
 
-/*
- * for (init; c; step) s. The step's code comes before the body's, but
- * runs after it, so it is jumped around (approach.md 17 plans a side
- * buffer to avoid these jumps):
- *   init  Ltop: c BRFLS Lbrk  BRNCH Lbody
- *   Lcont: step  BRNCH Ltop
- *   Lbody: s  BRNCH Lcont  Lbrk:
- * With no step, continue goes straight to Ltop. The init may declare
- * variables (as in C99); they are in scope only in the loop.
- */
+/* for (init; c; step) s: the init, then a loop (above); with no
+ * condition, the test is a jump to the body. The init may declare
+ * variables (as in C99); they are in scope only in the loop. */
 static void parse_for(void)
 {
   int saved_nvars = nvars, saved_next = frame_next;
-  int top, brk, cont, body;
+  int l[4];
 
   next();                         /* "for" */
   expect('(', 124 /* "expected '(' after 'for', not" */);
@@ -3518,26 +3539,17 @@ static void parse_for(void)
       parse_expr_statement();
     expect(';', 126 /* "expected ';' after 'for' initialization, not" */);
   }
-  top = new_label();
-  brk = new_label();
-  place_label(top);
+  loop_labels(l);
   if (tok != ';')
-    parse_cond(brk, 0);
+    parse_cond(l[0], 1);
+  else
+    branch(IR_JUMP, l[0]);
   expect(';', 127 /* "expected ';' after 'for' condition, not" */);
-  cont = top;
-  if (tok != ')') {
-    body = new_label();
-    cont = new_label();
-    branch(IR_JUMP, body);
-    place_label(cont);
+  put(IR_LOOPSTEP, l[2], l[3]);
+  if (tok != ')')
     parse_expr_statement();
-    branch(IR_JUMP, top);
-    place_forward(body);
-  }
   expect(')', 128 /* "expected ')' after 'for' clauses, not" */);
-  loop_body(brk, cont);
-  branch(IR_JUMP, cont);
-  place_forward(brk);
+  loop_rest(l);
   depth--;
   nvars = saved_nvars;
   frame_next = saved_next;

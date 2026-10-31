@@ -76,13 +76,23 @@ enum {
    * always an LA of the symbol itself, which ccrel may turn into an
    * LAW of its pointer word, so never folded into another op */
   IR_HEAPADDR,
+  /* loop markers (approach.md, "Loop design"), in source order around
+   * a loop's parts; ccgen writes the loop's own jumps and labels, and
+   * moves the test and step after the body. They must stay last. */
+  IR_LOOP,        /* a = the test's label, f = the break label: the
+                   * test follows, branching to the body when true */
+  IR_LOOPSTEP,    /* a = the continue label, f = the break label: the
+                   * step follows (none in a while loop) */
+  IR_LOOPBODY,    /* a = the body's label, f = the test's: the body
+                   * follows */
+  IR_LOOPEND,     /* a = the continue label, f = the break label */
   IR_NOPS         /* the number of IR ops */
 };
 
 /* The IR file: the output name plus this suffix, and its format's
  * version (in its header, after the magic "CIR"). */
 #define SUFFIX_IR   ".ir"
-#define IR_VERSION  4
+#define IR_VERSION  5
 
 /* Its record tags besides the stream's D, R and S (below), and the bit
  * that marks an IR op followed by a one-byte operand. An IR op's tag is

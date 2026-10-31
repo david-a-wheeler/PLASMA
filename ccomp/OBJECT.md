@@ -282,7 +282,7 @@ starts with a header:
 | Size | Field |
 |------|-------|
 | 3 bytes | magic `CIR` |
-| byte | IR format version: 4 |
+| byte | IR format version: 5 |
 | word | the name file's stamp: its id count |
 | word | and its checksum |
 
@@ -348,6 +348,7 @@ The op numbers are the order of the `IR_*` enum in `src/ir.h`
 | `$33`-`$36` | `ULT`, `UGT`, `ULE`, `UGE` (*a* = the right operand's block length in ops, or 0; 18.7, C) |
 | `$37`-`$39` | `UDIV`, `UMOD`, `USHR` (*a* = 1 if the right operand is a constant) |
 | `$3A` | `HEAPADDR` (*f* = a data symbol index; version 4) |
+| `$3B`-`$3E` | `LOOP`, `LOOPSTEP`, `LOOPBODY`, `LOOPEND` (*a*, *f* = labels; version 5; IR.md, "Loops") |
 
 The rest, to `$3F`, are free for new ops, and `$60`-`$7F` (with
 `$E0`-`$FF`) could be added if those run out.

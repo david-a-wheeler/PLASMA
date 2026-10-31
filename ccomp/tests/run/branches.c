@@ -6,7 +6,7 @@
 // listing-lacks: ISEQ
 // listing-lacks: ISNE
 // listing-has: BREQ
-// listing-count: 2 BRTRU
+// listing-count: 3 BRTRU
 // listing-has: ISLT
 void show(int n)
 {

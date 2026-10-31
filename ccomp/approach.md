@@ -4266,7 +4266,8 @@ doesn't help a constant index (`LAW`, `ADDI`, `LW` stays three ops).
   BSS segment) remains the real fix once the VM may change.
 
 **Loop design: tests at the bottom, then PLASMA's counted loops
-(designed in discussion, 2026-10-31; not yet built).** Loops are where
+(designed in discussion, 2026-10-31; step 1 is built: "Step 1 is
+done", below).** Loops are where
 programs spend their time, so they must be efficient. This replaces
 the `for` side buffer planned for cccomp in issue 17 and 4(d): cccomp
 is the program that doesn't fit yet, so the reordering goes into
@@ -4303,12 +4304,13 @@ Lbrk:
 ```
 
 One branch per pass, for both `for` and `while`, and 6 bytes of
-branches. With the peephole rules ccgen has already (P12 `SLW i`
-`LLW i` → `DLW i`; P13 compare and branch fused), the loop's own work
-in `for (i = 0; i < n; i++)` drops from 10 ops to 6 (`LLW i`, `INCR`,
-`DLW i`, `LLW n`, `ISLT`, `BRTRU`), and in
-`for (p = s; p != end; p++)` (an `int *p`) to 5 (`LLW p`, `ADDI 2`,
-`DLW p`, `LLW end`, `BRNE`).
+branches. With P13 (compare and branch fused), the loop's own work in
+`for (i = 0; i < n; i++)` drops from 10 ops to 7 (`LLW i`, `INCR`,
+`SLW i`, `LLW i`, `LLW n`, `ISLT`, `BRTRU`), and in
+`for (p = s; p != end; p++)` (an `int *p`) to 6 (`LLW p`, `ADDI 2`,
+`SLW p`, `LLW p`, `LLW end`, `BRNE`). (The design first counted 6 and
+5, with P12 making `SLW i LLW i` one `DLW i`; but `Ltest:` is between
+them, where the entry jump lands, so they can't fuse.)
 - **cccomp writes four new IR ops** (IR version 5; IR.md), in source
   order, with the labels as operands; it still makes the labels, since
   `break` and `continue` in the body need them:
@@ -4391,7 +4393,7 @@ exit:   SLW     i           i = the final count
         DROP                the limit
 ```
 
-The loop's own work is 2 ops per pass (`DLW`, `INCBRLE`), against 6
+The loop's own work is 2 ops per pass (`DLW`, `INCBRLE`), against 7
 with the test at the bottom. `ADDBRLE` takes a step (`CB k` before
 it: 3 ops), and `DECBRGE`/`SUBBRGE` count down. ccgen can use this
 form for C loops, but only where C's meaning is the same:
@@ -4466,7 +4468,7 @@ which compare signed: an address range may cross $8000, and an
   unsigned one) costs a `DUP`, `CW $8000`, `XOR` and `SLW` at the loop
   top instead of one `DLW`: more than it saves.
 - For `p != end`, counting the passes left instead (`(end - p) / k`,
-  then `DECBRGE`) saves 1 op per pass of 5 (the pointer must still be
+  then `DECBRGE`) saves 2 ops per pass of 6 (the pointer must still be
   stepped in memory: `LLW p`, `ADDI 2`, `SLW p`, then `DECBRGE`), at
   an entry of about 6 ops and 8 bytes, and an `unsigned` count over
   32767 would break it.
@@ -4474,7 +4476,7 @@ which compare signed: an address range may cross $8000, and an
 So these loops get step 1's form, where `==` and `!=` are exactly what
 the VM does well: the compare and branch fuse into `BRNE` or `BREQ`
 (P13), which compare 16 bits without a sign, so `p != end` and
-`u != n` loops are 5 ops of loop work per pass, and correct for any
+`u != n` loops are 6 ops of loop work per pass, and correct for any
 values. That is also why the source rewrites (below) end pointer loops
 with `p != end`, never `p < end`: ccish compiles a pointer or
 `unsigned` `<` as a signed compare with both sign bits flipped (18.7
@@ -4504,6 +4506,49 @@ the loop forms steps 1 and 2 give.
 
 *Order (decided):* step 1, then the source rewrites; step 2 after
 measuring how many loops it would reach.
+
+**Step 1 is done** (2026-10-31): tests at the bottom, as designed
+above, with these details:
+- cccomp always writes `LOOPSTEP`, so a `while` loop is a loop with an
+  empty step, and `parse_while()` and `parse_for()` share
+  `loop_labels()` and `loop_rest()`. Every marker names the labels its
+  layout needs (`LOOPSTEP Lcont Lbrk`, `LOOPBODY Lbody Ltest`, `LOOPEND
+  Lcont Lbrk`), so a loop laid out in place needs no state in ccgen.
+- ccgen places a held loop's labels only if something branches to
+  them: it notes each label a branch op names as it reads the IR
+  (`lab_ref[]`, per function). So an unused `continue` label doesn't
+  stop the peephole patterns between the body and the step, and the
+  dead body of `while (0)` is dropped, as before.
+- The side buffer holds 64 ops for all the open loops' headers, and 8
+  loops at once; a header past that, or a loop nested deeper, is laid
+  out in place (`loops.c` tests both).
+- Tests: `loops.c` (nesting with `break` and `continue`; no condition,
+  no step; `while (0)`, `while (1)`; calls, `&&`, `||` and `?:` in the
+  test and step; a string in the test; unsigned comparisons and
+  division; a step with side effects; `do`; a header of over 64 ops;
+  9 loops nested) and `loop_code.c` (the layout's exact branches).
+  375 pass. `branches.c` now has 3 `BRTRU` (its `while` ends in one).
+- Sizes (small build, before → after; code, then the module file):
+
+  | Program | Code | Module file |
+  |---|---|---|
+  | `ccpp` | 14,154 → 13,974 (-180) | 26,486 → 26,306 |
+  | `cccomp` | 26,341 → 26,156 (-185) | 42,975 → 42,774 |
+  | `ccgen` | 11,070 → 11,746 (+676) | 19,373 → 21,050 |
+  | `ccrel` | 7,980 → 7,806 (-174) | 14,495 → 14,321 |
+
+  ccgen's new code is about 750 bytes (`loop_op()` 387,
+  `loop_overflow()` 111, `keep()` 63, `replay()` 42, `jump()` and
+  `label()` 42, and the label notes in `do_op()`), less what its own
+  loops saved; its data grew 534 bytes (the 320-byte side buffer,
+  `lab_ref[]` 104, the loop stack 88), each table under 256 bytes, so
+  none moves to the heap. That is more than the 200-300 bytes of code
+  estimated, but in the program that fits; cccomp, which doesn't, is
+  185 bytes smaller.
+- Op counts (plvm, every op executed, run tests): 26 of the 61 change,
+  none in its output; together they run 30,183 → 26,551 ops (-12.0%),
+  from `static.c` -20.5% and `heap_globals.c` -19.1% to `rotate.c`
+  -0.8%.
 
 **C6 design, and C6 is done** (2026-10-31; C6 in 18.6). Address
 constants come from the expression parser, so global initializers no

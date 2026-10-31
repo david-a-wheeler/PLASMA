@@ -28,7 +28,8 @@ static const char *const ir_names[] = {
   "NEG", "COMP", "NOT",
   "LABEL", "JUMP", "BRFALSE", "BRTRUE", "JOIN",
   "SEL", "CASES", "CASEVAL", "CASETO", "SWAP", "ULT", "UGT", "ULE", "UGE",
-  "UDIV", "UMOD", "USHR", "HEAPADDR"
+  "UDIV", "UMOD", "USHR", "HEAPADDR",
+  "LOOP", "LOOPSTEP", "LOOPBODY", "LOOPEND"
 };
 
 /* How each IR op lowers (lw_kind[]), and the PLASMA opcode it lowers
@@ -67,7 +68,9 @@ static const char lw_kind[IR_NOPS] = {
   L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,   /* ULT ... (irin.c flips
                                                  * the sign bits first) */
   L_SPECIAL, L_SPECIAL, L_SPECIAL,          /* UDIV, UMOD, USHR */
-  L_SPECIAL                                 /* HEAPADDR */
+  L_SPECIAL,                                /* HEAPADDR */
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL    /* loop markers: irin.c
+                                                 * takes them */
 };
 
 static const unsigned char lw_op[IR_NOPS] = {
@@ -86,7 +89,8 @@ static const unsigned char lw_op[IR_NOPS] = {
   0,
   OP_ISLT, OP_ISGT, OP_ISLE, OP_ISGE,
   0, 0, 0,
-  OP_LA
+  OP_LA,
+  0, 0, 0, 0
 };
 
 /* Write s, then n in decimal, to standard output, for -i. No printf:
@@ -106,6 +110,8 @@ void dump_ir(int op, int a, int f)
   fputs(ir_names[op], stdout);
   while (n++ < 8)
     fputs(" ", stdout);
+  if (op >= IR_LOOP)
+    op = IR_JOIN;               /* a loop marker's two labels, the same */
   switch (op) {
   case IR_FUNC:     fputs(" ", stdout); fputs(func_name(f), stdout); break;
   case IR_ENDFUNC:  out_num(" frame=", a); break;

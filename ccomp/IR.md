@@ -514,8 +514,9 @@ label *f* instead.
 - **Why they differ:** PLASMA branches need an offset, and a forward
   target's offset isn't known yet (reason 3).
 - **How the parser uses them:**
-  - `if`, `while`, `do`, `for`, `?:`: see the comments on `parse_if`
-    and the other functions in `src/parse.c` for the exact layouts;
+  - `if`, `do`, `?:`: see the comments on `parse_if` and the other
+    functions in `src/parse.c` for the exact layouts; `while` and
+    `for` write loop markers instead ("Loops", below);
   - `a && b`, `a || b` and `!` on them are jumps, not values
     (approach.md C4, "Conditions as jumps"): the result jumps to its
     false label when false and falls through when true. `a && b` is
@@ -535,8 +536,44 @@ label *f* instead.
   `BRNCH` to that label is removed, and `Bcond L BRNCH T` then `L:`
   becomes `Binv T L:` (the opposite branch: `BRFLS`/`BRTRU`,
   `BREQ`/`BRNE`), skipping any joins in between.
-- **Later:** branches to branches shortened. `for` loops may use a side buffer
-  for the step, and PLASMA's FOR opcodes (17, P18).
+- **Later:** branches to branches shortened.
+
+### Loops: `IR_LOOP`, `IR_LOOPSTEP`, `IR_LOOPBODY`, `IR_LOOPEND` (*a*, *f* = labels)
+
+Markers around a `while` or `for` loop's parts, which the parser writes
+in source order, so that `ccgen` can put the test at the bottom
+(approach.md, "Loop design"):
+
+```
+LOOP     Ltest Lbrk    the test: a true-sense branch to Lbody
+LOOPSTEP Lcont Lbrk    the step (none in a while loop)
+LOOPBODY Lbody Ltest   the body
+LOOPEND  Lcont Lbrk
+```
+
+- **Stack:** none; the parts between them are statements and
+  conditions, which leave the stack as they found it.
+- **Now:** `ccgen` holds the test and the step (IR ops, in a side
+  buffer, `src/irin.c`) instead of lowering them, writes the loop's
+  own jumps and labels, and lowers the held ops after the body:
+  `BRNCH Ltest  Lbody: body  Lcont: step  Ltest: test  Lbrk:`. So each
+  pass runs one branch. The entry `BRNCH` is left out when the test is
+  only `JUMP Lbody` (`for (;;)`, `while (1)`), and each of the loop's
+  labels is placed only if something branches to it. A header too big
+  for the side buffer (64 ops, for all the open loops), or a loop
+  nested more than 8 deep, is lowered in place, with jumps around the
+  step: `Ltest: test  BRNCH Lbrk  Lcont: step  BRNCH Ltest  Lbody: body
+  BRNCH Lcont  Lbrk:`. The markers name every label for that.
+- **Why they aren't plain labels and jumps:** the parser reads the test
+  and step before the body, and writes as it goes; the reordering is
+  done in `ccgen`, which has room for it (cccomp doesn't).
+- **The parser** makes the four labels, so that `break` (to `Lbrk`)
+  and `continue` (to `Lcont`) in the body can branch to them, and
+  writes the test as `parse_cond(Lbody, 1)`. A `for` with no
+  condition has the test `JUMP Lbody`.
+- **Later:** PLASMA's counted-loop opcodes (`INCBRLE` and the rest) for
+  `int` loops whose body makes no calls (approach.md, "Loop design",
+  step 2).
 
 ### `IR_SEL` *a* = label, and the case table: `IR_CASES` *a* = count, `IR_CASEVAL` *a* = value, `IR_CASETO` *a* = label
 
