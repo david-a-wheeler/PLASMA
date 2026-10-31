@@ -1,18 +1,18 @@
 /*
- * ccpp's macros (ppmac.c): the #define table, and the expansions being
- * read. Include after ccish.h.
+ * ccpp's macros (ppmac.c): the #define table, and their expansion.
+ * Include after ccish.h.
  */
 #ifndef PPMAC_H
 #define PPMAC_H
 
+extern int pp_from_lexer;           /* pp_next()'s token is the lexer's */
+
 void pp_mac_init(void);
 int  pp_mac_find(int id);           /* the macro named id, or -1 */
-void pp_def_begin(void);            /* a body: its tokens, then its name */
+void pp_def_begin(int np, const int *params, int va);  /* a body: its */
 void pp_def_token(int code, int val, const unsigned char *s, int n);
-void pp_def_end(int id);
+void pp_def_end(int id);            /* tokens, then its name */
 void pp_undef(int id);
-int  pp_mac_active(int m);          /* being expanded now */
-void pp_expand(int m);              /* read macro m's body next */
-int  pp_exp_next(void);             /* its next token, or -1 at the end */
+int  pp_next(void);                 /* the next token, macros expanded */
 
 #endif

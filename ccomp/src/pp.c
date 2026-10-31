@@ -1,10 +1,9 @@
 /*
  * ccpp's driver (approach.md, "ccpp design"): reads the source's tokens
  * from the lexer (or a macro's expansion) and writes them to the token
- * stream, and carries out the directives: #include, #define and #undef
- * (object-like macros), and #ifdef, #ifndef, #else and #endif. #if,
- * #elif, #error, #line and function-like macros come in later steps;
- * #pragma is ignored.
+ * stream, and carries out the directives: #include, #define and #undef,
+ * and #ifdef, #ifndef, #else and #endif. #if, #elif, #error and #line
+ * come in a later step; #pragma is ignored.
  *
  * The groups #ifdef and the rest open are a stack (cond[]): each one's
  * state is C_TAKING (its tokens are kept), C_WAIT (skipped, no branch
@@ -110,20 +109,45 @@ static int macro_name(const char *name)
   return pt_val;
 }
 
-/* #define name body: an object-like macro. */
+/* #define name body, an object-like macro, or #define name(params)
+ * body, a function-like one: a '(' right after the name, with no blank.
+ * The parameters are names, the last of which may be "...", which is
+ * __VA_ARGS__ in the body. */
 static void do_define(void)
 {
-  int id = macro_name("#define"), c;
-  if (pp_lex_next_char() == '(')
-    error(13 /* "this preprocessor directive is not supported yet:" */,
-          "(a function-like macro)");
-  pp_def_begin();
-  while ((c = pp_lex()) != TC_NL) {
-    if (c == '#')
-      error(13 /* "this preprocessor directive is not supported yet:" */,
-            "(# in a macro)");
-    pp_def_token(c, pt_val, pt_text, pt_len);
+  int id = macro_name("#define"), c, np = -1, va = 0, i;
+  int params[MAX_PP_PARAMS];
+  if (pp_lex_next_char() == '(') {
+    pp_lex();                   /* '(' */
+    np = 0;
+    c = pp_lex();
+    while (c != ')') {
+      if (np >= MAX_PP_PARAMS)
+        fatal(257 /* "too many macro parameters" */, NULL);
+      if (c == TC_ELLIPSIS) {
+        params[np++] = pp_intern("__VA_ARGS__", 11);
+        va = 1;
+        c = pp_lex();
+        if (c != ')')
+          error(255 /* "bad macro parameter list" */, NULL);
+        break;
+      }
+      if (c != TC_ID && c != TC_KEYWORD)
+        error(255 /* "bad macro parameter list" */, NULL);
+      for (i = 0; i < np; i++)
+        if (params[i] == pt_val)
+          error(255 /* "bad macro parameter list" */, NULL);
+      params[np++] = pt_val;
+      c = pp_lex();
+      if (c == ',')
+        c = pp_lex();
+      else if (c != ')')
+        error(255 /* "bad macro parameter list" */, NULL);
+    }
   }
+  pp_def_begin(np, params, va);
+  while ((c = pp_lex()) != TC_NL)
+    pp_def_token(c, pt_val, pt_text, pt_len);
   pp_def_end(id);
 }
 
@@ -322,7 +346,7 @@ static int end_file(void)
  * output name base. */
 void pp_file(const char *src, const char *base)
 {
-  int c, m;
+  int c;
   src_name = src;
   depth = 0;
   nconds = 0;
@@ -343,30 +367,18 @@ void pp_file(const char *src, const char *base)
   pp_mode = PM_TEXT;
   pp_lex_open(&files[0]);
   for (;;) {
-    c = pp_exp_next();
-    if (c < 0) {
-      c = pp_lex();
-      if (c == '#' && pt_first) {
-        directive();
-        continue;
-      }
-      if (c == TC_END) {
-        if (end_file())
-          continue;
-        break;
-      }
-    } else if (c == TC_ID || c == TC_KEYWORD) {
-      pt_macro = pp_is_macro(pt_val);
+    c = pp_next();
+    if (c == '#' && pp_from_lexer && pt_first) {
+      directive();
+      continue;
     }
-    if (c == '#')
+    if (c == TC_END) {
+      if (end_file())
+        continue;
+      break;
+    }
+    if (c == '#' || c == TC_PASTE)
       error(17 /* "unexpected character in source" */, NULL);
-    if ((c == TC_ID || c == TC_KEYWORD) && pt_macro) {
-      m = pp_mac_find(pt_val);
-      if (!pp_mac_active(m)) {
-        pp_expand(m);
-        continue;
-      }
-    }
     pp_out(c, pt_val, pt_text, pt_len);
   }
   pp_out_finish();

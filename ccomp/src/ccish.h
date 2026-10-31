@@ -68,6 +68,11 @@
 #define MAX_MACROS   128    /* macros defined at once */
 #define MAX_MACRO_BYTES 2048  /* their bodies, as tokens */
 #define MAX_EXPAND   16     /* macro expansions inside one another */
+#define MAX_EXP_BYTES 1024  /* bytes of the expansions and arguments
+                             * being read, and of the arguments' own
+                             * expansions (two buffers) */
+#define MAX_ARG_SLOTS 64    /* arguments of the calls being expanded */
+#define MAX_PP_PARAMS 16    /* parameters of one macro */
 #define MAX_INC_DIRS 8      /* -I directories */
 #define MAX_PP_OPTS  16     /* -D and -U options */
 #define MAX_PP_POOL  7680   /* bytes of ccpp's names and file names,

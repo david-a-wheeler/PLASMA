@@ -104,11 +104,12 @@ ccgen [-i] [-k] output              the back end: output.ir and
 ccrel [-l] [-o module] output...    the final pass: links them into a module
 ```
 
-`ccpp` carries out `#include`, object-like `#define`, `#undef`,
-`#ifdef`, `#ifndef`, `#else` and `#endif` so far, and ignores `#pragma`
-(CCPP.md, "Preprocessing"); `#if`, function-like macros and the rest
-come in the next steps of approach.md's "`ccpp` design". `-I`, `-D` and
-`-U` work as usual, for `ccish` too.
+`ccpp` carries out `#include`, `#define` (object-like and function-like
+macros, with `#`, `##` and `__VA_ARGS__`), `#undef`, `#ifdef`,
+`#ifndef`, `#else` and `#endif` so far, and ignores `#pragma` (CCPP.md,
+"Preprocessing"); `#if` and the rest come in the next step of
+approach.md's "`ccpp` design". `-I`, `-D` and `-U` work as usual, for
+`ccish` too.
 
 ### Linking several files
 
@@ -413,7 +414,7 @@ function returns exactly one.
 | `src/bio.c` | File I/O through 512-byte block buffers |
 | `src/token.h` | The token stream's codes, shared by `ccpp` and `cccomp` (see [CCPP.md](CCPP.md)) |
 | `src/pp.c` | The preprocessor's driver: the directives, `#include` files and groups, and the source's tokens, with macros expanded, to the token stream |
-| `src/ppmac.c` | The preprocessor's macros: the table of `#define`s, kept as tokens, and the expansions being read |
+| `src/ppmac.c` | The preprocessor's macros: the table of `#define`s, kept as tokens, and their expansion: calls, arguments, `#` and `##` |
 | `src/pplex.c` | The preprocessor's lexer: a line at a time, into tokens |
 | `src/ppname.c` | The preprocessor's name pool, which gives each identifier its id, and the writer of the name file |
 | `src/ppout.c` | The preprocessor's output: the token stream, joining adjacent strings |

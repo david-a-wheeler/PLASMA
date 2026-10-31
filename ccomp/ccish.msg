@@ -241,3 +241,12 @@
 245 macro expansion nested too deeply
 246 extra tokens at the end of the directive:
 248 too many -I, -D and -U options
+249 unterminated call of macro
+250 a directive inside a macro's arguments
+251 wrong number of arguments for macro
+252 '#' must be followed by a macro parameter
+253 '##' can't be at either end of a macro
+254 pasting doesn't give a valid token:
+255 bad macro parameter list
+256 macro expansion too long
+257 too many macro parameters

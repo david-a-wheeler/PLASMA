@@ -71,14 +71,25 @@ design", steps 4-6):
   can't open that many files (message 236 says the file is missing or
   too many files are open). Each file read gets a number in
   `NAME.nam`.
-- **`#define name tokens`** defines an object-like macro; a macro may
-  be defined again only with the same tokens. **`#undef name`**
-  undefines one. A macro's name is an identifier, or one of the C
-  keywords ccish doesn't support (`long`, say), which are names here
-  too; a keyword ccish supports can't be one. Macros are kept as
-  tokens, and an expansion is read again for more macros, but a macro
-  isn't expanded again inside its own expansion (C11 6.10.3.4).
-  `__CCISH__` is defined as 1. Function-like macros come in step 5.
+- **`#define name tokens`** defines an object-like macro, and
+  **`#define name(params) tokens`** a function-like one (the `(` right
+  after the name, with no blank): the parameters are names, the last
+  of which may be `...`, which the body uses as `__VA_ARGS__`. A macro
+  may be defined again only with the same parameters and tokens.
+  **`#undef name`** undefines one. A macro's name is an identifier, or
+  one of the C keywords ccish doesn't support (`long`, say), which are
+  names here too; a keyword ccish supports can't be one. `__CCISH__` is
+  defined as 1.
+- A function-like macro's name followed by `(` is a call (the `(` may
+  be on a later line); otherwise the name stays as it is. Each argument
+  is fully macro-expanded by itself before it is substituted (C11
+  6.10.3.1), so `MAX(MAX(a, b), c)` works, except next to `#` or `##`,
+  where it is used as written. `#param` makes a string of the
+  argument's tokens, spelled again, with one space where there were
+  blanks between them. `a ## b` joins two tokens into one, which must
+  be a name, a decimal number or an operator. The replacement is read
+  again for more macros, with what follows it, but a macro isn't
+  expanded again inside its own expansion (C11 6.10.3.4).
 - **`#ifdef`**, **`#ifndef`**, **`#else`** and **`#endif`** keep or skip
   groups of lines; a skipped group's lines aren't split into tokens,
   so they may hold anything (an apostrophe, say), but its conditional
@@ -90,6 +101,14 @@ design", steps 4-6):
 - A line that ends in a backslash is joined to the next (C's phase 2).
 
 Known differences from C, so far:
+- `#` spells a number in decimal (`0x10` as `16`, a character
+  constant `'A'` as `65`), a string with `\n`, `\t`, `\r`, `\"` and
+  `\\` escaped and any other unprintable byte in octal, and puts a space
+  only where the source had blanks, not between tokens that came from
+  another macro's body.
+- `##` makes only names, decimal numbers (with a `u`) and operators.
+- A name a macro's own expansion left unexpanded is expanded if it is
+  read again later (C would leave it unexpanded for good).
 - A comment that begins on a directive's line and continues past it
   ends the directive there (C treats the comment as a space, so the
   directive would go on).
@@ -298,7 +317,10 @@ in `t.i`, low byte first).
 | Groups (`#ifdef` ...) open at once | 16 (`MAX_IF_NEST`) | 243 |
 | Macros defined at once, counting `__CCISH__` | 128 (`MAX_MACROS`) | 244 |
 | Their bodies, as tokens (an identifier or number is 3 bytes) | 2048 bytes (`MAX_MACRO_BYTES`) | 244 |
-| Macro expansions inside one another | 16 (`MAX_EXPAND`) | 245 |
+| Macro expansions inside one another, and arguments being expanded | 16 (`MAX_EXPAND`) | 245 |
+| The texts being read and the arguments being collected; the arguments' own expansions | 1024 bytes each (`MAX_EXP_BYTES`) | 256 |
+| Arguments of the calls being expanded | 64 (`MAX_ARG_SLOTS`) | 256 |
+| A macro's parameters | 16 (`MAX_PP_PARAMS`) | 257 |
 | `-I` directories; `-D` and `-U` options | 8 (`MAX_INC_DIRS`); 16 (`MAX_PP_OPTS`) | 248 |
 
 These are first sizes, to be set from measurement once `ccpp` reads

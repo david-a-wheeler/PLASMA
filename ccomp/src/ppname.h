@@ -17,7 +17,7 @@ int  pp_add_file(const char *path);       /* a file's number, from 1 */
 void pp_file_path(int k, char *buf);      /* file k's name */
 int  pp_nids(void);                       /* ids given so far */
 int  pp_name_hash(int id, int *mul);      /* a tag's hash, for TC_TAG */
-const char *pp_spell(int id);             /* id's spelling, for messages */
+const char *pp_id_spelling(int id);             /* id's spelling, for messages */
 int  pp_names_write(Bfile *f);            /* NAME.nam; the checksum */
 
 #endif

@@ -3906,6 +3906,44 @@ each does. New: src/ppmac.c (the macro table and the expansion stack).
   objects share 1,710 bytes of names; the header split should fix it).
   `cccomp` 35,630, `ccgen` 18,493.
 
+**`ccpp` step 5 (function-like macros, `#` and `##`) is done**
+(2026-10-31). `#define name(params)`, with `...` and `__VA_ARGS__`;
+calls whose `(` may be on a later line, or after another macro's
+expansion (`#define G F` then `G(1, 2)`); `#` and `##`. ppmac.c is
+rewritten around one input stack (CCPP.md, "Preprocessing"):
+- Every expansion is an entry on the stack, a text in one buffer
+  (`sbuf`) being read, with the macro it came from, which isn't
+  expanded again while it is read. A call's arguments are collected
+  into the same buffer; each argument the body uses as a plain
+  parameter is first expanded by itself, as C says (C11 6.10.3.1),
+  read behind a barrier entry that ends it, into a second buffer
+  (`obuf`); then the replacement is built and read in place of the
+  call. Both buffers are used as stacks, and `sbuf`'s dead texts are
+  reclaimed whenever a text is added: no allocation. This is what makes
+  `MAX(MAX(a, b), c)` expand (rescanning alone would leave the inner
+  `MAX` unexpanded, inside the outer one's expansion).
+- A function-like macro's name is looked at once more, for a '(': the
+  token read ahead is held and read again if it isn't one. The lexer
+  records blanks before each token (`pt_space`), kept in an argument
+  for `#`; `##` joins the two tokens' spellings and makes a name, a
+  decimal number or an operator of them, with no lexing again.
+- Choices open for review (CCPP.md's "Known differences"): `#` spells
+  numbers in decimal and strings with standard escapes; `##` makes only
+  names, decimal numbers and operators; a name its own macro's expansion
+  left unexpanded isn't "painted" for good.
+- ccish's own limits showed up at once: `pp_lex()` had more than
+  `MAX_RETURNS` (32) returns, so the operators moved to `lex_op()`; and
+  `signed char` isn't supported, so a macro's parameter count is kept
+  plus 1 in a `char`.
+- Checked: all 113 inputs give byte-identical objects. New tests: a
+  token stream by hand (`tests/pp/funcmacro.c`), a run test (ccish's
+  own `FRAME_TEMP` and `HELPER_FN` among others), and an error test for
+  each new message (249-257). 350 pass.
+- Sizes (small build): `ccpp` 32,940 (code 12,345, data 19,544, of which
+  ppmac.c's buffers and tables are 6,518), still linked only with
+  ccrel's limits raised. Its limits are first guesses, to be measured in
+  step 7.
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in

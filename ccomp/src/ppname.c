@@ -156,7 +156,7 @@ void pp_file_path(int k, char *buf)
 
 /* The spelling of identifier id, in a static buffer that the next call
  * reuses, for messages. */
-const char *pp_spell(int id)
+const char *pp_id_spelling(int id)
 {
   static char buf[MAX_NAME + 1];
   int i = entry_at(id, 0), n = entry_len(i);

@@ -11,7 +11,14 @@ extern int pt_val;                  /* TC_NUM, TC_UNUM value; TC_ID,
 extern unsigned char pt_text[MAX_STR + 1];  /* TC_STR bytes */
 extern int pt_len;                  /* TC_STR length */
 extern int pt_first;                /* the token is its line's first */
+extern int pt_space;                /* blanks came before it (for #) */
 extern int pt_macro;                /* TC_ID, TC_KEYWORD: names a macro */
+
+/* ccpp's own codes, beside the token stream's, for macros: never in
+ * NAME.i. In a macro's body, a parameter (with its index after it), one
+ * not to be expanded first (next to ##), one after # (to be made a
+ * string), and ##; in an argument, blanks between tokens (for #). */
+enum { TC_PARAM = 0x10, TC_PARAM_RAW, TC_HASH_PARAM, TC_PASTE, TC_SPACE };
 
 /* How the lexer reads (pp_mode): ordinary source; a directive's line,
  * up to its newline; or a group #ifdef leaves out. */
@@ -26,5 +33,9 @@ int  pp_lex(void);                  /* the next token's code */
 int  pp_lex_word(char *buf, int size);  /* a directive's name */
 int  pp_lex_header(char *buf, int size, int *angle);  /* "f" or <f> */
 int  pp_lex_next_char(void);        /* the character after the token */
+int  pp_word(const char *word, int n);  /* a word's code, as lexed */
+int  pp_op(const char *s);          /* an operator's code, or -1 */
+int  pp_spell_token(int code, int val, const unsigned char *s, int n,
+                    char *buf, int size);  /* as source, for # and ## */
 
 #endif

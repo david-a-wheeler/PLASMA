@@ -25,6 +25,7 @@ int pt_val;
 unsigned char pt_text[MAX_STR + 1];
 int pt_len;
 int pt_first;
+int pt_space;
 int pt_macro;
 int pp_mode;
 
@@ -37,6 +38,7 @@ static int pos;             /* the next character in line[] */
 static int ch;              /* current character, '\n' at the line's end,
                              * or EOF */
 static int at_line_start;   /* no token yet on this line */
+static int spaced;          /* blanks or a comment were skipped */
 
 /* What an #include saves of the file it is in: where its lexer was, at
  * the newline that ends the #include line. */
@@ -196,11 +198,14 @@ static void skip_blank(void)
     } else if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\f'
                || ch == '\v') {
       getch();
+      spaced = 1;
     } else if (ch == '/' && peek() == '/') {
       while (ch != '\n' && ch != EOF)
         getch();
+      spaced = 1;
     } else if (ch == '/' && peek() == '*') {
       int start = src_line;
+      spaced = 1;
       getch();
       getch();
       for (;;) {
@@ -401,6 +406,8 @@ static void lex_string(void)
   getch();
 }
 
+/* The C keywords: the supported ones first, in the order of their
+ * codes. */
 static const char *const keywords[] = {
   /* supported: in the order of TC_KEYWORDS (CCPP.md) and T_INT ... */
   "int", "void", "return", "if", "else", "while", "do", "for", "break",
@@ -413,19 +420,12 @@ static const char *const keywords[] = {
   NULL
 };
 
-/* Read an identifier or keyword, and return its code: a supported
- * keyword's, or TC_ID or TC_KEYWORD with its id in pt_val (and in
- * pt_macro whether it names a macro). */
-static int lex_word(void)
+/* The code of the word (an identifier or keyword) of n characters at
+ * word, NUL-terminated: a supported keyword's, or TC_ID or TC_KEYWORD
+ * with its id in pt_val (and in pt_macro whether it names a macro). */
+int pp_word(const char *word, int n)
 {
-  char word[MAX_NAME + 1];
-  int n = 0, i;
-  while (is_alpha(ch) || is_digit(ch)) {
-    if (n < MAX_NAME)
-      word[n++] = (char)ch;
-    getch();
-  }
-  word[n] = 0;
+  int i;
   for (i = 0; keywords[i]; i++)
     if (!strcmp(keywords[i], word)) {
       if (i < NKEYWORDS)
@@ -439,6 +439,124 @@ static int lex_word(void)
   return TC_ID;
 }
 
+/* Read an identifier or keyword, and return its code (pp_word()). */
+static int lex_word(void)
+{
+  char word[MAX_NAME + 1];
+  int n = 0;
+  while (is_alpha(ch) || is_digit(ch)) {
+    if (n < MAX_NAME)
+      word[n++] = (char)ch;
+    getch();
+  }
+  word[n] = 0;
+  return pp_word(word, n);
+}
+
+/* The multi-character operators' spellings, in the order of their codes
+ * (TC_EQ ...). */
+static const char *const ops[NOPS] = {
+  "==", "!=", "<=", ">=", "<<", ">>", "&&", "||", "++", "--",
+  "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=",
+  "->", "..."
+};
+
+/* The one-character tokens. */
+static const char singles[] = "!%&()*+,-./:;<=>?[]^{|}~";
+
+/* The code of the operator spelled s, or -1 if it isn't one. */
+int pp_op(const char *s)
+{
+  int i;
+  if (s[0] && !s[1] && strchr(singles, s[0]))
+    return s[0];
+  for (i = 0; i < NOPS; i++)
+    if (!strcmp(ops[i], s))
+      return TC_EQ + i;
+  if (!strcmp(s, "#"))
+    return '#';
+  if (!strcmp(s, "##"))
+    return TC_PASTE;
+  return -1;
+}
+
+/* Add character c to the spelling being made in buf (size bytes, at
+ * *n): 0 if there is no room. */
+static int spell_c(char *buf, int size, int *n, int c)
+{
+  if (*n >= size - 1)
+    return 0;
+  buf[(*n)++] = (char)c;
+  return 1;
+}
+
+/* Spell the token code (with its value val, or for a string its n
+ * bytes at s) as C source, into buf (size bytes, with a NUL), for # and
+ * ##: a number in decimal (so 0x10 becomes 16, and 'A' 65), a string
+ * with its quotes, and \n, \t, \r, \" and \\ escaped, any other byte
+ * outside ' ' to '~' in octal. Return its length, or -1 if it doesn't
+ * fit. */
+int pp_spell_token(int code, int val, const unsigned char *s, int n,
+                   char *buf, int size)
+{
+  const char *w = NULL;
+  char num[8];
+  int len = 0, i, c, k;
+  if (code == TC_ID || code == TC_KEYWORD) {
+    w = pp_id_spelling(val);
+  } else if (code >= TC_KEYWORDS && code < TC_KEYWORDS + NKEYWORDS) {
+    w = keywords[code - TC_KEYWORDS];
+  } else if (code >= TC_EQ && code <= TC_ELLIPSIS) {
+    w = ops[code - TC_EQ];
+  } else if (code == TC_PASTE) {
+    w = "##";
+  } else if (code == TC_NUM || code == TC_UNUM) {
+    k = sizeof(num) - 1;
+    num[k] = 0;
+    val &= 0xFFFF;
+    do {
+      num[--k] = (char)('0' + (unsigned)val % 10);
+      val = (int)((unsigned)val / 10);
+    } while (val);
+    if (code == TC_UNUM)
+      strcat(num + k, "u");
+    w = num + k;
+  } else if (code == TC_STR) {
+    if (!spell_c(buf, size, &len, '"'))
+      return -1;
+    for (i = 0; i < n; i++) {
+      c = s[i];
+      k = c == '\n' ? 'n' : c == '\t' ? 't' : c == '\r' ? 'r'
+          : c == '"' || c == '\\' ? c : 0;
+      if (k) {
+        if (!spell_c(buf, size, &len, '\\') || !spell_c(buf, size, &len, k))
+          return -1;
+      } else if (c >= ' ' && c <= '~') {
+        if (!spell_c(buf, size, &len, c))
+          return -1;
+      } else if (!spell_c(buf, size, &len, '\\')
+                 || !spell_c(buf, size, &len, '0' + ((c >> 6) & 7))
+                 || !spell_c(buf, size, &len, '0' + ((c >> 3) & 7))
+                 || !spell_c(buf, size, &len, '0' + (c & 7))) {
+        return -1;
+      }
+    }
+    if (!spell_c(buf, size, &len, '"'))
+      return -1;
+    buf[len] = 0;
+    return len;
+  } else {
+    num[0] = (char)code;        /* a one-character token */
+    num[1] = 0;
+    w = num;
+  }
+  while (*w)
+    if (!spell_c(buf, size, &len, *w++))
+      return -1;
+  buf[len] = 0;
+  return len;
+}
+
 /* Consume ch if it equals c. */
 static int accept(int c)
 {
@@ -449,6 +567,8 @@ static int accept(int c)
   return 0;
 }
 
+static int lex_op(void);
+
 /* The next token: its code, with its value in pt_val (a number, or an
  * id) or its bytes in pt_text and pt_len (a string); TC_NL at the end
  * of a directive's line, and TC_END at the end of the file. '#' is a
@@ -457,7 +577,7 @@ static int accept(int c)
  * and TC_END, are returned. */
 int pp_lex(void)
 {
-  int c;
+  spaced = 0;
   for (;;) {
     skip_blank();
     if (pp_mode == PM_DIRECTIVE && (ch == '\n' || ch == EOF))
@@ -479,6 +599,7 @@ int pp_lex(void)
     skip_rest();
   }
   pt_first = at_line_start;
+  pt_space = spaced || pt_first;
   at_line_start = 0;
   if (is_digit(ch))
     return lex_number();
@@ -499,7 +620,14 @@ int pp_lex(void)
     getch();
     return TC_NUM;
   }
-  c = ch;
+  return lex_op();
+}
+
+/* Read an operator or punctuator, and return its code. (Apart from
+ * pp_lex(), so that neither has too many returns for ccish.) */
+static int lex_op(void)
+{
+  int c = ch;
   getch();
   switch (c) {
   case '=': return accept('=') ? TC_EQ : '=';
@@ -530,8 +658,14 @@ int pp_lex(void)
   case '%':
     if (accept('>'))
       return '}';         /* digraph %> */
-    if (accept(':'))
+    if (accept(':')) {
+      if (ch == '%' && peek() == ':') {
+        getch();
+        getch();
+        return TC_PASTE;  /* digraph %:%: */
+      }
       return '#';         /* digraph %: */
+    }
     return accept('=') ? TC_MODEQ : '%';
   case ':':
     return accept('>') ? ']' : ':';  /* digraph :> */
@@ -542,8 +676,10 @@ int pp_lex(void)
       return TC_ELLIPSIS;
     }
     return '.';
+  case '#':
+    return accept('#') ? TC_PASTE : '#';
   case '(': case ')': case '{': case '}': case '[': case ']':
-  case ',': case ';': case '?': case '~': case '#':
+  case ',': case ';': case '?': case '~':
     return c;
   }
   error(17 /* "unexpected character in source" */, NULL);

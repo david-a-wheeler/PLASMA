@@ -1,0 +1,29 @@
+# Function-like macros, #, ## and __VA_ARGS__ (approach.md, "ccpp
+# design", step 5). Lines 1-6 define F (id 32; its parameters a 33,
+# b 34), B (35), S (36; x 37), CAT (38), V (39; __VA_ARGS__ 40, f 41)
+# and G (42).
+43 54 4b 01     # "CTK", version 1
+02 07 00        # up to line 7: 6 lines, so a jump
+# line 7: F(1, x) is 1 + x * 2
+05 01 00 2b 04 25 00 2a 05 02 00
+01
+# line 8: B(B(1)): the argument is expanded first, so [ [ 1 ] ]
+5b 5b 05 01 00 5d 5d
+# line 9: S(a  +  "b\n") is a string: a + "b\n", 9 bytes, the blanks
+# made one space each. A string is held until the token after it, whose
+# line it takes (line 10), so both next-line codes come first.
+01 01
+07 09 61 20 2b 20 22 62 5c 6e 22
+# line 10: x1 (a new id, 43), +=, and y (44): an empty left operand
+04 2b 00 ca 04 2c 00
+01
+# line 11: f(1, 2) and f()
+04 29 00 28 05 01 00 2c 05 02 00 29
+04 29 00 28 29
+01
+# line 12: G is F, which then takes (3, 4) from the line: 3 + 4 * 2;
+# the last F has no '(', so it stays a name
+05 03 00 2b 05 04 00 2a 05 02 00
+04 20 00 3b
+01              # the end is on line 13
+00 2c 00 ss ss  # the end: 44 ids, the checksum
