@@ -205,6 +205,18 @@ static void put_name(void)
  * one constant (U_FOLDED). If not, both are flipped afterward, the
  * right one saved in temporary 1 meanwhile (U_LATE): a stash uses
  * temporary 0, so the two never overlap.
+ *
+ * If the VM gains more comparison ops (approach.md, "Loop design",
+ * and issue 21), this is where they would go. Unsigned comparison
+ * opcodes (ISULT and the rest, not CMDSYS calls) would replace the
+ * flips above. For loops, step-and-branch-if-not-equal ops (INCBRNE,
+ * ADDBRNE, DECBRNE, SUBBRNE) would let every != loop, of int,
+ * unsigned or a pointer, keep its count on the eval stack as PLASMA's
+ * FOR does (2 ops per pass), since != has no sign; and unsigned
+ * counted-loop ops (INCBRULE and the like) would do the same for
+ * unsigned and pointer loops that end with < or <=. Today's counted
+ * ops (INCBRLE and the rest) compare signed, so only int loops can
+ * use them.
  */
 enum { SW_DONE, SW_PENDING, SW_FREE, SW_STASH, SW_EXCHANGE };
 enum { U_INLINE, U_FOLDED, U_LATE };

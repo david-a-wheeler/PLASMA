@@ -310,6 +310,8 @@ time. `*p = e` is emitted as `MARK p MARK e SWAP2 SW` and comes out as
 - **`for` increments** can't use this, because the loop body is
   unbounded. The increment's records go to a small side buffer, which
   is flushed after the body. That also enables the fused FOR opcodes.
+  (Update, 2026-10-31: done in ccgen instead, from loop markers in the
+  IR: "Loop design: tests at the bottom".)
 - **Alternative considered: divert code into a side region.** Code
   for a possible assignment target would go to another buffer and be
   appended after the right-hand side. Branch patching is not the
@@ -4263,6 +4265,246 @@ doesn't help a constant index (`LAW`, `ADDI`, `LW` stays three ops).
   cost to the compilers (issue 20, "Writing fast C-ish"). Option 3 (a
   BSS segment) remains the real fix once the VM may change.
 
+**Loop design: tests at the bottom, then PLASMA's counted loops
+(designed in discussion, 2026-10-31; not yet built).** Loops are where
+programs spend their time, so they must be efficient. This replaces
+the `for` side buffer planned for cccomp in issue 17 and 4(d): cccomp
+is the program that doesn't fit yet, so the reordering goes into
+ccgen, which has room and already reorders code (`IR_SWAP` and the
+unsigned comparisons, 18.7 A and C). cccomp only marks the loops.
+
+*The problem.* cccomp writes code in source order, so a `for` loop's
+step comes before its body and is jumped around:
+
+```
+init
+Ltop:  cond  BRFLS Lbrk
+       BRNCH Lbody
+Lcont: step  BRNCH Ltop
+Lbody: body  BRNCH Lcont
+Lbrk:
+```
+
+Each pass runs `BRFLS` and two `BRNCH`es, and the loop has 12 bytes of
+branches. A `while` loop (`Ltop: cond BRFLS Lbrk; body; BRNCH Ltop`)
+runs two branches per pass. `do`/`while` is already right. For
+`for (i = 0; i < n; i++)` the loop's own work (the step and the test,
+without the body) is 10 ops per pass.
+
+*Step 1: tests at the bottom.* The usual layout:
+
+```
+init
+       BRNCH Ltest          once, on entry
+Lbody: body
+Lcont: step
+Ltest: cond  BRTRU Lbody
+Lbrk:
+```
+
+One branch per pass, for both `for` and `while`, and 6 bytes of
+branches. With the peephole rules ccgen has already (P12 `SLW i`
+`LLW i` → `DLW i`; P13 compare and branch fused), the loop's own work
+in `for (i = 0; i < n; i++)` drops from 10 ops to 6 (`LLW i`, `INCR`,
+`DLW i`, `LLW n`, `ISLT`, `BRTRU`), and in
+`for (p = s; p != end; p++)` (an `int *p`) to 5 (`LLW p`, `ADDI 2`,
+`DLW p`, `LLW end`, `BRNE`).
+- **cccomp writes four new IR ops** (IR version 5; IR.md), in source
+  order, with the labels as operands; it still makes the labels, since
+  `break` and `continue` in the body need them:
+
+  ```
+  LOOP     a = Ltest, f = Lbrk      the header starts
+    cond   (BRTRUE Lbody)           the test, true sense
+  LOOPSTEP a = Lcont                for a for loop with a step
+    step
+  LOOPBODY a = Lbody                the header ends
+    body
+  LOOPEND                           the loop ends
+  ```
+
+  It no longer writes the loop's own `JUMP`s and `LABEL`s: ccgen
+  makes them. So `parse_for()` and `parse_while()` make about as many
+  `put()` calls as now, and cccomp should get no bigger.
+  `parse_cond()` already takes a sense (`do`/`while` uses true), so
+  the test is `parse_cond(Lbody, 1)`. A `for` with no condition
+  (`for (;;)`) has the test `JUMP Lbody`. A constant condition is
+  already folded by the parser: a true one becomes `JUMP Lbody`, a
+  false one nothing (then the body is never run, though its code may
+  stay). `continue` goes to `Lcont` in a `for` with a step, else to
+  `Ltest`. `break` goes to `Lbrk`.
+- **ccgen holds the header.** Between `LOOP` and `LOOPBODY` it doesn't
+  lower the IR ops it reads; it keeps them (op, *a*, *f*) in a side
+  buffer, as two parts, the test and the step. Data, string, name and
+  line records still pass through at once, so the stream's data and
+  string pool keep their order and every name record still comes
+  before the first op that uses it. A `LOOP` op first lowers what
+  ccgen's swap buffer (`buf_op` and the rest) holds.
+  - At `LOOPBODY` it writes `BRNCH Ltest` (left out when the test is
+    just `JUMP Lbody`: an endless loop needs no entry jump), then
+    `Lbody:`, and lowers the body as usual.
+  - At `LOOPEND` it writes `Lcont:`, replays the held step, writes
+    `Ltest:`, replays the held test, then `Lbrk:`. Replaying is
+    lowering the held ops through the usual path, so `IR_SWAP`, the
+    unsigned comparisons and the full build's block checks work as
+    for any other code.
+  - Loops nest: the side buffer is a stack. An outer loop's header
+    stays held while its body, with any inner loops, is lowered; an
+    inner header is pushed after it and popped at its `LOOPEND`. A
+    header can't contain a loop, so only the innermost open header is
+    ever being filled.
+  - **If a header doesn't fit**, ccgen lowers what it holds at once and
+    writes the rest of the loop in today's layout: as the markers come,
+    `Ltest:` (at once), `BRNCH Lbrk` and `Lcont:` (at `LOOPSTEP`),
+    `BRNCH Ltest` and `Lbody:` (at `LOOPBODY`), `BRNCH Lcont` or
+    `BRNCH Ltest` and `Lbrk:` (at `LOOPEND`). So any loop compiles;
+    only a huge header isn't sped up. No new error message.
+  - `-i` lists the IR as read, markers included, so it still shows the
+    parser's output.
+- **Size:** ccgen gains roughly 200-300 bytes of code and a side buffer
+  of about 64 held ops (5 bytes each, 320 bytes; it moves to the
+  heap). cccomp
+  should stay the same or shrink a little.
+- **Gain:** 2 fewer branch ops per pass of every `for` loop, 1 fewer per
+  `while` pass, and 6 bytes less code per `for` loop with a step.
+  ccish's own sources have 158 `for` loops (51 in cccomp's files, 46
+  ccpp's, 31 ccgen's, 38 ccrel's): roughly 270, 250, 170 and 200
+  bytes, a little less for loops with no step.
+- **Tests:** nested loops; `break` and `continue` (in `for` with and
+  without a step, and `while`); a header too big for the side buffer;
+  string literals, calls, `&&`/`||`, `?:` and unsigned comparisons in a
+  condition and a step; `for (;;)`, `while (1)`, `while (0)` and a
+  `for` with no step or no condition; a step that declares nothing but
+  has side effects (`p = p->next`). Program output must not change;
+  listing checks for the new layout; sizes and op counts reported.
+
+*Step 2: PLASMA's counted loops.* PLASMA compiles `FOR i = a TO n`
+with the count and the limit kept on the eval stack (doc/Bytecodes.md):
+
+```
+        <limit> <count>     ( limit count )
+        BRGT    exit        skip an empty loop
+top:    DLW     i           i = count, keeping it
+        <body>              leaves the stack as it found it
+cont:   INCBRLE top         count+1; branch if count <= limit (signed)
+exit:   SLW     i           i = the final count
+        DROP                the limit
+```
+
+The loop's own work is 2 ops per pass (`DLW`, `INCBRLE`), against 6
+with the test at the bottom. `ADDBRLE` takes a step (`CB k` before
+it: 3 ops), and `DECBRGE`/`SUBBRGE` count down. ccgen can use this
+form for C loops, but only where C's meaning is the same:
+- **The loop variable** is a local `int` (the ops compare signed): not
+  `unsigned`, not a pointer, not `char`. The body doesn't assign it,
+  and its address isn't taken anywhere in the function (no
+  `LOCALADDR` of it, so no pointer can change it).
+- **The limit** is evaluated once, where C evaluates it on every pass,
+  so it is a constant, or a local `int` that the body doesn't assign
+  and whose address isn't taken. (A global can change through a
+  pointer or a call; the "no calls" rule below covers calls, but not
+  stores through pointers, so globals stay out for now.)
+- **The test and step**, with each form's entry:
+
+  | C | Limit on the stack | Entry | Pass |
+  |---|---|---|---|
+  | `i < N` (constant `N` > -32768), `i++` | `N - 1` | `BRGT exit` | `DLW i`, `INCBRLE` |
+  | `i <= N` (constant), `i++` | `N` | `BRGT exit` | `DLW i`, `INCBRLE` |
+  | `i < n` (local), `i++` | `n - 1` | C's test once: `LLW i`, `LLW n`, `ISLT`, `BRFLS done` | `DLW i`, `INCBRLE` |
+  | `i <= n` (local), `i++` | `n` | `BRGT exit` | `DLW i`, `INCBRLE` |
+  | `i != N` or `i != n`, `i++` | as `<` | as `<` | as `<` |
+  | `i += k` (constant `k` > 0) with `<` or `<=` | as above | as above | `DLW i`, `CB k`, `ADDBRLE` |
+  | `i > N`, `i >= N`, `i != N` with `i--`; `i -= k` | `N + 1`, `N`, … | `BRLT exit` | `DLW i`, `DECBRGE` (or `SUBBRGE`) |
+
+  `n - 1` would wrap for `n` = -32768, so with a local limit the entry
+  is C's own test, done once (then `n` > -32768); `done` is past
+  `exit`, since nothing is on the stack there. `!=` with a step of 1
+  means `<`: if `i` started past `n`, C would overflow `i`, which is
+  undefined. `!=` with another step isn't converted. On a normal exit
+  the final count is C's final `i` (`INCBRLE` leaves `limit + 1`).
+  `break` goes to `exit`, `continue` to `cont`. Overflow of the count
+  past 32767 happens only where C's `i` would overflow too.
+- **No calls in the body** (decided: the user, 2026-10-31). The two
+  values stay on the eval stack (32 entries, on the Apple, plvm02's
+  `ESTKSZ`, and in plvm) for the whole body, across any call it
+  makes; a body calling a function that runs the same loop, as a
+  recursive-descent parser does, would add 2 entries per level and
+  overflow it. So no `IR_CALL` in the body, and no helper call
+  (`UDIV`, `UMOD`, `USHR` by a variable) either, though helpers can't
+  recurse: the rule is kept simple. No `RETURN` in the body either,
+  for now (it would have to drop the two values under its result,
+  through a temporary, as there is no `SWAP`).
+- **At most two counted loops nested**, so at most 4 entries are held.
+- **How ccgen knows, reading the IR once:** it must choose the form
+  before it writes the body. So the side buffer of step 1 holds the
+  body too, when the whole loop fits (hot inner loops are mostly
+  small): at `LOOPEND`, ccgen has seen everything, checks the rules
+  above, and writes the counted form, or step 1's form if any rule
+  fails. A loop that doesn't fit is written as in step 1 as soon as it
+  overflows (the header is still held, so nothing is lost). ccgen
+  recognizes the header from the IR the parser writes, e.g.
+  `LOCAL i, LOCAL n (or CONST N), LT, BRTRUE Lbody` for the test and
+  `LOCAL i, DUP, CONST 1, ADD, SETLOCAL i, DROP, DROP` for `i++`
+  (`++i`, `i += 1` and `i = i + 1` give similar forms; the exact
+  shapes come from the parser's output, and tests pin them down).
+  Whether `i`'s address is taken is tracked per function: every
+  `LOCALADDR` offset seen so far in it (a local's address can only
+  come from its own function).
+- **Cost:** another 300-500 bytes of ccgen code, I estimate, and a side
+  buffer of about 128 ops instead of 64. cccomp unchanged.
+- **How many loops:** of ccish's 158 `for` loops, 104 have the counted
+  shape (`v = x; v <`, `<=` or `!= y; v++` or `v--`); their limits
+  are 24 constants, 77 names (many of them globals, such as `nbuf`)
+  and 15 expressions (such as `mac_at[m] + mac_len[m]`). How many have
+  no calls in the body is to be measured (`tools/loops.py` can learn
+  to report the shapes) before step 2 is built.
+
+*Pointer and unsigned loop variables* can't use PLASMA's counted ops,
+which compare signed: an address range may cross $8000, and an
+`unsigned` count may pass 32767. Considered and rejected for now:
+- Keeping the count biased by $8000 (so a signed compare acts as an
+  unsigned one) costs a `DUP`, `CW $8000`, `XOR` and `SLW` at the loop
+  top instead of one `DLW`: more than it saves.
+- For `p != end`, counting the passes left instead (`(end - p) / k`,
+  then `DECBRGE`) saves 1 op per pass of 5 (the pointer must still be
+  stepped in memory: `LLW p`, `ADDI 2`, `SLW p`, then `DECBRGE`), at
+  an entry of about 6 ops and 8 bytes, and an `unsigned` count over
+  32767 would break it.
+
+So these loops get step 1's form, where `==` and `!=` are exactly what
+the VM does well: the compare and branch fuse into `BRNE` or `BREQ`
+(P13), which compare 16 bits without a sign, so `p != end` and
+`u != n` loops are 5 ops of loop work per pass, and correct for any
+values. That is also why the source rewrites (below) end pointer loops
+with `p != end`, never `p < end`: ccish compiles a pointer or
+`unsigned` `<` as a signed compare with both sign bits flipped (18.7
+C), several more ops.
+
+*If the VM gains more comparison ops* (issue 21), ccgen is where they
+would go (a comment in src/irin.c, by the unsigned comparisons, says
+the same):
+- **Step-and-branch-if-not-equal ops** (`INCBRNE`, `ADDBRNE`,
+  `DECBRNE`, `SUBBRNE`: step the count, branch if it isn't the limit)
+  would be the most useful: `!=` has no sign, so every `!=` loop, of
+  `int`, `unsigned` or a pointer, would take the counted form, 2 ops
+  per pass.
+- **Unsigned counted-loop ops** (`INCBRULE` and the like) would do the
+  same for `unsigned` and pointer loops ending with `<` or `<=`.
+- **Unsigned comparisons** (`ISULT`, `ISUGT`, `ISULE`, `ISUGE` as
+  opcodes, not CMDSYS calls) would replace the flipped signed
+  compares of 18.7 C, in loops and everywhere else.
+
+*Then, by hand: the pointer and `!=` rewrites* in ccish's own sources
+(discussed above, "Hoisting moved globals' addresses"): loops where one
+index walks one array, and uses the element several times, become a
+pointer that stops at `!= end` (measured on ccpp's `call()`: 49 bytes
+smaller, 267 → 244 ops in the function). Loops over parallel arrays
+stay indexed. Each rewrite is measured, and kept only if smaller, on
+the loop forms steps 1 and 2 give.
+
+*Order (decided):* step 1, then the source rewrites; step 2 after
+measuring how many loops it would reach.
+
 **C6 design, and C6 is done** (2026-10-31; C6 in 18.6). Address
 constants come from the expression parser, so global initializers no
 longer need a parser of their own (`parse_addr()`, 592 bytes, and its
@@ -5826,6 +6068,8 @@ last. Chosen while building it (open for review):
   to.
 - `for` uses jumps around the step clause for now (two extra branches
   per loop); the side buffer of issue 17 can remove them in M10.
+  (Update, 2026-10-31: "Loop design", below, moves this to ccgen,
+  with tests at the bottom.)
 - `for (int i = ...)` declarations are accepted (C99), scoped to the
   loop, since declarations are already allowed anywhere in a block.
 - Each label is one table entry per function in stage 4 (256 labels,
