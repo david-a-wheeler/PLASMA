@@ -11,14 +11,17 @@
 #include "diag.h"
 #include "name.h"
 
-#define MAX_IDS      280    /* enum constants and typedef names (273, in
-                             * tokin.c) */
+#define MAX_IDS      239    /* enum constants and typedef names (217, in
+                             * parse.c) */
 
 static int id_nm[MAX_IDS];
 static int id_v[MAX_IDS];
 static char id_k[MAX_IDS];
 static char id_d[MAX_IDS];
 static int nids;
+#ifdef CCISH_STATS
+static int nids_peak;               /* the most at once */
+#endif
 
 /* Add an enum constant or typedef name (kind ID_*) with value val,
  * visible from block depth depth on, and return it. The caller checks
@@ -31,6 +34,10 @@ int id_add(int name, int kind, int val, int depth)
   id_v[nids] = val;
   id_k[nids] = (char)kind;
   id_d[nids] = (char)depth;
+#ifdef CCISH_STATS
+  if (nids + 1 > nids_peak)
+    nids_peak = nids + 1;
+#endif
   return nids++;
 }
 
@@ -74,3 +81,11 @@ void id_hide(int depth)
   while (nids > 0 && id_d[nids - 1] < 0)
     nids--;
 }
+
+#ifdef CCISH_STATS
+/* The most entries the table held at once (CCISH_STATS). */
+int id_peak(void)
+{
+  return nids_peak;
+}
+#endif

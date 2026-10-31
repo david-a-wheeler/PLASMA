@@ -485,17 +485,18 @@ file is used, and that the file's numbers ascend.
     references, 104 labels, and 31 `return`s (`MAX_FUNC_CODE`,
     `MAX_FUNC_RELOCS`, `MAX_LABELS`, `MAX_RETURNS`). Each `if`, loop,
     `&&`, `||` and `?:` uses one to four labels.
-  - One file: 302 functions (declared, defined or called), 82
+  - One file: 280 functions (declared, defined or called), 79
     variables visible at once (globals, plus the parameters and locals
-    in scope), 433 parameter types in all, 56 distinct types, 10
-    struct tags (counting those in blocks that have ended), 64 struct
-    members in all, and 280 enum constants and typedef names visible
+    in scope), 401 parameter types in all, 40 distinct types, 6
+    struct tags (counting those in blocks that have ended), 32 struct
+    members in all, and 239 enum constants and typedef names visible
     at once (`MAX_FUNCS`, `MAX_VARS`, `MAX_PARAM_TYPES`, `MAX_TYPES`,
     `MAX_TAGS`, `MAX_MEMBERS`, `MAX_IDS`). The front end keeps no
     names: the preprocessor numbers them (below).
-  - The preprocessor: 7680 bytes of distinct names and file names, a
-    length byte each (`MAX_PP_POOL`), and source lines of 255
-    characters (`MAX_LINE`).
+  - The preprocessor: 8432 bytes of distinct names and file names, a
+    length byte each (`MAX_PP_POOL`), 72 macros (`MAX_MACROS`), and
+    source lines of 255 characters (`MAX_LINE`); the rest are in
+    CCPP.md, "Limits".
   - A string literal: 255 characters, after adjacent ones are joined
     (`MAX_STR`).
   - An identifier: 31 significant characters (`MAX_NAME`); the rest

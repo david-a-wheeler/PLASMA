@@ -4051,6 +4051,29 @@ each after what it needs, so ccish's own includes nest 2 deep at most
   differently; every file's code, data and string sizes are the same.
   361 tests pass.
 
+**Header split, commit 3 (the limits measured again)** (2026-10-31).
+cccomp gets `CCISH_STATS` counters too (parse.c, name.c, type.c), and
+`make measure` reports cccomp's tables beside ccpp's. The peaks, with
+each source now reading only the headers it uses, and the new limits,
+about 10% above, as before:
+
+| Table | Was | Peak (file) | Now |
+|---|---|---|---|
+| `MAX_FUNCS` (also one object's, in ccgen and ccrel) | 302 | 254 (parse.c) | 280 |
+| `MAX_VARS` | 82 | 71 (parse.c) | 79 |
+| `MAX_PARAM_TYPES` | 433 | 364 (parse.c) | 401 |
+| `MAX_IDS` | 280 | 217 (parse.c) | 239 |
+| `MAX_TYPES` | 56 | 34 (link.c) | 40 |
+| `MAX_TAGS` | 10 | 3 (link.c) | 6 |
+| `MAX_MEMBERS` | 64 | 25 (parse.c) | 32 |
+| `MAX_PP_POOL` (ccpp) | 9,000 | 7,665 (parse.c) | 8,432 |
+| `MAX_MACROS` (ccpp) | 96 | 62 (parse.c) | 72 |
+
+`MAX_INCLUDE` stays 3, though ccish's own sources need 2 now: ccpp nests
+deeper where the system can open more files (decision 25). Every test
+still fits; 361 pass. Sizes (small build): `cccomp` **34,827** (was
+35,630), `ccgen` 18,405, `ccrel` 14,470, `ccpp` 31,688.
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in

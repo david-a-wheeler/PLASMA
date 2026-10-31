@@ -101,6 +101,9 @@
  * while (0), the parser emits a jump around the code, and the peephole
  * stage drops the unreachable code after it.
  */
+#ifdef CCISH_STATS
+#include <stdio.h>
+#endif
 #include <string.h>
 #include "build.h"
 #include "cclimits.h"
@@ -118,8 +121,8 @@
 
 #define MAX_PARAMS   16
 #define MAX_NEST     32     /* nesting of parentheses and blocks */
-#define MAX_PARAM_TYPES 433 /* parameter types of all declared functions
-                             * (393) */
+#define MAX_PARAM_TYPES 401 /* parameter types of all declared functions
+                             * (364) */
 #define MAX_BYVAL    8      /* bytes in a struct passed or returned by value */
 #define MAX_CASES    36     /* case labels in all the switches open at once
                              * (29); at most 255, a SEL table's limit */
@@ -264,6 +267,9 @@ static int var_off[MAX_VARS];
 static char var_flags[MAX_VARS];
 static int var_val[MAX_VARS];
 static int nvars, nglobals;
+#ifdef CCISH_STATS
+static int nvars_peak;              /* the most visible at once */
+#endif
 
 /* A global's linkage, for the symbol summary (approach.md issue 11):
  * VL_STATIC if it is local to the file, VL_USED if code or data refers
@@ -358,6 +364,10 @@ static int push_var(int name, int type, int off, int flags)
   var_off[nvars] = off;
   var_flags[nvars] = (char)(depth | flags);
   var_link[nvars] = 0;
+#ifdef CCISH_STATS
+  if (nvars + 1 > nvars_peak)
+    nvars_peak = nvars + 1;
+#endif
   return nvars++;
 }
 
@@ -4393,6 +4403,28 @@ static void parse_toplevel(void)
   id_hide(0);
 }
 
+#ifdef CCISH_STATS
+/* Report how full the tables got, on one line of stderr, for
+ * tools/measure.py: functions, variables visible at once, parameter
+ * types, enum constants and typedef names at once, types, struct tags
+ * and struct members. */
+static void report_stats(void)
+{
+  int v[7], i;
+  v[0] = nfuncs;
+  v[1] = nvars_peak;
+  v[2] = nparam_types;
+  v[3] = id_peak();
+  type_stats(&v[4], &v[5], &v[6]);
+  fputs("cccomp-stats", stderr);
+  for (i = 0; i < 7; i++) {
+    fputs(" ", stderr);
+    fputs(num_text(v[i]), stderr);
+  }
+  fputs("\n", stderr);
+}
+#endif
+
 /* The front end: compile the token stream and name file of input
  * name in (ccpp's NAME.i and NAME.nam) into the IR file of output name
  * base (approach.md 18.7), for the back end. */
@@ -4404,6 +4436,9 @@ void compile_file(const char *in, const char *base)
   tok_close();
   src_line = 0;
   ir_finish();
+#ifdef CCISH_STATS
+  report_stats();
+#endif
 }
 
 /* After an error in the front end: close its open files (ProDOS needs

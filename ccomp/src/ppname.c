@@ -17,8 +17,8 @@
 #include "fixed.h"
 #include "ppname.h"
 
-#define MAX_PP_POOL  9000   /* bytes of ccpp's names and file names,
-                             * with a length byte each (8,179: parse.c
+#define MAX_PP_POOL  8432   /* bytes of ccpp's names and file names,
+                             * with a length byte each (7,665: parse.c
                              * with its headers, macros' names too) */
 
 #define ENT_FILE  0x80          /* in a length byte: a file's name */

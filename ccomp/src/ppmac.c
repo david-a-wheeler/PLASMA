@@ -32,7 +32,7 @@
 #include "pplex.h"
 #include "ppmac.h"
 
-#define MAX_MACROS   96     /* macros defined at once (86, in pp.c) */
+#define MAX_MACROS   72     /* macros defined at once (62, parse.c) */
 #define MAX_MACRO_BYTES 512 /* their bodies, as tokens (274): room for
                              * more than ccish's own, which are short */
 #define MAX_EXPAND   16     /* macro expansions inside one another (2) */

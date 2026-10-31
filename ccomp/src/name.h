@@ -18,5 +18,8 @@ int id_kind(int i);
 int id_val(int i);
 int id_depth(int i);
 void id_hide(int depth);            /* hide those declared deeper */
+#ifdef CCISH_STATS
+int id_peak(void);
+#endif
 
 #endif

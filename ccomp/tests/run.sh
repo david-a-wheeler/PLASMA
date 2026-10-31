@@ -260,16 +260,16 @@ if ./ccpp -o "$OUT/ppopt/v" "$OUT/ppopt/t.c" 2>"$OUT/ppopt/v.err" \
 else
     pass=$((pass + 1))
 fi
-# The macro table full (MAX_MACROS, 96): __CCISH__ is one, so the
-# 96th #define is one too many.
+# The macro table full (MAX_MACROS, 72): __CCISH__ is one, so the
+# 72nd #define is one too many.
 {
     i=1
     while [ $i -le 129 ]; do echo "#define M$i $i"; i=$((i + 1)); done
 } >"$OUT/ppopt/many.c"
 if ./ccpp -o "$OUT/ppopt/many" "$OUT/ppopt/many.c" 2>"$OUT/ppopt/many.err" \
-   || ! grep -qF "many.c:96: fatal 244: too many macros" \
+   || ! grep -qF "many.c:72: fatal 244: too many macros" \
         "$OUT/ppopt/many.err"; then
-    echo "FAIL ccpp: 129 macros, wanted 'too many macros' on line 96, got:"
+    echo "FAIL ccpp: 129 macros, wanted 'too many macros' on line 72, got:"
     sed 's/^/    /' "$OUT/ppopt/many.err"
     fail=$((fail + 1))
 else
@@ -897,7 +897,7 @@ else
 fi
 rm -f "$OUT"/link/full_[abc].obj "$OUT"/link/full_[abc].syms
 # More functions in a module than one object may define (MAX_FUNCS,
-# 302): many_a defines f1..f160, many_b f161..f320, all static so they
+# 280): many_a defines f1..f160, many_b f161..f320, all static so they
 # don't fill the shared-name table, and each object shares only two
 # wrappers, which call its first and last; main calls all four. Each
 # fN returns N, so a wrong RLD function entry calls the wrong function.

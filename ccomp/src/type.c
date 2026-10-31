@@ -29,12 +29,12 @@
 #include "diag.h"
 #include "type.h"
 
-#define MAX_TYPES    56     /* distinct types (46); at most 128, since
-                             * char tables (fn_type[], param_types[])
+#define MAX_TYPES    40     /* distinct types (34, link.c); at most 128,
+                             * since char tables (fn_type[], param_types[])
                              * hold unqualified types, and a host's char
                              * may be signed */
-#define MAX_TAGS     10     /* struct tags, including hidden ones (7) */
-#define MAX_MEMBERS  64     /* struct members, in all structs (51) */
+#define MAX_TAGS     6      /* struct tags, including hidden ones (3) */
+#define MAX_MEMBERS  32     /* struct members, in all structs (25) */
 
 static char tkind[MAX_TYPES] = {TK_VOID, TK_CHAR, TK_INT, TK_UINT};
 static int tsub[MAX_TYPES];     /* a handle, with qualifier bits */
@@ -313,3 +313,14 @@ int member_off(int m)
 {
   return mb_off[m];
 }
+
+#ifdef CCISH_STATS
+/* How full the tables got (CCISH_STATS): types, tags and members; they
+ * only grow. */
+void type_stats(int *types, int *tags, int *members)
+{
+  *types = ntypes;
+  *tags = ntags;
+  *members = nmembers;
+}
+#endif

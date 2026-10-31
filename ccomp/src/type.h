@@ -64,5 +64,8 @@ int member_find(int tag, int name);     /* a member, or -1 */
 int member_next(int tag, int m);        /* the next member, in order */
 int member_type(int m);
 int member_off(int m);
+#ifdef CCISH_STATS
+void type_stats(int *types, int *tags, int *members);
+#endif
 
 #endif

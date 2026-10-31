@@ -58,6 +58,12 @@ BIG_LIMITS = {"MAX_FUNCS": 1024, "MAX_VARS": 512, "MAX_LABELS": 512,
               "MAX_MACRO_BYTES": 32000, "MAX_EXPAND": 64,
               "MAX_EXP_BYTES": 16000, "MAX_ARG_SLOTS": 256}
 
+# cccomp's tables, in the order a CCISH_STATS cccomp reports them.
+CC_TABLES = [("functions", "MAX_FUNCS"), ("variables visible", "MAX_VARS"),
+             ("parameter types", "MAX_PARAM_TYPES"),
+             ("enum constants, typedefs", "MAX_IDS"), ("types", "MAX_TYPES"),
+             ("struct tags", "MAX_TAGS"), ("struct members", "MAX_MEMBERS")]
+
 # ccpp's tables, in the order a CCISH_STATS ccpp reports them.
 PP_TABLES = [("name pool bytes", "MAX_PP_POOL"), ("macros", "MAX_MACROS"),
              ("macro body bytes", "MAX_MACRO_BYTES"),
@@ -223,20 +229,30 @@ def build_big():
     subprocess.run(["cc", "-O2", "-DCCISH_STATS", "-o",
                     os.path.join(big, "ccpp-stats")]
                    + src(["ccpp"] + COMMON + PP), check=True)
+    subprocess.run(["cc", "-O2", "-DCCISH_STATS", "-o",
+                    os.path.join(big, "cccomp-stats")]
+                   + src(["cccomp"] + COMMON + NAM + FRONT), check=True)
     return big
 
 
 def pp_stats(big, name):
-    """How full ccpp's tables got for OUT/src/NAME.c (PP_TABLES' order),
-    from BIG's CCISH_STATS ccpp, or None."""
+    """How full ccpp's and cccomp's tables got for OUT/src/NAME.c
+    (PP_TABLES' and CC_TABLES' order), from BIG's CCISH_STATS ccpp and
+    cccomp: two lists, each None if that program failed."""
     out = os.path.join(OUT, "stats_" + name)
     ok, msg = run([os.path.join(big, "ccpp-stats"), "-o", out] + pp_args()
                   + [os.path.join(OUT, "src", name + ".c")])
-    for suffix in (".i", ".nam"):
+    m = re.search(r"ccpp-stats((?: \d+)+)", msg)
+    pp = [int(v) for v in m.group(1).split()] if ok and m else None
+    cc = None
+    if ok:
+        ok, msg = run([os.path.join(big, "cccomp-stats"), "-k", out])
+        m = re.search(r"cccomp-stats((?: \d+)+)", msg)
+        cc = [int(v) for v in m.group(1).split()] if ok and m else None
+    for suffix in (".i", ".nam", ".ir"):
         if os.path.exists(out + suffix):
             os.remove(out + suffix)
-    m = re.search(r"ccpp-stats((?: \d+)+)", msg)
-    return [int(v) for v in m.group(1).split()] if ok and m else None
+    return pp, cc
 
 
 def limit(name):
@@ -504,15 +520,19 @@ def main():
     sizes, failed, big, over = {}, False, None, {}
     tok_sizes = None
     peaks, peak_of = [0] * len(PP_TABLES), [""] * len(PP_TABLES)
+    cpeaks, cpeak_of = [0] * len(CC_TABLES), [""] * len(CC_TABLES)
     prepare_all()
     big = build_big()
 
     print("File        Code    Data  Strings  Functions")
     for name in names + ["libstub"]:
-        stats = pp_stats(big, name)
+        stats, cstats = pp_stats(big, name)
         for i, v in enumerate(stats or []):
             if v > peaks[i]:
                 peaks[i], peak_of[i] = v, name
+        for i, v in enumerate(cstats or []):
+            if v > cpeaks[i]:
+                cpeaks[i], cpeak_of[i] = v, name
         keep = name == "parse"
         ok, msg = compile_obj(CCOMP, name, keep)
         if not ok and any(m in msg for m in LIMIT_MSGS):
@@ -542,6 +562,9 @@ def main():
               " name file %d" % tok_sizes)
     print("\nccpp's tables: the most one source needed, and the limit:")
     for (what, lim), v, who in zip(PP_TABLES, peaks, peak_of):
+        print("  %-26s %6d of %6d  (%s)" % (what, v, limit(lim), who))
+    print("\ncccomp's tables: the most one source needed, and the limit:")
+    for (what, lim), v, who in zip(CC_TABLES, cpeaks, cpeak_of):
         print("  %-26s %6d of %6d  (%s)" % (what, v, limit(lim), who))
     for prog, files in PROGRAMS:
         print()
