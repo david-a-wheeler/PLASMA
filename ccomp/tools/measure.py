@@ -6,8 +6,9 @@ Usage: tools/measure.py [-full]   (after `make`; writes tools/out/)
 Each file in src/ is preprocessed by gcc with the stand-in headers in
 tools/inc/, as the small build (-DCCISH_SMALL, approach.md decision
 21; or the full build, with -full), worked around where ccish still
-lacks something, and compiled with cccomp and ccgen. Then each of the
-Apple II programs (cccomp, ccgen, ccrel) is linked with ccrel, with
+lacks something, and compiled with ccpp, cccomp and ccgen. Then each
+of the Apple II programs (ccpp, cccomp, ccgen, ccrel) is linked with
+ccrel, with
 tools/libstub.c
 standing in for the C library. The report gives each file's code, data and string sizes
 (from its .syms header) and each program's totals and link workload
@@ -26,6 +27,8 @@ A file that stops on one of ccish's own limits (say, "too many
 variables") is compiled again by a cccomp and ccgen built from a copy of the
 sources with those limits raised (BIG_LIMITS), and marked so in the
 report: a limit ccish itself must raise to compile that file.
+For parse.c, the largest source, the report also gives the sizes of
+ccpp's token stream and name file beside the source text's.
 """
 import os
 import re
@@ -38,19 +41,21 @@ OUT = os.path.join(TOOLS, "out")
 FULL = "-full" in sys.argv[1:]      # measure the full build instead
 
 COMMON = ["diag", "bio"]
-FRONT = ["lex", "name", "type", "parse", "irout"]
+PP = ["ppname", "pplex", "ppout", "pp"]
+FRONT = ["tokin", "name", "type", "parse", "irout"]
 BACK = ["irin", "lower", "peep", "emit", "helper"]
 # Limits raised for big_cccomp(), and the fatal messages that call
 # for it.
 BIG_LIMITS = {"MAX_FUNCS": 1024, "MAX_VARS": 512, "MAX_LABELS": 512,
               "MAX_TYPES": 256, "MAX_PARAM_TYPES": 2048, "MAX_TAGS": 64,
               "MAX_MEMBERS": 512, "MAX_POOL": 32000, "MAX_IDS": 1024,
-              "MAX_CASES": 256}
+              "MAX_CASES": 256, "MAX_PP_POOL": 32000}
 LIMIT_MSGS = ("too many", "is full")
 
 # The Apple II programs (B3a). ccish, both passes in one, is for the
 # host only: it is too large for one module.
 PROGRAMS = [
+    ("ccpp", ["ccpp"] + COMMON + PP),
     ("cccomp", ["cccomp"] + COMMON + FRONT),
     ("ccgen", ["ccgen"] + COMMON + BACK),
     ("ccrel", ["ccrel"] + COMMON + ["link"]),
@@ -113,11 +118,15 @@ def run(args):
     return r.returncode == 0, r.stdout + r.stderr
 
 
-def compile_obj(bindir, name, src):
-    """Compile src into OUT/NAME.obj and .syms with BINDIR's cccomp and
-    ccgen; return (succeeded, messages)."""
+def compile_obj(bindir, name, src, keep=False):
+    """Compile src into OUT/NAME.obj and .syms with BINDIR's ccpp,
+    cccomp and ccgen (keeping NAME.i and NAME.nam if keep); return
+    (succeeded, messages)."""
     out = os.path.join(OUT, name)
-    ok, msg = run([os.path.join(bindir, "cccomp"), "-o", out, src])
+    ok, msg = run([os.path.join(bindir, "ccpp"), "-o", out, src])
+    if ok:
+        ok, msg = run([os.path.join(bindir, "cccomp")]
+                      + (["-k"] if keep else []) + [out])
     if ok:
         ok, msg = run([os.path.join(bindir, "ccgen"), out])
     return ok, msg
@@ -142,6 +151,8 @@ def build_big():
         with open(os.path.join(big, os.path.basename(name)), "w") as f:
             f.write(text)
     src = lambda names: [os.path.join(big, n + ".c") for n in names]
+    subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccpp")]
+                   + src(["ccpp"] + COMMON + PP), check=True)
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "cccomp")]
                    + src(["cccomp"] + COMMON + FRONT), check=True)
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccgen")]
@@ -407,6 +418,7 @@ def main():
     print("The %s build:" % ("full" if FULL else "small"))
     names = sorted({n for _, files in PROGRAMS for n in files})
     sizes, failed, big, over = {}, False, None, {}
+    tok_sizes = None
 
     print("File        Code    Data  Strings  Functions")
     for name in names + ["libstub"]:
@@ -420,11 +432,12 @@ def main():
             with open(os.path.join(OUT, "libstub.c"), "w") as f:
                 f.write(src)
             src = os.path.join(OUT, "libstub.c")
-        ok, msg = compile_obj(CCOMP, name, src)
+        keep = name == "parse"
+        ok, msg = compile_obj(CCOMP, name, src, keep)
         if not ok and any(m in msg for m in LIMIT_MSGS):
             over[name] = msg.strip().split(": ", 1)[-1]
             big = big or build_big()
-            ok, msg = compile_obj(big, name, src)
+            ok, msg = compile_obj(big, name, src, keep)
         if not ok:
             print("%-10s  FAILED: %s" % (name, msg.strip()))
             failed = True
@@ -435,7 +448,16 @@ def main():
               % (name, code, data, strs, nfuncs,
                  "  (over a limit: %s)" % over[name] if name in over
                  else ""))
+        if keep:
+            base = os.path.join(OUT, name)
+            tok_sizes = (os.path.getsize(src), os.path.getsize(base + ".i"),
+                         os.path.getsize(base + ".nam"))
+            os.remove(base + ".i")
+            os.remove(base + ".nam")
 
+    if tok_sizes:
+        print("\nparse.c: %d bytes preprocessed by gcc -E -P; ccpp's token"
+              " stream %d, name file %d" % tok_sizes)
     for prog, files in PROGRAMS:
         print()
         if any(n not in sizes for n in files):
@@ -447,6 +469,14 @@ def main():
         raised = [n for n in files if n in over]
         ccrel = os.path.join(big if raised else CCOMP, "ccrel")
         ok, msg = run([ccrel, "-l", "-o", module] + objs)
+        if not ok and any(m in msg for m in LIMIT_MSGS):
+            # Over one of ccrel's own limits: link with raised limits,
+            # and say which.
+            raised.append("ccrel: " + msg.strip().splitlines()[-1]
+                          .split(": ", 1)[-1])
+            big = big or build_big()
+            ccrel = os.path.join(big, "ccrel")
+            ok, msg = run([ccrel, "-l", "-o", module] + objs)
         with open(module + ".lst", "w") as f:
             f.write(msg)
         if not ok:

@@ -31,6 +31,9 @@ order, with no seeking, through 512-byte block buffers (`src/bio.c`).
 
 The IR file, `NAME.ir` (below), passes from `cccomp` to `ccgen`
 (approach.md 18.7); `ccgen` turns it into `NAME.obj` and `NAME.syms`.
+Before it, `ccpp` turns the source into the files `cccomp` reads, the
+token stream `NAME.i` and the name file `NAME.nam`: see
+[CCPP.md](CCPP.md).
 
 ## `NAME.obj`: the stream
 

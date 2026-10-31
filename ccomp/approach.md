@@ -3751,6 +3751,54 @@ they need."
   `MAX_PARAM_TYPES`, `MAX_NAMES`, `ccpp`'s pool) and report the data
   saved. Splitting parse.c comes after, as its own work.
 
+**`ccpp` step 1 (the token stream and name file) is done** (2026-10-31).
+`ccpp` (src/ccpp.c, pp.c, pplex.c, ppname.c, ppout.c; token.h) lexes
+the source a line at a time and writes `NAME.i` and `NAME.nam`, as
+CCPP.md describes; `cccomp` reads tokens (src/tokin.c, which replaced
+lex.c in `cccomp`). The parser is unchanged: for now `tokin.c` looks up
+every identifier's spelling in `NAME.nam` (read from the start, through
+stdio) and the parser interns it as before; step 2 removes that.
+- Checked: all 107 inputs (the run tests, the link tests and ccish's
+  own sources from `measure.py`) give byte-identical `.obj` and
+  `.syms` to the old pipeline. New tests: the token streams and name
+  files of `tests/pp/` (by hand; run.sh's awk computes the checksum),
+  a test for each lexer message that had none (5-9, 11, 14-17, 233,
+  and 13 by digraph), line numbers after a multi-line comment, after
+  joined strings and at the end of the file, damaged and stale name
+  files (8 kinds) and token streams (5), and ccpp's own outputs after
+  an error and with `-k`. 317 pass.
+- Sizes (small build): `cccomp` **42,373** (was 43,100): tokin.c is
+  2,692 (code 1,263, data 1,088, strings 341) where lex.c was 3,030,
+  and parse.c lost its 518-byte source buffer, but two limits went up
+  (below). `ccpp` **16,036** (code 4,804, data 10,570, strings 662;
+  its pool is 7,680 of the data). parse.c, 84,564 bytes of text after
+  `gcc -E -P`, is a token stream of 44,651 bytes and a name file of
+  6,942.
+- `MAX_POOL` was already full: its peak was 6,208 of 6,212 before this
+  step (the 5,647 noted was stale), and the order in which tokin.h now
+  declares the tokens takes it to 6,218. Raised to 6,300 until step 2
+  removes the pool. `MAX_IDS` 268 to 280: tokin.c, which includes
+  ccish.h, token.h and tokin.h, has 273 enum constants and typedef
+  names. The header split will lower both.
+- `ccpp` links only with ccrel's limits raised: its objects share 1,439
+  bytes of names, over ccrel's 1,427 (`MAX_GNAMES`), because each
+  includes all of ccish.h. `measure.py` now relinks with raised limits
+  and says so; the header split should fix it.
+- Choices, open for review:
+  - `cccomp` checks `NAME.nam` when it opens it, before using any name,
+    and matches its stamp against the token stream's at the end; so
+    damage is found before a wrong name is used, and only a well
+    formed name file from another run waits for the end.
+  - `cccomp` reads `NAME.nam` through stdio, as `ccish.msg` is read,
+    so it needs no 512-byte buffer of its own.
+  - A `#` that starts a line is message 13, and elsewhere message 17,
+    as before; `%:` now follows the same rule (it was 13 anywhere).
+  - Comments are gone from the token stream, so `next_is_rbracket()`
+    now sees `a[i /* c */]` as a simple index (the lexer said no for a
+    comment). No input changed.
+  - Joining lines that end in `\` is left to step 4, with the
+    directives that need it.
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in

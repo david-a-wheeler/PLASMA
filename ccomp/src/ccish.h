@@ -3,13 +3,16 @@
  * PLASMA VM modules. See ../approach.md for the design and
  * ../../doc/Bytecodes.md for the target format.
  *
- * The compiler is a pipeline of four stages that pass a stream of ops
- * along, with no syntax tree. Stage 1 is the front end, the program
- * cccomp; stages 2 to 4 are the back end, the program ccgen; the IR
- * goes between them in a file, NAME.ir (approach.md 18.7; formats in
- * ../OBJECT.md):
+ * First the preprocessor and lexer, the program ccpp (pp*.c), turns the
+ * source into a token stream, NAME.i, and a name file, NAME.nam
+ * (../CCPP.md). Then the compiler is a pipeline of four stages that
+ * pass a stream of ops along, with no syntax tree. Stage 1 is the
+ * front end, the program cccomp; stages 2 to 4 are the back end, the
+ * program ccgen; the IR goes between them in a file, NAME.ir
+ * (approach.md 18.7; formats in ../OBJECT.md):
  *
- *   parse.c  stage 1: C source -> IR ops        (ir_put)
+ *   tokin.c  the reader of NAME.i, a token at a time
+ *   parse.c  stage 1: tokens -> IR ops          (ir_put)
  *   irout.c  the IR buffer, and the writer of NAME.ir: IR ops, data,
  *            strings, and the symbol summary at the end
  *   irin.c   the reader of NAME.ir                (lower_op)
@@ -54,8 +57,13 @@
  * comes from is in parentheses. */
 
 #define MAX_NAME     31     /* significant characters in an identifier */
-#define MAX_STR      256    /* bytes in one string literal: a PLASMA
-                             * string's 255 and one more (85) */
+#define MAX_STR      255    /* bytes in one string literal, so that it
+                             * is a PLASMA string too (85) */
+#define MAX_LINE     255    /* characters in one source line, ccpp's
+                             * buffer (99) */
+#define MAX_PP_POOL  7680   /* bytes of ccpp's names and file names,
+                             * with a length byte each (6,890: parse.c,
+                             * preprocessed by gcc) */
 #define MAX_FUNCS    302    /* functions (274) */
 #define MAX_VARS     82     /* globals, plus the parameters and locals
                              * visible at once (74) */
@@ -78,11 +86,13 @@
                              * (393) */
 #define MAX_TAGS     10     /* struct tags, including hidden ones (7) */
 #define MAX_MEMBERS  64     /* struct members, in all structs (51) */
-#define MAX_POOL     6212   /* bytes of names in the name pool (5,647) */
+#define MAX_POOL     6300   /* bytes of names in the name pool (6,218);
+                             * it goes in step 2 of the ccpp design */
 #define MAX_FNAMES   3281   /* bytes of the function names ccgen keeps,
                              * with a NUL each (2,982: all of parse.c's
                              * function symbols, a bound) */
-#define MAX_IDS      268    /* enum constants and typedef names (243) */
+#define MAX_IDS      280    /* enum constants and typedef names (273, in
+                             * tokin.c) */
 #define MAX_BYVAL    8      /* bytes in a struct passed or returned by value */
 #define MAX_CASES    36     /* case labels in all the switches open at once
                              * (29); at most 255, a SEL table's limit */
@@ -144,38 +154,6 @@ void bputc(Bfile *b, int c);
 void bputw(Bfile *b, int v);
 void bwrite(Bfile *b, const unsigned char *p, int n);
 int  bclose(Bfile *b);
-
-/* ---------- Lexer (lex.c) ---------- */
-
-/* Single-character tokens are their character code; others start at 256. */
-enum {
-  T_EOF = 0,
-  T_ID = 256, T_NUM, T_STR,
-  /* keywords supported now, in the order of keywords[] in lex.c */
-  T_INT, T_VOID, T_RETURN, T_IF, T_ELSE, T_WHILE, T_DO, T_FOR, T_BREAK,
-  T_CONTINUE, T_CHAR, T_SIZEOF, T_STATIC, T_CONST, T_VOLATILE, T_STRUCT,
-  T_SWITCH, T_CASE, T_DEFAULT, T_TYPEDEF, T_ENUM, T_EXTERN, T_SIGNED,
-  T_UNSIGNED,
-  /* any other C keyword: reported as "not supported yet" */
-  T_KEYWORD,
-  /* multi-character operators (not all are supported by the parser yet) */
-  T_EQ, T_NE, T_LE, T_GE, T_SHL, T_SHR, T_ANDAND, T_OROR, T_INC, T_DEC,
-  T_ADDEQ, T_SUBEQ, T_MULEQ, T_DIVEQ, T_MODEQ, T_ANDEQ, T_OREQ, T_XOREQ,
-  T_SHLEQ, T_SHREQ, T_ARROW, T_ELLIPSIS
-};
-
-/* The current token. */
-extern int tok;
-extern int tok_val;                 /* T_NUM value */
-extern int tok_unsigned;            /* T_NUM: it is unsigned (a u suffix,
-                                     * or hex or octal over $7FFF) */
-extern char tok_text[MAX_STR + 1];  /* T_ID / T_KEYWORD name, T_STR bytes */
-extern int tok_len;                 /* T_STR length, not counting a NUL */
-
-void lex_open(Bfile *f);
-void next(void);                    /* advance to the next token */
-int  next_is_rbracket(void);        /* is the token after this one ']'? */
-const char *tok_desc(void);         /* the current token, for messages */
 
 /* ---------- Names (name.c) ----------
  * The name pool holds each name once, as a NUL-terminated string; a
@@ -285,7 +263,7 @@ void parse_program(void);
 int  func_sym(int f, int *hash);
 int  data_sym_count(void);
 int  data_sym(int v, int *off, int *size, int *hash, int *name);
-void compile_file(const char *src, const char *base);  /* the front end */
+void compile_file(const char *in, const char *base);   /* the front end */
 void compile_abort(void);                   /* after an error */
 
 /* ---------- Stage 1 -> 2: IR ops, through NAME.ir ----------

@@ -54,7 +54,6 @@
 54 expected ')' after arguments, not
 55 wrong number of arguments in call to
 56 pstr() needs a string literal, not
-57 string too long for pstr() (over 255 characters)
 58 expected ')' after pstr argument, not
 59 expected ')' after the type in a cast, not
 60 expected ')', not
@@ -225,3 +224,7 @@
 226 conflicting or repeated type specifier:
 227 'signed char' is not supported yet
 229 helper functions differ between objects (compiled by different ccgens?):
+230 not a token file from ccpp, or the wrong version:
+231 token file is damaged:
+232 name file is stale or damaged:
+233 line too long (over 255 characters)

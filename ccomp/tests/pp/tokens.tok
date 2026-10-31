@@ -1,0 +1,42 @@
+# Each code step 1 writes (CCPP.md), from tokens.c.
+43 54 4b 01     # "CTK", version 1
+# line 1: a comment's newline is a line too
+01
+# line 2: x = 0x8000 + 10u - 'A' * 65535;
+04 1c 00        # x: the first new id, 28
+3d
+06 00 80        # 0x8000: hex over $7FFF, so unsigned
+2b
+06 0a 00        # 10u: unsigned
+2d
+05 41 00        # 'A': a number
+2a
+05 ff ff        # 65535: decimal, so int
+3b
+01
+# line 3: the name's first 31 characters only, then +=
+04 1d 00        # id 29
+ca              # +=
+04 1c 00        # x again: id 28
+3b
+01
+# line 4: p = "a\tb", and the string is held to be joined
+04 1e 00        # p: id 30
+3d
+01              # the newline is written before the held string
+# line 5: "\x41\101" joins it; then the digraphs and float
+07 05 61 09 62 41 41    # "a\tbAA": 5 bytes
+5b 5d 7b 7d     # <: :> <% %>
+08 1f 00        # float: unsupported, id 31
+3b
+01
+# line 6: the operators
+04 1c 00        # x
+d2              # <<=
+04 20 00        # y: id 32
+d3              # >>=
+04 21 00        # z: id 33
+d5 d4 c1 c0 c6 c7 c8 c9 ce    # ... -> != == && || ++ -- %=
+3b
+01
+00 21 00 ss ss  # the end: 33 ids, the checksum

@@ -103,6 +103,7 @@
  */
 #include <string.h>
 #include "ccish.h"
+#include "tokin.h"
 
 /* Functions: see ccish.h. */
 int fn_name[MAX_FUNCS];
@@ -1615,9 +1616,6 @@ static void parse_pstr(void)
   next();                         /* '(' */
   if (tok != T_STR)
     error(56 /* "pstr() needs a string literal, not" */, tok_desc());
-  if (tok_len > 255)
-    error(57 /* "string too long for pstr() (over 255 characters)" */,
-          NULL);
   off = suppress ? 1 : data_string(tok_text, tok_len);
   next();
   expect(')', 58 /* "expected ')' after pstr argument, not" */);
@@ -4392,19 +4390,15 @@ static void parse_toplevel(void)
 }
 
 /* The source file being compiled. */
-static Bfile src_file;
-
-/* The front end: compile source file src into the IR file of output
- * name base (approach.md 18.7), for the back end. */
-void compile_file(const char *src, const char *base)
+/* The front end: compile the token stream and name file of input
+ * name in (ccpp's NAME.i and NAME.nam) into the IR file of output name
+ * base (approach.md 18.7), for the back end. */
+void compile_file(const char *in, const char *base)
 {
-  src_name = src;
-  if (!bopen(&src_file, src, 0))
-    fatal(171 /* "cannot open" */, src);
+  tok_open(in);
   ir_open(base);
-  lex_open(&src_file);
   parse_program();
-  bclose(&src_file);
+  tok_close();
   src_line = 0;
   ir_finish();
 }
@@ -4413,7 +4407,7 @@ void compile_file(const char *src, const char *base)
  * it), writing out what the IR file holds. */
 void compile_abort(void)
 {
-  bclose(&src_file);
+  tok_close();
   ir_abort();
 }
 
