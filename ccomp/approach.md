@@ -4095,6 +4095,74 @@ operator in messages, and the number without the message file. 365
 pass. `cccomp` **34,260** (-351: tokin.c's strings went from 319 bytes
 to 55 and its data from 1,086 to 994, for 5 more bytes of code).
 
+**Large zero-filled data on the heap (designed in discussion,
+2026-10-31; not yet built).** The user's real goal is self-hosting on
+a 64K Apple II, beside ProDOS, the VM, the zero page, the stacks and
+the text screen; 32K for each program was a proxy for that. Measured
+(small build), the bigger obstacle is loading: PLASMA's loader reads a
+whole module file into memory before relocating it, and the file holds
+every uninitialized global as zero bytes, since the REL format has no
+uninitialized-data segment. `cccomp`'s file is 46,867 bytes and
+`ccpp`'s 39,363, against something under 40K free (not measured: E1
+needs a 64K Apple II emulator, and none will be installed on this
+computer). Keeping the zero-filled data out of the files is wanted
+anyway; it shrinks the objects too, which matters on 140K floppies.
+
+*The better, long-term option (option 3): an uninitialized-data
+segment in the REL format.* The module header would give a size of
+zeros; the loader would allocate that much more and zero it, and the
+existing relocations would point into it as they point into the data.
+No indirection, no pointer words, no fixup lists, and every PLASMA
+program gains. It changes the loader (cmd.pla, and its versions for
+each platform), so it waits until the VM may change; **when it can, we
+want to implement option 3** instead of what follows. The compiler's
+side below (zero records, and knowing what is zero-filled) carries
+over to it.
+
+*What to build now (option 1): the largest zero-filled data moves to
+the heap, through a pointer.* It needs no change to the VM.
+- **Which:** an object (an array or a struct) of global or static
+  storage, with no initializer, of at least **256 bytes**: a big
+  threshold, so that only big tables pay the cost, and small ones
+  (most of each program's tables are under it) stay as they are. In
+  `cccomp` that is about 4.5K of its 7.7K of data (its function tables,
+  `param_types`, the enum and typedef table, `tok_text` and its two
+  file buffers); in `ccpp` about 13K of 16.4K (the name pool, macro
+  bodies, expansion buffers, file buffers).
+- **The compiler** writes a zero run as a new zero record ("Z, n
+  bytes") instead of n zero bytes, in the IR file and the stream file
+  (format versions bumped), so objects shrink too. For an object that
+  may move (one it defines that qualifies, and any `extern` array or
+  struct, whose definition it can't see) it refers to the address only
+  as `LA address` with no offset folded in, and adds any constant
+  offset after it (`ADDI`), since ccrel must be able to patch that one
+  form; it doesn't fold a constant index into `LAB address+k` and the
+  like for these.
+- **ccrel decides**, seeing every object: an object moves if all its
+  bytes are zero records, it is at least 256 bytes, and no
+  initializer anywhere uses its address (an address in the data must
+  be fixed when the module loads: such an object stays). It gives
+  each a 2-byte pointer word in the data and patches every `LA` of it
+  into `LAW` of that word (both are 3 bytes, at the same place).
+- **The init function** ccrel writes, which now just calls `main`,
+  first makes one `heapalloc` of the total (CMDSYS: it exists, and
+  plvm has it), clears it (`memset`), and stores each object's
+  address in its pointer word; if the heap is too small, it says so
+  and exits. The command interpreter puts the heap back when a program
+  ends, so nothing needs freeing.
+- **Costs:** 2 bytes of data for each object moved; reading or writing
+  one is a little slower: an access through `LAW` costs about 24 more
+  6502 cycles than through `LA` (plvm02.s), about 12% for a
+  variable-index access (`a[i]`), and a constant index (`a[3]`), no
+  longer one folded `LAW a+6`, becomes `LAW`, `ADDI`, `LW`, about 2 to
+  2.5 times as slow and 3 bytes bigger. Overall, probably a few
+  percent; plvm can count the ops to check. Run-time memory doesn't
+  change (the arrays still exist); load-time memory and file sizes drop
+  by about the data moved.
+- **Rejected for now:** patching each reference at start-up instead (no
+  run-time cost, but a fixup list of 2 bytes per reference kept in the
+  module, likely 1-2K for `cccomp`, more than the pointers).
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in
