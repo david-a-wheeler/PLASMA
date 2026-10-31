@@ -38,9 +38,14 @@
  * CCISH_SMALL itself:
  *   CCISH_LISTING  -l (ccrel's listing), and what only it uses. ccgen's
  *                  -i is in both builds (approach.md decision 22).
+ *   CCISH_CHECKS   checks that only a compiler bug or a damaged file
+ *                  would fail: so far, ccgen's check of each IR_SWAP's
+ *                  and unsigned comparison's blocks (irin.c). Both
+ *                  builds write the same files.
  */
 #ifndef CCISH_SMALL
 #define CCISH_LISTING
+#define CCISH_CHECKS
 #endif
 
 /* ---------- Limits ----------
@@ -343,7 +348,7 @@ enum {
 /* The IR file: the output name plus this suffix, and its format's
  * version (in its header, after the magic "CIR"). */
 #define SUFFIX_IR   ".ir"
-#define IR_VERSION  1
+#define IR_VERSION  2
 
 /* Its record tags besides the stream's D, R and S (below), and the bit
  * that marks an IR op followed by a one-byte operand. An IR op's tag is
@@ -352,6 +357,11 @@ enum { REC_LINE = 'L', REC_NAME = 'N', REC_WORD = 'W', REC_SECOND = 'X',
        REC_SUMMARY = 'Y' };
 #define IR_BYTE_OP  0x80
 #define IR_TAG_END  0x40
+
+/* A name record's length byte: the length (1 to MAX_NAME) in its low
+ * bits, and NAME_RETURNS set if the function returns a value. */
+#define NAME_LEN     0x1F
+#define NAME_RETURNS 0x80
 
 /* The front end's side (irout.c): the writer of NAME.ir. */
 void ir_open(const char *base);

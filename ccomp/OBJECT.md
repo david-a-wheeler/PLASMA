@@ -211,7 +211,7 @@ The file starts with a header:
 | Size | Field |
 |------|-------|
 | 3 bytes | magic `CIR` |
-| byte | IR format version: 1 |
+| byte | IR format version: 2 |
 | byte | length *n* of the source file's name (at most 255; a longer name is cut) |
 | *n* bytes | the source file's name, as given to `cccomp`, for `ccgen`'s messages |
 
@@ -300,12 +300,14 @@ with the line where the function starts. So a back-end error reads
 |------|-------|
 | byte | tag `N` |
 | word | function index |
-| byte | name length *n* (1-31) |
+| byte | name length *n* (1-31) in bits 0-4; bit 7 set if the function returns a value |
 | *n* bytes | name |
 
 One for each function the IR refers to, before the first op that does
 (its `FUNC` or a `CALL`, and before that op's prefixes). `ccgen` keeps
-the names, for its messages and for `-i`.
+the names, for its messages and for `-i`. Bit 7 (version 2) is for the
+full build's checks, which need to know how many values a `CALL`
+leaves; it costs no bytes, since a name's length needs only 5 bits.
 
 ### `Y`: the symbol summary
 
@@ -327,6 +329,16 @@ of `MAX_FUNCS` or more (or, at the end, at or beyond the summary's
 count), or one used without an `N` record before it; a
 missing summary, or anything after it; and a function that the
 summary says is defined but has no `FUNC`, or the reverse.
+
+The full build (`CCISH_CHECKS`) also checks each block of ops before
+an `IR_SWAP` moves it, stashes around it, or an unsigned comparison
+flips around it: the block must leave exactly the values its op says
+(1, or 2 for a top block ending in `DUP`) and never use one from below
+it, following branches and labels (`block_ok()` in `src/irin.c`). Only
+a compiler bug (the parser's count of ops disagreeing with the file)
+or a damaged file fails it; then the file is reported as damaged,
+rather than the wrong code moved. It also rejects a name record with
+bits 5 and 6 set. The small build trusts the lengths.
 
 ## The final pass
 

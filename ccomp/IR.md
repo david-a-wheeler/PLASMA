@@ -646,6 +646,11 @@ stage 4 replaces it with an offset.
   The temporaries are `ccgen`'s own (`FRAME_TEMP()`): stage 4 places
   them past the parser's frame when the function ends, and adds them
   to the frame size.
+- **Checked** (full build only, `CCISH_CHECKS`): before a block is
+  moved or stashed around, `ccgen` checks that it leaves the values
+  the `SWAP` says, using each op's stack effect (the "Stack:" lines
+  here); a wrong length is a damaged file (OBJECT.md, "What `ccgen`
+  checks").
 - **Why it differs from PLASMA:** PLASMA has no `SWAP` (issue 21).
   With one, the exchange becomes that opcode, in `ccgen` alone.
 

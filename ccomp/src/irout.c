@@ -47,7 +47,8 @@ void ir_open(const char *base)
   bwrite(&out, (const unsigned char *)src_name, n);
 }
 
-/* Write a name record for function f, if it has none yet. */
+/* Write a name record for function f, if it has none yet, saying
+ * whether it returns a value (for ccgen's checks). */
 static void name_func(int f)
 {
   const char *s;
@@ -59,7 +60,7 @@ static void name_func(int f)
   n = (int)strlen(s);
   bputc(&out, REC_NAME);
   bputw(&out, f);
-  bputc(&out, n);
+  bputc(&out, n | (fn_type[f] != TY_VOID ? NAME_RETURNS : 0));
   bwrite(&out, (const unsigned char *)s, n);
 }
 

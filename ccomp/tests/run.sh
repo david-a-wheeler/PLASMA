@@ -305,6 +305,20 @@ ir_damaged_test ir_version "with a wrong version"
 ./cccomp -o "$OUT/ir_tag" tests/run/hello.c
 printf 'Q' >> "$OUT/ir_tag.ir"
 ir_damaged_test ir_tag "with something after the summary"
+# The full build's ccgen checks each block it moves (CCISH_CHECKS): a
+# SWAP whose length is wrong, here the top block of *f() = 5 made 2
+# ops long instead of 1 (CONST 5), is a damaged file, not wrong code.
+# The SWAP is the first $B2 byte (IR_SWAP $32 with a byte operand),
+# and its length the byte after it. The small build doesn't check.
+printf 'int g;\nint *f(void) { return &g; }\nint main() { *f() = 5; return 0; }\n' \
+    >"$OUT/ir_badswap.c"
+./cccomp -o "$OUT/ir_badswap" "$OUT/ir_badswap.c"
+at=$(od -An -v -tu1 "$OUT/ir_badswap.ir" \
+     | awk '{ for (i = 1; i <= NF; i++) { if ($i == 178) { print n; exit }
+              n++ } }')
+printf '\002' | dd of="$OUT/ir_badswap.ir" bs=1 seek=$((at + 1)) \
+    conv=notrunc 2>/dev/null
+ir_damaged_test ir_badswap "with a wrong SWAP length"
 # A back-end error gives the source file and the line where the
 # function starts (the IR file's line record): here, line 1.
 if grep -qF "too_large.c:1: error 177: function too large: main" \

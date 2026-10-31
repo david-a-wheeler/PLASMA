@@ -26,6 +26,10 @@ static char source[256];
 static int fname_at[MAX_FUNCS];
 static char fnames[MAX_FNAMES];
 static int fnames_len;
+#ifdef CCISH_CHECKS
+static char fn_returns[MAX_FUNCS];  /* from the name record: 1 if the
+                                     * function returns a value */
+#endif
 
 static int in_func;         /* between a FUNC and its ENDFUNC */
 static int max_func;        /* the highest function index met, or -1 */
@@ -97,12 +101,18 @@ static void read_header(void)
   src_name = source;
 }
 
-/* Read an N record: keep a function's name. */
+/* Read an N record: keep a function's name (and, for the checks,
+ * whether it returns a value). */
 static void read_name(void)
 {
-  int f = get_word(), n = get_byte(), i;
-  if (f >= MAX_FUNCS || fname_at[f] >= 0 || n < 1 || n > MAX_NAME)
+  int f = get_word(), c = get_byte(), n = c & NAME_LEN, i;
+  if (f >= MAX_FUNCS || fname_at[f] >= 0 || n < 1)
     damaged();
+#ifdef CCISH_CHECKS
+  if (c & ~(NAME_LEN | NAME_RETURNS))
+    damaged();
+  fn_returns[f] = (c & NAME_RETURNS) != 0;
+#endif
   if (fnames_len + n + 1 > MAX_FNAMES)
     fatal(224 /* "too many function names for ccgen" */, NULL);
   fname_at[f] = fnames_len;
@@ -190,6 +200,104 @@ static void reverse(int i, int j)
   }
 }
 
+#ifdef CCISH_CHECKS
+/*
+ * The full build's check of a block of held ops before it is moved,
+ * stashed or flipped around (CCISH_CHECKS): the parser's lengths count
+ * the ops it wrote, and if the two counts ever disagreed (a compiler
+ * bug, or a damaged file), the wrong code would move with no message.
+ * So each block must leave exactly the values IR_SWAP or the unsigned
+ * comparison says (1, or 2 for a top block ending in DUP), and never
+ * use a value from below it. Each op's effect is in stk_effect[]: the
+ * values it pops times 16, plus those it pushes, or -1 for an op that
+ * can't be in an expression. A CALL pops its arguments and pushes a
+ * value if its function returns one (from the name record). Branches
+ * are followed: lab_depth[] is the depth at each label the block
+ * branches to (plus 1; 0 if none yet), and code after a JUMP is
+ * unreachable until a label. A SWAP inside the block, done or not,
+ * changes no depth.
+ */
+static const char stk_effect[IR_NOPS] = {
+  -1, -1, 0x01, 0x01, 0x01,                 /* FUNC ... STRADDR */
+  0x01, 0x11, 0x01, 0x11, 0x01,             /* locals */
+  0x01, 0x11, 0x01, 0x11,                   /* globals */
+  0x11, 0x11, 0x20, 0x20,                   /* LOAD ... STOREB */
+  0x00, 0x10, 0x12, -1,                     /* CALL, DROP, DUP, RETURN */
+  0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21,
+  0x21, 0x21, 0x21, 0x21, 0x21, 0x21,       /* comparisons */
+  0x11, 0x11, 0x11,                         /* NEG, COMP, NOT */
+  0x00, 0x00, 0x10, 0x10, 0x00,             /* LABEL ... JOIN */
+  -1, -1, -1, -1,                           /* SEL, the case table */
+  0x22,                                     /* SWAP */
+  0x21, 0x21, 0x21, 0x21                    /* ULT ... */
+};
+
+static char lab_depth[MAX_LABELS];
+
+/* Note that a branch reaches label n at depth: it must agree with any
+ * other branch there. Returns 0 if it doesn't. */
+static int branch_depth(int n, int depth)
+{
+  if (lab_depth[n] && lab_depth[n] != depth + 1)
+    return 0;
+  lab_depth[n] = (char)(depth + 1);
+  return 1;
+}
+
+/* Does the block of the len held ops from index start leave want
+ * values, never using one from below it? */
+static int block_ok(int start, int len, int want)
+{
+  int i, op, e, pops, pushes, d, depth = 0, live = 1;
+  for (i = 0; i < MAX_LABELS; i++)
+    lab_depth[i] = 0;
+  for (i = start; i < start + len; i++) {
+    op = buf_op[i];
+    if ((e = stk_effect[op]) < 0)
+      return 0;
+    if (op == IR_LABEL) {
+      if ((d = lab_depth[buf_a[i]]) != 0) {
+        if (live && depth != d - 1)
+          return 0;
+        depth = d - 1;
+      } else if (!live) {
+        return 0;               /* a label nothing in the block reaches */
+      }
+      live = 1;
+      continue;
+    }
+    if (!live)
+      continue;
+    pops = e >> 4;
+    pushes = e & 15;
+    if (op == IR_CALL) {
+      pops = buf_a[i];
+      pushes = fn_returns[buf_f[i]];
+    }
+    if (depth < pops)
+      return 0;
+    depth += pushes - pops;
+    if (op == IR_JUMP || op == IR_BRFALSE || op == IR_BRTRUE) {
+      if (!branch_depth(buf_a[i], depth))
+        return 0;
+      live = op != IR_JUMP;
+    } else if (op == IR_JOIN && (d = lab_depth[buf_a[i]]) != 0) {
+      if (!branch_depth(buf_f[i], d - 1))
+        return 0;
+      lab_depth[buf_a[i]] = 0;
+    }
+  }
+  return live && depth == want;
+}
+
+/* Stop unless block_ok(start, len, want). */
+static void check_block(int start, int len, int want)
+{
+  if (!block_ok(start, len, want))
+    damaged();
+}
+#endif
+
 /* Is IR op op one whose operands can be reversed at no cost? */
 static int reversible(int op)
 {
@@ -216,6 +324,9 @@ static void decide(int s, int next)
       if (buf_op[i] == IR_SWAP && buf_a[i] >= SW_STASH)
         break;
     if (i == s) {
+#ifdef CCISH_CHECKS
+      check_block(s - len, len, values);
+#endif
       buf_pre[s - len] |= PRE_STASH;
       buf_a[s] = SW_STASH;
       return;
@@ -323,6 +434,9 @@ static void hold(int op, int a, int f)
     decide(nbuf - 1, op);
   if (is_unsigned_cmp(op)) {
     if (a >= 1 && a <= nbuf) {
+#ifdef CCISH_CHECKS
+      check_block(nbuf - a, a, 1);
+#endif
       buf_pre[nbuf - a] |= PRE_FLIP;
       if (a == 1 && buf_op[nbuf - 1] == IR_CONST) {
         buf_a[nbuf - 1] ^= 0x8000;
@@ -336,6 +450,11 @@ static void hold(int op, int a, int f)
   }
   if (op == IR_SWAP) {
     if (f >= 0 && a + f <= nbuf) {
+#ifdef CCISH_CHECKS
+      check_block(nbuf - a - f, f, 1);
+      check_block(nbuf - a, a,
+                  1 + (a > 0 && buf_op[nbuf - 1] == IR_DUP));
+#endif
       reverse(nbuf - a - f, nbuf - a);
       reverse(nbuf - a, nbuf);
       reverse(nbuf - a - f, nbuf);

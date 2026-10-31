@@ -2949,6 +2949,33 @@ open for review:
 - Step 6 (B, the copy hint) stays conditional: `cccomp` is 41,949 bytes
   and its module file 54,929, but how far that is from fitting waits
   for E1.
+
+**The block check is done** (2026-10-31; asked for in discussion, in
+the full build only). `ccgen`'s lengths for `IR_SWAP` and the unsigned
+comparisons come from the parser's count of the ops it wrote, and a
+wrong count would move the wrong code with no message (as nearly
+happened in step 4). Considered: the user's idea of group markers
+(`STARTGROUP seq1 NEXTGROUP seq2`); not chosen, since the parser only
+knows a swap is needed after writing both sequences (see step 4).
+Instead, under `CCISH_CHECKS` (introduced here, decision 21's
+`CCISH_CHECKS` step), `block_ok()` in irin.c walks each block before it
+is moved, stashed around or flipped around: from each op's stack
+effect (`stk_effect[]`), the block must leave the values its op says
+(1, or 2 for a top block ending in `DUP`) and never use one from below
+it, following branches through each label's depth. A failure is
+"damaged" (188). A `CALL`'s effect needs to know whether its function
+returns a value, so the name record's length byte carries that in bit
+7 (IR version 2): no bytes in the file, and both builds write it, so
+their files stay the same. The small build reads past it and checks
+nothing.
+- Verified: all 98 test and self-compile inputs pass the check, with
+  objects unchanged. New test: a SWAP's length patched from 1 to 2 in
+  the IR file is "damaged" with the full `ccgen` (the small one
+  accepts it, as designed). 278 tests pass.
+- Measured: small `cccomp` +16 bytes (41,965), small `ccgen` -4
+  (19,972: one length check became redundant). Full `ccgen` +961
+  (20,939): code +500 and data +461 (`fn_returns[]` 302, `lab_depth[]`
+  104, `stk_effect[]` 55), more code than the 100-150 bytes estimated.
    - **Smaller path buffers in diag.c** (agreed, in every program; also
      in `cccomp` and `ccrel`): `msg_path[300]`, `stream_name()`'s
      `buf[300]` and `base_of()`'s `buf[256]` are 856 bytes of data
