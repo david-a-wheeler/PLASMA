@@ -444,7 +444,9 @@ file is used, and that the file's numbers ascend.
     `MAX_TAGS`, `MAX_MEMBERS`, `MAX_IDS`, `MAX_POOL`).
   - A string literal: 256 characters (`MAX_STR`).
   - The back end: 3281 bytes of function names, each with a NUL
-    (`MAX_FNAMES`).
+    (`MAX_FNAMES`), and 32 operands on its own temporaries in one
+    function (`MAX_TEMP_USES`), which only a reordering it can't do by
+    moving code uses (4 to 6 each).
   - A file name (an output name with its suffix, or the program's own
     directory for `ccish.msg`): 127 characters (`MAX_PATH`), enough for
     ProDOS.

@@ -2,7 +2,7 @@
  * Stage 2: lowering, the first stage of the back end (ccgen). Turns IR
  * ops, as irin.c reads them from the IR file, into PLASMA machine ops
  * and chooses their encodings, mostly 1:1. Each IR op is described in
- * ../IR.md. With -i, each op is printed as it is lowered.
+ * ../IR.md. -i prints each op (dump_ir()) as irin.c reads it.
  */
 #include <string.h>
 #include "ccish.h"
@@ -17,7 +17,7 @@ static const char *const ir_names[] = {
   "EQ", "NE", "LT", "GT", "LE", "GE",
   "NEG", "COMP", "NOT",
   "LABEL", "JUMP", "BRFALSE", "BRTRUE", "JOIN",
-  "SEL", "CASES", "CASEVAL", "CASETO"
+  "SEL", "CASES", "CASEVAL", "CASETO", "SWAP"
 };
 
 /* How each IR op lowers (lw_kind[]), and the PLASMA opcode it lowers
@@ -51,7 +51,8 @@ static const char lw_kind[IR_NOPS] = {
   L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,
   L_SIMPLE, L_SIMPLE, L_SPECIAL,            /* NEG, COMP, NOT */
   L_PSEUDO, L_OPERAND, L_OPERAND, L_OPERAND, L_SPECIAL,    /* ... JOIN */
-  L_OPERAND, L_PSEUDO, L_PSEUDO, L_PSEUDO   /* SEL, the case table */
+  L_OPERAND, L_PSEUDO, L_PSEUDO, L_PSEUDO,  /* SEL, the case table */
+  L_SPECIAL                                 /* SWAP */
 };
 
 static const unsigned char lw_op[IR_NOPS] = {
@@ -66,7 +67,8 @@ static const unsigned char lw_op[IR_NOPS] = {
   OP_ISEQ, OP_ISNE, OP_ISLT, OP_ISGT, OP_ISLE, OP_ISGE,
   OP_NEG, OP_COMP, 0,
   OP_LABEL & 0xFF, OP_BRNCH, OP_BRFLS, OP_BRTRU, 0,
-  OP_SEL, OP_CASES & 0xFF, OP_CASEVAL & 0xFF, OP_CASETO & 0xFF
+  OP_SEL, OP_CASES & 0xFF, OP_CASEVAL & 0xFF, OP_CASETO & 0xFF,
+  0
 };
 
 /* Write s, then n in decimal, to standard output, for -i. No printf:
@@ -79,7 +81,7 @@ static void out_num(const char *s, int n)
 
 /* Print one IR op, for -i: "IR", its name padded to 8 characters, and
  * its operands. */
-static void dump_ir(int op, int a, int f)
+void dump_ir(int op, int a, int f)
 {
   int n = (int)strlen(ir_names[op]);
   fputs("IR ", stdout);
@@ -111,6 +113,7 @@ static void dump_ir(int op, int a, int f)
   case IR_JOIN:     out_num(" L", a); out_num(" L", f); break;
   case IR_CASES: case IR_CASEVAL:
                     out_num(" ", a); break;
+  case IR_SWAP:     out_num(" ", a); out_num(" ", f); break;
   }
   fputs("\n", stdout);
 }
@@ -170,6 +173,17 @@ static void put_simple(int op)
   peep_put(&m);
 }
 
+/* Pass a frame op (LLW, SLW, ...) on one of the back end's own
+ * temporaries, k, to the peephole stage. */
+static void put_temp(int op, int k)
+{
+  Mop m;
+  memset(&m, 0, sizeof(m));
+  m.op = op;
+  m.a = FRAME_TEMP(k);
+  peep_put(&m);
+}
+
 /* Lower the IR ops of kind L_SPECIAL into m (and any ops before it). */
 static void lower_special(Mop *m, int op, int a, int f)
 {
@@ -218,6 +232,20 @@ static void lower_special(Mop *m, int op, int a, int f)
     m->op = OP_ANDI;
     m->a = 1;
     break;
+  case IR_SWAP:
+    /* What irin.c couldn't do by moving code: exchange the top value
+     * (a = 1), or the top value and its copy (a = 2), with the value
+     * below, through two temporaries. */
+    put_temp(OP_SLW, 0);
+    if (a == 2)
+      put_simple(OP_DROP);
+    put_temp(OP_SLW, 1);
+    put_temp(OP_LLW, 0);
+    if (a == 2)
+      put_temp(OP_LLW, 0);
+    m->op = OP_LLW;
+    m->a = FRAME_TEMP(1);
+    break;
   default:
     fatal(174 /* "internal error: unknown IR op" */, NULL);
   }
@@ -230,8 +258,6 @@ void lower_op(int op, int a, int f)
   Mop m;
   int kind = lw_kind[op];
 
-  if (opt_ir)
-    dump_ir(op, a, f);
   memset(&m, 0, sizeof(m));
   m.op = lw_op[op];
   if (kind == L_COMPARE) {

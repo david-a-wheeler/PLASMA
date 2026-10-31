@@ -73,9 +73,10 @@
  *
  * Reordering: when an address has been emitted before the parser sees
  * that it is stored into (*d++ = *s++), the value's code is emitted
- * after it, and then the two blocks are exchanged in the IR buffer
- * (ir_rotate(), approach.md 4(d2)). The parser marks where blocks start
- * with ir_here(). i + p is reordered the same way, to scale i after p.
+ * after it, and then the two blocks are exchanged: the parser marks
+ * where blocks start with ir_here() and puts IR_SWAP with their lengths
+ * (swap_blocks()), and ccgen moves the code (approach.md 4(d2) and
+ * 18.7, A). i + p is reordered the same way, to scale i after p.
  *
  * Constant folding works the same way. A constant is a *pending
  * constant* until its value is needed on the stack, so unary operators
@@ -750,12 +751,12 @@ static void join_label(int from, int to)
  * An object reached through any other address (*f(), a[i + 1]) is
  * K_DEREF, with the address on the stack. Storing into it needs the
  * value first and the address on top, and there is no SWAP. So for
- * *f() = e, the parser emits e after the address, then exchanges the
- * two blocks of code while they are still in the IR buffer
- * (ir_rotate(), approach.md 4(d2)): "e addr SW", with no temporary.
+ * *f() = e, the parser emits e after the address, then has the two
+ * blocks of code exchanged (swap_blocks(), approach.md 4(d2)):
+ * "e addr SW", with no temporary.
  * Until it sees whether the assignment's value is used, the result is
  * K_STORE: the address, then the value, are the last code emitted, and
- * the rotation and the store wait. If the value is used, a DUP goes
+ * the exchange and the store wait. If the value is used, a DUP goes
  * after the value first, so the value stays below the store.
  *
  * Compound assignment and ++/-- need the address twice (for the load
@@ -1052,11 +1053,9 @@ static void begin_expr(void)
   temp_mark = frame_next;
 }
 
-/* End a full expression: its code can't be reordered any more, so stage
- * 2 can lower it, and its temporaries' frame space is free again. */
+/* End a full expression: its temporaries' frame space is free again. */
 static void end_expr(void)
 {
-  ir_flush();
   frame_next = temp_mark;
 }
 
@@ -1082,33 +1081,38 @@ static int code_start(int mark, int h)
   return ir_here() > mark ? mark + h : mark;
 }
 
+/* Exchange the values left by two adjacent blocks of code: the one from
+ * IR position start to mid, and the one from mid to here, with IR_SWAP
+ * (approach.md 18.7, A). ccgen moves the code if it can, unless fixed
+ * is set (a call must stay where it is); otherwise it exchanges the
+ * values when the code runs. A start of -1 means the blocks aren't
+ * known (only the values are): then the SWAP's lengths are 0 and -1.
+ * Nothing may come between the blocks and the SWAP, not even held
+ * constants. */
+static void swap_blocks(int start, int mid, int fixed)
+{
+  if (start < 0) {
+    put(IR_SWAP, 0, -1);
+    return;
+  }
+  if (nheld != 0 || start > mid || mid > ir_here())
+    fatal(175 /* "internal error: bad IR rotation" */, NULL);
+  put(IR_SWAP, ir_here() - mid, fixed ? -1 : mid - start);
+}
+
 /* Emit the store that the K_STORE operand o waits for: the value's code
- * moves ahead of the address's, giving "e addr SW". If keep is set, the
- * value (the stored value: its low byte, for a char) stays on the
- * stack. If the buffer overflowed and the address's code is gone, swap
- * after the fact with two temporaries instead. */
+ * moves ahead of the address's (swap_blocks()), giving "e addr SW". If
+ * keep is set, the value (the stored value: its low byte, for a char)
+ * stays on the stack: a DUP ends the value's block, so that the copy
+ * goes below the address with it. */
 static void finish_store(Operand *o, int keep)
 {
-  int t1 = -1, t2;
   if (ir_here() != o->mend || nheld != 0)
     fatal(39 /* "internal error: code after a pending store" */, NULL);
-  if (ir_holds(o->m0)) {
-    if (keep)
-      put(IR_DUP, 0, -1);   /* it ends up below the address */
-    ir_rotate(o->m0, o->m1);
-  } else {
-    t1 = new_temp();
-    t2 = new_temp();
-    put(IR_SETLOCAL, t1, -1);
-    put(IR_DROP, 0, -1);
-    put(IR_SETLOCAL, t2, -1);
-    put(IR_DROP, 0, -1);
-    put(IR_LOCAL, t1, -1);
-    put(IR_LOCAL, t2, -1);
-  }
+  if (keep)
+    put(IR_DUP, 0, -1);
+  swap_blocks(o->m0, o->m1, 0);
   put(store_op(o->stype), 0, -1);
-  if (keep && t1 >= 0)
-    put(IR_LOCAL, t1, -1);
   if (keep && o->vmask) {
     put(IR_CONST, 0xFF, -1);
     put(IR_AND, 0, -1);
@@ -1781,13 +1785,15 @@ static int pending_base(Operand *o, int var)
 static void parse_index(Operand *o)
 {
   Operand r;
-  int t = o->type, simple, size, d;
+  int t = o->type, simple, size, d, start = ir_here(), h = nheld, mid;
 
   next();                         /* '[' */
   simple = (tok == T_NUM || tok == T_ID) && pending_base(o, tok == T_ID)
            && next_is_rbracket();
   if (!simple)
     rvalue(o);
+  start = code_start(start, h);   /* o's code, for i[p] (binary()) */
+  mid = ir_here();
   parse_expr(PREC_COMMA, &r);
   expect(']', 68 /* "expected ']' after an array index, not" */);
   if (!simple) {
@@ -1796,7 +1802,7 @@ static void parse_index(Operand *o)
             NULL);
     if (is_pointer(o->type) && is_pointer(value_type(r.type)))
       error(70 /* "array subscript is not an integer" */, NULL);
-    binary(o, &r, IR_ADD, -1, -1);
+    binary(o, &r, IR_ADD, start, mid);
     deref(o);
     return;
   }
@@ -2290,7 +2296,7 @@ static void compare_pointers(Operand *o, Operand *r, int op)
  */
 static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
 {
-  int lt = o->type, rt = value_type(r->type), n, t;
+  int lt = o->type, rt = value_type(r->type), n;
   int result = TY_INT;
 
   if (r->kind == K_VOID)
@@ -2304,22 +2310,17 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
     push_scaled(r, lt);         /* p + i, p - i */
     result = lt;
   } else if (!is_pointer(lt) && op == IR_ADD) {
-    /* i + p: i is already below p. If i's code can still move, it
-     * goes after p's and is scaled there ("p i IDXW"). Otherwise it
-     * is scaled with p saved in a temporary (approach.md 4(b)). */
+    /* i + p: i is already below p. The two are exchanged, so that i
+     * is on top to be scaled ("p i IDXW"): by moving i's code after
+     * p's, or, if i's start isn't known (a constant written late, or
+     * no positions given), when the code runs (swap_blocks();
+     * approach.md 4(b)). */
     n = elem_size(rt);
     rvalue(r);
-    if (n != 1 && lstart >= 0 && ir_holds(lstart)) {
-      ir_rotate(lstart, mid);
+    if (n != 1) {
+      swap_blocks(lstart, mid, 0);
       put(IR_CONST, n, -1);
       put(IR_MUL, 0, -1);
-    } else if (n != 1) {
-      t = new_temp();
-      put(IR_SETLOCAL, t, -1);
-      put(IR_DROP, 0, -1);
-      put(IR_CONST, n, -1);
-      put(IR_MUL, 0, -1);
-      put(IR_LOCAL, t, -1);
     }
     result = rt;
   } else if (is_pointer(lt) && is_pointer(rt) && op == IR_SUB) {
@@ -2370,35 +2371,6 @@ static void start_store(Operand *o, int start)
   o->assigned = 0;
 }
 
-/* Compute x op e after e's code, with e's value (on the stack) below
- * x's: the operator applied with its operands reversed. ADD and the
- * other commutative ops need nothing more; x - e is -(e - x); the rest
- * need e saved in a temporary first. For a pointer x (+= and -= only),
- * e is scaled first. x becomes the result. */
-static void reversed_op(Operand *x, int op)
-{
-  int t = -1;
-  if (is_pointer(x->type) && elem_size(x->type) != 1) {
-    put(IR_CONST, elem_size(x->type), -1);
-    put(IR_MUL, 0, -1);
-  }
-  if (swapped_op(op) != op && op != IR_SUB) {
-    t = new_temp();
-    put(IR_SETLOCAL, t, -1);
-    put(IR_DROP, 0, -1);
-  }
-  rvalue(x);
-  if (t >= 0)
-    put(IR_LOCAL, t, -1);
-  put(op, 0, -1);
-  if (t < 0 && op == IR_SUB)
-    put(IR_NEG, 0, -1);
-  if (!is_pointer(x->type))
-    x->type = TY_INT;           /* a char operand is promoted */
-  x->kind = K_VALUE;
-  x->is_bool = 0;
-}
-
 /*
  * x op= e, for x a non-indexed pending element (*p, p[3], *gp), whose
  * address is computed twice: for the load and for the store. C says x
@@ -2408,11 +2380,13 @@ static void reversed_op(Operand *x, int op)
  * (approach.md 4(d2)). So x isn't loaded until e is parsed:
  *   - if e emitted no code (a constant or a variable), the load comes
  *     first, as usual: "LLW p LW CN 1 ADD" becomes INCR;
- *   - if e has a call, the load comes after it, so both addresses
- *     follow the call, and the operator is applied reversed
- *     (reversed_op());
- *   - otherwise e can't change p (except with undefined behavior), and
- *     the load is moved ahead of e's code, if it can still move.
+ *   - otherwise the load comes after e's code, and the two values are
+ *     exchanged (swap_blocks()). If e has a call, the load must stay
+ *     after it, so both addresses follow the call: ccgen then applies
+ *     the operator reversed (ADD as is, SUB then NEG, < as >, ...) or
+ *     exchanges the values when the code runs. If not, e can't change p
+ *     (except with undefined behavior), and ccgen may move the load
+ *     ahead of e's code.
  * x is the element; r receives e; the result is left in x.
  */
 static void compound_elem(Operand *x, Operand *r, int op)
@@ -2435,14 +2409,10 @@ static void compound_elem(Operand *x, Operand *r, int op)
     binary(x, r, op, -1, -1);
     return;
   }
-  if (ncalls == calls && ir_holds(start)) {
-    xm = ir_here();
-    rvalue(x);
-    ir_rotate(start, xm);       /* x's load goes before e */
-    binary(x, r, op, -1, -1);
-    return;
-  }
-  reversed_op(x, op);
+  xm = ir_here();
+  rvalue(x);
+  swap_blocks(start, xm, ncalls != calls);
+  binary(x, r, op, -1, -1);
 }
 
 /* Bytes of code that push the address of the place o (a K_VAR or
@@ -2501,7 +2471,7 @@ static int copy_func(void)
  * are moved one at a time (LLW b SLW a ...) when that is no bigger
  * than calling memcpy; otherwise memcpy(dst, src, n) is called, with
  * dst's address first. If r's address was already emitted and o's
- * wasn't, the two are exchanged in the IR buffer, as for a store
+ * wasn't, the two are exchanged (swap_blocks()), as for a store
  * (finish_store()). A struct on the stack (a call's result) is stored
  * word by word, last first. o becomes the result: the object assigned
  * to, not an lvalue (for a K_DEREF, its address was kept with DUP).
@@ -2509,7 +2479,7 @@ static int copy_func(void)
 static void copy_struct(Operand *o, Operand *r, int start)
 {
   Operand d, v;
-  int n = type_size(o->type), k, cost = 0, mid, t, fn;
+  int n = type_size(o->type), k, cost = 0, mid, fn;
 
   if (r->kind == K_VALUE && o->kind != K_DEREF) {
     /* Its words are on the stack: store them, last word first. */
@@ -2557,16 +2527,10 @@ static void copy_struct(Operand *o, Operand *r, int start)
   if (o->kind == K_DEREF || r->kind != K_DEREF) {
     push_place_addr(o);         /* nothing for a K_DEREF */
     push_place_addr(r);
-  } else if (ir_holds(start)) {
-    mid = ir_here();
-    push_place_addr(o);
-    ir_rotate(start, mid);
   } else {
-    t = new_temp();
-    put(IR_SETLOCAL, t, -1);
-    put(IR_DROP, 0, -1);
+    mid = ir_here();            /* r's address is already there */
     push_place_addr(o);
-    put(IR_LOCAL, t, -1);
+    swap_blocks(start, mid, 0);
   }
   put(IR_CONST, n, -1);
   put(IR_CALL, 3, fn);

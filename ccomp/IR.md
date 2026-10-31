@@ -10,10 +10,11 @@ stream.
 their own, `ccgen`. The parser's program, `cccomp`, writes the IR to a
 file, `NAME.ir`, whose encoding is in [OBJECT.md](OBJECT.md),
 "`NAME.ir`"; `ccgen` reads it, lowers each op (`lower_op()`), and
-prints it (`-i`). The ops and their meanings are as below. For now the
-buffer ("The IR buffer", below) stays with the parser, so the file
-holds the ops in their final order; later it moves to `ccgen`, and the
-parser writes `IR_SWAP` instead ("Planned ops", below).
+prints it (`-i`). The ops and their meanings are as below. Since step
+4, the IR buffer is in `ccgen` too ("The IR buffer", below): the parser
+writes `IR_SWAP` where it once exchanged blocks itself, so the file
+holds the ops in the order the parser wrote them, and `-i` shows them
+so.
 
 This document describes the ops that exist now (milestones 1 to 3,
 and M4 so far).
@@ -59,25 +60,25 @@ reasons:
 5. **Reordering.** PLASMA has no SWAP, so a store through a computed
    address, which needs the value below the address, is arranged by
    the parser. It emits the address, then the value, as C reads them,
-   and then exchanges the two blocks of IR while they are still in
-   the IR buffer (`ir_rotate()`; see `IR_STORE`, and approach.md
-   4(d2)). No pseudo-ops are needed: the parser keeps IR positions in
-   its own variables (`ir_here()`). Compound assignment and `++`/`--`
+   and then has the two blocks of IR exchanged (`IR_SWAP`, below;
+   see `IR_STORE`, and approach.md 4(d2) and 18.7, A): the parser
+   counts IR ops written (`ir_here()`) and gives the blocks' lengths.
+   Compound assignment and `++`/`--`
    on a computed address need the address twice, so they still save
    it in a temporary local (4(e)).
 
 ## The IR buffer
 
-`ir_put()` (in `src/irout.c`) doesn't write an op at once. It holds up to 64 ops, so that
-the parser can still exchange two adjacent blocks of them
-(`ir_rotate(m0, m1)` turns `[m0, m1) [m1, end)` into
-`[m1, end) [m0, m1)` in place, by three reversals). Moving IR ops is
-safe because each one lowers on its own, and branches name labels by
-number. The buffer is written to the IR file at the end of each full
-expression (`ir_flush()`), at the end of each function, and when it is
-full. After that, `ir_holds()` tells the parser that the code can't
-move, and the parser falls back to temporaries. `ccgen -i` prints each
-op as it is lowered, so it shows the final order.
+`ccgen` (`src/irin.c`) doesn't lower an op as soon as it reads it. It
+holds up to 128 ops, so that an `IR_SWAP` can still exchange the two
+blocks of ops just before it, in place, by three reversals. Moving IR
+ops is safe because each one lowers on its own, and branches name
+labels by number. When the buffer is full, its older half is lowered,
+so the last 64 ops are always held; at the end of a function, all of
+it. A `SWAP` whose blocks have already been lowered (in part), or that
+must not move code, is done in other ways (see `IR_SWAP`). `ccgen -i`
+prints each op as it reads it, with the `SWAP`s, so it shows the
+parser's order, not the final one.
 
 ## Ops
 
@@ -309,11 +310,11 @@ when it sees `=`, but the store needs the value first:
   exchange and the store wait until the parser sees whether the
   assignment's value is used; if it is, a `DUP` goes after `v` first,
   so the value stays below the address: `v DUP e STORE`.
-- If the expression was too long for the IR buffer, so that `e`'s
-  code has already been lowered, the parser swaps after the fact with
-  two temporary locals: `e v SETLOCAL t1 DROP SETLOCAL t2 DROP LOCAL
-  t1 LOCAL t2 STORE`. Temporaries are freed at the end of each full
-  expression.
+- In the IR, the parser writes `e v SWAP STORE` (`e v DUP SWAP STORE`
+  if the value is used), and `ccgen` moves `v`'s code ahead of `e`'s.
+  If the expression was too long for its IR buffer, so that `e`'s code
+  has already been lowered, `ccgen` exchanges the values when the code
+  runs, through its own temporaries (see `IR_SWAP`).
 
 An assignment's value is the object's new value. For a local it is
 kept on the stack (`DLW`). For an object reached through a pending
@@ -614,26 +615,41 @@ Pseudo-ops travel with them: `OP_FUNC_BEGIN`, `OP_FUNC_END` and
 are barriers for the peephole stage. A branch machine op's operand is a label number until
 stage 4 replaces it with an offset.
 
-## Planned ops (approach.md 18.7, A and C; not built yet)
+## Reordering: `IR_SWAP` *a* = top block's length, *f* = the block below's length (or -1)
 
-### `IR_SWAP` *a* = top block's length, *f* = the block below's length (or -1)
+(Approach.md 18.7, A; since step 4.)
 
 - **Stack:** `( x y -- y x )`, where each of `x` and `y` is the
   value left by a block of IR ops just before the `SWAP`: the last *a*
   ops, and the *f* ops before them. The top block may also leave a
   copy of its value (it ends in `IR_DUP`, for a store whose value is
-  used); both copies end up below `x`.
-- **Lowering (in `ccgen`):** if both blocks are still in its IR
-  buffer, exchange them there, so the `SWAP` costs nothing (what
-  `ir_rotate()` does today, in the parser). If not, or if *f* is -1
-  (the code must not move: a call is involved), rewrite it with the
-  next op (`SWAP ADD` → `ADD`; `SWAP SUB` → `SUB NEG`; `SWAP LT` →
-  `GT`; ...), or exchange the values through `ccgen`'s own frame
-  temporaries.
+  used); both copies end up below `x`. *f* = -1: the code must not
+  move (a call in `e` of `x op= e` must stay before `x`'s load). *a* =
+  0 (with *f* -1): the blocks aren't known, only the values (`i[p]`'s
+  `i` written late, as a held constant).
+- **Uses:** a store through a computed address (`*f() = e`), `i + p`
+  (so that `i` is on top to be scaled), a struct copy whose source
+  address came first, and `x op= e` for a pointed-to `x`.
+- **Lowering (in `ccgen`, `src/irin.c`):** if *f* isn't -1 and both
+  blocks are still held, exchange them in place: the `SWAP` costs
+  nothing, and stays in the buffer as done, so that an enclosing block
+  keeps the length the parser counted. Otherwise, with the next op:
+  - **free:** before a commutative op (`ADD`, `MUL`, `AND`, `OR`,
+    `XOR`, `EQ`, `NE`) nothing; before `SUB`, `SUB NEG`; before `LT`,
+    `GT` (and so on): the op with its operands reversed;
+  - **stash:** if the top block is still held (and holds no other
+    `SWAP` that uses a temporary): `SLW t0` just before it and `LLW t0`
+    after, saving the value below across it: one temporary;
+  - **exchange:** `SLW t0 SLW t1 LLW t0 LLW t1` (with `DROP` and a
+    second `LLW t0` when the top block left two copies): two
+    temporaries.
+  The temporaries are `ccgen`'s own (`FRAME_TEMP()`): stage 4 places
+  them past the parser's frame when the function ends, and adds them
+  to the frame size.
 - **Why it differs from PLASMA:** PLASMA has no `SWAP` (issue 21).
-  With one, the fallback becomes that opcode, in `ccgen` alone.
-- **Replaces:** the parser's buffer, its `ir_rotate()` calls and
-  their temporary fallbacks, and `reversed_op()`.
+  With one, the exchange becomes that opcode, in `ccgen` alone.
+
+## Planned ops (approach.md 18.7, C; not built yet)
 
 ### `IR_ULT`, `IR_UGT`, `IR_ULE`, `IR_UGE` *a* = the right operand's block length
 
@@ -653,8 +669,7 @@ stage 4 replaces it with an offset.
 ## Adding ops
 
 New IR ops arrive with the milestones that need them. Reordering
-needs none: it is done by exchanging blocks in the IR buffer (M5
-step 4). The `for` increment's side buffer (M10) may add some.
+is `IR_SWAP` (18.7, A). The `for` increment's side buffer (M10) may add some.
 
 Each new op gets an entry here with the same headings: stack effect,
 current lowering, why it differs from PLASMA, and what it may become

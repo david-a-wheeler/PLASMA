@@ -59,6 +59,9 @@
 #define MAX_FUNC_RELOCS 128 /* relocations in one function (112) */
 #define MAX_RETURNS  32     /* frame-size bytes (ENTER, LEAVEs) in one
                              * function (23) */
+#define MAX_TEMP_USES 32    /* operands on ccgen's own temporaries in one
+                             * function: 4 to 6 for each IR_SWAP done
+                             * when the code runs */
 #define MAX_NEST     32     /* nesting of parentheses and blocks */
 #define MAX_LABELS   104    /* branch targets in one function (90); at
                              * most 128, since case_label[] is char */
@@ -309,7 +312,9 @@ enum {
   /* binary: ( x y -- x op y ) */
   IR_ADD, IR_SUB, IR_MUL, IR_DIV, IR_MOD,
   IR_AND, IR_OR, IR_XOR, IR_SHL, IR_SHR,
-  /* comparisons, binary, giving C's 1 or 0 (not PLASMA's $FFFF) */
+  /* comparisons, binary, giving C's 1 or 0 (not PLASMA's $FFFF). LT,
+   * GT and LE, GE stay adjacent pairs, IR_LT even: irin.c reverses one
+   * by flipping bit 0. */
   IR_EQ, IR_NE, IR_LT, IR_GT, IR_LE, IR_GE,
   /* unary: ( x -- op x ) */
   IR_NEG, IR_COMP,
@@ -325,6 +330,10 @@ enum {
   IR_CASES,       /* a = the number of cases that follow */
   IR_CASEVAL,     /* a = one case's value; then: */
   IR_CASETO,      /* a = the label of that case's code */
+  /* reordering (approach.md 18.7, A), done by ccgen: */
+  IR_SWAP,        /* a = the top block's length in IR ops, f = the
+                   * block below's, or -1 if code must not move:
+                   * exchange the values the two blocks left */
   IR_NOPS         /* the number of IR ops */
 };
 
@@ -341,14 +350,10 @@ enum { REC_LINE = 'L', REC_NAME = 'N', REC_WORD = 'W', REC_SECOND = 'X',
 #define IR_BYTE_OP  0x80
 #define IR_TAG_END  0x40
 
-/* The front end's side (irout.c): the IR buffer, which the parser can
- * still reorder (ir_rotate()), and the writer of NAME.ir. */
+/* The front end's side (irout.c): the writer of NAME.ir. */
 void ir_open(const char *base);
 void ir_put(int op, int a, int f);   /* f: a function, or -1 */
-void ir_flush(void);
-int ir_here(void);
-int ir_holds(int pos);
-void ir_rotate(int m0, int m1);
+int ir_here(void);                  /* IR ops written so far */
 int  data_string(const char *s, int len);   /* pool offset of first char */
 int  data_offset(void);                     /* data bytes written so far */
 void data_byte(int v);
@@ -363,6 +368,7 @@ void ir_abort(void);                        /* after an error */
 void gen_file(const char *base);
 void gen_abort(void);                       /* after an error */
 const char *func_name(int f);       /* a function's name, for messages */
+void dump_ir(int op, int a, int f);         /* lower.c: one op, for -i */
 
 /* ---------- Stage 2 -> 3 -> 4: machine ops ---------- */
 
@@ -409,6 +415,11 @@ enum { FIX_NONE, FIX_DATA, FIX_FUNC, FIX_STR, FIX_DSYM };
 
 /* Marks an ENTER/LEAVE frame size that is filled in at function end. */
 #define FRAME_LATER (-1)
+
+/* A frame operand (LLW, SLW, ...) for one of the back end's own two
+ * temporaries, k = 0 or 1, which stage 4 places past the parser's
+ * frame when the function ends (IR_SWAP's run-time exchange). */
+#define FRAME_TEMP(k) (-2 - (k))
 
 /* A machine op: 8 bytes in ccish (four words), so that indexing the
  * peephole window is a shift, not a multiply. */

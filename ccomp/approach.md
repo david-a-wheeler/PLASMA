@@ -2875,6 +2875,55 @@ needs a 64K Apple II emulator (none is installed here), so whether
 56,284 bytes load, and 42,964 run, is still unknown. The decisions
 this step was to inform (`CCISH_CHECKS`, F1, B) wait for E1, or for
 the user.
+
+**Step 4 (A, `IR_SWAP`) is done** (2026-10-31). Choices, open for
+review:
+- The parser writes ops straight to the file; `ir_here()` counts them,
+  and `swap_blocks()` puts `IR_SWAP` (*a* the top block's length, *f*
+  the block below's, -1 to keep code in place). The four uses:
+  `finish_store()` (with `keep`, the `DUP` ends the top block),
+  `i + p` in `binary()`, `copy_struct()` (source address first), and
+  `compound_elem()` (*f* -1 when `e` has a call). Gone from the parser:
+  its buffer, `ir_holds()`/`ir_rotate()`, the three temporary
+  fallbacks and `reversed_op()`; `swapped_op()` stays (`c op x`).
+- `parse_index()` now passes positions to `binary()`, so `i[p]` moves
+  code too (it was a temporary). Where a start isn't known, the SWAP's
+  lengths are 0 and -1.
+- `ccgen`'s buffer (`src/irin.c`): 128 IR ops as parallel arrays; when
+  full, the older half is lowered, so the last 64 are always held (the
+  parser's buffer held at most 64, flushed at each expression's end).
+  A SWAP done by moving code stays as a done placeholder: found while
+  testing, an enclosing block's length (counted by the parser) would
+  otherwise be one short, and the wrong code would move.
+- A SWAP that can't move code waits for the next op, then: **free**
+  (commutative ops; `SUB NEG`; `<` as `>`); **stash** (the value below
+  saved in temporary 0 just before the still-held top block, and loaded
+  after: one temporary, what `reversed_op()` and the old fallbacks
+  did); or **exchange** (two temporaries; keeps the copy after a
+  `DUP`). A first version always exchanged, which made `x /= f()` and
+  `i + p` past the buffer bigger than before; the stash brought them
+  back. The temporaries are `FRAME_TEMP(k)` operands, placed past the
+  parser's frame at the function's end (emit.c), only as many as used;
+  `MAX_TEMP_USES` 32, message 225.
+- `-i` now prints at read time (irin.c), so it shows the SWAPs.
+- Considered (the user asked): group markers (`STARTGROUP seq1
+  NEXTGROUP seq2`) instead of lengths. Not chosen: the parser learns
+  that a swap is needed only after writing both sequences, and the
+  file can't take a marker afterward, so every possibly swapped
+  sequence would need one; lengths carry the same information at no
+  cost. A check that each moved block leaves one value (a stack-effect
+  table in `ccgen`) would catch a wrong length; possible, not done.
+- Output: the self-compile is byte-identical; three tests changed:
+  `arrays` (`2[a]` now `LLA 0 CN 2 IDXW`, 1,458 to 1,453 bytes),
+  `compound_call` (the two pointer cases with calls, 855 to 859 bytes;
+  its comment updated), and `rotate_overflow`, rewritten: its 40-term
+  sums now fit `ccgen`'s buffer, so they are 100 terms (199 IR ops) to
+  still test the exchange and the stash (expected output by hand: 100
+  each). 276 tests pass.
+- Measured (small build): `cccomp` 42,964 to **41,985** (code 26,801
+  to 26,210, data 15,045 to 14,657; module file 54,997); `ccgen`
+  17,490 to 19,645 (the larger buffer, the three ways, the
+  temporaries; more than the 0.4K estimated).
    - **Smaller path buffers in diag.c** (agreed, in every program; also
      in `cccomp` and `ccrel`): `msg_path[300]`, `stream_name()`'s
      `buf[300]` and `base_of()`'s `buf[256]` are 856 bytes of data

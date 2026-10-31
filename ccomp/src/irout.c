@@ -1,8 +1,8 @@
 /*
- * The front end's output: the IR buffer, and the writer of the IR file,
- * NAME.ir, which the back end (ccgen) reads (approach.md 18.7; format
- * in ../OBJECT.md). The file holds, in the order they are made:
- *   - the IR ops, as they leave the buffer;
+ * The front end's output: the writer of the IR file, NAME.ir, which
+ * the back end (ccgen) reads (approach.md 18.7; format in ../OBJECT.md).
+ * The file holds, in the order they are made:
+ *   - the IR ops, as the parser puts them;
  *   - the data and string records (D, R, S), exactly as the stream file
  *     will have them, written as the parser declares data;
  *   - a line record before each function, and a name record before the
@@ -10,17 +10,9 @@
  *   - the symbol summary, last, with its code offsets 0, which only
  *     ccgen knows.
  *
- * IR ops first wait in a small buffer, so that the parser can still
- * reorder the code of the current expression (approach.md 4(d2)). The
- * parser notes positions in the IR stream (ir_here()), and
- * ir_rotate() exchanges two adjacent blocks of ops that are still in
- * the buffer: *d++ = *s++ is parsed address first, but needs the value
- * first, since PLASMA's stores take the address on top and there is no
- * SWAP. Moving ops is safe because each lowers on its own and branches
- * name labels by number. The buffer is flushed at the end of each full
- * expression and of each function, and when it is full; then
- * ir_holds() tells the parser that code before the flush can no longer
- * move.
+ * The parser reorders code without a buffer of its own: it counts the
+ * ops written (ir_here()), and puts IR_SWAP with the lengths of the two
+ * blocks to exchange, which ccgen does (approach.md 18.7, A).
  */
 #include <string.h>
 #include "ccish.h"
@@ -37,9 +29,7 @@ static int nstrs;               /* bytes in the string pool so far */
 static unsigned char drun[DATA_RUN];
 static int ndrun;
 
-/* The source line where the function being put started, for its line
- * record. */
-static int func_line;
+static int nops;                /* IR ops written so far */
 
 /* Create the IR file for output name base, and write its header: the
  * magic, the version, and the source file's name. */
@@ -73,14 +63,16 @@ static void name_func(int f)
   bwrite(&out, (const unsigned char *)s, n);
 }
 
-/* Write one IR op: its records first (a function's line, a name), then
- * its operands' prefixes, then its tag. a is 0, a byte after the tag, or
- * a W prefix's word; f (if not -1) is an X prefix's word. */
-static void write_op(int op, int a, int f)
+/* Stage 1's output: write one IR op, its records first (a function's
+ * line, a name), then its operands' prefixes, then its tag. a is 0, a
+ * byte after the tag, or a W prefix's word; f (if not -1) is an X
+ * prefix's word. */
+void ir_put(int op, int a, int f)
 {
+  nops++;
   if (op == IR_FUNC) {
     bputc(&out, REC_LINE);
-    bputw(&out, func_line);
+    bputw(&out, src_line);
   }
   if (op == IR_FUNC || op == IR_CALL)
     name_func(f);
@@ -100,90 +92,11 @@ static void write_op(int op, int a, int f)
   }
 }
 
-/* The IR ops waiting to be written. 64 is far more than a typical
- * statement needs (*d++ = *s++ is 9); see approach.md 4(d2). */
-#define IR_BUF 64
-
-typedef struct {
-  int op, a;
-  int f;          /* a function, or -1 */
-} IrOp;
-
-static IrOp buf[IR_BUF];
-static int nbuf;
-static int base;            /* the IR position of buf[0] */
-
-/* Write every buffered op, oldest first. Positions keep counting from
- * where they were, so that a mark taken before this is seen as gone. */
-static void write_all(void)
-{
-  int i;
-  for (i = 0; i < nbuf; i++)
-    write_op(buf[i].op, buf[i].a, buf[i].f);
-  base += nbuf;
-  nbuf = 0;
-}
-
-/* End of a full expression (or a function): write every buffered op.
- * No mark can be in use, so positions start again from 0. */
-void ir_flush(void)
-{
-  write_all();
-  base = 0;
-}
-
-/* The IR position just after the last op put: where the next op will
- * go. */
+/* The number of IR ops written so far: the IR position of the next.
+ * The parser takes the lengths of blocks to exchange from it. */
 int ir_here(void)
 {
-  return base + nbuf;
-}
-
-/* Is the op at IR position pos (or the position itself, if nothing has
- * been put there yet) still in the buffer, so that it can be moved? */
-int ir_holds(int pos)
-{
-  return pos >= base;
-}
-
-/* Reverse the buffered ops from index i up to (not including) j. */
-static void reverse(int i, int j)
-{
-  IrOp t;
-  while (i < --j) {
-    t = buf[i];
-    buf[i++] = buf[j];
-    buf[j] = t;
-  }
-}
-
-/* Exchange the block of ops from position m0 to m1 with the block from
- * m1 to the end, by reversing each, then both together (Bentley,
- * Programming Pearls, column 2). The caller checks ir_holds(m0). */
-void ir_rotate(int m0, int m1)
-{
-  int i = m0 - base, j = m1 - base;
-  if (i < 0 || i > j || j > nbuf)
-    fatal(175 /* "internal error: bad IR rotation" */, NULL);
-  reverse(i, j);
-  reverse(j, nbuf);
-  reverse(i, nbuf);
-}
-
-/* Stage 1's output: buffer one IR op. A full buffer is written first,
- * and the end of a function flushes everything. */
-void ir_put(int op, int a, int f)
-{
-  if (nbuf == IR_BUF)
-    write_all();
-  if (op == IR_FUNC)
-    func_line = src_line;
-  buf[nbuf].op = op;
-  buf[nbuf].a = a;
-  buf[nbuf].f = f;
-  nbuf++;
-  if (op == IR_ENDFUNC)
-    ir_flush();
+  return nops;
 }
 
 /* ---------- Data and strings ---------- */
@@ -296,7 +209,6 @@ void ir_finish(void)
 {
   int i, flags, off, size, hash, name, nsyms = data_sym_count();
 
-  ir_flush();
   flush_data();
   bputc(&out, REC_SUMMARY);
   bputw(&out, ndata);

@@ -221,3 +221,4 @@
 222 too many names shared between objects
 223 too many objects to link
 224 too many function names for ccgen
+225 too many run-time swaps in

@@ -52,6 +52,15 @@ static int nrelocs;
 static int frame_at[MAX_RETURNS];
 static int nframe;
 
+/* The operand bytes on the back end's own temporaries (FRAME_TEMP(k),
+ * for IR_SWAP's run-time exchange) in the current function, filled in
+ * at its end with offsets past the parser's frame: where each is, and
+ * its k. */
+static int temp_at[MAX_TEMP_USES];
+static char temp_k[MAX_TEMP_USES];
+static int ntemp;
+static int temp_words;          /* how many temporaries are used */
+
 /*
  * Labels of the current function, resolved with fixup chains
  * (approach.md 18.2). Until label n is placed, label_word[n] is the
@@ -142,6 +151,24 @@ static void frame_byte(int v)
   code_byte(v);
 }
 
+/* Append a frame operand byte for operand a: a local's frame offset,
+ * or, for one of the back end's temporaries, a byte that the function's
+ * end fills in. */
+static void frame_operand(int a)
+{
+  if (a <= FRAME_TEMP(0)) {
+    if (ntemp >= MAX_TEMP_USES)
+      error(225 /* "too many run-time swaps in" */, func_name(fn));
+    temp_at[ntemp] = nfbuf;
+    temp_k[ntemp] = (char)(FRAME_TEMP(0) - a);
+    if (temp_k[ntemp] >= temp_words)
+      temp_words = temp_k[ntemp] + 1;
+    ntemp++;
+    a = 0;
+  }
+  code_byte(a);
+}
+
 /* Put the 16-bit word v at fbuf offset at, low byte first. */
 static void patch_word(int at, int v)
 {
@@ -227,10 +254,13 @@ static void drop_frame(void)
 /* Write the finished function to the stream, as an F record. */
 static void end_function(int frame_size)
 {
-  int i;
+  int i, base = frame_size;
+  frame_size += 2 * temp_words;     /* the back end's temporaries */
   if (frame_size > 255)
     error(184 /* "too many parameters and locals in" */,
           func_name(fn));
+  for (i = 0; i < ntemp; i++)
+    fbuf[temp_at[i]] = (unsigned char)(base + 2 * temp_k[i]);
   for (i = 0; i < nframe; i++)
     fbuf[frame_at[i]] = (unsigned char)frame_size;
   if (frame_size == 0)
@@ -264,7 +294,7 @@ void emit_put(Mop *m)
   switch (m->op) {
   case OP_FUNC_BEGIN:
     fn = m->fn;
-    nfbuf = nrelocs = nframe = 0;
+    nfbuf = nrelocs = nframe = ntemp = temp_words = 0;
     for (i = 0; i < MAX_LABELS; i++) {
       label_word[i] = NO_LINK;
       label_placed[i] = 0;
@@ -297,9 +327,11 @@ void emit_put(Mop *m)
     op = op & 4 ? OP_LAW : OP_LLW;
   switch (op) {
   case OP_CB: case OP_CFFB: case OP_ANDI: case OP_ADDI: case OP_SUBI:
+    code_byte(m->a);
+    break;
   case OP_LLA: case OP_LLB: case OP_LLW: case OP_DLB: case OP_DLW:
   case OP_SLB: case OP_SLW:
-    code_byte(m->a);
+    frame_operand(m->a);
     break;
   case OP_CW: case OP_LA: case OP_CALL: case OP_LAB: case OP_LAW:
   case OP_SAB: case OP_SAW: case OP_DAB: case OP_DAW:
