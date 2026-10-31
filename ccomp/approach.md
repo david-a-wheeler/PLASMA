@@ -2858,6 +2858,23 @@ are estimates, to be measured.
      3,434 and code 1,623 to 1,604; the window's data 100 to 80).
      Output byte-identical. The full conversion of the window stays an
      option, if speed ever matters more than those 200 bytes.
+
+**Step 3, measured** (2026-10-31, after steps 1 and 2; small build,
+`make measure`):
+
+| Program | Code | Data | Strings | In all | Module file | Of it RLD and ESD |
+|---------|------|------|---------|--------|-------------|-------------------|
+| `cccomp` | 26,801 | 15,045 | 1,118 | 42,964 | 56,284 | 13,166 |
+| `ccgen` | 8,063 | 8,798 | 629 | 17,490 | 21,222 | 3,578 |
+| `ccrel` | 5,884 | 7,752 | 196 | 13,832 | 16,944 | 2,958 |
+
+Before the split (541505c9), `cccomp` was 52,272 with a 66,964-byte
+module file. `cccomp`'s data is almost all zeros (F6a would take them
+out of the module file and the load-time peak). Not done: E1, which
+needs a 64K Apple II emulator (none is installed here), so whether
+56,284 bytes load, and 42,964 run, is still unknown. The decisions
+this step was to inform (`CCISH_CHECKS`, F1, B) wait for E1, or for
+the user.
    - **Smaller path buffers in diag.c** (agreed, in every program; also
      in `cccomp` and `ccrel`): `msg_path[300]`, `stream_name()`'s
      `buf[300]` and `base_of()`'s `buf[256]` are 856 bytes of data
