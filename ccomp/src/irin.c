@@ -12,9 +12,20 @@
  * The file is read once, in order, and every record is checked, so that
  * a damaged file is reported rather than compiled.
  */
+#include <stdio.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
+#include "bio.h"
 #include "nam.h"
+#include "obj.h"
+#include "ir.h"
+#include "mop.h"
+#include "irin.h"
+#include "lower.h"
+#include "emit.h"
+#include "helper.h"
 
 /* The IR file, and its output name (for messages). */
 static Bfile in;
@@ -375,7 +386,7 @@ static int lower_free_swap(int i)
   }
   if (next >= IR_LT && next <= IR_GE) {
     /* LT, GT and LE, GE are adjacent pairs in the IR's numbering
-     * (ccish.h): each is the other with bit 0 flipped. */
+     * (ir.h): each is the other with bit 0 flipped. */
     lower_op(next ^ 1, 0, -1);
     return 2;
   }

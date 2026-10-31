@@ -1,9 +1,11 @@
 /*
  * ccpp's macros (ppmac.c): the #define table, and their expansion.
- * Include after ccish.h.
+ * Include after token.h.
  */
 #ifndef PPMAC_H
 #define PPMAC_H
+
+#define MAX_PP_PARAMS 16    /* parameters of one macro */
 
 extern int pp_from_lexer;           /* pp_next()'s token is the lexer's */
 

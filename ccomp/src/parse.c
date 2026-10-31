@@ -102,12 +102,29 @@
  * stage drops the unreachable code after it.
  */
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
+#include "token.h"
 #include "fixed.h"
 #include "nam.h"
 #include "tokin.h"
+#include "obj.h"
+#include "ir.h"
+#include "name.h"
+#include "type.h"
+#include "parse.h"
+#include "irout.h"
 
-/* Functions: see ccish.h. */
+#define MAX_PARAMS   16
+#define MAX_NEST     32     /* nesting of parentheses and blocks */
+#define MAX_PARAM_TYPES 433 /* parameter types of all declared functions
+                             * (393) */
+#define MAX_BYVAL    8      /* bytes in a struct passed or returned by value */
+#define MAX_CASES    36     /* case labels in all the switches open at once
+                             * (29); at most 255, a SEL table's limit */
+
+/* Functions: see parse.h. */
 int fn_name[MAX_FUNCS];
 char fn_type[MAX_FUNCS];
 int fn_ptypes[MAX_FUNCS];

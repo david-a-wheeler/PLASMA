@@ -7,11 +7,19 @@
  * id is simply its place among the identifiers, and NAME.nam is the pool
  * written out in order, with no table from ids to entries.
  */
+#include <stdio.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
+#include "bio.h"
 #include "token.h"
 #include "fixed.h"
 #include "ppname.h"
+
+#define MAX_PP_POOL  9000   /* bytes of ccpp's names and file names,
+                             * with a length byte each (8,179: parse.c
+                             * with its headers, macros' names too) */
 
 #define ENT_FILE  0x80          /* in a length byte: a file's name */
 #define ENT_MACRO 0x40          /* an identifier that names a macro */

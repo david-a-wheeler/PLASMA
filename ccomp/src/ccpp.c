@@ -17,10 +17,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "diag.h"
 #include "token.h"
-#include "pp.h"
 #include "ppout.h"
+#include "pp.h"
 
 /* The output name, to remove the outputs after an error. */
 static const char *base_name;

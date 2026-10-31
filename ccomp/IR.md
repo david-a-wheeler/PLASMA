@@ -599,7 +599,7 @@ value is on top of the stack; for a `void` function, nothing is.
 ## Between stages 2 and 4: machine ops
 
 Lowering passes *machine ops* to the peephole stage, which passes them
-to stage 4 (`Mop` in `src/ccish.h`). A machine op is a real PLASMA
+to stage 4 (`Mop` in `src/mop.h`). A machine op is a real PLASMA
 opcode, its operands, and two kinds of deferred information:
 
 - **`FRAME_LATER`** as an `ENTER` or `LEAVE` frame-size operand: stage 4

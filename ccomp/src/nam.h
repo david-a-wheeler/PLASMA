@@ -1,6 +1,6 @@
 /*
  * The reader of the name file, NAME.nam (nam.c, ../CCPP.md), for cccomp
- * and ccgen. Include after ccish.h.
+ * and ccgen.
  */
 #ifndef NAM_H
 #define NAM_H

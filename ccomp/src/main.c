@@ -24,8 +24,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
 #include "token.h"
+#include "obj.h"
+#include "ir.h"
+#include "parse.h"
+#include "irin.h"
+#include "link.h"
 #include "pp.h"
 
 /* Files to remove if compilation fails: the streams (unless -k) and a

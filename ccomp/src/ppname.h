@@ -2,7 +2,7 @@
  * ccpp's name pool (ppname.c): every identifier ccpp meets, and every
  * source file's name, in the order first met; an identifier's id is
  * its place among the identifiers, from 1. Written out as NAME.nam
- * (../CCPP.md). Include after ccish.h.
+ * (../CCPP.md). Include after bio.h.
  */
 #ifndef PPNAME_H
 #define PPNAME_H

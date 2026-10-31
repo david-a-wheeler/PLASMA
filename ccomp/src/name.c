@@ -6,7 +6,13 @@
  * no pool of their own: cccomp keeps no spellings (approach.md, "ccpp
  * design").
  */
-#include "ccish.h"
+#include <stddef.h>
+#include "build.h"
+#include "diag.h"
+#include "name.h"
+
+#define MAX_IDS      280    /* enum constants and typedef names (273, in
+                             * tokin.c) */
 
 static int id_nm[MAX_IDS];
 static int id_v[MAX_IDS];

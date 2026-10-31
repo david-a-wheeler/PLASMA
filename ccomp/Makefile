@@ -20,9 +20,7 @@ BACK   = src/irin.c src/lower.c src/peep.c src/emit.c src/helper.c
 LINK   = src/link.c
 PLVM = ../src/plvm
 
-HEADERS = src/ccish.h src/build.h src/cclimits.h src/ir.h src/obj.h \
-          src/mop.h src/token.h src/fixed.h src/ppname.h src/pplex.h src/ppout.h \
-          src/pp.h src/ppmac.h src/ppif.h src/tokin.h src/nam.h
+HEADERS = $(wildcard src/*.h)
 
 all: ccish ccpp cccomp ccgen ccrel
 

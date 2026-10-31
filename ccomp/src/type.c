@@ -24,7 +24,17 @@
  * always next to each other, since a struct may be defined inside
  * another's member list.
  */
-#include "ccish.h"
+#include <stddef.h>
+#include "build.h"
+#include "diag.h"
+#include "type.h"
+
+#define MAX_TYPES    56     /* distinct types (46); at most 128, since
+                             * char tables (fn_type[], param_types[])
+                             * hold unqualified types, and a host's char
+                             * may be signed */
+#define MAX_TAGS     10     /* struct tags, including hidden ones (7) */
+#define MAX_MEMBERS  64     /* struct members, in all structs (51) */
 
 static char tkind[MAX_TYPES] = {TK_VOID, TK_CHAR, TK_INT, TK_UINT};
 static int tsub[MAX_TYPES];     /* a handle, with qualifier bits */

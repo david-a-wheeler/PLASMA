@@ -300,7 +300,7 @@ one op. So the reader needs no table of which ops take which
 operands, and neither does the writer: it chooses the form from the
 values.
 
-The op numbers are the order of the `IR_*` enum in `src/ccish.h`
+The op numbers are the order of the `IR_*` enum in `src/ir.h`
 (changing them changes the version):
 
 | Numbers | Ops |

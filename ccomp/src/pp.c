@@ -10,16 +10,23 @@
  * taken yet), C_DONE (skipped, a branch was taken) or C_DEAD (skipped,
  * since the group around it is), with C_ELSE once its #else is seen.
  */
+#include <stdio.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
+#include "bio.h"
 #include "token.h"
-#include "fixed.h"
 #include "ppname.h"
 #include "pplex.h"
 #include "ppmac.h"
 #include "ppif.h"
 #include "ppout.h"
 #include "pp.h"
+
+#define MAX_IF_NEST  8      /* #ifdef groups open at once (3) */
+#define MAX_INC_DIRS 8      /* -I directories */
+#define MAX_PP_OPTS  16     /* -D and -U options */
 
 int pp_cur_file;
 

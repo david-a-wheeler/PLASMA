@@ -20,13 +20,27 @@
  * __VA_ARGS__ if mac_va[m]), and its body is mac_len[m] bytes of body[]
  * from mac_at[m]; bodies are in the table's order, with no gaps.
  */
+#include <stdio.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
+#include "bio.h"
 #include "token.h"
 #include "fixed.h"
 #include "ppname.h"
 #include "pplex.h"
 #include "ppmac.h"
+
+#define MAX_MACROS   96     /* macros defined at once (86, in pp.c) */
+#define MAX_MACRO_BYTES 512 /* their bodies, as tokens (274): room for
+                             * more than ccish's own, which are short */
+#define MAX_EXPAND   16     /* macro expansions inside one another (2) */
+#define MAX_EXP_BYTES 256   /* bytes of the expansions and arguments
+                             * being read, and of the arguments' own
+                             * expansions (two buffers; 15 and 3): room
+                             * for macros longer than ccish's */
+#define MAX_ARG_SLOTS 32    /* arguments of the calls being expanded (1) */
 
 int pp_from_lexer;
 

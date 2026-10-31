@@ -52,7 +52,13 @@
  * but waits in the window in order, even in dead code.
  * All are valid for C: they don't change any value the program sees.
  */
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "obj.h"
+#include "mop.h"
+#include "lower.h"
+#include "peep.h"
+#include "emit.h"
 
 /* Big enough for an unused a[i]++ through a pointer with an offset:
  * DUP INCR LLW p LLW i IDXW CB d ADD SW DROP. */

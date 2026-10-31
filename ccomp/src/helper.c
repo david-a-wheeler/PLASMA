@@ -18,7 +18,13 @@
  * The ops are lowered directly, not through irin.c's buffer, so the
  * unsigned comparisons are written out with their sign flips.
  */
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "obj.h"
+#include "ir.h"
+#include "mop.h"
+#include "lower.h"
+#include "helper.h"
 
 int helper_used;
 

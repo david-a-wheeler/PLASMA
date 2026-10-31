@@ -9,8 +9,11 @@
  * the functions and globals a symbol summary lists, so writing all their
  * names takes about one pass.
  */
+#include <stdio.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
 #include "token.h"
 #include "nam.h"
 

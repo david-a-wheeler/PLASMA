@@ -15,8 +15,12 @@
  * passed over without being split into tokens (so "don't" isn't an
  * unterminated literal there).
  */
+#include <stdio.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
+#include "bio.h"
 #include "token.h"
 #include "ppname.h"
 #include "pplex.h"

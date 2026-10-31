@@ -4,8 +4,18 @@
  * and chooses their encodings, mostly 1:1. Each IR op is described in
  * ../IR.md. -i prints each op (dump_ir()) as irin.c reads it.
  */
+#include <stdio.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
+#include "obj.h"
+#include "ir.h"
+#include "mop.h"
+#include "irin.h"
+#include "lower.h"
+#include "peep.h"
+#include "helper.h"
 
 /* Each IR op's name, for -i. */
 static const char *const ir_names[] = {

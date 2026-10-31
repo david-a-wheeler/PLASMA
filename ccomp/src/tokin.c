@@ -6,8 +6,12 @@
  * looked up in the name file, NAME.nam (nam.c), only to be printed in a
  * message.
  */
+#include <stdio.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
+#include "bio.h"
 #include "token.h"
 #include "nam.h"
 #include "tokin.h"

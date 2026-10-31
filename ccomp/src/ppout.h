@@ -1,6 +1,6 @@
 /*
  * ccpp's output (ppout.c): the token stream, NAME.i, and at the end the
- * name file, NAME.nam (../CCPP.md). Include after ccish.h.
+ * name file, NAME.nam (../CCPP.md). Include after build.h.
  */
 #ifndef PPOUT_H
 #define PPOUT_H

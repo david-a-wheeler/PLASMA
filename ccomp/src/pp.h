@@ -1,6 +1,6 @@
 /*
  * ccpp's driver (pp.c): preprocess one source file into its token
- * stream and name file (../CCPP.md). Include after ccish.h.
+ * stream and name file (../CCPP.md).
  */
 #ifndef PP_H
 #define PP_H

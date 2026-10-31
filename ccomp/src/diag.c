@@ -8,7 +8,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
+#include "obj.h"
 
 const char *src_name = "";
 int src_line;

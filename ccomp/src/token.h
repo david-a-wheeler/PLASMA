@@ -6,6 +6,9 @@
 #ifndef TOKEN_H
 #define TOKEN_H
 
+#define MAX_STR      255    /* bytes in one string literal, so that it
+                             * is a PLASMA string too (85) */
+
 #define SUFFIX_I     ".i"
 #define SUFFIX_NAM   ".nam"
 #define TOK_VERSION  1        /* NAME.i's format, after its "CTK" */

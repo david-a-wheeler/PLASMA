@@ -21,8 +21,23 @@
  * it is written. Memory use doesn't depend on the size of the program.
  * The final pass (link.c) turns the files into a module.
  */
+#include <stdio.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
+#include "bio.h"
+#include "obj.h"
+#include "ir.h"
+#include "mop.h"
+#include "irin.h"
+#include "emit.h"
+
+#define MAX_RETURNS  32     /* frame-size bytes (ENTER, LEAVEs) in one
+                             * function (23) */
+#define MAX_TEMP_USES 32    /* operands on ccgen's own temporaries in one
+                             * function: 4 to 6 for each IR_SWAP done
+                             * when the code runs */
 
 /* The output file: the stream, then the symbol summary
  * (emit_summary()). One Bfile serves both, one after the other. */

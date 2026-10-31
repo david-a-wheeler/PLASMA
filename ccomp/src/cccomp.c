@@ -16,8 +16,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
 #include "token.h"
+#include "obj.h"
+#include "ir.h"
+#include "parse.h"
 
 /* The IR file's output name, to remove it after an error. */
 static const char *base_name;

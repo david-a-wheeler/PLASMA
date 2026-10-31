@@ -410,6 +410,7 @@ function returns exactly one.
 | Path | Contents |
 |------|----------|
 | `src/main.c` | `ccish`: the command line, then every pass |
+| `src/*.h` | Each `.c` file's interface (`parse.h` for `parse.c`), and headers for what several must agree on: `build.h` (the builds; read it first), `cclimits.h`, `token.h`, `fixed.h`, `ir.h`, `obj.h` and `mop.h` |
 | `src/ccpp.c`, `src/cccomp.c`, `src/ccgen.c`, `src/ccrel.c` | The preprocessor, the front end, the back end and the final pass as programs of their own |
 | `src/diag.c` | Error messages and stream files, shared by all the programs |
 | `ccish.msg` | The text of every error and warning, by number (see "Messages") |
@@ -475,9 +476,11 @@ file is used, and that the file's numbers ascend.
 * Output has only been tested on the C VM (`plvm`), not yet on a 6502
   VM.
 * Compilation stops at the first error.
-* Limits are fixed sizes in `src/ccish.h`, set just above what
-  ccish's own source needs, since every byte counts on a 64K machine
-  (approach.md, "Table sizes"). Going past one is a clear error.
+* Limits are fixed sizes, each a `#define` beside its table (those
+  several programs share in `src/cclimits.h`, `src/obj.h` and
+  `src/ir.h`), set just above what ccish's own source needs, since
+  every byte counts on a 64K machine (approach.md, "Table sizes").
+  Going past one is a clear error.
   - One function: 1280 bytes of bytecode, 128 calls and data
     references, 104 labels, and 31 `return`s (`MAX_FUNC_CODE`,
     `MAX_FUNC_RELOCS`, `MAX_LABELS`, `MAX_RETURNS`). Each `if`, loop,

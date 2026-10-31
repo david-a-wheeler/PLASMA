@@ -4028,6 +4028,29 @@ ccish.h, each where its text was, so that every object is unchanged
   finds a limit in whichever source defines it, and raises the big
   build's limits in every file.
 
+**Header split, commit 2 (a header per `.c`; ccish.h gone)**
+(2026-10-31). diag.h, bio.h, name.h, type.h, parse.h, irout.h, irin.h,
+lower.h, peep.h, emit.h, helper.h and link.h, each declaring what its
+`.c` defines; the limits only one file uses moved into it (parse.c's
+`MAX_PARAMS`, `MAX_NEST`, `MAX_PARAM_TYPES`, `MAX_BYVAL`, `MAX_CASES`;
+emit.c's, type.c's and name.c's; ccpp's into pp.c, ppmac.c and ppname.c, with
+the ones two files share in pplex.h, ppmac.h and token.h). ccish.h's overview
+of the programs is now build.h's comment, which every `.c` includes
+first. No header includes another: each `.c` includes what it uses,
+each after what it needs, so ccish's own includes nest 2 deep at most
+(a header, or `<stdio.h>` and its `<stddef.h>`), as decision 25 asks;
+`make measure` now shows 2. link.c's listing has its own
+`MAX_SEL_TABLES` instead of borrowing the parser's `MAX_NEST`.
+- What each file now reads, from `make measure` (small build): parse.c
+  declares 254 functions (294 before), bio.c 44 (115); ccpp's name
+  pool needs 7,653 bytes for parse.c (8,506), and 62 macros (91).
+  ccpp's objects now share 967 bytes of names, so it links within
+  ccrel's own limits (1,427), as cccomp (1,120) and ccgen (707) do.
+- Objects: the test suite's are all unchanged. ccish's own are not,
+  since a file that declares fewer functions numbers its functions
+  differently; every file's code, data and string sizes are the same.
+  361 tests pass.
+
 **`unsigned` and helper functions design (decided in discussion,
 2026-10-31; pulled forward from M11, since ccish's own source uses
 `unsigned` about 60 times, including `/` and `%` by variables in

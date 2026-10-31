@@ -14,9 +14,20 @@
  * ops written (ir_here()), and puts IR_SWAP with the lengths of the two
  * blocks to exchange, which ccgen does (approach.md 18.7, A).
  */
+#include <stdio.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
+#include "bio.h"
 #include "nam.h"
+#include "obj.h"
+#include "ir.h"
+#include "type.h"
+#include "parse.h"
+#include "irout.h"
+
+#define DATA_RUN    128     /* bytes in one data record at most */
 
 /* The IR file, and its output name (for messages). */
 static Bfile out;

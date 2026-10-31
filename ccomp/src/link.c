@@ -28,14 +28,23 @@
  * stream, to map its own symbol numbers to final addresses, so only
  * one object's map is in memory.
  */
+#include <stdio.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
+#include "bio.h"
+#include "obj.h"
+#include "mop.h"
+#include "link.h"
 
 #define MAX_OBJS    32      /* objects in one link */
 #define MAX_GSYMS   163     /* names shared between objects: the first
                              * prime 10% above linking ccish's (144) */
 #define MAX_GNAMES  1427    /* bytes of those names, with their NULs:
                              * 10% above linking ccish's (1,297) */
+#define MAX_SEL_TABLES 32   /* SEL case tables the listing of one
+                             * function waits for at once */
 
 /* A symbol summary entry of the object being read: a function's, or
  * a global variable's (which has a size and no parameter count). */
@@ -613,7 +622,7 @@ static int list_table(int pc, int start)
  * in lr_at[] and the rest. */
 static void list_code(const char *label, int len, int start)
 {
-  int pc = 0, i, tables[MAX_NEST], ntables = 0;
+  int pc = 0, i, tables[MAX_SEL_TABLES], ntables = 0;
   printf("%s:\n", label);
   while (pc < len) {
     int op = fbuf[pc], n = 1, fmt;
@@ -659,7 +668,7 @@ static void list_code(const char *label, int len, int start)
       /* The offset is relative to the offset word itself. */
       int off = (short)(fbuf[pc + 1] | (fbuf[pc + 2] << 8));
       printf(" %+d  ; to %04X", off, subseg + start + pc + 1 + off);
-      if (op == OP_SEL && ntables < MAX_NEST)
+      if (op == OP_SEL && ntables < MAX_SEL_TABLES)
         tables[ntables++] = pc + 1 + off;
       break;
     }

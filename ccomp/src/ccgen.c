@@ -16,8 +16,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "ccish.h"
+#include "build.h"
+#include "diag.h"
 #include "token.h"
+#include "ir.h"
+#include "irin.h"
 
 /* The output name, to remove partial output after an error. */
 static const char *base_name;

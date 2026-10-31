@@ -1,5 +1,5 @@
 /*
- * ccpp's #if and #elif expressions (ppif.c). Include after ccish.h.
+ * ccpp's #if and #elif expressions (ppif.c).
  */
 #ifndef PPIF_H
 #define PPIF_H
