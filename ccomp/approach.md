@@ -4573,8 +4573,10 @@ relocated words, too), ccrel's 19 (14,321 → 14,274). Not kept:
   per pass (10, was 12), but 12 bytes bigger (53, was 41), since the
   end pointer and turning the pointer back into an index (`SUB`, `CN
   1`, `SHR`) cost more than the loop saves. It is hot (every lookup of
-  a function's name scans up to all the functions), so whether the
-  speed is worth 12 bytes of cccomp is for the user to decide.
+  a function's name scans up to all the functions). The user chose to
+  keep it, behind a new feature macro, `CCISH_FAST` (build.h), which
+  neither build defines for now: size matters most today, but the
+  faster loop will probably be wanted later.
 - Loops over parallel arrays (ccgen's `reverse()` and `lower_held()`,
   `id_find()`, most of the rest): one pointer per array would cost
   more than the index.

@@ -54,8 +54,13 @@
  *   CCISH_TEXT     ccpp -E, the token stream as text (ppout.c): for
  *                  debugging, so in the full build only for now; it can
  *                  be put in the small build if ccpp has room.
- * And one that neither build has: tools/measure.py builds a ccpp with
+ * And ones that neither build has: tools/measure.py builds a ccpp with
  *   CCISH_STATS    report how full ccpp's tables got, for sizing them.
+ * and
+ *   CCISH_FAST     faster code that is bigger when ccish compiles it,
+ *                  kept for when size matters less (so far cccomp's
+ *                  find_func(), parse.c). Either way, the output is the
+ *                  same.
  */
 #ifndef CCISH_SMALL
 #define CCISH_LISTING
