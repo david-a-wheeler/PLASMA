@@ -468,7 +468,10 @@ module. It has at most one input file open at a time, and the module.
    included, then the kept
    relocations, those in the data first) and the ESD (imports). With
    `-l`, end the listing with how full the shared-name table is:
-   `; shared names: N of M slots, B of C name bytes`.
+   `; shared names: N of M slots, B of C name bytes`. (The listing
+   also begins with a `; heap global N: NAME, SIZE bytes` line for
+   each global moved to the heap, numbered as their pointer words;
+   `tools/loops.py` reads them.)
 
 A kind 1 or 3 target is offset by where its object's data or strings
 start; a kind 4 relocation becomes a kind 1 relocation to the symbol's

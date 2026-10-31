@@ -4214,7 +4214,54 @@ about 30 ops, and constant-index accesses, with its 599 `LA`s now
 `LAW`s); `globals.c` 954 → 979 (+2.6%); and two that use an `extern`
 array of unknown size, which cccomp must treat as one that may move
 though it doesn't: `extern.c` 73 → 84 and `extern_ops.c` 48 → 56,
-where `LAB tab+k` became `LA`, `ADDI`, `LB`.
+where `LAB tab+k` became `LA`, `ADDI`, `LB`. (ccish's own sources
+declare no `extern` array without a size, so they don't pay this.)
+
+**Hoisting moved globals' addresses (discussed 2026-10-31; not
+built).** The idea: load a moved table's address once, before a loop,
+rather than with an `LAW` on every pass. It pays less than it seems,
+from plvm02.s (6502 cycles per op, without the shared dispatch): `LA`
+about 29, `LAW` about 53, `LLW` about 40. So keeping the address in a
+frame slot saves about 13 cycles per access, about half of what moving
+cost, and the setup (`LAW`, `SLW`) costs about 95 cycles per call: it
+wins only past about 7 accesses per call, so only in loops. It loses on
+a global that turns out not to move (`LA` 29 becomes `LLW` 40), and it
+doesn't help a constant index (`LAW`, `ADDI`, `LW` stays three ops).
+- *How it could be built*, since ccish reads each function once with
+  no lookahead: cccomp sets `IR_HEAPADDR`'s *a* (now 0) to 1 for a use
+  inside a loop body; at the first such use of a global, ccgen gives it
+  a frame slot and lowers it, and every later use in the function, to
+  `LLW slot`; at the function's end it inserts `LA` (made `LAW` by
+  ccrel) and `SLW slot` right after `ENTER`. An insertion at the very
+  start shifts all the code after it alike, so relative branches and
+  case tables stay right, and only relocation offsets move. A frameless
+  function isn't hoisted. Estimated 300-500 bytes, mostly in ccgen.
+- *Measured instead*, statically: `tools/loops.py` (after
+  `tools/measure.py`) reads each program's ccrel listing, whose new
+  `; heap global N: NAME, SIZE bytes` lines (full build) name the moved
+  globals, and counts each `LAW` of a pointer word, and those inside
+  loops (from each backward branch to its target), by global and by
+  function, with the loop nesting. Accesses in loops: ccpp 54 of 125,
+  cccomp 33 of 153, ccgen 41 of 92, ccrel 88 of 181.
+- *What the counts show:*
+  - **cccomp** barely uses its moved tables in loops: `ir_finish` (once
+    per file) has 13, `parse_call` 6, `set_param_types` 4, and
+    `find_func`'s loop over `fn_name` just 1. The program that doesn't
+    fit yet loses almost no speed.
+  - **Many accesses are file buffers**: `in` and `out` are `Bfile`s,
+    whose address is pushed for each `bgetc(&in)`; the call costs far
+    more than the 24 cycles (ccrel's `reloc_entries` 13, `close_syms`
+    5; cccomp's `ir_finish` 10).
+  - **The real hot spots** are a few loops over tables: ccpp's `call`
+    (macro expansion: `body` 15 times, loops nested 3 deep) and
+    `pp_def_end` (`body` 8), `put_string` and `next_tok` (`sbuf`);
+    ccgen's `lower_held` (`buf_a` 9, `buf_f` 4) and `reverse` (4 and
+    4); ccrel's `copy_code` (`fbuf` 8) and `resolve` (`g_name` 4).
+- *Decision:* not the general hoist, for now. If any of those loops
+  shows up as slow, fix it by hand: a local pointer that steps through
+  the table (`p++`) saves the whole `LAW`, and the `IDXW` too, at no
+  cost to the compilers (issue 20, "Writing fast C-ish"). Option 3 (a
+  BSS segment) remains the real fix once the VM may change.
 
 **C6 design, and C6 is done** (2026-10-31; C6 in 18.6). Address
 constants come from the expression parser, so global initializers no

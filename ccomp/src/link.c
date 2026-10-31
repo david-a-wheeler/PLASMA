@@ -431,10 +431,11 @@ static void add_global(Lsym *s, int data)
     g_flags[g] |= G_PLAIN;
 }
 
-/* Place a zero-filled global of size bytes: on the heap unless indata
- * (an initializer holds its address). Returns its place: its moved
- * number, or its offset after every object's data. */
-static int place_zero(int size, int indata)
+/* Place zero-filled global name, of size bytes: on the heap unless
+ * indata (an initializer holds its address). Returns its place: its
+ * moved number, or its offset after every object's data. The listing
+ * names each moved one, for tools/loops.py. */
+static int place_zero(const char *name, int size, int indata)
 {
   if (indata) {
     zstay += size;
@@ -448,6 +449,12 @@ static int place_zero(int size, int indata)
     fatal(309 /* "too much data to move to the heap" */, NULL);
   mv_total += size;
   mv_size[nmoved] = size;
+#ifdef CCISH_LISTING
+  if (opt_list)
+    printf("; heap global %d: %s, %d bytes\n", nmoved, name, size);
+#else
+  (void)name;
+#endif
   return nmoved++;
 }
 
@@ -475,7 +482,7 @@ static void read_summary(int k)
     else if ((s.flags & SYM_CALLED) && !(s.flags & SYM_DEFINED))
       undefined(172 /* "undefined reference to" */, s.name);
     else if ((s.flags & (SYM_DEFINED | SYM_BSS)) == (SYM_DEFINED | SYM_BSS))
-      place_zero(s.size, s.flags & SYM_INDATA);
+      place_zero(s.name, s.size, s.flags & SYM_INDATA);
   }
   close_syms(name, 1);
 }
@@ -498,7 +505,8 @@ static void resolve(void)
   int g;
   for (g = 0; g < MAX_GSYMS; g++)
     if (g_name[g] >= 0 && (g_flags[g] & G_BSS))
-      g_off[g] = place_zero(g_count[g], g_flags[g] & G_INDATA);
+      g_off[g] = place_zero(gnames + g_name[g], g_count[g],
+                            g_flags[g] & G_INDATA);
   if (nmoved > 0) {
     use_cmdsys("heapavail");
     use_cmdsys("isult");
