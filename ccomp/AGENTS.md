@@ -75,11 +75,16 @@ files of the sessions so far, before a move to a new computer.)
   user asks to "commit and continue" for multi-step work. **Never
   push.** End each message with exactly these two lines, last:
 
-      Assisted-by: Claude Code (claude-opus-5-5)
+      Assisted-by: <agent> (<model>)
       Signed-off-by: David A. Wheeler <dwheeler@dwheeler.com>
 
-  (Not the Co-Authored-By trailer.) Update the version in the first line
-  if the model changes.
+  The first line names the agent doing the work and the model it runs
+  on. Each example is for the agent it names, not a general rule:
+  Claude Code writes `Assisted-by: Claude Code (claude-opus-5-5)`
+  (updating the model name when the model changes); pi writes
+  `Assisted-by: pi (<model>)`, for example `Assisted-by: pi
+  (qwen3.8-27b)`. Any other agent does the same with its own name and
+  model. (Not the Co-Authored-By trailer.)
 - **Files in `src/` named with a leading comma** (`,parse.c`,
   `,enum-set-membership`) and editor swap files are the user's own:
   never touch, delete or commit them.
