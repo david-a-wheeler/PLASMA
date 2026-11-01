@@ -1,4 +1,4 @@
-# Working notes for ccish (for coding agents such as Claude Code, and anyone)
+# Working notes for ccish (for coding agents)
 
 What a new session needs to know to carry on working on ccish the way
 it has been worked on: the goal, the user's working rules, how to test
@@ -10,8 +10,8 @@ files of the sessions so far, before a move to a new computer.)
 ## The goal
 
 - ccish is a compiler for C-ish (a growing subset of C) that emits
-  PLASMA VM modules. It lives in `ccomp/`, on the git branch
-  `c-compiler`.
+  PLASMA VM modules. PLASMA VM runs on 6502 8-bit computers.
+  The compiler lives in `ccomp/`, currently on the git branch `c-compiler`.
 - **The real goal: self-host on a 64K Apple II**, with 2 to 4 floppy
   drives of 140K, beside ProDOS, the VM, the zero page, the stacks and
   the text screen. "32K per program" was only a proxy for that.
