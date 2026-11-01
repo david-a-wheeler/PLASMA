@@ -21,6 +21,16 @@
  *                                          (also after CB, CFFB, or LA)
  *   const  AND               -> ANDI const for a constant from 0 to 255
  *   const  NEG / COMP        -> const      e.g. -5 is one constant
+ *   const OP const           -> const      for ADD, SUB, MUL, DIV, MOD,
+ *                                          AND, IOR, XOR, SHL, SHR and the
+ *                                          six comparisons: a backstop
+ *                                          for the parser's folding,
+ *                                          for the leftovers the peep's
+ *                                          own rewrites make. Not for a
+ *                                          zero divisor or a shift by
+ *                                          sixteen or more, which are
+ *                                          undefined in C (and the VMs
+ *                                          disagree on the first)
  *   CN 0   ADD / SUB         -> (nothing)
  *   CN 1   ADD / SUB         -> INCR / DECR   (also MINUS1 SUB, ...)
  *   const  ADD / SUB         -> ADDI / SUBI n  for adding n from 2 to 255
@@ -386,6 +396,64 @@ static int rewrite_const(Mop *a, Mop *b)
   return 0;
 }
 
+/* The 16-bit pattern in v as a signed int, as parse.c's wrap16: the
+ * unsigned arithmetic works whether the host's int has 16 or 32 bits. */
+static int signed_word(int v)
+{
+  unsigned u = (unsigned)(unsigned short)v;
+  if (u & 0x8000)
+    return -(int)(0xFFFF - u) - 1;
+  return (int)u;
+}
+
+/* c shifted right by y (0 to 15) as a signed 16-bit word, rounding
+ * toward minus infinity: the sign bit shifts in, as on every VM. The
+ * count is small, so a shift at a time is the whole op. */
+static int shr_word(int c, int y)
+{
+  unsigned u = (unsigned)(unsigned short)c;
+  while (y-- > 0)
+    u = (u >> 1) | ((u & 1) != 0 ? 0x8000 : 0);
+  return signed_word((int)u);
+}
+
+/* If op folds two constants, c on the stack below a, set *v to the
+ * 16-bit value the VM's op would push and return 1; 0 if the peep
+ * must not fold it. The values are as signed words where the op is
+ * signed (the VM's words are two's complement): division and modulo
+ * are C's (toward zero), the comparisons give the VM's $FFFF / 0. The
+ * no cases are C's undefined ones: a zero divisor, where the VMs
+ * disagree, and a shift by sixteen or more. */
+static int fold_pair(int op, int c, int a, int *v)
+{
+  int x = signed_word(c);
+  int y = signed_word(a);
+  int r;
+  switch (op) {
+  case OP_ADD:    r = x + y; break;
+  case OP_SUB:    r = x - y; break;
+  case OP_MUL:    r = x * y; break;
+  case OP_DIV:    if (y == 0) return 0; r = x / y; break;
+  case OP_MOD:    if (y == 0) return 0; r = x % y; break;
+  case OP_AND:    r = c & a; break;
+  case OP_IOR:    r = c | a; break;
+  case OP_XOR:    r = c ^ a; break;
+  case OP_SHL:
+    if (y < 0 || y > 15) return 0;
+    r = (int)((unsigned)(unsigned short)c << y); break;
+  case OP_SHR:    if (y < 0 || y > 15) return 0; r = shr_word(c, y); break;
+  case OP_ISEQ:   r = c == a ? 0xFFFF : 0; break;
+  case OP_ISNE:   r = c != a ? 0xFFFF : 0; break;
+  case OP_ISGT:   r = x > y ? 0xFFFF : 0; break;
+  case OP_ISLT:   r = x < y ? 0xFFFF : 0; break;
+  case OP_ISGE:   r = x >= y ? 0xFFFF : 0; break;
+  case OP_ISLE:   r = x <= y ? 0xFFFF : 0; break;
+  default:        return 0;
+  }
+  *v = r & 0xFFFF;
+  return 1;
+}
+
 /* The patterns that end in a branch (b), with a the op before it.
  * Returns 1 if one changed anything. */
 static int rewrite_branch(Mop *a, Mop *b)
@@ -583,6 +651,21 @@ static int rewrite(void)
     return 0;
   a = &win[nwin - 2];
   b = &win[nwin - 1];
+  /* const OP const -> const (fold_pair()): both sides constant is a
+   * backstop for the parser's own folding. It comes first, so that
+   * the one-constant rewrites below don't spend one constant into an
+   * ADDI or the like, leaving the other stranded. */
+  if (nwin >= 3) {
+    int v1, v2, v;
+    if (mop_const_value(&win[nwin - 3], &v1)
+        && mop_const_value(a, &v2) && fold_pair(b->op, v1, v2, &v)) {
+      Mop r;
+      mop_const(&r, v);
+      win[nwin - 3] = r;
+      nwin -= 2;
+      return 1;
+    }
+  }
   if (rewrite_load_store(a, b) || rewrite_const(a, b)
       || rewrite_branch(a, b) || rewrite_mul(a, b))
     return 1;
