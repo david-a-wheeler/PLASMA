@@ -1386,7 +1386,7 @@ void gen_file(const char *base)
     }
     if (prefixed)
       damaged();                /* a prefix not followed by its op */
-    if (t == REC_DATA || t == REC_DREL || t == REC_STR || t == REC_ZERO) {
+    if (REC_IS_PASSTHROUGH(t)) {
       copy_record(t);
     } else if (t == REC_LINE) {
       src_line = get_word();

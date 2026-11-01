@@ -27,6 +27,11 @@
 enum { REC_DATA = 'D', REC_DREL = 'R', REC_STR = 'S', REC_FUNC = 'F',
        REC_HELPER = 'H', REC_ZERO = 'Z' };
 
+/* A record the back end copies to the stream as it is (irin.c):
+ * data, a relocation, a string, or zero-filled bytes. */
+#define REC_IS_PASSTHROUGH(t)  ((t) == REC_DATA || (t) == REC_DREL \
+                                || (t) == REC_STR || (t) == REC_ZERO)
+
 /* Relocation kinds and symbol flags. A REL_DATA target is a data
  * offset, a REL_STR target an offset in the string pool, a REL_FUNC
  * target a function symbol index, and a REL_DSYM target a data symbol
