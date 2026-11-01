@@ -410,7 +410,7 @@ pair is tested only in one or a few places.
 
 TC_STRUCT (section 2) moves with the keyword reorder.
 
-## 5. mop.h: the VM's numbering, documented; a few OP_IS_* macros
+## 5. mop.h: the VM's numbering, documented; dead code out of peep.c
 
 The OP_* values are PLASMA's opcodes (../../doc/Bytecodes.md); they
 cannot be moved, and the pseudo-ops (0x100 up) are markers, not a set.
@@ -440,30 +440,19 @@ could use):
   the loads' order (LL, L, A, A forms), and local is the lower two of
   the four (peep.c's fused_op() and emit.c's `op & 4` rely on it).
 
-**The macros, for the sets peep.c tests:**
-
-```c
-/* A test branch: pops a value and branches on 0 or not 0. */
-#define OP_IS_TEST_BRANCH(op)  ((op) >= OP_BRFLS && (op) <= OP_BRTRU)
-/* An absolute store that keeps no value: SLB SLW SAW SAB. */
-#define OP_IS_PLAIN_STORE(op)  ((op) >= OP_SLB && (op) <= OP_SAW)
-/* A store through the address on the stack: SB SW. */
-#define OP_IS_ADDR_STORE(op)   ((op) >= OP_SB && (op) <= OP_SW)
-/* A read of the frame: a local load, or an add of one (peep.c's
- * reads_local). The VM numbers the adds in the loads' order. */
-#define OP_IS_LOCAL_READ(op)   ((op) >= OP_LLB && (op) <= OP_LLW
-                                || (op) >= OP_ADDLB && (op) <= OP_ADDLW
-                                || (op) >= OP_IDXLB && (op) <= OP_IDXLW)
-```
-
-is_test_branch() (peep.c:110), store_len() (249, 251) and
-reads_local() (505) use them. The other peep.c chains are two-term on
-already-adjacent pairs (ADD/SUB, NEG/COMP, ISEQ/ISNE, BREQ/BRNE) or
-switches with one case per op (invert_branch, plain_store,
-keeping_store, absolute_op): a range buys nothing there, and the
-switches stay. is_unconditional_exit() ({LEAVE, RET, BRNCH, SEL},
-$5A, $5C, $50, $52) and the {CW, CB, CFFB, LA} set (319) are not
-ranges in the VM's numbering; they keep their explicit forms.
+**No OP_IS_* macros.** Section 2's rule (and the Step 2 refinement of
+Q3) defines a macro for a set the code tests in more than one place.
+Every set peep.c tests is tested in exactly one function --
+is_test_branch() (108), store_len() (248-251), reads_local() (505) --
+and the function's name already names the set, so the macro would add
+a second name for one use. The two-term sets on adjacent pairs
+(ADD/SUB, NEG/COMP, ISEQ/ISNE, BREQ/BRNE) and the switches with one
+case per op (invert_branch, plain_store, keeping_store, absolute_op)
+would not shrink to a range, and is_unconditional_exit() ({LEAVE,
+RET, BRNCH, SEL}, $5A, $5C, $50, $52) and the {CW, CB, CFFB, LA} set
+(319) are not ranges in the VM's numbering. So this section's code
+change is the family comment above, the FIX_ comment (below), and the
+dead-code removal (below); the size win is the last of those.
 
 **FIX_*.** FIX_DSYM and FIX_HEAP are the two fixups ccrel may rewrite
 (emit.c:387). They are not adjacent (FIX_HELPER is between them). The
@@ -598,9 +587,9 @@ the other way is reported plainly, per AGENTS.md.
 3. token.h: the TC_STR/TC_KEYWORD move (section 4), TC_IS_WORDVAL,
    TOK_VERSION 3; ppmac.c and ppout.c use it; CCPP.md and the
    tests/pp token streams move with it.
-4. mop.h: the families comment, the four OP_IS_* macros, the FIX_
-   comment; peep.c uses them, and frame_expr() drops the dead INCR and
-   DECR comparisons.
+4. mop.h: the families comment and the FIX_ comment (no OP_IS_*
+   macros: section 5's rule); peep.c's frame_expr() drops the dead
+   INCR and DECR comparisons.
 5. obj.h: REC_IS_PASSTHROUGH; irin.c uses it.
 6. pplex.h: TC_IS_PARAM; ppmac.c uses it.
 7. The .c-local items of section 9 (is_place, F_WORD..F_ENTER, the

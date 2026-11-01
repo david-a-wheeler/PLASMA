@@ -6,7 +6,26 @@
 #ifndef MOP_H
 #define MOP_H
 
-/* PLASMA opcodes used so far (see ../../doc/Bytecodes.md). */
+/* PLASMA opcodes used so far (see ../../doc/Bytecodes.md). The VM
+ * numbers them in families the code relies on without saying so
+ * (approach.md, decision 26):
+ * - the constant pushes: CN 0-15 ($00-$1E), MINUS1, CB, CW, CFFB
+ *   (mop_const_value in lower.c recognizes exactly these);
+ * - the zero tests, popping no value: BREQ, BRNE ($22, $24);
+ * - the comparisons of two values: ISEQ through ISLE ($40-$4A);
+ * - the test branches, popping one: BRFLS, BRTRU ($4C, $4E);
+ * - the branches and calls: BRNCH, SEL, CALL, ENTER, LEAVE, RET
+ *   ($50-$5C);
+ * - the eight loads, bytes and words adjacent: LB LW, LLB LLW, LAB
+ *   LAW, DLB DLW ($60-$6E);
+ * - the eight stores, the same way: SB SW, SLB SLW, SAB SAW, DAB DAW
+ *   ($70-$7E);
+ * - the stack arithmetic, no memory: NOT, ADD through IDXW
+ *   ($80-$9E);
+ * - the counted-loop branches: BRGT through SUBBRGE ($A0-$AA);
+ * - the frame-address adds: ADDLB through IDXAW ($B0-$BE), in the
+ *   loads' order (LL, L, A, A forms), local the lower two of each
+ *   four (fused_op in peep.c and emit.c's op & 4 rely on it). */
 enum {
   OP_CN = 0x00, OP_MINUS1 = 0x20, OP_BREQ = 0x22, OP_BRNE = 0x24,
   OP_LA = 0x26, OP_LLA = 0x28, OP_CB = 0x2A,
@@ -49,7 +68,9 @@ enum {
 /* What an operand word refers to, if it needs relocation: a data
  * offset, a function, or an offset in the string pool. */
 enum { FIX_NONE, FIX_DATA, FIX_FUNC, FIX_STR, FIX_DSYM, FIX_HELPER,
-       FIX_HEAP };    /* FIX_HEAP: IR_HEAPADDR's symbol, never folded */
+       FIX_HEAP };    /* FIX_DSYM and FIX_HEAP are the two operand
+                      * words ccrel may rewrite (the fixups in emit.c);
+                      * FIX_HEAP is IR_HEAPADDR's symbol, never folded */
 
 /* Marks an ENTER/LEAVE frame size that is filled in at function end. */
 #define FRAME_LATER (-1)

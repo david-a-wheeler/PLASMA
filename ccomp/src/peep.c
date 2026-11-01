@@ -515,7 +515,6 @@ static int frame_expr(int end)
   int n = expr_len(end), i;
   for (i = end - n; i < end; i++)
     if (!frame_push(&win[i]) && !(win[i].op >= OP_ADD && win[i].op <= OP_IDXW)
-        && win[i].op != OP_INCR && win[i].op != OP_DECR
         && win[i].op != OP_ADDI && win[i].op != OP_SUBI
         && win[i].op != OP_ANDI && !reads_local(&win[i]))
       return 0;
