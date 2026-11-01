@@ -1,0 +1,61 @@
+/* Counted loops with limits that aren't a constant or a local
+ * (approach.md, "Possible improvements to the loop forms", 2): a
+ * global, a char global, an expression of a local, array elements; the
+ * limit first, with a store to another global in the body; and <=
+ * with an expression. Each limit is computed once, on entry, which is
+ * right only because nothing in the body can change it
+ * (counted_not.c has the loops whose bodies could). */
+// listing-count: 5 BRLT
+// listing-count: 1 ADDBRLE
+// listing-count: 1 BRGT
+int nf = 4;
+char nb = 3;
+int at[3] = {2, 5, 7};
+int len[3] = {3, 2, 4};
+int other;
+
+void show(int n)
+{
+  puti(n);
+  putc(' ');
+}
+
+int main()
+{
+  int i, m = 1, n = 6, s;
+  s = 0;
+  for (i = 0; i < nf; i++)      /* a global */
+    s += i;
+  show(s);
+  show(i);
+  s = 0;
+  for (i = 0; i < nb; i++)      /* a char global */
+    s += i;
+  show(s);
+  show(i);
+  s = 0;
+  for (i = 0; i < n - 1; i++)   /* an expression of a local */
+    s += i;
+  show(s);
+  show(i);
+  s = 0;
+  for (i = at[m]; i < at[m] + len[m]; i++)  /* array elements */
+    s += i;
+  show(s);
+  show(i);
+  s = 0;
+  for (i = 0; nf > i; i++) {    /* the limit first; another global */
+    s += i;
+    other = s;
+  }
+  show(s);
+  show(other);
+  show(i);
+  s = 0;
+  for (i = 0; i <= nf * 2; i += 3)  /* <=, an expression: ADDBRLE */
+    s += i;
+  show(s);
+  show(i);
+  putln();
+  return 0;
+}

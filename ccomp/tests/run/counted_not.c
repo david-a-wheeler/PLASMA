@@ -2,7 +2,8 @@
  * though they have a counted loop's shape: the body changes the
  * variable, or the limit, calls, or returns; the variable's address is
  * taken before the loop, or later in an outer loop, before the inner
- * loop runs again; and every != loop. Each must give C's results, and no counted-loop op
+ * loop runs again; every != loop; and limits the body could change, or
+ * that might differ on each pass (limits()). Each must give C's results, and no counted-loop op
  * may appear. */
 // listing-lacks: INCBRLE
 // listing-lacks: ADDBRLE
@@ -109,10 +110,74 @@ void not_equal(void)
   putln();
 }
 
+int gl = 5;
+int arr[3] = {1, 4, 6};
+
+/* Return 3. */
+int three(void)
+{
+  return 3;
+}
+
+/* Limits that aren't a constant or a local, which the body could
+ * change, or that might differ on each pass. */
+void limits(void)
+{
+  int i, s, n, *p, *q;
+  s = 0;
+  for (i = 0; i < gl; i++) {    /* the body stores to the global */
+    if (i == 1)
+      gl = 3;
+    s++;
+  }
+  show(s);
+  show(i);
+  gl = 5;
+  p = &gl;
+  s = 0;
+  for (i = 0; i < gl; i++) {    /* through a pointer */
+    if (i == 0)
+      *p = 2;
+    s++;
+  }
+  show(s);
+  show(i);
+  s = 0;
+  for (i = 0; i < arr[1]; i++) {    /* to the element the limit reads */
+    if (i == 0)
+      arr[1] = 2;
+    s++;
+  }
+  show(s);
+  show(i);
+  s = 0;
+  for (i = 0; i < three(); i++)     /* a call in the limit */
+    s++;
+  show(s);
+  show(i);
+  n = 6;
+  s = 0;
+  for (i = 0; i < n - 1; i++) {     /* the body changes a local it reads */
+    n--;
+    s++;
+  }
+  show(s);
+  show(i);
+  n = 4;
+  q = &n;
+  s = 0;
+  for (i = 0; i < n - 1; i++)       /* that local's address taken */
+    s++;
+  show(s);
+  show(i);
+  putln();
+}
+
 int main()
 {
   not_counted();
   later();
   not_equal();
+  limits();
   return 0;
 }

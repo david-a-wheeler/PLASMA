@@ -618,8 +618,8 @@ static char lab_ref[MAX_LABELS];    /* a branch to it has been read */
  * seen all of it, and can keep the count and the limit on the eval
  * stack, as PLASMA's FOR does: 2 or 3 ops of the loop's own work per
  * pass, instead of 7. The body must not change the loop variable
- * (cl_var, a frame offset) or the limit (cl_lim: a constant, or a
- * frame offset if cl_lim_local), take their addresses, call anything
+ * (cl_var, a frame offset) or anything the limit reads (limit_ok()),
+ * take the addresses of the variable or the limit's locals, call anything
  * (the two values stay on the eval stack across a call, and a body
  * that recursed would fill it), return, or hold a loop; nor, in a loop
  * inside another loop, store through a pointer (a pointer to the
@@ -643,7 +643,16 @@ static char lab_ref[MAX_LABELS];    /* a branch to it has been read */
  * ++v (lp_fpost[]).
  */
 static int cl_body;             /* where the held body starts */
-static int cl_var, cl_lim, cl_lim_local, cl_cmp, cl_step, cl_nested;
+static int cl_var, cl_cmp, cl_step, cl_nested;
+/* The limit: held ops cl_ls up to cl_le, computed once on entry; a
+ * constant if cl_const (then cl_lim). The locals it reads (cl_loc[]),
+ * the globals (cl_gf[] the symbol or -1, cl_ga[] the offset), and
+ * whether it loads through an address (cl_load), which the body then
+ * mustn't change. */
+#define LIM_NAMES 4
+static int cl_ls, cl_le, cl_const, cl_lim, cl_load;
+static int cl_loc[LIM_NAMES], cl_nloc;
+static int cl_gf[LIM_NAMES], cl_ga[LIM_NAMES], cl_ngl;
 static unsigned char addr_taken[32];    /* frame offsets: a bit each */
 
 /* Hold a jump to label n. */
@@ -740,12 +749,88 @@ static int taken(int off)
  * each, so a byte of either)? */
 static int counted_var(int off)
 {
-  return off == cl_var || off == cl_var + 1
-         || (cl_lim_local && (off == cl_lim || off == cl_lim + 1));
+  int i;
+  if (off - cl_var <= 1 && cl_var - off <= 1)
+    return 1;
+  for (i = 0; i < cl_nloc; i++)
+    if (off - cl_loc[i] <= 1 && cl_loc[i] - off <= 1)
+      return 1;
+  return 0;
 }
 
-/* May IR op op (with a) be in a counted loop's body? */
-static int body_ok(int op, int a)
+/* Might a store to global offset a (of symbol f, or -1) change what the
+ * limit reads? Any global store might, if the limit loads through an
+ * address (an array's element); else one that overlaps a global it
+ * reads (a word or a byte, so within a byte either way). */
+static int limit_global(int a, int f)
+{
+  int i;
+  if (cl_load)
+    return 1;
+  for (i = 0; i < cl_ngl; i++)
+    if (cl_gf[i] == f && a - cl_ga[i] <= 1 && cl_ga[i] - a <= 1)
+      return 1;
+  return 0;
+}
+
+/* Are held ops from up to (not including) to a limit a counted loop can
+ * compute once: one value, of constants, locals other than the variable
+ * (whose addresses haven't been taken), globals, addresses, loads
+ * through them, and arithmetic, with no side effects? Sets cl_loc[]
+ * and the rest. A load through an address of $C000 or above (the
+ * Apple's I/O space, where a read may differ each time) isn't one. */
+static int limit_ok(int from, int to)
+{
+  int depth = 0, hw = 0, op, a;
+  cl_nloc = cl_ngl = cl_load = 0;
+  for (; from < to; from++) {
+    op = lp_op[from];
+    a = lp_a[from];
+    switch (op) {
+    case IR_CONST:
+      hw |= (a & 0xFFFF) >= 0xC000;
+      depth++;
+      break;
+    case IR_LOCAL: case IR_LOCALB:
+      if ((a - cl_var <= 1 && cl_var - a <= 1) || taken(a))
+        return 0;               /* the variable, or reachable */
+      if (!counted_var(a)) {
+        if (cl_nloc == LIM_NAMES)
+          return 0;
+        cl_loc[cl_nloc++] = a;
+      }
+      depth++;
+      break;
+    case IR_GLOBAL: case IR_GLOBALB:
+      if (cl_ngl == LIM_NAMES)
+        return 0;
+      cl_gf[cl_ngl] = lp_f[from];
+      cl_ga[cl_ngl++] = a;
+      depth++;
+      break;
+    case IR_DATAADDR: case IR_HEAPADDR: case IR_STRADDR:
+      depth++;
+      break;
+    case IR_LOAD: case IR_LOADB: case IR_NEG: case IR_COMP:
+      if (depth < 1)
+        return 0;
+      cl_load |= op == IR_LOAD || op == IR_LOADB;
+      break;
+    case IR_ADD: case IR_SUB: case IR_MUL: case IR_DIV: case IR_MOD:
+    case IR_AND: case IR_OR: case IR_XOR: case IR_SHL: case IR_SHR:
+      if (depth < 2)
+        return 0;
+      depth--;
+      break;
+    default:
+      return 0;
+    }
+  }
+  return depth == 1 && !(hw && cl_load);
+}
+
+/* May IR op op (with a and f) be in a counted loop's body? */
+static int body_ok(int op, int a, int f)
 {
   switch (op) {
   case IR_CALL: case IR_RETURN: case IR_UDIV: case IR_UMOD: case IR_USHR:
@@ -753,7 +838,9 @@ static int body_ok(int op, int a)
   case IR_SETLOCAL: case IR_SETLOCALB: case IR_LOCALADDR:
     return !counted_var(a);
   case IR_STORE: case IR_STOREB:
-    return !cl_nested;
+    return !cl_nested && !cl_load && !cl_ngl;  /* a pointer might reach */
+  case IR_SETGLOBAL: case IR_SETGLOBALB:
+    return !limit_global(a, f);
   }
   return 1;
 }
@@ -824,27 +911,28 @@ static void dlw_fix(int d)
  * > or >=. */
 static int counted_shape(int d, int lbody)
 {
-  int t = lp_test[d], st = lp_step[d], k;
+  int t = lp_test[d], st = lp_step[d];
   if (!step_shape(d, &cl_var, &cl_step))
     return 0;
-  if (st - t != 4 || lp_op[t + 3] != IR_BRTRUE || lp_a[t + 3] != lbody)
+  if (st - t < 4 || lp_op[st - 1] != IR_BRTRUE || lp_a[st - 1] != lbody)
     return 0;
-  cl_cmp = lp_op[t + 2];
+  cl_cmp = lp_op[st - 2];
   if (cl_cmp != IR_LT && cl_cmp != IR_LE && cl_cmp != IR_GT
       && cl_cmp != IR_GE)
     return 0;
-  k = t;                        /* the limit's op */
-  if (lp_op[t] == IR_LOCAL && lp_a[t] == cl_var)
-    k = t + 1;
-  else if (lp_op[t + 1] == IR_LOCAL && lp_a[t + 1] == cl_var)
+  if (lp_op[t] == IR_LOCAL && lp_a[t] == cl_var) {
+    cl_ls = t + 1;              /* v, then the limit */
+    cl_le = st - 2;
+  } else if (lp_op[st - 3] == IR_LOCAL && lp_a[st - 3] == cl_var) {
+    cl_ls = t;                  /* the limit, then v */
+    cl_le = st - 3;
     cl_cmp = mirror(cl_cmp);
-  else
+  } else {
     return 0;
-  cl_lim = lp_a[k];
-  cl_lim_local = lp_op[k] == IR_LOCAL;
-  if ((!cl_lim_local && lp_op[k] != IR_CONST)
-      || (cl_lim_local && (cl_lim == cl_var || taken(cl_lim)))
-      || taken(cl_var) || cl_step == 0
+  }
+  cl_const = cl_le - cl_ls == 1 && lp_op[cl_ls] == IR_CONST;
+  cl_lim = lp_a[cl_ls];
+  if (!limit_ok(cl_ls, cl_le) || taken(cl_var) || cl_step == 0
       || (cl_step > 0) != (cl_cmp == IR_LT || cl_cmp == IR_LE))
     return 0;
   cl_nested = d > 0;
@@ -879,7 +967,7 @@ static int counted_loop(int d, int lcont, int lbrk)
     fold = buf_op[nbuf - 3];
     c = buf_a[nbuf - 3];
   }
-  if (fold == IR_CONST && !cl_lim_local) {
+  if (fold == IR_CONST && cl_const) {
     sure = cl_cmp == IR_LT ? c < lim : cl_cmp == IR_LE ? c <= lim
            : cl_cmp == IR_GT ? c > lim : c >= lim;
     if (!sure)
@@ -890,7 +978,7 @@ static int counted_loop(int d, int lcont, int lbrk)
   if (cl_cmp == IR_LE || cl_cmp == IR_GE) {
     bottom = up ? (k == 1 ? OP_INCBRLE : OP_ADDBRLE)
                 : (k == 1 ? OP_DECBRGE : OP_SUBBRGE);
-  } else if (k == 1 && !cl_lim_local && lim != (up ? -0x8000 : 0x7FFF)) {
+  } else if (k == 1 && cl_const && lim != (up ? -0x8000 : 0x7FFF)) {
     bottom = up ? OP_INCBRLE : OP_DECBRGE;
     lim += up ? -1 : 1;         /* v < N is v <= N - 1 */
   } else {
@@ -898,7 +986,10 @@ static int counted_loop(int d, int lcont, int lbrk)
   }
   if (fold)
     nbuf -= 3;                  /* the init's store: done by the loop */
-  hold(cl_lim_local ? IR_LOCAL : IR_CONST, lim, -1);
+  if (cl_const)
+    hold(IR_CONST, lim, -1);
+  else
+    replay(cl_ls, cl_le);       /* the limit, computed once */
   hold(fold ? fold : IR_LOCAL, fold ? c : cl_var, -1);
   if (!sure) {
     if (bottom == OP_BRLT || bottom == OP_BRGT)
@@ -1080,7 +1171,7 @@ static void do_op(int op, int a, int f)
     addr_taken[a >> 3] |= (unsigned char)(1 << (a & 7));
   if (opt_ir)
     dump_ir(op, a, f);
-  if (lp_fill == 2 && (op == IR_LOOP || !body_ok(op, a)))
+  if (lp_fill == 2 && (op == IR_LOOP || !body_ok(op, a, f)))
     body_plain();               /* this loop can't be counted */
   if (op >= IR_LOOP)
     loop_op(op, a, f);

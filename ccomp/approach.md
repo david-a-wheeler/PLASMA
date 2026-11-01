@@ -4727,6 +4727,41 @@ is lowered without its `DUP` and both `DROP`s, which is `++v`, for an
 small a change should cost: a candidate for trimming). Op counts: 5
 run tests change, none in its output, 5,025 → 4,953 ops (-1.4%).
 
+*Global and expression limits* (improvement 2, built 2026-10-31). A
+counted loop's limit may now be any expression `limit_ok()` accepts
+(irin.c): one value, with no side effects, of constants, locals other
+than the variable (whose addresses haven't been taken), globals
+(`GLOBAL`, `GLOBALB`), addresses (`DATAADDR`, `HEAPADDR`, `STRADDR`),
+loads through them, and arithmetic (`ADD` to `SHR`, `NEG`, `COMP`);
+not a load through an address of `$C000` or above (I/O, where each read
+may differ). It is computed once, on entry (`replay()` of the test's
+limit ops), so the body must not change it: no store to a local it
+reads (up to 4), no store to an overlapping global (any global store,
+if it loads through an address), and no store through a pointer if it
+reads memory at all. The test may now be longer than 4 ops: the
+variable, then the limit, or the limit, then the variable, then the
+comparison and the `BRTRUE`. New test: `counted_lim.c` (a global, a
+`char` global, `n - 1`, `at[m] + len[m]`, the limit first with a store
+to another global, `<=` with `nf * 2`), with counts of the counted ops;
+`counted_not.c` gains `limits()` (the body stores to the global limit,
+directly and through a pointer, and to the element the limit reads; a
+call in the limit; the body changes a local the limit reads; that
+local's address taken). 379 pass. Code: ccgen +545 bytes; ccpp,
+cccomp and ccrel unchanged. Op counts: only `counted_lim.c` changes
+(-22.7%).
+
+*Why cccomp's loops still aren't counted* (measured with an
+instrumented ccgen on cccomp's own sources, 2026-10-31): of its loops,
+32 have a counted loop's shape, limit and all (only 2 were stopped by
+their limit), and every one of them is then stopped by its body: a call
+in 22 (to `put` 3, `memcpy` 3, `unqual` 2, `sig_type` 2, and 12 others
+once each), a `return` in 7, a store through a pointer, with a limit
+in memory, in 2, a loop in 1. The other 31 have a step that isn't
+`v += k` (mostly `while` loops, which have none). So for cccomp itself,
+improvement 2 only pays together with 3 (calls that can't recurse:
+`memcpy` and `strcmp` are library calls; `unqual` and `sig_type` may be
+leaves) and a `return` in the body (5).
+
 
 **Step 2 is done** (2026-10-31): counted loops, in ccgen (irin.c,
 `counted_shape()`, `counted_loop()`), with the forms, the init folding
