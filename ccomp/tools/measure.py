@@ -205,7 +205,9 @@ def build_big():
     beside them; return the directory."""
     big = os.path.join(OUT, "big")
     os.makedirs(big, exist_ok=True)
-    for name in os.listdir(os.path.join(CCOMP, "src")) + ["../ccish.msg"]:
+    names = [n for n in os.listdir(os.path.join(CCOMP, "src"))
+             if n.endswith((".c", ".h"))]   # not an editor's files
+    for name in names + ["../ccish.msg"]:
         with open(os.path.join(CCOMP, "src", name)) as f:
             text = f.read()
         for limit, value in BIG_LIMITS.items():
@@ -258,6 +260,8 @@ def pp_stats(big, name):
 def limit(name):
     """The value of limit NAME, #defined in one of the sources."""
     for file in sorted(os.listdir(os.path.join(CCOMP, "src"))):
+        if not file.endswith((".c", ".h")):
+            continue                # not an editor's files
         with open(os.path.join(CCOMP, "src", file)) as f:
             m = re.search(r"#define %s\s+(\d+)" % name, f.read())
         if m:

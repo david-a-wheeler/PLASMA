@@ -391,7 +391,8 @@ void emit_put(Mop *m)
     code_word(m->fix == FIX_NONE || m->fix == FIX_DSYM ? m->a : 0);
     break;
   case OP_BRNCH: case OP_BRFLS: case OP_BRTRU: case OP_BREQ:
-  case OP_BRNE: case OP_SEL:
+  case OP_BRNE: case OP_SEL: case OP_BRGT: case OP_BRLT: case OP_INCBRLE:
+  case OP_ADDBRLE: case OP_DECBRGE: case OP_SUBBRGE:
     branch_word(m->a);
     break;
   case OP_ENTER:

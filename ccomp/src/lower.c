@@ -318,9 +318,16 @@ static void lower_special(Mop *m, int op, int a, int f)
 void lower_op(int op, int a, int f)
 {
   Mop m;
-  int kind = lw_kind[op];
+  int kind;
 
   memset(&m, 0, sizeof(m));
+  if (op == IR_MOP) {
+    m.op = a;                   /* a counted loop's branch, to label f */
+    m.a = f;
+    peep_put(&m);
+    return;
+  }
+  kind = lw_kind[op];
   m.op = lw_op[op];
   if (kind == L_COMPARE) {
     put_simple(m.op);

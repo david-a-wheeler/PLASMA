@@ -23,7 +23,10 @@ enum {
   OP_NOT = 0x80, OP_ADD = 0x82, OP_SUB = 0x84, OP_MUL = 0x86, OP_DIV = 0x88,
   OP_MOD = 0x8A, OP_INCR = 0x8C, OP_DECR = 0x8E, OP_NEG = 0x90,
   OP_COMP = 0x92, OP_AND = 0x94, OP_IOR = 0x96, OP_XOR = 0x98,
-  OP_SHL = 0x9A, OP_SHR = 0x9C, OP_IDXW = 0x9E, OP_ADDLB = 0xB0, OP_ADDLW = 0xB2, OP_ADDAB = 0xB4,
+  OP_SHL = 0x9A, OP_SHR = 0x9C, OP_IDXW = 0x9E,
+  OP_BRGT = 0xA0, OP_BRLT = 0xA2, OP_INCBRLE = 0xA4, OP_ADDBRLE = 0xA6,
+  OP_DECBRGE = 0xA8, OP_SUBBRGE = 0xAA,   /* counted loops (irin.c) */
+  OP_ADDLB = 0xB0, OP_ADDLW = 0xB2, OP_ADDAB = 0xB4,
   OP_ADDAW = 0xB6, OP_IDXLB = 0xB8, OP_IDXLW = 0xBA, OP_IDXAB = 0xBC,
   OP_IDXAW = 0xBE,
   /* Pseudo-ops: markers that travel through stages 2-4 in order with

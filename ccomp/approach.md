@@ -4568,6 +4568,62 @@ the loop forms steps 1 and 2 give.
 *Order (decided):* step 1, then the source rewrites, then step 2
 (without measuring first: see step 2's "Built without measuring").
 
+**Step 2 is done** (2026-10-31): counted loops, in ccgen (irin.c,
+`counted_shape()`, `counted_loop()`), with the forms, the init folding
+and both-ends-constant above, and these differences from the design:
+- **`!=` isn't converted.** The IR's `NE` doesn't say whether its
+  operands are signed: for an `unsigned` or a pointer, `!=` isn't `<`
+  (`u != 40000u` would be a signed `u < -25536`). So only `LT`, `LE`,
+  `GT` and `GE` (signed by their op: unsigned ones are `ULT` and the
+  rest) are counted; a `!=` loop keeps step 1's form. cccomp could
+  mark a signed `!=` later.
+- **Only a loop with no loop in its body is counted** (simpler than
+  "at most two nested"): the body is held, and a `LOOP` in it ends the
+  holding. So at most 2 eval-stack entries are ever held.
+- **A counted loop inside another loop may not store through a
+  pointer** in its body: the variable's or the limit's address might be
+  taken later in the outer loop, before this one runs again, which
+  ccgen, reading once, can't see in time (`counted_not.c` tests it).
+  In an outermost loop, an address taken earlier in the function is
+  enough to check (`addr_taken[]`), since nothing after the loop runs
+  before it ends (ccish has no `goto`, and the body can't call).
+- **A loop with both ends constant that never runs** keeps step 1's
+  form rather than being dropped (rare; correct either way).
+- **The side buffer** is 128 ops (each array of it 256 bytes or more,
+  so it moves to the heap), for the open headers and a held body; a
+  body that doesn't fit is lowered as step 1 does (`body_plain()`).
+- **The counted loops' branches** pass down ccgen's pipeline as a
+  ccgen-only op, `IR_MOP` (IR.md, "Loops"); mop.h has the six opcodes,
+  and emit.c encodes them as branches.
+- **Tests:** `counted.c` (every form, folded and not, both ends
+  constant, a limit of -32768, `break`, `continue` and a `switch` in
+  the body, a nested counted loop; exact counts of each counted op pin
+  which loops are counted) and `counted_not.c` (the body changes the
+  variable or the limit, calls, returns; the address taken before, and
+  later in an outer loop: none may be counted, and the listing must
+  have no counted op). 377 pass. `counted.c` was first one function,
+  and hit `MAX_LABELS` (104 per function): every loop takes 4 labels
+  since step 1 (a `while` loop took 2 before), so a function with
+  very many loops reaches the limit sooner; ccish's own sources don't.
+- **tools/measure.py** read every file in src/, and stopped on an
+  editor's swap file there; it reads only `.c` and `.h` files now.
+- Sizes (small build, before → after; code):
+
+  | Program | Code | Module file |
+  |---|---|---|
+  | `ccpp` | 13,892 → 13,871 (-21) | 26,124 → 26,103 |
+  | `cccomp` | 26,156 → 26,156 | 42,774 → 42,774 |
+  | `ccgen` | 11,746 → 13,384 (+1,638) | 21,050 → 23,256 |
+  | `ccrel` | 7,787 → 7,763 (-24) | 14,274 → 14,250 |
+
+  ccgen's growth (all in irin.c) is far more than the 300-500 bytes
+  estimated; it has room. cccomp is unchanged: few of its own loops
+  qualify (most call something, or end at a global such as `nfuncs`).
+- Op counts (plvm, run tests): 12 of 63 change, none in its output;
+  together 19,909 → 14,686 ops (-26.2%): `static.c` -42.6%,
+  `heap_globals.c` -39.5%, `counted.c` -25.2%, `loops.c` -0.3%.
+
+
 **Step 1 is done** (2026-10-31): tests at the bottom, as designed
 above, with these details:
 - cccomp always writes `LOOPSTEP`, so a `while` loop is a loop with an

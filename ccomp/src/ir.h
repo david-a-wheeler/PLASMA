@@ -86,7 +86,10 @@ enum {
   IR_LOOPBODY,    /* a = the body's label, f = the test's: the body
                    * follows */
   IR_LOOPEND,     /* a = the continue label, f = the break label */
-  IR_NOPS         /* the number of IR ops */
+  IR_NOPS,        /* the number of IR ops */
+  /* not in the IR file: ccgen's own, for a counted loop's branches
+   * (irin.c), which have no IR op: machine op a, with label f */
+  IR_MOP = IR_NOPS
 };
 
 /* The IR file: the output name plus this suffix, and its format's

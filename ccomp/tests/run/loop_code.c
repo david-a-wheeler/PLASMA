@@ -1,10 +1,13 @@
 /* The layout of loops (approach.md, "Loop design"): each test is at
  * the bottom, a true-sense branch back to the body, entered by one
  * jump; an endless loop has no entry jump, just the jump back; and no
- * loop's code jumps around its step. The BRFLS is first_over's if. */
+ * loop's code jumps around its step. sum's loop is counted (step 2):
+ * its init folded into the count, entered at its BRLT. The BRFLS is
+ * first_over's if. */
 // listing-count: 3 BRNCH
-// listing-count: 2 BRTRU
+// listing-count: 1 BRTRU
 // listing-count: 1 BRFLS
+// listing-count: 1 BRLT
 int sum(int n)
 {
   int i, s = 0;

@@ -571,9 +571,16 @@ LOOPEND  Lcont Lbrk
   and `continue` (to `Lcont`) in the body can branch to them, and
   writes the test as `parse_cond(Lbody, 1)`. A `for` with no
   condition has the test `JUMP Lbody`.
-- **Later:** PLASMA's counted-loop opcodes (`INCBRLE` and the rest) for
-  `int` loops whose body makes no calls (approach.md, "Loop design",
-  step 2).
+- **Counted loops:** when a loop's test and step have a counted loop's
+  shape (an `int` local stepped by a constant, compared signed with a
+  constant or another local), `ccgen` holds its body too, and if the
+  body qualifies (no calls, no returns, no loops, nothing that changes
+  the variable or the limit), keeps the count and the limit on the
+  eval stack, with PLASMA's counted-loop opcodes (`INCBRLE` and the
+  rest) or `BRLT`/`BRGT` after the step (approach.md, "Loop design",
+  step 2). Those branches have no IR op: `ccgen` passes them down as
+  `IR_MOP` (*a* = the machine op, *f* = the label), an op number past
+  `IR_NOPS` that is never in the file.
 
 ### `IR_SEL` *a* = label, and the case table: `IR_CASES` *a* = count, `IR_CASEVAL` *a* = value, `IR_CASETO` *a* = label
 

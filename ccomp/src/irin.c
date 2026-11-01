@@ -588,7 +588,8 @@ static void hold(int op, int a, int f)
  *   Ltest: test  BRNCH Lbrk  Lcont: step  BRNCH Ltest
  *   Lbody: body  BRNCH Lcont  Lbrk:
  */
-#define LOOP_BUF  64        /* held ops, for every open loop's header */
+#define LOOP_BUF  128       /* held ops, for every open loop's header,
+                             * and a counted loop's body */
 #define LOOP_NEST 8         /* loops held at once */
 static char lp_op[LOOP_BUF];
 static int lp_a[LOOP_BUF];
@@ -599,10 +600,34 @@ static int lp_step[LOOP_NEST];  /* and its step, or -1 until LOOPSTEP */
 static int lp_ltest[LOOP_NEST]; /* its test's label */
 static int lp_lcont[LOOP_NEST]; /* and its continue and break labels, */
 static int lp_lbrk[LOOP_NEST];  /* from LOOPSTEP */
+static int lp_lbody[LOOP_NEST]; /* and its body's, from LOOPBODY */
 static char lp_held[LOOP_NEST]; /* its header is held */
 static int lp_depth;            /* loops open */
-static int lp_fill;             /* the innermost header is being held */
+static int lp_fill;             /* the innermost loop's header (1), or
+                                 * its body (2: it may be counted), is
+                                 * being held */
 static char lab_ref[MAX_LABELS];    /* a branch to it has been read */
+
+/*
+ * Counted loops (approach.md, "Loop design", step 2): a loop whose test
+ * and step have the shape of a counted loop (counted_shape()) has its
+ * body held too (lp_fill 2, from cl_body), so that at LOOPEND ccgen has
+ * seen all of it, and can keep the count and the limit on the eval
+ * stack, as PLASMA's FOR does: 2 or 3 ops of the loop's own work per
+ * pass, instead of 7. The body must not change the loop variable
+ * (cl_var, a frame offset) or the limit (cl_lim: a constant, or a
+ * frame offset if cl_lim_local), take their addresses, call anything
+ * (the two values stay on the eval stack across a call, and a body
+ * that recursed would fill it), return, or hold a loop; nor, in a loop
+ * inside another loop, store through a pointer (a pointer to the
+ * variable might be taken later in the outer loop, before this one
+ * runs again). Their addresses mustn't have been taken earlier in the
+ * function either (addr_taken[]). Anything else in the body, or a body
+ * too big for lp_op[], makes it a loop like any other (body_plain()).
+ */
+static int cl_body;             /* where the held body starts */
+static int cl_var, cl_lim, cl_lim_local, cl_cmp, cl_step, cl_nested;
+static unsigned char addr_taken[32];    /* frame offsets: a bit each */
 
 /* Hold a jump to label n. */
 static void jump(int n)
@@ -616,6 +641,13 @@ static void label(int n)
 {
   if (lab_ref[n])
     hold(IR_LABEL, n, -1);
+}
+
+/* Hold machine branch op to label n (a counted loop's). */
+static void mop_branch(int op, int n)
+{
+  lab_ref[n] = 1;
+  hold(IR_MOP, op, n);
 }
 
 /* Lower held ops from from up to (not including) to. */
@@ -642,11 +674,27 @@ static void loop_overflow(void)
   lp_fill = 0;
 }
 
-/* Hold IR op op (with a and f) of the header being filled. */
+/* The innermost loop's held body can't be counted: lower what it holds,
+ * as step 1 does (its test is never just a jump), and the rest as it
+ * comes. */
+static void body_plain(void)
+{
+  int d = lp_depth - 1;
+  jump(lp_ltest[d]);
+  label(lp_lbody[d]);
+  replay(cl_body, nlp);
+  nlp = cl_body;
+  lp_fill = 0;
+}
+
+/* Hold IR op op (with a and f) of the header or body being filled. */
 static void keep(int op, int a, int f)
 {
   if (nlp == LOOP_BUF) {
-    loop_overflow();
+    if (lp_fill == 2)
+      body_plain();
+    else
+      loop_overflow();
     hold(op, a, f);
     return;
   }
@@ -654,6 +702,164 @@ static void keep(int op, int a, int f)
   lp_a[nlp] = a;
   lp_f[nlp] = f;
   nlp++;
+}
+
+/* Has frame offset off's address been taken in this function? */
+static int taken(int off)
+{
+  return (addr_taken[off >> 3] >> (off & 7)) & 1;
+}
+
+/* Is frame offset off the loop variable's, or a local limit's (a word
+ * each, so a byte of either)? */
+static int counted_var(int off)
+{
+  return off == cl_var || off == cl_var + 1
+         || (cl_lim_local && (off == cl_lim || off == cl_lim + 1));
+}
+
+/* May IR op op (with a) be in a counted loop's body? */
+static int body_ok(int op, int a)
+{
+  switch (op) {
+  case IR_CALL: case IR_RETURN: case IR_UDIV: case IR_UMOD: case IR_USHR:
+    return 0;
+  case IR_SETLOCAL: case IR_SETLOCALB: case IR_LOCALADDR:
+    return !counted_var(a);
+  case IR_STORE: case IR_STOREB:
+    return !cl_nested;
+  }
+  return 1;
+}
+
+/* The comparison that means the same with its operands exchanged. */
+static int mirror(int cmp)
+{
+  return cmp == IR_LT ? IR_GT : cmp == IR_GT ? IR_LT
+         : cmp == IR_LE ? IR_GE : IR_LE;
+}
+
+/* Does the held header of open loop d (body label lbody) have the shape
+ * of a counted loop? If so, set cl_var and the rest. The step is
+ * v++ (LOCAL v, DUP, CONST k, ADD or SUB, SETLOCAL v, DROP, DROP) or
+ * ++v and v += k (the same without the DUP and a DROP); the test is
+ * LOCAL v and the limit (CONST or another LOCAL), in either order,
+ * compared signed (LT, LE, GT or GE: unsigned ones are ULT and the
+ * rest), then BRTRUE lbody. Counting up must end at < or <=, down at
+ * > or >=. */
+static int counted_shape(int d, int lbody)
+{
+  int t = lp_test[d], st = lp_step[d], n = nlp - st, k;
+  if (n != 5 && n != 7)
+    return 0;
+  k = n == 7;                   /* the DUP of v++ */
+  if (lp_op[st] != IR_LOCAL || (k && lp_op[st + 1] != IR_DUP)
+      || lp_op[st + 1 + k] != IR_CONST
+      || (lp_op[st + 2 + k] != IR_ADD && lp_op[st + 2 + k] != IR_SUB)
+      || lp_op[st + 3 + k] != IR_SETLOCAL
+      || lp_a[st + 3 + k] != lp_a[st] || lp_op[nlp - 1] != IR_DROP
+      || lp_op[st + 4 + k] != IR_DROP)
+    return 0;
+  cl_var = lp_a[st];
+  cl_step = lp_op[st + 2 + k] == IR_ADD ? lp_a[st + 1 + k]
+                                        : -lp_a[st + 1 + k];
+  if (st - t != 4 || lp_op[t + 3] != IR_BRTRUE || lp_a[t + 3] != lbody)
+    return 0;
+  cl_cmp = lp_op[t + 2];
+  if (cl_cmp != IR_LT && cl_cmp != IR_LE && cl_cmp != IR_GT
+      && cl_cmp != IR_GE)
+    return 0;
+  k = t;                        /* the limit's op */
+  if (lp_op[t] == IR_LOCAL && lp_a[t] == cl_var)
+    k = t + 1;
+  else if (lp_op[t + 1] == IR_LOCAL && lp_a[t + 1] == cl_var)
+    cl_cmp = mirror(cl_cmp);
+  else
+    return 0;
+  cl_lim = lp_a[k];
+  cl_lim_local = lp_op[k] == IR_LOCAL;
+  if ((!cl_lim_local && lp_op[k] != IR_CONST)
+      || (cl_lim_local && (cl_lim == cl_var || taken(cl_lim)))
+      || taken(cl_var) || cl_step == 0
+      || (cl_step > 0) != (cl_cmp == IR_LT || cl_cmp == IR_LE))
+    return 0;
+  cl_nested = d > 0;
+  return 1;
+}
+
+/* At LOOPEND, write the counted loop whose body is held (labels:
+ * lp_lbody[d] the top, lcont, lp_ltest[d] the test, lbrk the exit).
+ * The init just before the loop, still in the swap buffer, may be
+ * folded in: a CONST or a LOCAL stored into the variable, which is
+ * pushed as the count instead (the loop always stores the variable
+ * itself). Then:
+ *   <limit> <count>  [entry]  top: DLW v  body  cont: <bottom>
+ *   exit: SLW v  DROP
+ * For v < n (and v > n), the bottom steps the count and tests it
+ * (INCR or ADDI k, BRLT top), and the entry jumps to the test; for
+ * v <= n, v < N (constant: the limit N - 1), and the same counting
+ * down, the bottom is INCBRLE (or CB k ADDBRLE, DECBRGE, CB k SUBBRGE)
+ * and the entry skips an empty loop (BRGT, or BRLT, exit). With both
+ * ends constant, the entry goes; if such a loop would never run, it is
+ * written as step 1 writes any loop. Returns 0 if not written. */
+static int counted_loop(int d, int lcont, int lbrk)
+{
+  int up = cl_step > 0, k = up ? cl_step : -cl_step, lim = cl_lim;
+  int fold = 0, c = 0, sure = 0, bottom, top = lp_lbody[d];
+  int ltest = lp_ltest[d];
+  if (nbuf >= 3 && buf_op[nbuf - 1] == IR_DROP
+      && buf_op[nbuf - 2] == IR_SETLOCAL && buf_a[nbuf - 2] == cl_var
+      && (buf_op[nbuf - 3] == IR_CONST || buf_op[nbuf - 3] == IR_LOCAL)
+      && !buf_pre[nbuf - 3] && !buf_pre[nbuf - 2] && !buf_pre[nbuf - 1]
+      && (nbuf == 3 || buf_op[nbuf - 4] != IR_SWAP)) {
+    fold = buf_op[nbuf - 3];
+    c = buf_a[nbuf - 3];
+  }
+  if (fold == IR_CONST && !cl_lim_local) {
+    sure = cl_cmp == IR_LT ? c < lim : cl_cmp == IR_LE ? c <= lim
+           : cl_cmp == IR_GT ? c > lim : c >= lim;
+    if (!sure)
+      return 0;                 /* it never runs */
+  }
+  /* The bottom: a step-and-branch op (INCBRLE ...), or a test (BRLT,
+   * BRGT) after the step. */
+  if (cl_cmp == IR_LE || cl_cmp == IR_GE) {
+    bottom = up ? (k == 1 ? OP_INCBRLE : OP_ADDBRLE)
+                : (k == 1 ? OP_DECBRGE : OP_SUBBRGE);
+  } else if (k == 1 && !cl_lim_local && lim != (up ? -0x8000 : 0x7FFF)) {
+    bottom = up ? OP_INCBRLE : OP_DECBRGE;
+    lim += up ? -1 : 1;         /* v < N is v <= N - 1 */
+  } else {
+    bottom = up ? OP_BRLT : OP_BRGT;
+  }
+  if (fold)
+    nbuf -= 3;                  /* the init's store: done by the loop */
+  hold(cl_lim_local ? IR_LOCAL : IR_CONST, lim, -1);
+  hold(fold ? fold : IR_LOCAL, fold ? c : cl_var, -1);
+  if (!sure) {
+    if (bottom == OP_BRLT || bottom == OP_BRGT)
+      jump(ltest);
+    else
+      mop_branch(up ? OP_BRGT : OP_BRLT, lbrk);   /* an empty loop */
+  }
+  lab_ref[top] = 1;
+  hold(IR_LABEL, top, -1);
+  hold(IR_SETLOCAL, cl_var, -1);          /* DLW v */
+  replay(cl_body, nlp);
+  label(lcont);
+  if (bottom == OP_BRLT || bottom == OP_BRGT) {
+    hold(IR_CONST, k, -1);
+    hold(up ? IR_ADD : IR_SUB, 0, -1);    /* INCR, ADDI k, ... */
+    label(ltest);
+  } else if (k != 1) {
+    hold(IR_CONST, k, -1);
+  }
+  mop_branch(bottom, top);
+  label(lbrk);
+  hold(IR_SETLOCAL, cl_var, -1);          /* SLW v */
+  hold(IR_DROP, 0, -1);
+  hold(IR_DROP, 0, -1);                   /* the limit */
+  return 1;
 }
 
 /* Lay out a loop at its marker op, with labels a and f. */
@@ -678,7 +884,7 @@ static void loop_op(int op, int a, int f)
   if (d < 0)
     damaged();                  /* a marker outside a loop */
   held = d < LOOP_NEST && lp_held[d];
-  if (held != lp_fill && op != IR_LOOPEND)
+  if (held != (lp_fill == 1) && op != IR_LOOPEND)
     damaged();                  /* a marker where it can't be */
   if (op == IR_LOOPSTEP) {
     if (held) {
@@ -694,6 +900,12 @@ static void loop_op(int op, int a, int f)
       lp_fill = 0;
       if (lp_step[d] < 0)
         damaged();
+      lp_lbody[d] = a;
+      if (counted_shape(d, a)) {
+        lp_fill = 2;            /* hold the body too */
+        cl_body = nlp;
+        return;
+      }
       if (lp_step[d] - lp_test[d] != 1 || lp_op[lp_test[d]] != IR_JUMP
           || lp_a[lp_test[d]] != a)
         jump(f);                /* enter at the test */
@@ -703,8 +915,16 @@ static void loop_op(int op, int a, int f)
       hold(IR_LABEL, a, -1);
     }
   } else {
-    if (lp_fill)
+    if (lp_fill == 1)
       damaged();
+    if (lp_fill == 2 && counted_loop(d, a, f)) {
+      lp_fill = 0;
+      nlp = lp_test[d];
+      lp_depth--;
+      return;
+    }
+    if (lp_fill == 2)
+      body_plain();
     if (held) {
       label(a);
       replay(lp_step[d], nlp);
@@ -767,6 +987,8 @@ static void do_op(int op, int a, int f)
     nwritten++;
     for (i = 0; i < MAX_LABELS; i++)
       lab_ref[i] = 0;
+    for (i = 0; i < 32; i++)
+      addr_taken[i] = 0;
   } else if (op == IR_ENDFUNC) {
     if (lp_depth)
       damaged();                /* a loop not ended */
@@ -777,8 +999,12 @@ static void do_op(int op, int a, int f)
     lab_ref[a] = 1;
   else if (op == IR_JOIN)
     lab_ref[f] = 1;             /* a's branches go to f */
+  if (op == IR_LOCALADDR && a >= 0 && a < 256)
+    addr_taken[a >> 3] |= (unsigned char)(1 << (a & 7));
   if (opt_ir)
     dump_ir(op, a, f);
+  if (lp_fill == 2 && (op == IR_LOOP || !body_ok(op, a)))
+    body_plain();               /* this loop can't be counted */
   if (op >= IR_LOOP)
     loop_op(op, a, f);
   else if (lp_fill)
