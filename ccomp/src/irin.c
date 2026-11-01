@@ -603,7 +603,8 @@ static int lp_lbrk[LOOP_NEST];  /* from LOOPSTEP */
 static int lp_lbody[LOOP_NEST]; /* and its body's, from LOOPBODY */
 static char lp_held[LOOP_NEST]; /* its header is held */
 static int lp_fvar[LOOP_NEST];  /* the DLW fix: its variable, or -1 */
-static int lp_fstep[LOOP_NEST]; /* and the variable's step */
+static char lp_fload[LOOP_NEST];    /* and how the test loads it */
+static char lp_fpost[LOOP_NEST];    /* the step is v++ or v-- */
 static int lp_depth;            /* loops open */
 static int lp_fill;             /* the innermost loop's header (1), or
                                  * its body (2: it may be counted), is
@@ -627,14 +628,19 @@ static char lab_ref[MAX_LABELS];    /* a branch to it has been read */
  * function either (addr_taken[]). Anything else in the body, or a body
  * too big for lp_op[], makes it a loop like any other (body_plain()).
  *
- * A loop that isn't counted, whose step is one of those v += k and
- * whose test starts by pushing v (and holds no SWAP, whose blocks
- * could reach back past Ltest), gets the DLW fix (approach.md, "The DLW
- * fix"): the entry pushes v before it jumps to Ltest, and the step
- * keeps the v it stores (DLW), so the test's own LOCAL v is left out:
- *   LLW v  BRNCH Ltest  Lbody: body  Lcont: LLW v ADDI k DLW v
+ * A loop that isn't counted, whose test starts by pushing a local v
+ * (LOCAL v, or LOCALB v for a char) and holds no SWAP (whose blocks
+ * could reach back past Ltest), and whose step ends by storing v
+ * (SETLOCAL v or SETLOCALB v, then DROP), gets the DLW fix (approach.md,
+ * "The DLW fix", and "for any store"): the entry pushes v before it
+ * jumps to Ltest, and the step, without its DROP, keeps the v it
+ * stores (DLW or DLB), so the test's own load is left out:
+ *   LLW v  BRNCH Ltest  Lbody: body  Lcont: step, ending DLW v
  *   Ltest: the rest of the test
- * one op less per pass, in the same bytes (lp_fvar[], lp_fstep[]).
+ * one op less per pass, in the same bytes. v++ and v-- (LOCAL v, DUP,
+ * CONST 1, ADD or SUB, SETLOCAL v, DROP, DROP: the old value is
+ * dropped last) are lowered without the DUP and both DROPs, which is
+ * ++v (lp_fpost[]).
  */
 static int cl_body;             /* where the held body starts */
 static int cl_var, cl_lim, cl_lim_local, cl_cmp, cl_step, cl_nested;
@@ -690,7 +696,7 @@ static void loop_overflow(void)
 static void enter_test(int d)
 {
   if (lp_fvar[d] >= 0)
-    hold(IR_LOCAL, lp_fvar[d], -1);
+    hold(lp_fload[d], lp_fvar[d], -1);
   jump(lp_ltest[d]);
 }
 
@@ -782,19 +788,31 @@ static int step_shape(int d, int *v, int *k)
 }
 
 /* Does open loop d's held header suit the DLW fix? If so, set
- * lp_fvar[d] and lp_fstep[d]; else lp_fvar[d] is -1. */
+ * lp_fvar[d] and the rest; else lp_fvar[d] is -1. */
 static void dlw_fix(int d)
 {
-  int t = lp_test[d], st = lp_step[d], v, k, i;
+  int t = lp_test[d], st = lp_step[d], v = lp_a[t], load = lp_op[t];
+  int store = load == IR_LOCAL ? IR_SETLOCAL : IR_SETLOCALB, i;
   lp_fvar[d] = -1;
-  if (!step_shape(d, &v, &k) || st - t < 2 || lp_op[t] != IR_LOCAL
-      || lp_a[t] != v)
+  if (st - t < 2 || (load != IR_LOCAL && load != IR_LOCALB))
     return;
   for (i = t; i < st; i++)
     if (lp_op[i] == IR_SWAP)
       return;
+  if (nlp - st == 7 && lp_op[st] == load && lp_a[st] == v
+      && lp_op[st + 1] == IR_DUP && lp_op[st + 2] == IR_CONST
+      && (lp_op[st + 3] == IR_ADD || lp_op[st + 3] == IR_SUB)
+      && lp_op[st + 4] == store && lp_a[st + 4] == v
+      && lp_op[st + 5] == IR_DROP && lp_op[st + 6] == IR_DROP) {
+    lp_fpost[d] = 1;            /* v++ or v-- */
+  } else if (nlp - st >= 2 && lp_op[nlp - 1] == IR_DROP
+             && lp_op[nlp - 2] == store && lp_a[nlp - 2] == v) {
+    lp_fpost[d] = 0;            /* any step that ends storing v */
+  } else {
+    return;
+  }
   lp_fvar[d] = v;
-  lp_fstep[d] = k;
+  lp_fload[d] = (char)load;
 }
 
 /* Does the held header of open loop d (body label lbody) have the shape
@@ -975,10 +993,12 @@ static void loop_op(int op, int a, int f)
     if (held && lp_fvar[d] >= 0) {
       /* The DLW fix: the step keeps v, which the test needn't push. */
       label(a);
-      hold(IR_LOCAL, lp_fvar[d], -1);
-      hold(IR_CONST, lp_fstep[d], -1);
-      hold(IR_ADD, 0, -1);
-      hold(IR_SETLOCAL, lp_fvar[d], -1);
+      if (lp_fpost[d]) {
+        replay(lp_step[d], lp_step[d] + 1);     /* without the DUP */
+        replay(lp_step[d] + 2, nlp - 2);        /* and the DROPs */
+      } else {
+        replay(lp_step[d], nlp - 1);    /* all but its DROP */
+      }
       label(lp_ltest[d]);
       replay(lp_test[d] + 1, lp_step[d]);
       nlp = lp_test[d];

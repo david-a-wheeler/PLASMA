@@ -4654,6 +4654,79 @@ got it. 378 pass. Sizes (small build, code): `ccpp` 13,871 → 13,835
 its output; 17,015 → 16,701 ops (-1.8%), from `counted_not.c` -7.8%
 (whose loops can't be counted) and `loop_dlw.c` -5.3%.
 
+*Possible improvements to the loop forms* (from discussion, 2026-10-31:
+the rules above are safe, but tighter than they need to be). What each
+form needs now: a counted loop, an `int` frame local stepped by a
+constant, tested against a constant or another `int` local with `<`,
+`<=`, `>` or `>=` (in either order, and nothing else in the test), in a
+body that fits the 128-op buffer and has no call, `return` or loop,
+doesn't store to or take the address of the variable or a local limit,
+and, inside another loop, doesn't store through a pointer; neither
+address taken earlier in the function. The `DLW` fix, a local stepped
+by `v += k` and a test that starts with `LOCAL v` and holds no `SWAP`.
+Ways to loosen them, the most valuable first:
+1. **The `DLW` fix for any step that ends by storing `v`**, not only
+   `v += k`: `p = p->next` (linked lists), `i = i * 2`, and a `char`
+   variable (`SETLOCALB v` then `LOCALB v`: `DLB` keeps the byte the
+   load would give). Safe, and cheap: the step's last op, its `DROP`,
+   is left out, so the store keeps the value. (Chosen first; see "The
+   `DLW` fix for any store", below.)
+2. **Global limits, and limits that are expressions**, for counted
+   loops: `i < nfuncs`, `i < nbuf`, `i < n - 1`,
+   `i < mac_at[m] + mac_len[m]` (common in ccish's own code). Safe
+   when the limit has no side effects and nothing in the body can
+   change it: no store to that global, and no store through a pointer
+   (which might point at it); ccgen computes it once, at the entry.
+   `volatile` is accepted but not yet recorded, so a hardware register
+   as a limit would be read once; that needs a rule (no global at
+   `$C000` or above, the Apple's I/O space) until `volatile` is.
+3. **Calls that can't recurse, in a counted loop's body** (the user's
+   decision: "no calls" stands for now). The rule is there because the
+   two values stay on the eval stack across a call, and a recursive one
+   could fill it. These can't recurse: CMDSYS functions (native code,
+   `putc`, `puti` and the rest), ccgen's helpers (`UDIV` and the rest),
+   and functions defined earlier in the same file that make no calls
+   (ccgen can note it as it reads them). `for (i = 0; i < n; i++)
+   putc(buf[i]);` would then be counted.
+4. **Stores through computed addresses into arrays, in a nested counted
+   loop.** `a[i] = x` in an inner loop is excluded now, since a pointer
+   to the variable might be taken later in the outer loop. A store into
+   an array (global, or a local array) can't change a scalar local
+   short of undefined behaviour; only one through a pointer variable
+   can. Telling them apart from the IR stream (the store's address
+   block starts with `DATAADDR`, `HEAPADDR` or `LOCALADDR` of another
+   local) is moderate work.
+5. **Smaller ones:**
+   - a `return` in a counted loop's body: drop the two values first,
+     the result kept meanwhile in a temporary (there is no `SWAP`);
+   - a global loop variable (`DAW`), when the body stores through no
+     pointer; for the `DLW` fix too, but not where a store and a load
+     of it may differ (`volatile`, hardware);
+   - a `char` counted loop variable (`DLB`), with a constant limit of
+     at most 255 (so that the count can't pass what a `char` holds);
+   - counting an outer loop whose body holds a loop (rarely possible:
+     the whole body must fit the buffer);
+   - `!=` loops counted, if the VM gains `INCBRNE` and its kin (issue
+     21).
+
+*The `DLW` fix for any store* (improvement 1, built 2026-10-31). The
+fix now applies when the step ends by storing into the variable the
+test starts by loading: `SETLOCAL v` then `DROP` (any expression before
+it), with `LOCAL v` first in the test, or `SETLOCALB v` and `LOCALB v`
+for a `char`; the step is lowered without its `DROP`, so `DLW` (or
+`DLB`) keeps the value for the test. `v++` (which ends `SETLOCAL v DROP
+DROP`, its old value dropped last) is still rewritten as `v += 1`, as
+before. The entry pushes `v` with the test's own load (`LLW` or `LLB`).
+In the end `v++` and `v--` aren't rewritten: the postfix shape (`LOCAL
+v, DUP, CONST 1, ADD or SUB, SETLOCAL v, DROP, DROP`, or the byte forms)
+is lowered without its `DUP` and both `DROP`s, which is `++v`, for an
+`int` or a `char` alike. `loop_dlw.c` gains a linked list (whose test,
+`p`, is then just `BRTRU`), `i = i * 2`, and `char` loops by `c++` and
+`c = c + 1`, and counts the `DLB`s too. 378 pass. Code (small build):
+`ccpp` -12 bytes, `cccomp` -4, `ccrel` 0, `ccgen` +249 (more than so
+small a change should cost: a candidate for trimming). Op counts: 5
+run tests change, none in its output, 5,025 → 4,953 ops (-1.4%).
+
 
 **Step 2 is done** (2026-10-31): counted loops, in ccgen (irin.c,
 `counted_shape()`, `counted_loop()`), with the forms, the init folding

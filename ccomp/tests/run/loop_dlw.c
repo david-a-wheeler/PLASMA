@@ -1,16 +1,28 @@
-/* The DLW fix (approach.md, "The DLW fix"): a loop that isn't counted,
- * whose step is v += k and whose test starts with v, enters by pushing
- * v and jumping past the test's own load, so the step keeps the v it
- * stores (DLW). Pointer, unsigned and int loops; != and < (with a call
- * in the body, so not counted); continue and break; an init just
- * before the loop (which fuses with the entry's push) and not; a loop
- * that never runs; and loops the fix must leave alone (the variable
- * second in the test; a step that isn't v += k). */
-// Each of the 10 fixed loops (ptrs 3, uns 2, calls 2, flow 1, never 2)
-// ends its step with a DLW, and 9 have another where their init meets
-// the entry's push (all but never's second loop, whose init isn't right
-// before it). The 2 loops left alone have none. (" DLW": not ADDLW.)
-// listing-count: 19  DLW
+/* The DLW fix (approach.md, "The DLW fix", and "for any store"): a
+ * loop that isn't counted, whose step ends by storing v and whose test
+ * starts with v, enters by pushing v and jumping past the test's own
+ * load, so the step keeps the v it stores (DLW, or DLB for a char).
+ * Pointer, unsigned and int loops; != and < (with a call in the body,
+ * so not counted); continue and break; an init just before the loop
+ * (which fuses with the entry's push) and not; a loop that never runs;
+ * steps that aren't v += k (a linked list, v = v * 2, a char); and a
+ * loop the fix must leave alone (the variable second in the test). */
+// Each of the 12 fixed int and pointer loops (ptrs 3, uns 2, calls 2,
+// flow 1, never 2, stores 2) ends its step with a DLW, and 11 have
+// another where their init meets the entry's push (all but never's
+// second loop, whose init isn't right before it). stores' 2 char loops
+// have a DLB each for their step, and for their init. The loop left
+// alone has none. (" DLW": not ADDLW.)
+// listing-count: 23  DLW
+// listing-count: 4  DLB
+struct node {
+  int v;
+  struct node *next;
+};
+
+struct node n3 = {3, 0};
+struct node n2 = {2, &n3};
+struct node n1 = {1, &n2};
 int a[6] = {1, 2, 3, 4, 5, 6};
 
 void show(int n)
@@ -94,16 +106,32 @@ void never(void)
   show(p - a);
 }
 
-/* Left alone: the variable second in the test (n > i), and a step that
- * isn't v += k; both must still be right. */
-void alone(void)
+/* Steps that end by storing the variable, besides v += k: a linked
+ * list, v = v * 2, and a char, by c++ and by c = c + 1. */
+void stores(void)
 {
-  int i, n = 4, s = 0;
-  for (i = 0; n > i; i++)
-    show(i);
+  struct node *q;
+  int i, s = 0;
+  char c;
+  for (q = &n1; q; q = q->next)
+    show(q->v);
   for (i = 1; i != 16; i = i * 2)
     s += i;
   show(s);
+  for (c = 97; c != 101; c++)
+    putc(c);
+  for (c = 'w'; c != 'z'; c = c + 1)
+    putc(c);
+  putc(' ');
+}
+
+/* Left alone: the variable second in the test (n > i); it must still
+ * be right. */
+void alone(void)
+{
+  int i, n = 4;
+  for (i = 0; n > i; i++)
+    show(i);
 }
 
 int main()
@@ -117,6 +145,8 @@ int main()
   flow();
   putln();
   never();
+  putln();
+  stores();
   putln();
   alone();
   putln();
