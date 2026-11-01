@@ -43,6 +43,18 @@
  *        constant then ADD or SUB; store is SLW, SLB, SAW or SAB n, or SW
  *        or SB after an address computed only on the stack (LLW p, LLA a
  *        IDXLW i, LA g IDXAW i, ...).
+ *   expr  DROP               -> (nothing)  for an expression that
+ *                                          reads no memory but the frame
+ *                                          (constants, LLW, LLB, LLA, LA,
+ *                                          DUP, arithmetic: no LW, LAB,
+ *                                          ADDAW, ..., which might read
+ *                                          I/O)
+ * And at a LEAVE or RET (dead_stores()), the stores to locals just
+ * before it, with nothing between but ops on the stack, are dead (the
+ * frame goes), unless a later op loads the local back: SLW or SLB n ->
+ * DROP, DLW n -> (nothing), DLB n -> ANDI 255 (the byte it keeps); then
+ * an expression and that DROP -> (nothing), as above. A loop's exit then a return
+ * (SLW i DROP MINUS1 LEAVE) needn't store i.
  * And at a label L, just before it flushes the window (skipping joins):
  *   BRNCH L                  -> (nothing)  a jump to the very next op
  *   Bcond L  BRNCH T         -> Binv T     the opposite branch (BRFLS /
@@ -476,6 +488,92 @@ static int rewrite_mul(Mop *a, Mop *b)
   return 0;
 }
 
+/* Does window op m push a value, reading no memory but the frame (so
+ * that a DROP of it can go with it)? */
+static int frame_push(Mop *m)
+{
+  int v;
+  return mop_const_value(m, &v) || m->op == OP_LLW || m->op == OP_LLB
+         || m->op == OP_LLA || m->op == OP_LA || m->op == OP_DUP;
+}
+
+static void remove_op(int i);
+
+/* Does window op m read a local: LLW, LLB, or an add of one? */
+static int reads_local(Mop *m)
+{
+  return m->op == OP_LLW || m->op == OP_LLB || m->op == OP_ADDLB
+         || m->op == OP_ADDLW || m->op == OP_IDXLB || m->op == OP_IDXLW;
+}
+
+/* The number of ops in the expression that ends just before window
+ * index end, if it pushes one value and reads no memory but the frame
+ * (frame_push(), or arithmetic: no load through an address or from an
+ * absolute one, which might read I/O); else 0. */
+static int frame_expr(int end)
+{
+  int n = expr_len(end), i;
+  for (i = end - n; i < end; i++)
+    if (!frame_push(&win[i]) && !(win[i].op >= OP_ADD && win[i].op <= OP_IDXW)
+        && win[i].op != OP_INCR && win[i].op != OP_DECR
+        && win[i].op != OP_ADDI && win[i].op != OP_SUBI
+        && win[i].op != OP_ANDI && !reads_local(&win[i]))
+      return 0;
+  return n;
+}
+
+/* Remove the DROP at window index i and, if the expression before it
+ * has no effect (frame_expr()), that too. Returns how many ops before i
+ * went. */
+static int drop_expr(int i)
+{
+  int n = frame_expr(i), k;
+  if (n == 0)
+    return 0;
+  for (k = 0; k <= n; k++)
+    remove_op(i - n);
+  return n;
+}
+
+
+/* The window's last op is a LEAVE or RET: remove the stores to locals
+ * before it that nothing reads back (the patterns at the top). It scans
+ * back over ops that only work on the stack (stack_effect(), but no
+ * load through an address, which might read a local through a pointer),
+ * DROPs, loads of locals, and the stores, and stops at anything else. */
+static void dead_stores(void)
+{
+  int i, j, pops, pushes, nread = 0, read[WINDOW];
+  Mop *m;
+  for (i = nwin - 2; i >= 0; i--) {
+    m = &win[i];
+    if (m->op == OP_SLW || m->op == OP_SLB || m->op == OP_DLW
+        || m->op == OP_DLB) {
+      for (j = 0; j < nread; j++)
+        if (m->a - read[j] <= 1 && read[j] - m->a <= 1)
+          break;
+      if (j < nread)
+        continue;               /* loaded back: not dead */
+      if (m->op == OP_DLW) {
+        remove_op(i);
+      } else if (m->op == OP_DLB) {
+        m->op = OP_ANDI;
+        m->a = 0xFF;
+      } else {
+        m->op = OP_DROP;
+        m->a = 0;
+        i -= drop_expr(i);      /* and the value, if it has no effect */
+      }
+    } else if (reads_local(m)) {
+      read[nread++] = m->a;
+    } else if (m->op != OP_DROP
+               && (!stack_effect(m, &pops, &pushes) || m->op == OP_LW
+                   || m->op == OP_LB)) {
+      break;
+    }
+  }
+}
+
 /* Try one pattern at the end of the window. Returns 1 if it changed
  * anything, so the caller tries again. */
 static int rewrite(void)
@@ -500,6 +598,10 @@ static int rewrite(void)
   /* DUP update store DROP -> update store: x++ (or a similar update)
    * whose old value is unused needs no copy of it. */
   if (b->op == OP_DROP && drop_dup())
+    return 1;
+  /* expr DROP -> nothing, for an expression that reads no memory but
+   * the frame. */
+  if (b->op == OP_DROP && drop_expr(nwin - 1))
     return 1;
   return 0;
 }
@@ -574,6 +676,8 @@ void peep_put(Mop *m)
   win[nwin++] = *m;
   if (is_unconditional_exit(m->op))
     dead = 1;
+  if (m->op == OP_LEAVE || m->op == OP_RET)
+    dead_stores();
   while (rewrite())
     ;
 }

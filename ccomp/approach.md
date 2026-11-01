@@ -4808,6 +4808,31 @@ frame goes; a peephole rule making a store to a local just before a
 `LEAVE` or `RET` (with no load of it or label between) a `DROP` would
 save a byte there, and anywhere else that happens.
 
+*Dead stores before a return* (built 2026-10-31, at the user's request
+to remove any sequence of useless stores: "eliminating operations that
+have no effect reduces both space and time"). In peep.c, when a `LEAVE`
+or `RET` enters the window, `dead_stores()` scans back over ops that
+only work on the stack (but no load through an address, which might
+read a local through a pointer), `DROP`s, loads of locals, and stores to
+locals, stopping at anything else (a call, a branch, a join; a label
+has already flushed the window). A store to a local that no later op
+there loads back is dead, since the frame goes: `SLW`/`SLB n` becomes
+`DROP`, `DLW n` goes, `DLB n` becomes `ANDI 255` (the byte it keeps).
+And a new pattern, anywhere: an expression that reads no memory but the
+frame (constants, `LLW`, `LLB`, `LLA`, `LA`, `DUP`, arithmetic; not
+`LW`, `LAB`, `ADDAW` and the like, which might read I/O), then `DROP`,
+goes. So `x = a * 3; return a;` is `LLW a LEAVE`, two dead stores in a
+row go, `x = a + 2; return x;` is `LLW a ADDI 2 LEAVE`, and a counted
+loop's exit before a return is `DROP DROP MINUS1 LEAVE`. Kept: a store
+a pointer reads (`*p` after `p = &x`), a global's, and one before a
+call (the scan stops there, though the store is dead too). The frame
+isn't shrunk: a local whose stores all went still has its bytes. New
+test: `dead_store.c`, which pins what stays. 381 pass. Code (small
+build): cccomp -6, ccpp -6, ccgen +618 (peep.c: `dead_stores()` 254
+bytes, `frame_expr()` 166, a long chain of op tests that a table could
+shorten: a candidate for trimming). Op counts: 4 run tests change, none
+in its output, 994 → 975 (-1.9%).
+
 
 **Step 2 is done** (2026-10-31): counted loops, in ccgen (irin.c,
 `counted_shape()`, `counted_loop()`), with the forms, the init folding
