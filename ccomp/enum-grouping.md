@@ -266,40 +266,65 @@ directly, but tok_desc() prints keyword spellings in many error
 messages, and the error tests (tests/errors/) compare the message text,
 so a misplaced string shows up there.
 
-## 3. ir.h: add IR_IS_* macros; no reorder
+## 3. ir.h: add IR_IS_* macros; move JOIN after SEL
 
 The IR ops are already grouped by their designers — the comments in
 ir.h are the documentation of it — and every set in section 1 is either
-already a range or one compare off of one. No reorder is proposed; the
-work is to lift the range checks that live inline in the .c files up
-into ir.h, and to document the ordering constraints that are now
-implicit.
+already a range or one compare off of one. The work is to lift the
+range checks that live inline in the .c files up into ir.h, to
+document the ordering constraints that are now implicit, and to move
+IR_JOIN one slot (section 3.1).
+
+### 3.1 Reorder JOIN and SEL (Q4)
+
+IR_SEL (46) names a case table in its a operand; IR_JOIN (45) does not,
+and the label-naming ops JUMP (42), BRFALSE (43 and BRTRUE (44) are the
+only other ops with a in a label. Moving SEL to 45 and JOIN to 46 makes
+the ops that reference a label in a exactly the range JUMP through SEL
+(CASETO's a is a case-table label too, but it sits with the case ops at
+47 through 49; the range plus CASETO is written once, below).
+
+That is a file format change: IR_VERSION goes 6 to 7, irin.c's
+stk_effect[] and lower.c's ir_names[], lw_kind[] and lw_op[] each move
+the SEL/JOIN entries one slot (the table stays one entry per op, in op
+number order; no other entry moves), and ir.h's comment at the control
+flow ops says JUMP through SEL name a label in a. cccomp's IR writer
+(irout.c) writes op numbers as tags, so it needs no change; nothing
+else in the tree keys on the two numbers.
 
 **The macros, in ir.h** (after the op enum, beside IR_VERSION):
 
 ```c
-/* The sets of ops the compiler tests, each a range in the order
- * above. Changing the order changes IR_VERSION; the constraints on
- * it are in the comments at the ops. */
+/* The sets of ops the compiler tests in more than one place, each a
+ * range in the order above (approach.md, decision 26); a set tested
+ * in only one place stays a plain comparison there. Changing the
+ * order changes IR_VERSION; the constraints on it are in the comments
+ * at the ops. */
 #define IR_IS_BINARY(op)     ((op) >= IR_ADD && (op) <= IR_SHR)
 #define IR_IS_COMPARE(op)    ((op) >= IR_EQ && (op) <= IR_GE)
 #define IR_IS_RELATIONAL(op) ((op) >= IR_LT && (op) <= IR_GE)
 #define IR_IS_DIVMOD(op)     ((op) >= IR_DIV && (op) <= IR_MOD)
 #define IR_IS_S_SHIFT(op)    ((op) >= IR_SHL && (op) <= IR_SHR)
-#define IR_IS_SHIFT(op)      (IR_IS_S_SHIFT(op) || (op) == IR_USHR)
-#define IR_IS_U_SOURCE(op)   ((op) >= IR_DIV && (op) <= IR_MOD
-                              || (op) == IR_SHR)
 #define IR_IS_U_COMPARE(op)  ((op) >= IR_ULT && (op) <= IR_UGE)
 #define IR_IS_U_ARITH(op)    ((op) >= IR_UDIV && (op) <= IR_USHR)
 #define IR_IS_BRANCH(op)     ((op) >= IR_JUMP && (op) <= IR_BRTRUE)
+#define IR_REFS_LABEL(op)    (((op) >= IR_JUMP && (op) <= IR_SEL) \
+                              || (op) == IR_CASETO)
 ```
 
-IR_IS_U_SOURCE is the set {DIV, MOD, SHR} — the ops unsigned_op() turns
-into their U_ form (parse.c:2533). DIV and MOD are adjacent and SHR is
-not next to them, so it is a range plus one compare; reordering the
-binary group to make it a pure range (DIV MOD SHR SHL) would save two
-ops at one call site in cccomp but would change the file format and
-realign four parallel tables (below) for that. Not proposed.
+A set tested in only one place is left a plain comparison there:
+the {DIV, MOD, SHR} set unsigned_op() turns into its U_ form
+(parse.c:2533) and the {SHL, SHR, USHR} set in binary() (parse.c:2578).
+A note on cost, measured in Step 2: on this VM a bound test costs one
+byte more than an equality test (a bound is a load, a compare and a
+branch; an equality is a load and a branch), so a range over two
+consecutive ops costs two bytes more than the two equalities it
+replaces. The two-element sets (IR_IS_DIVMOD, IR_IS_S_SHIFT) are kept
+anyway because they are tested in two and four places and name the C
+meaning; the single-use sets were not worth the bytes. Reordering the
+binary group to make {DIV, MOD, SHR} a pure range (DIV MOD SHR SHL)
+would save two ops at one call site in cccomp but would change the
+file format and realign four parallel tables for that. Not proposed.
 
 **Where they are used:**
 
@@ -311,20 +336,25 @@ realign four parallel tables (below) for that. Not proposed.
   indexed by `op - IR_ADD`.
 - parse.c:725, 727, 740, 741 (check_right_const, fold):
   IR_IS_DIVMOD, IR_IS_S_SHIFT.
-- parse.c:2525, 2533, 2578, 2985 (unsigned_op, binary, the
-  constant-holding path): IR_IS_S_SHIFT, IR_IS_U_SOURCE,
-  IR_IS_SHIFT, IR_IS_S_SHIFT.
+- parse.c:2525, 2985 (unsigned_op's shift test, the constant-holding
+  path): IR_IS_S_SHIFT. parse.c:2533 (the U_ form test) and
+  parse.c:2578 (binary's shift result) stay plain comparisons.
 - irin.c:333 (block_ok): IR_IS_BRANCH.
 - irin.c:413 (is_unsigned_cmp): IR_IS_U_COMPARE.
 - irin.c:522 (hold): IR_IS_U_ARITH.
+- irin.c:1260 (do_op): IR_REFS_LABEL.
 
-**Sizes.** The wins are small per site: a 4-term chain like
-is_relational's (roughly 35 bytes, section 2's accounting) becomes two
-compares with a short-circuit branch (roughly 18); the two-term chains
-and the range-plus-one macros (IR_IS_U_SOURCE, IR_IS_SHIFT) come out
-about even. The point is the same as for the tokens: the sets and the
-ordering that makes them ranges are stated in one place, and parse.c
-and irin.c stop restating them.
+**Sizes, measured (Step 2).** With tools/fsize.py on measure.py's
+listings, per function in cccomp: is_relational shrank (a four-term
+chain became a range); check_right_const and fold grew (each has a
+two-element set, section 3's cost note); parse_expr grew a little
+(its shift test is the two-element range); binary and unsigned_op are
+back at their old sizes once their single-use sets stayed inline.
+The JOIN/SEL reorder is size-neutral in cccomp but shrank ccgen's
+code (its lw_kind and stk_effect entries moved one slot). The point
+is the same as for the tokens: the sets and the ordering that makes
+them ranges are stated in one place, and parse.c and irin.c stop
+restating them.
 
 **Ordering constraints to write in ir.h** (today implicit in comments
 and in parse.c's arithmetic):
@@ -553,8 +583,10 @@ the other way is reported plainly, per AGENTS.md.
 
 1. tokin.h, token.h, pplex.c, ccish.msg, CCPP.md: the keyword reorder,
    the T_IS_* macros, TOK_VERSION 2. One commit. Measure cccomp.
-2. ir.h: the IR_IS_* macros and the ordering-constraint comments;
-   parse.c and irin.c use them. No format change.
+2. ir.h: the JOIN/SEL reorder (section 3.1), the IR_IS_* macros and
+   the ordering-constraint comments; parse.c and irin.c use them.
+   IR_VERSION 6 to 7; lower.c's and irin.c's parallel tables move the
+   SEL and JOIN entries one slot.
 3. token.h: TC_IS_WORDVAL; ppmac.c, ppout.c use it.
 4. mop.h: the families comment, the four OP_IS_* macros, the FIX_
    comment; peep.c uses them, and frame_expr() drops the dead INCR and
@@ -579,3 +611,10 @@ Open questions:
   Suggested: only the used ones, since each unused macro is a range
   that future changes must keep true.
 - **Q4.** The JOIN/SEL swap in ir.h (section 3): suggested no.
+
+Decided (2026-07-21, before implementation): Q1 — yes, bump
+TOK_VERSION and change the intermediate formats as the code needs,
+verifying the tests; Q2 — the proposed names; Q3 — only the groups
+the code actually uses (refined in section 3 to "used in more than
+one place"); Q4 — do the JOIN/SEL reorder now (section 3.1, one
+commit with the IR macros).

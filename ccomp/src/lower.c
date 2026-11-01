@@ -26,8 +26,8 @@ static const char *const ir_names[] = {
   "ADD", "SUB", "MUL", "DIV", "MOD", "AND", "OR", "XOR", "SHL", "SHR",
   "EQ", "NE", "LT", "GT", "LE", "GE",
   "NEG", "COMP", "NOT",
-  "LABEL", "JUMP", "BRFALSE", "BRTRUE", "JOIN",
-  "SEL", "CASES", "CASEVAL", "CASETO", "SWAP", "ULT", "UGT", "ULE", "UGE",
+  "LABEL", "JUMP", "BRFALSE", "BRTRUE", "SEL",
+  "JOIN", "CASES", "CASEVAL", "CASETO", "SWAP", "ULT", "UGT", "ULE", "UGE",
   "UDIV", "UMOD", "USHR", "HEAPADDR",
   "LOOP", "LOOPSTEP", "LOOPBODY", "LOOPEND"
 };
@@ -62,8 +62,8 @@ static const char lw_kind[IR_NOPS] = {
   L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,        /* ... SHR */
   L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,
   L_SIMPLE, L_SIMPLE, L_SPECIAL,            /* NEG, COMP, NOT */
-  L_PSEUDO, L_OPERAND, L_OPERAND, L_OPERAND, L_SPECIAL,    /* ... JOIN */
-  L_OPERAND, L_PSEUDO, L_PSEUDO, L_PSEUDO,  /* SEL, the case table */
+  L_PSEUDO, L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,    /* ... SEL */
+  L_SPECIAL, L_PSEUDO, L_PSEUDO, L_PSEUDO,  /* JOIN, the case table */
   L_SPECIAL,                                /* SWAP */
   L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,   /* ULT ... (irin.c flips
                                                  * the sign bits first) */
@@ -84,8 +84,8 @@ static const unsigned char lw_op[IR_NOPS] = {
   OP_AND, OP_IOR, OP_XOR, OP_SHL, OP_SHR,
   OP_ISEQ, OP_ISNE, OP_ISLT, OP_ISGT, OP_ISLE, OP_ISGE,
   OP_NEG, OP_COMP, 0,
-  OP_LABEL & 0xFF, OP_BRNCH, OP_BRFLS, OP_BRTRU, 0,
-  OP_SEL, OP_CASES & 0xFF, OP_CASEVAL & 0xFF, OP_CASETO & 0xFF,
+  OP_LABEL & 0xFF, OP_BRNCH, OP_BRFLS, OP_BRTRU, OP_SEL,
+  0, OP_CASES & 0xFF, OP_CASEVAL & 0xFF, OP_CASETO & 0xFF,
   0,
   OP_ISLT, OP_ISGT, OP_ISLE, OP_ISGE,
   0, 0, 0,

@@ -276,8 +276,8 @@ static const char stk_effect[IR_NOPS] = {
   0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21,
   0x21, 0x21, 0x21, 0x21, 0x21, 0x21,       /* comparisons */
   0x11, 0x11, 0x11,                         /* NEG, COMP, NOT */
-  0x00, 0x00, 0x10, 0x10, 0x00,             /* LABEL ... JOIN */
-  -1, -1, -1, -1,                           /* SEL, the case table */
+  0x00, 0x00, 0x10, 0x10, -1,               /* LABEL ... SEL */
+  0x00, -1, -1, -1,                          /* JOIN, the case table */
   0x22,                                     /* SWAP */
   0x21, 0x21, 0x21, 0x21,                   /* ULT ... */
   0x21, 0x21, 0x21,                         /* UDIV, UMOD, USHR */
@@ -330,7 +330,7 @@ static int block_ok(int start, int len, int want)
     if (depth < pops)
       return 0;
     depth += pushes - pops;
-    if (op == IR_JUMP || op == IR_BRFALSE || op == IR_BRTRUE) {
+    if (IR_IS_BRANCH(op)) {
       if (!branch_depth(buf_a[i], depth))
         return 0;
       live = op != IR_JUMP;
@@ -412,7 +412,7 @@ static int lower_free_swap(int i)
 /* Is IR op op one of the unsigned comparisons? */
 static int is_unsigned_cmp(int op)
 {
-  return op >= IR_ULT && op <= IR_UGE;
+  return IR_IS_U_COMPARE(op);
 }
 
 /* Lower an XOR $8000: flip the top value's sign bit. */
@@ -519,7 +519,7 @@ static void hold(int op, int a, int f)
   if (nbuf > 0 && buf_op[nbuf - 1] == IR_SWAP
       && buf_a[nbuf - 1] == SW_PENDING)
     decide(nbuf - 1, op);
-  if ((op == IR_UDIV || op == IR_UMOD || op == IR_USHR) && a == 1) {
+  if (IR_IS_U_ARITH(op) && a == 1) {
     f = unsigned_const(&op);
     a = 0;
   }
@@ -1257,8 +1257,7 @@ static void do_op(int op, int a, int f)
       damaged();                /* a loop not ended */
     in_func = 0;
   }
-  if (op == IR_JUMP || op == IR_BRFALSE || op == IR_BRTRUE
-      || op == IR_SEL || op == IR_CASETO)
+  if (IR_REFS_LABEL(op))
     lab_ref[a] = 1;
   else if (op == IR_JOIN)
     lab_ref[f] = 1;             /* a's branches go to f */

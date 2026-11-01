@@ -54,13 +54,15 @@ enum {
   /* unary: ( x -- op x ) */
   IR_NEG, IR_COMP,
   IR_NOT,         /* C's !: 1 if x is 0, else 0 (not PLASMA's NOT) */
-  /* control flow; a = label number, local to the function */
+  /* control flow; a = label number, local to the function. JUMP
+   * through SEL are the ops that name a label in a (IR_REFS_LABEL),
+   * JOIN behind them */
   IR_LABEL,       /* a branch target */
   IR_JUMP,        /* always branch */
   IR_BRFALSE,     /* ( x -- ) branch if x is 0 */
   IR_BRTRUE,      /* ( x -- ) branch if x is not 0 */
-  IR_JOIN,        /* the branches so far to label a go to label f */
   IR_SEL,         /* ( x -- ) go to the case table at label a (a switch) */
+  IR_JOIN,        /* the branches so far to label a go to label f */
   /* a case table, after its label: */
   IR_CASES,       /* a = the number of cases that follow */
   IR_CASEVAL,     /* a = one case's value; then: */
@@ -69,8 +71,10 @@ enum {
   IR_SWAP,        /* a = the top block's length in IR ops, f = the
                    * block below's, or -1 if code must not move:
                    * exchange the values the two blocks left */
-  /* unsigned comparisons (18.7, C), in the order of LT GT LE GE; a =
-   * the right operand's block length in IR ops, or 0 if not known */
+  /* unsigned comparisons (18.7, C), in the order of LT GT LE GE and
+   * at the offset IR_ULT - IR_LT from them (parse.c adds that offset
+   * to find one); a = the right operand's block length in IR ops, or
+   * 0 if not known */
   IR_ULT, IR_UGT, IR_ULE, IR_UGE,
   /* unsigned arithmetic PLASMA lacks, binary ( x y -- x op y ), for
    * unsigned operands; ccgen lowers them (approach.md, "unsigned and
@@ -91,7 +95,8 @@ enum {
   IR_LOOPBODY,    /* a = the body's label, f = the test's: the body
                    * follows */
   IR_LOOPEND,     /* a = the continue label, f = the break label */
-  IR_NOPS,        /* the number of IR ops */
+  IR_NOPS,        /* the number of IR ops: at most 64, since an op's
+                   * tag is a byte below IR_TAG_END (below) */
   /* not in the IR file: ccgen's own, for a counted loop's branches
    * (irin.c), which have no IR op: machine op a, with label f */
   IR_MOP = IR_NOPS
@@ -100,7 +105,23 @@ enum {
 /* The IR file: the output name plus this suffix, and its format's
  * version (in its header, after the magic "CIR"). */
 #define SUFFIX_IR   ".ir"
-#define IR_VERSION  6
+#define IR_VERSION  7
+
+/* The sets of ops the compiler tests in more than one place, each a
+ * range in the order above (approach.md, decision 26); a set tested in
+ * only one place stays a plain comparison there. Changing the order
+ * changes IR_VERSION; the constraints on it are in the comments at
+ * the ops. */
+#define IR_IS_BINARY(op)     ((op) >= IR_ADD && (op) <= IR_SHR)
+#define IR_IS_COMPARE(op)    ((op) >= IR_EQ && (op) <= IR_GE)
+#define IR_IS_RELATIONAL(op) ((op) >= IR_LT && (op) <= IR_GE)
+#define IR_IS_DIVMOD(op)     ((op) >= IR_DIV && (op) <= IR_MOD)
+#define IR_IS_S_SHIFT(op)    ((op) >= IR_SHL && (op) <= IR_SHR)
+#define IR_IS_U_COMPARE(op)  ((op) >= IR_ULT && (op) <= IR_UGE)
+#define IR_IS_U_ARITH(op)    ((op) >= IR_UDIV && (op) <= IR_USHR)
+#define IR_IS_BRANCH(op)     ((op) >= IR_JUMP && (op) <= IR_BRTRUE)
+#define IR_REFS_LABEL(op)    (((op) >= IR_JUMP && (op) <= IR_SEL) \
+                              || (op) == IR_CASETO)
 
 /* Its record tags besides the stream's D, R and S (below), and the bit
  * that marks an IR op followed by a one-byte operand. An IR op's tag is

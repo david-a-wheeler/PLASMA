@@ -718,9 +718,9 @@ static unsigned magnitude(int v)
  * shift counts use only the low byte on the 6502). */
 static void check_right_const(int op, int v)
 {
-  if ((op == IR_DIV || op == IR_MOD) && v == 0)
+  if (IR_IS_DIVMOD(op) && v == 0)
     error(34 /* "division by zero" */, NULL);
-  if ((op == IR_SHL || op == IR_SHR) && (v < 0 || v > 15))
+  if (IR_IS_S_SHIFT(op) && (v < 0 || v > 15))
     error(35 /* "shift count out of range (0 to 15):" */,
           v < 0 ? "negative" : "too big");
 }
@@ -733,8 +733,8 @@ static void check_right_const(int op, int v)
 static int fold(int op, int a, int b, int uns)
 {
   unsigned ua = (unsigned)a, ub = (unsigned)b, q;
-  if (((op == IR_DIV || op == IR_MOD) && b == 0)
-      || ((op == IR_SHL || op == IR_SHR) && (b < 0 || b > 15)))
+  if ((IR_IS_DIVMOD(op) && b == 0)
+      || (IR_IS_S_SHIFT(op) && (b < 0 || b > 15)))
     return 0;
   if (uns) {
     ua &= 0xFFFF;
@@ -796,7 +796,7 @@ static int swapped_op(int op)
 /* Is IR op a comparison (its result is always 1 or 0)? */
 static int is_compare(int op)
 {
-  return op >= IR_EQ && op <= IR_GE;
+  return IR_IS_COMPARE(op);
 }
 
 /* ---------- Labels ---------- */
@@ -2460,7 +2460,7 @@ static void parse_conditional(Operand *o)
 /* Is IR op one of < > <= >=? */
 static int is_relational(int op)
 {
-  return op == IR_LT || op == IR_GT || op == IR_LE || op == IR_GE;
+  return IR_IS_RELATIONAL(op);
 }
 
 /* The C spelling of arithmetic IR op, for messages. */
@@ -2470,7 +2470,7 @@ static const char *op_name(int op)
     "'+'", "'-'", "'*'", "'/'", "'%'", "'&'", "'|'", "'^'", "'<<'",
     "'>>'"
   };
-  return op >= IR_ADD && op <= IR_SHR ? names[op - IR_ADD] : "operator";
+  return IR_IS_BINARY(op) ? names[op - IR_ADD] : "operator";
 }
 
 /* Push integer operand i scaled by the size of what pointer type p
@@ -2518,7 +2518,7 @@ static void compare_pointers(Operand *o, Operand *r, int op)
  * (approach.md, "unsigned and helper functions design"). */
 static int unsigned_op(Operand *o, Operand *r, int *op, int mid)
 {
-  int shift = *op == IR_SHL || *op == IR_SHR, k = r->kind, v = r->val;
+  int shift = IR_IS_S_SHIFT(*op), k = r->kind, v = r->val;
   rvalue(r);
   if (!(shift ? is_uns(o->type)
               : is_uns(o->type) || is_uns(value_type(r->type))))
@@ -2978,7 +2978,7 @@ static void parse_expr(int min_prec, Operand *o)
           continue;
         }
       } else if (r.kind == K_CONST) {
-        int shift = ir_op == IR_SHL || ir_op == IR_SHR;
+        int shift = IR_IS_S_SHIFT(ir_op);
         nheld--;
         o->val = fold(ir_op, o->val, r.val,
                       shift ? is_uns(o->type)
