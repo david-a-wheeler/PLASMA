@@ -4394,38 +4394,96 @@ exit:   SLW     i           i = the final count
 ```
 
 The loop's own work is 2 ops per pass (`DLW`, `INCBRLE`), against 7
-with the test at the bottom. `ADDBRLE` takes a step (`CB k` before
-it: 3 ops), and `DECBRGE`/`SUBBRGE` count down. ccgen can use this
-form for C loops, but only where C's meaning is the same:
+with the test at the bottom. ccgen can use the same ops for C loops,
+but only where C's meaning is the same:
 - **The loop variable** is a local `int` (the ops compare signed): not
   `unsigned`, not a pointer, not `char`. The body doesn't assign it,
   and its address isn't taken anywhere in the function (no
   `LOCALADDR` of it, so no pointer can change it).
 - **The limit** is evaluated once, where C evaluates it on every pass,
-  so it is a constant, or a local `int` that the body doesn't assign
-  and whose address isn't taken. (A global can change through a
-  pointer or a call; the "no calls" rule below covers calls, but not
-  stores through pointers, so globals stay out for now.)
-- **The test and step**, with each form's entry:
+  so it is a constant, or a local `int` other than the loop variable
+  that the body doesn't assign and whose address isn't taken. (A
+  global can change through a pointer or a call; the "no calls" rule
+  below covers calls, but not stores through pointers, so globals stay
+  out for now.)
 
-  | C | Limit on the stack | Entry | Pass |
-  |---|---|---|---|
-  | `i < N` (constant `N` > -32768), `i++` | `N - 1` | `BRGT exit` | `DLW i`, `INCBRLE` |
-  | `i <= N` (constant), `i++` | `N` | `BRGT exit` | `DLW i`, `INCBRLE` |
-  | `i < n` (local), `i++` | `n - 1` | C's test once: `LLW i`, `LLW n`, `ISLT`, `BRFLS done` | `DLW i`, `INCBRLE` |
-  | `i <= n` (local), `i++` | `n` | `BRGT exit` | `DLW i`, `INCBRLE` |
-  | `i != N` or `i != n`, `i++` | as `<` | as `<` | as `<` |
-  | `i += k` (constant `k` > 0) with `<` or `<=` | as above | as above | `DLW i`, `CB k`, `ADDBRLE` |
-  | `i > N`, `i >= N`, `i != N` with `i--`; `i -= k` | `N + 1`, `N`, … | `BRLT exit` | `DLW i`, `DECBRGE` (or `SUBBRGE`) |
+*The forms.* `INCBRLE` tests `count + 1 <= limit`, so C's `i < n` would
+need the limit `n - 1`, which wraps for `n` = -32768 (then the loop
+must not run, but would), and so a guard on entry, 5 bytes more. A
+first version of this design had that guard. Instead, for `<`, the
+count is stepped with a plain `INCR` and tested with `BRLT` (branch if
+`count < limit`, leaving both), at the bottom, which is exactly C's
+`i < n`, and the entry jumps to that test, as in step 1:
 
-  `n - 1` would wrap for `n` = -32768, so with a local limit the entry
-  is C's own test, done once (then `n` > -32768); `done` is past
-  `exit`, since nothing is on the stack there. `!=` with a step of 1
-  means `<`: if `i` started past `n`, C would overflow `i`, which is
-  undefined. `!=` with another step isn't converted. On a normal exit
-  the final count is C's final `i` (`INCBRLE` leaves `limit + 1`).
-  `break` goes to `exit`, `continue` to `cont`. Overflow of the count
-  past 32767 happens only where C's `i` would overflow too.
+```
+        LLW     n           ( n )        the limit
+        LLW     i           ( n i )      the count
+        BRNCH   test        enter at the test
+top:    DLW     i           i = count, keeping it
+        <body>
+cont:   INCR                count + 1
+test:   BRLT    top         branch if count < n: C's i < n
+exit:   SLW     i           i = the final count
+        DROP                the limit
+```
+
+On entry, the test is C's own, so no value wraps. `INCR` can't
+overflow, since the loop runs only while `i < n <= 32767`. On a normal
+exit the count is C's final `i`; if the loop never runs, `exit` stores
+the starting value, which `i` already holds. `break` goes to `exit`
+(the count is the current `i`), `continue` to `cont`. Each form, by
+the loop's own bytes (without the init and the body) and its work per
+pass, against step 1's:
+
+| C | Form | Bytes (step 1's) | Ops per pass |
+|---|---|---|---|
+| `i < n` or `i != n`, `i++` | `<n> <i> BRNCH test`; `top: DLW i` … `INCR`; `test: BRLT top`; `SLW i DROP` | 16 (16) | 3 (7) |
+| `i < N` (constant, not -32768), `i++` | `<N-1> <i> BRGT exit`; `top: DLW i` … `INCBRLE top`; `exit: SLW i DROP` (`N - 1` at compile time) | 15 (16) | 2 (7) |
+| `i <= n` or `i <= N`, `i++` | `<n> <i> BRGT exit`; `DLW i` … `INCBRLE`; `SLW i DROP` | 15 (16) | 2 (7) |
+| `i > n` or `i != n`, `i--` | the mirror of `<`: `DECR`; `test: BRGT top` | 16 (16) | 3 (7) |
+| `i > N` (constant, not 32767), `i--` | `<N+1> <i> BRLT exit`; `DLW i` … `DECBRGE`; `SLW i DROP` | 15 (16) | 2 (7) |
+| `i >= n` or `i >= N`, `i--` | `<n> <i> BRLT exit`; `DLW i` … `DECBRGE`; `SLW i DROP` | 15 (16) | 2 (7) |
+| `i += k` (constant `k` > 0) with `<` | `ADDI k` (or `CW k ADD`) for `INCR` | 17 | 3 |
+| `i += k` with `<=` | `CB k ADDBRLE` for `INCBRLE` | 17 | 3 |
+| `i -= k` with `>` or `>=` | `SUBI k`, `BRGT`; or `CB k SUBBRGE` | 17 | 3 |
+
+The bytes are for a limit pushed in 2 bytes (`LLW n`, `CB N`); a
+constant from 0 to 15 (`CN`) makes both forms a byte smaller. A
+constant limit that would wrap (`i < -32768`, `i > 32767`: the loop
+never runs) takes the `BRLT` or `BRGT` form instead. So the counted
+form is never bigger than step 1's, and always faster.
+`!=` with a step of 1 means `<` (with `i++`) or `>` (with `i--`): if
+`i` started on the wrong side, C would overflow `i`, which is
+undefined. `!=` with another step isn't converted. A step of `k` may
+take the count past 32767 only where C's `i` would overflow too.
+
+*Folding the init in.* Most loops start `i = c` right before the loop:
+`CONST c`, `SETLOCAL i`, `DROP` in the IR, `CN c SLW i` once lowered
+(3 bytes). The counted form never needs that store: `exit` always
+stores `i`, `top` stores it on every pass, and nothing reads `i` from
+memory in between (the entry test reads the count on the stack, and the
+limit isn't `i`). So when the IR ops just before `LOOP`, still in
+ccgen's swap buffer (not lowered yet), are a constant or a local
+pushed (`CONST c` or `LOCAL j`), then `SETLOCAL i`, `DROP`, ccgen drops
+them, and pushes that value as the count in place of `LLW i`. The push
+moves after the limit's, which can't matter: neither has a side
+effect. (Not a global's value: it may be `volatile`, or hardware, whose
+reads mustn't move.) If the init isn't there to see (another form, or
+the swap buffer already lowered it), the loop is the same without the
+folding. For `CONST c` that is the
+store's 3 bytes saved, and the count's push is 1 byte (`CN c`) where
+`LLW i` was 2: `for (i = 0; i < n; i++)` is 15 bytes with its init,
+against 19 in step 1's form (3 for the init and 16), and runs 3 ops
+of loop work per pass instead of 7.
+
+*Both ends constant.* With the init folded and a constant limit, ccgen
+knows whether the loop runs at all. If it does (`c < N` for `<`), the
+entry test goes too: `for (i = 0; i < 10; i++)` is `CN 9`, `CN 0`,
+`top: DLW i` … `INCBRLE top`, `SLW i`, `DROP`, 10 bytes with its
+init, against 18 (`CN 0 SLW i`, then 15). If it doesn't, the loop's
+code is the init alone, and the body is dropped as dead code.
+
+*The other rules, and how ccgen applies them:*
 - **No calls in the body** (decided: the user, 2026-10-31). The two
   values stay on the eval stack (32 entries, on the Apple, plvm02's
   `ESTKSZ`, and in plvm) for the whole body, across any call it
@@ -4453,13 +4511,16 @@ form for C loops, but only where C's meaning is the same:
   `LOCALADDR` offset seen so far in it (a local's address can only
   come from its own function).
 - **Cost:** another 300-500 bytes of ccgen code, I estimate, and a side
-  buffer of about 128 ops instead of 64. cccomp unchanged.
-- **How many loops:** of ccish's 158 `for` loops, 104 have the counted
-  shape (`v = x; v <`, `<=` or `!= y; v++` or `v--`); their limits
-  are 24 constants, 77 names (many of them globals, such as `nbuf`)
-  and 15 expressions (such as `mac_at[m] + mac_len[m]`). How many have
-  no calls in the body is to be measured (`tools/loops.py` can learn
-  to report the shapes) before step 2 is built.
+  buffer of about 128 ops instead of 64. cccomp unchanged, as a
+  program; as compiled by ccish, its loops that qualify get smaller.
+- **Built without measuring first** (decided: the user, 2026-10-31):
+  every program ccish compiles gains, the forms are never bigger, and
+  ccgen has room. For scale: of ccish's 158 `for` loops, 104 have the
+  counted shape (`v = x; v <`, `<=` or `!= y; v++` or `v--`); their
+  limits are 24 constants, 77 names (many of them globals, such as
+  `nbuf`, which don't qualify) and 15 expressions (such as
+  `mac_at[m] + mac_len[m]`); loops with calls in the body don't
+  qualify either.
 
 *Pointer and unsigned loop variables* can't use PLASMA's counted ops,
 which compare signed: an address range may cross $8000, and an
@@ -4504,8 +4565,8 @@ smaller, 267 → 244 ops in the function). Loops over parallel arrays
 stay indexed. Each rewrite is measured, and kept only if smaller, on
 the loop forms steps 1 and 2 give.
 
-*Order (decided):* step 1, then the source rewrites; step 2 after
-measuring how many loops it would reach.
+*Order (decided):* step 1, then the source rewrites, then step 2
+(without measuring first: see step 2's "Built without measuring").
 
 **Step 1 is done** (2026-10-31): tests at the bottom, as designed
 above, with these details:
