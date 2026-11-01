@@ -4437,10 +4437,10 @@ pass, against step 1's:
 
 | C | Form | Bytes (step 1's) | Ops per pass |
 |---|---|---|---|
-| `i < n` or `i != n`, `i++` | `<n> <i> BRNCH test`; `top: DLW i` … `INCR`; `test: BRLT top`; `SLW i DROP` | 16 (16) | 3 (7) |
+| `i < n`, `i++` | `<n> <i> BRNCH test`; `top: DLW i` … `INCR`; `test: BRLT top`; `SLW i DROP` | 16 (16) | 3 (7) |
 | `i < N` (constant, not -32768), `i++` | `<N-1> <i> BRGT exit`; `top: DLW i` … `INCBRLE top`; `exit: SLW i DROP` (`N - 1` at compile time) | 15 (16) | 2 (7) |
 | `i <= n` or `i <= N`, `i++` | `<n> <i> BRGT exit`; `DLW i` … `INCBRLE`; `SLW i DROP` | 15 (16) | 2 (7) |
-| `i > n` or `i != n`, `i--` | the mirror of `<`: `DECR`; `test: BRGT top` | 16 (16) | 3 (7) |
+| `i > n`, `i--` | the mirror of `<`: `DECR`; `test: BRGT top` | 16 (16) | 3 (7) |
 | `i > N` (constant, not 32767), `i--` | `<N+1> <i> BRLT exit`; `DLW i` … `DECBRGE`; `SLW i DROP` | 15 (16) | 2 (7) |
 | `i >= n` or `i >= N`, `i--` | `<n> <i> BRLT exit`; `DLW i` … `DECBRGE`; `SLW i DROP` | 15 (16) | 2 (7) |
 | `i += k` (constant `k` > 0) with `<` | `ADDI k` (or `CW k ADD`) for `INCR` | 17 | 3 |
@@ -4452,10 +4452,14 @@ constant from 0 to 15 (`CN`) makes both forms a byte smaller. A
 constant limit that would wrap (`i < -32768`, `i > 32767`: the loop
 never runs) takes the `BRLT` or `BRGT` form instead. So the counted
 form is never bigger than step 1's, and always faster.
-`!=` with a step of 1 means `<` (with `i++`) or `>` (with `i--`): if
-`i` started on the wrong side, C would overflow `i`, which is
-undefined. `!=` with another step isn't converted. A step of `k` may
-take the count past 32767 only where C's `i` would overflow too.
+`!=` is never turned into `<` or `>` (decided: the user, 2026-10-31):
+`!=` means the same for signed and unsigned values, and the counted
+ops compare signed. A `!=` loop keeps step 1's form, whose `BRNE`
+compares all 16 bits with no sign, so it is exact for `int`,
+`unsigned` and pointers alike. (VM ops that step and branch if not
+equal would count `!=` loops too: "If the VM gains more comparison
+ops", below.) A step of `k` may take the count past 32767 only where
+C's `i` would overflow too.
 
 *Folding the init in.* Most loops start `i = c` right before the loop:
 `CONST c`, `SETLOCAL i`, `DROP` in the IR, `CN c SLW i` once lowered
@@ -4571,12 +4575,14 @@ the loop forms steps 1 and 2 give.
 **Step 2 is done** (2026-10-31): counted loops, in ccgen (irin.c,
 `counted_shape()`, `counted_loop()`), with the forms, the init folding
 and both-ends-constant above, and these differences from the design:
-- **`!=` isn't converted.** The IR's `NE` doesn't say whether its
-  operands are signed: for an `unsigned` or a pointer, `!=` isn't `<`
-  (`u != 40000u` would be a signed `u < -25536`). So only `LT`, `LE`,
-  `GT` and `GE` (signed by their op: unsigned ones are `ULT` and the
-  rest) are counted; a `!=` loop keeps step 1's form. cccomp could
-  mark a signed `!=` later.
+- **`!=` loops aren't counted.** The design first turned `i != n`,
+  with a step of 1, into `i < n`, on the argument that otherwise C's
+  `int` would overflow; the user rejected that: `!=` must never become
+  `<`, since it means the same for signed and unsigned values, and
+  would turn `u != 40000u` into a signed `u < -25536`. So only `LT`,
+  `LE`, `GT` and `GE` (signed by their op: unsigned ones are `ULT` and
+  the rest) are counted, and a `!=` loop keeps step 1's exact `BRNE`
+  (`counted_not.c` tests `int` and `unsigned` ones).
 - **Only a loop with no loop in its body is counted** (simpler than
   "at most two nested"): the body is held, and a `LOOP` in it ends the
   holding. So at most 2 eval-stack entries are ever held.

@@ -2,7 +2,7 @@
  * though they have a counted loop's shape: the body changes the
  * variable, or the limit, calls, or returns; the variable's address is
  * taken before the loop, or later in an outer loop, before the inner
- * loop runs again. Each must give C's results, and no counted-loop op
+ * loop runs again; and every != loop. Each must give C's results, and no counted-loop op
  * may appear. */
 // listing-lacks: INCBRLE
 // listing-lacks: ADDBRLE
@@ -82,9 +82,37 @@ void later(void)
   putln();
 }
 
+/* != loops: never counted (never made a <), so exact for signed and
+ * unsigned alike, across $8000 and through 0. */
+void not_equal(void)
+{
+  int i, s = 0;
+  unsigned u;
+  for (i = 0; i != 5; i++)
+    s++;
+  show(s);
+  show(i);
+  s = 0;
+  for (i = 9; i != 3; i--)
+    s++;
+  show(s);
+  show(i);
+  s = 0;
+  for (u = 65530u; u != 4; u++)
+    s++;
+  show(s);
+  show((int)u);
+  s = 0;
+  for (u = 32760u; u != 32770u; u++)
+    s++;
+  show(s);
+  putln();
+}
+
 int main()
 {
   not_counted();
   later();
+  not_equal();
   return 0;
 }
