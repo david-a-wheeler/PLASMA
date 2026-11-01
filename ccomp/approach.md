@@ -3240,6 +3240,45 @@ of issue 10, and may become part of the user documentation.
   two (`DUP ADD`, `DUP IDXW`, `CN n SHL`); other constants use `MUL`,
   a 16-step loop. Dividing by a constant always uses `DIV` for signed
   values (issue 17 and the M4 step 2 notes).
+- **Loops are where speed matters, so pick the loop's test with care**
+  (2026-10-31; "Loop design" has the layouts). What a loop costs per
+  pass, besides its body, depends on whether ccgen can count it: an
+  `int` local stepped by a constant, compared with `<`, `<=`, `>` or
+  `>=` against a constant or another local, in a body that makes no
+  calls, doesn't return, holds no loop, and doesn't change the
+  variable or the limit or take their addresses. Then the count and
+  the limit stay on the eval stack. Ops of loop work per pass, for
+  `for (i = 0; i < n; i++)` and `for (i = 0; i != n; i++)`:
+
+  | The loop | `i < n` | `i != n` |
+  |---|---|---|
+  | can be counted | 3 (2 with a constant limit) | 5 |
+  | can't be counted | 6 | 5 |
+
+  The reason is the VM's branch ops, not the counter's type. `BRLT`,
+  `BRGT`, `INCBRLE` and `DECBRGE` (made for PLASMA's `FOR`) compare
+  without popping, so a counted `<` loop keeps both values on the
+  stack: `DLW i`, `INCR`, `BRLT` (or `DLW i`, `INCBRLE`). `BRNE` pops
+  both its operands, and there is no branch on "not equal" that keeps
+  them, so a `!=` loop must push the limit again on every pass:
+  `LLW i`, `INCR`, `DLW i`, `LLW n`, `BRNE`. `!=` is never made a `<`
+  (they differ for `unsigned` and pointers). When the loop can't be
+  counted, `!=` wins: its compare and branch are one op, `BRNE`, while
+  `<` is `ISLT` then `BRTRU` (no branch on "less than" pops its
+  operands). So:
+  - **An `int` counter in a loop that can be counted: use `<` (or
+    `<=`, `>`, `>=`), with a constant or local limit,** and keep calls
+    out of the body where you can (a call in the body stops the
+    counting).
+  - **Otherwise, and for pointers and `unsigned` counters, use `!=`:**
+    `p != end` is 5 ops per pass, and exact for any values; a pointer
+    or `unsigned` `<` is compiled as a signed compare with both sign
+    bits flipped, more still.
+  - **A limit in a global** (`i < nfuncs`) stops the counting too (a
+    store through a pointer might change it); copy it to a local first
+    in a hot loop.
+  - If the VM gains a step-and-branch-if-not-equal op (`INCBRNE`,
+    issue 21), every `!=` loop could be counted, at 2 ops per pass.
 
 ### 21. New VM opcodes for C (possible, not committed)
 
@@ -4570,7 +4609,51 @@ stay indexed. Each rewrite is measured, and kept only if smaller, on
 the loop forms steps 1 and 2 give.
 
 *Order (decided):* step 1, then the source rewrites, then step 2
-(without measuring first: see step 2's "Built without measuring").
+(without measuring first: see step 2's "Built without measuring"),
+then the `DLW` fix (below).
+
+*The `DLW` fix, for loops that aren't counted* (designed 2026-10-31,
+after step 2). Step 1 said the step's store and the test's load of
+the loop variable can't fuse, since `Ltest:` is between them, where
+the entry jump lands: `LLW p ADDI 2 SLW p` then `Ltest: LLW p LLW e
+BRNE`, 6 ops per pass. That holds only while the entry arrives with
+nothing on the stack. If the entry pushes the variable itself and
+jumps past the test's load, both paths reach `Ltest:` with it on the
+stack, and the step can keep what it stores:
+
+```
+        LLW p   BRNCH Ltest            entry: push p, then the test
+Lbody:  body
+Lcont:  LLW p   ADDI 2   DLW p          the step, keeping p
+Ltest:  LLW e   BRNE Lbody              the rest of the test
+```
+
+5 ops per pass, and the same bytes (the entry's `LLW p` is the test's,
+moved; `DLW` is as long as `SLW`); and an init just before the loop
+(`p = a`: `LA a SLW p`) now meets the entry's `LLW p`, which P12 makes
+one `DLW p`, 2 bytes and an op less. ccgen does it for a loop it
+doesn't count whose step is one of the `v += k` shapes it recognizes
+(`v++`, `++v`, `v += k`, `v--` and the rest, on a local of any type:
+`int`, `unsigned`, a pointer) and whose test starts with `LOCAL v`
+and holds no `IR_SWAP` (whose block lengths could reach back past the
+label); it decides at `LOOPBODY`, where the entry is written, and
+keeps the choice per open loop. `continue` still goes to `Lcont`,
+with nothing on the stack.
+
+**The `DLW` fix is done** (2026-10-31): irin.c, `step_shape()` (shared
+with `counted_shape()`), `dlw_fix()` and `enter_test()`. A test that
+starts with a constant, `4 != i`, gets it too: the parser writes it
+`i 4 NE`. New test: `loop_dlw.c` (pointer loops up, down and by 2;
+`unsigned` through 0 and across $8000; `int` `<` and `!=` with a call in
+the body; `continue` and `break`; a loop that never runs; an init right
+before the loop and not; and two loops it must leave alone: `n > i`
+and a step of `i = i * 2`), which counts the `DLW`s to pin which loops
+got it. 378 pass. Sizes (small build, code): `ccpp` 13,871 → 13,835
+(-36), `cccomp` 26,156 → 26,086 (-70), `ccgen` 13,384 → 13,632 (+248),
+`ccrel` 7,763 → 7,713 (-50). Op counts (run tests): 19 change, none in
+its output; 17,015 → 16,701 ops (-1.8%), from `counted_not.c` -7.8%
+(whose loops can't be counted) and `loop_dlw.c` -5.3%.
+
 
 **Step 2 is done** (2026-10-31): counted loops, in ccgen (irin.c,
 `counted_shape()`, `counted_loop()`), with the forms, the init folding

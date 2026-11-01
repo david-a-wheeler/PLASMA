@@ -1,0 +1,124 @@
+/* The DLW fix (approach.md, "The DLW fix"): a loop that isn't counted,
+ * whose step is v += k and whose test starts with v, enters by pushing
+ * v and jumping past the test's own load, so the step keeps the v it
+ * stores (DLW). Pointer, unsigned and int loops; != and < (with a call
+ * in the body, so not counted); continue and break; an init just
+ * before the loop (which fuses with the entry's push) and not; a loop
+ * that never runs; and loops the fix must leave alone (the variable
+ * second in the test; a step that isn't v += k). */
+// Each of the 10 fixed loops (ptrs 3, uns 2, calls 2, flow 1, never 2)
+// ends its step with a DLW, and 9 have another where their init meets
+// the entry's push (all but never's second loop, whose init isn't right
+// before it). The 2 loops left alone have none. (" DLW": not ADDLW.)
+// listing-count: 19  DLW
+int a[6] = {1, 2, 3, 4, 5, 6};
+
+void show(int n)
+{
+  puti(n);
+  putc(' ');
+}
+
+/* Pointer loops, up and down. */
+void ptrs(void)
+{
+  int *p, *e = a + 6, s = 0;
+  for (p = a; p != e; p++)
+    s += *p;
+  show(s);
+  s = 0;
+  for (p = e - 1; p != a + 2; p--)
+    s = s * 10 + *p;
+  show(s);
+  s = 0;
+  for (p = a; p != e; p += 2)
+    s += *p;
+  show(s);
+}
+
+/* An unsigned counter, through 0 and across $8000. */
+void uns(void)
+{
+  unsigned u;
+  int s = 0;
+  for (u = 65533u; u != 2; u++)
+    s++;
+  show(s);
+  show((int)u);
+  s = 0;
+  u = 32766u;
+  for (; u < 32770u; u++)
+    s++;
+  show(s);
+}
+
+/* int loops with a call in the body (not counted): < and !=. */
+void calls(void)
+{
+  int i;
+  for (i = 0; i < 3; i++)
+    show(i);
+  for (i = 5; i != 2; i--)
+    show(i);
+  show(i);
+}
+
+/* continue and break. */
+void flow(void)
+{
+  int i, s = 0;
+  for (i = 0; i != 10; i++) {
+    if (i == 3)
+      continue;
+    if (i == 6)
+      break;
+    show(i);
+    s += i;
+  }
+  show(s);
+  show(i);
+}
+
+/* Never runs: the start is the end. */
+void never(void)
+{
+  int *p = a, s = 0;
+  for (p = a; p != a; p++)
+    s++;
+  show(s);
+  p = a + 3;
+  s = 0;
+  for (; p != a + 3; p++)
+    s++;
+  show(s);
+  show(p - a);
+}
+
+/* Left alone: the variable second in the test (n > i), and a step that
+ * isn't v += k; both must still be right. */
+void alone(void)
+{
+  int i, n = 4, s = 0;
+  for (i = 0; n > i; i++)
+    show(i);
+  for (i = 1; i != 16; i = i * 2)
+    s += i;
+  show(s);
+}
+
+int main()
+{
+  ptrs();
+  putln();
+  uns();
+  putln();
+  calls();
+  putln();
+  flow();
+  putln();
+  never();
+  putln();
+  alone();
+  putln();
+  return 0;
+}

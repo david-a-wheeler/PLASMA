@@ -602,6 +602,8 @@ static int lp_lcont[LOOP_NEST]; /* and its continue and break labels, */
 static int lp_lbrk[LOOP_NEST];  /* from LOOPSTEP */
 static int lp_lbody[LOOP_NEST]; /* and its body's, from LOOPBODY */
 static char lp_held[LOOP_NEST]; /* its header is held */
+static int lp_fvar[LOOP_NEST];  /* the DLW fix: its variable, or -1 */
+static int lp_fstep[LOOP_NEST]; /* and the variable's step */
 static int lp_depth;            /* loops open */
 static int lp_fill;             /* the innermost loop's header (1), or
                                  * its body (2: it may be counted), is
@@ -624,6 +626,15 @@ static char lab_ref[MAX_LABELS];    /* a branch to it has been read */
  * runs again). Their addresses mustn't have been taken earlier in the
  * function either (addr_taken[]). Anything else in the body, or a body
  * too big for lp_op[], makes it a loop like any other (body_plain()).
+ *
+ * A loop that isn't counted, whose step is one of those v += k and
+ * whose test starts by pushing v (and holds no SWAP, whose blocks
+ * could reach back past Ltest), gets the DLW fix (approach.md, "The DLW
+ * fix"): the entry pushes v before it jumps to Ltest, and the step
+ * keeps the v it stores (DLW), so the test's own LOCAL v is left out:
+ *   LLW v  BRNCH Ltest  Lbody: body  Lcont: LLW v ADDI k DLW v
+ *   Ltest: the rest of the test
+ * one op less per pass, in the same bytes (lp_fvar[], lp_fstep[]).
  */
 static int cl_body;             /* where the held body starts */
 static int cl_var, cl_lim, cl_lim_local, cl_cmp, cl_step, cl_nested;
@@ -674,13 +685,22 @@ static void loop_overflow(void)
   lp_fill = 0;
 }
 
+/* Hold the jump into open loop d's test, after pushing the variable for
+ * the DLW fix. */
+static void enter_test(int d)
+{
+  if (lp_fvar[d] >= 0)
+    hold(IR_LOCAL, lp_fvar[d], -1);
+  jump(lp_ltest[d]);
+}
+
 /* The innermost loop's held body can't be counted: lower what it holds,
  * as step 1 does (its test is never just a jump), and the rest as it
  * comes. */
 static void body_plain(void)
 {
   int d = lp_depth - 1;
-  jump(lp_ltest[d]);
+  enter_test(d);
   label(lp_lbody[d]);
   replay(cl_body, nlp);
   nlp = cl_body;
@@ -739,30 +759,56 @@ static int mirror(int cmp)
          : cmp == IR_LE ? IR_GE : IR_LE;
 }
 
+/* Is open loop d's held step (up to nlp) v++ (LOCAL v, DUP, CONST k,
+ * ADD or SUB, SETLOCAL v, DROP, DROP), or ++v or v += k (the same
+ * without the DUP and a DROP), for a local v? If so, set *v, and *k
+ * (negative for SUB). */
+static int step_shape(int d, int *v, int *k)
+{
+  int st = lp_step[d], n = nlp - st, u;
+  if (n != 5 && n != 7)
+    return 0;
+  u = n == 7;                   /* the DUP of v++ */
+  if (lp_op[st] != IR_LOCAL || (u && lp_op[st + 1] != IR_DUP)
+      || lp_op[st + 1 + u] != IR_CONST
+      || (lp_op[st + 2 + u] != IR_ADD && lp_op[st + 2 + u] != IR_SUB)
+      || lp_op[st + 3 + u] != IR_SETLOCAL
+      || lp_a[st + 3 + u] != lp_a[st] || lp_op[nlp - 1] != IR_DROP
+      || lp_op[st + 4 + u] != IR_DROP)
+    return 0;
+  *v = lp_a[st];
+  *k = lp_op[st + 2 + u] == IR_ADD ? lp_a[st + 1 + u] : -lp_a[st + 1 + u];
+  return 1;
+}
+
+/* Does open loop d's held header suit the DLW fix? If so, set
+ * lp_fvar[d] and lp_fstep[d]; else lp_fvar[d] is -1. */
+static void dlw_fix(int d)
+{
+  int t = lp_test[d], st = lp_step[d], v, k, i;
+  lp_fvar[d] = -1;
+  if (!step_shape(d, &v, &k) || st - t < 2 || lp_op[t] != IR_LOCAL
+      || lp_a[t] != v)
+    return;
+  for (i = t; i < st; i++)
+    if (lp_op[i] == IR_SWAP)
+      return;
+  lp_fvar[d] = v;
+  lp_fstep[d] = k;
+}
+
 /* Does the held header of open loop d (body label lbody) have the shape
- * of a counted loop? If so, set cl_var and the rest. The step is
- * v++ (LOCAL v, DUP, CONST k, ADD or SUB, SETLOCAL v, DROP, DROP) or
- * ++v and v += k (the same without the DUP and a DROP); the test is
+ * of a counted loop? If so, set cl_var and the rest. The step is one
+ * that step_shape() knows; the test is
  * LOCAL v and the limit (CONST or another LOCAL), in either order,
  * compared signed (LT, LE, GT or GE: unsigned ones are ULT and the
  * rest), then BRTRUE lbody. Counting up must end at < or <=, down at
  * > or >=. */
 static int counted_shape(int d, int lbody)
 {
-  int t = lp_test[d], st = lp_step[d], n = nlp - st, k;
-  if (n != 5 && n != 7)
+  int t = lp_test[d], st = lp_step[d], k;
+  if (!step_shape(d, &cl_var, &cl_step))
     return 0;
-  k = n == 7;                   /* the DUP of v++ */
-  if (lp_op[st] != IR_LOCAL || (k && lp_op[st + 1] != IR_DUP)
-      || lp_op[st + 1 + k] != IR_CONST
-      || (lp_op[st + 2 + k] != IR_ADD && lp_op[st + 2 + k] != IR_SUB)
-      || lp_op[st + 3 + k] != IR_SETLOCAL
-      || lp_a[st + 3 + k] != lp_a[st] || lp_op[nlp - 1] != IR_DROP
-      || lp_op[st + 4 + k] != IR_DROP)
-    return 0;
-  cl_var = lp_a[st];
-  cl_step = lp_op[st + 2 + k] == IR_ADD ? lp_a[st + 1 + k]
-                                        : -lp_a[st + 1 + k];
   if (st - t != 4 || lp_op[t + 3] != IR_BRTRUE || lp_a[t + 3] != lbody)
     return 0;
   cl_cmp = lp_op[t + 2];
@@ -901,6 +947,7 @@ static void loop_op(int op, int a, int f)
       if (lp_step[d] < 0)
         damaged();
       lp_lbody[d] = a;
+      dlw_fix(d);
       if (counted_shape(d, a)) {
         lp_fill = 2;            /* hold the body too */
         cl_body = nlp;
@@ -908,7 +955,7 @@ static void loop_op(int op, int a, int f)
       }
       if (lp_step[d] - lp_test[d] != 1 || lp_op[lp_test[d]] != IR_JUMP
           || lp_a[lp_test[d]] != a)
-        jump(f);                /* enter at the test */
+        enter_test(d);          /* enter at the test */
       label(a);
     } else {
       jump(f);
@@ -925,7 +972,17 @@ static void loop_op(int op, int a, int f)
     }
     if (lp_fill == 2)
       body_plain();
-    if (held) {
+    if (held && lp_fvar[d] >= 0) {
+      /* The DLW fix: the step keeps v, which the test needn't push. */
+      label(a);
+      hold(IR_LOCAL, lp_fvar[d], -1);
+      hold(IR_CONST, lp_fstep[d], -1);
+      hold(IR_ADD, 0, -1);
+      hold(IR_SETLOCAL, lp_fvar[d], -1);
+      label(lp_ltest[d]);
+      replay(lp_test[d] + 1, lp_step[d]);
+      nlp = lp_test[d];
+    } else if (held) {
       label(a);
       replay(lp_step[d], nlp);
       label(lp_ltest[d]);
