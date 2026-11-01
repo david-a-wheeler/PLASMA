@@ -125,17 +125,16 @@ bytes (plus RLD and the limits' checks). It is the single biggest
 data lever, at the price of the limit; decide it with the limit's
 other users (MAX_VARS, MAX_FUNC_CODE sit beside it).
 
-**A3. Messages.** The messages are one pool (ccish.msg, 303 of
-them); cccomp references 123 distinct ones (its call sites number
-them 19 to 232, parse.c alone has 138). Their text is cccomp's
-strings section (554) plus one LA of the message per call site in
-the code (and so one RLD entry per site). Merging messages that
-share a form ("too many X" appears for functions, variables, enum
-constants, types, tags and members) into one message with a what-
-argument would save string bytes and call sites alike; the messages
-are also what a user sees, so the merging has to keep them
-readable. This is a cccomp, ccpp and ccgen matter (they share the
-pool), not only cccomp's.
+**A3. Messages. -- Checked, buys nothing for the size.** The
+call sites number the message as an **immediate** (error(34, ...
+emits 34 as a constant), and the text is read from ccish.msg at run
+time (diag.c's msg_text() fopens the file and scans for the number,
+falling back to the bare number if it is missing). There is no LA of
+the message per site and no RLD entry per site -- the doc's original
+premise was wrong (ccomp-rld.md, "What is not in there"). Merging
+messages would touch the .msg file, which is not part of the module,
+and the immediates: nothing in the module file or the RLD. It
+remains a readability idea for the diagnostics, not a size lever.
 
 **A4. Runtime frames, not code size, but memory.** measure.py's stack
 report for cccomp: worst case 538 bytes of frame stack, the largest
@@ -335,8 +334,10 @@ the stores of the first group and B3 at the second.
 6. B3 (leaf inlining): a project with its own design doc (recursion,
    the label remap, the size threshold), after 1-4 have settled how
    the IR and the window are to be read.
-7. A3 (message merging) and A4 (the error path's frames): when the
-   others are done, or not at all; they buy the least.
+7. A3 (message merging) -- checked, buys nothing for the size (the
+   messages are immediates plus a run-time read of ccish.msg, not an
+   LA per site) -- and A4 (the error path's frames): not at all for
+   the size goal; A4 is a run-time-stack idea, a different goal.
 
 ## 6. Levers that cost cccomp: recorded, for later
 
@@ -394,6 +395,36 @@ before the RLD (a ccrel change, a module-format version, and every
 VM's loader updated together). Risk is low: a module that loads and
 runs is a module that loads and runs, and the tests run every module
 they build.
+
+**What the RLD is made of** (full analysis, the breakdown by kind,
+the cross-checks and the levers, in `ccomp-rld.md`; measured on the
+small cccomp): 3,082 entries -- 2,737 internal 16-bit fixups
+(0x81), 299 function definition entries (0x02), 46 imports (0x91).
+Relative branches
+already take none: emit.c's branch_word() writes the final relative
+offset at compile time (label placed: `code_word(label_word[n] -
+nfbuf)`) and adds no relocation, and link.c writes RLD entries only
+for the function definitions and the absolute references -- so
+ccomp's 1,397 branch words (BRFLS 489, BRNCH 327, BRNE 249, BRTRU
+203, BREQ 104, SEL 15, the counted loops) consume 0 of the 3,082.
+That is the right shape, with no size or time cost: branch and
+target move together at the load, so the offset stays correct with
+no entry. The remaining levers, in size order: a relative CALL
+opcode (the set's only call is CALL <absolute word>, mop.h's
+branch-and-call family) would drop the 1,723 call entries -- 56% of
+the RLD, about 6.9K of the file -- but it is a VM change in every
+VM and loader, in the same class as the streaming above; a
+base-plus-indexed access for repeated table references (one LA per
+function-and-table, then ADDI offset and LW, which the peep already
+fuses to the ADDLW/IDXLW shapes where the base is a local) is code
+at about even (three bytes either way, up to one more where the
+offset exceeds ADDI's 255) but drops the 977 LA/LAW/SAW/DAW entries
+plus the data CWs -- about 4K of the file -- and is a ccgen change,
+allowed by the cost policy, though a project in its own right (the
+tables' windows, the sign of the offsets, the fused forms). The 299
+function-definition entries and 46 externs are the call-dispatch
+design (the VM's def dictionary) and don't come down without
+changing how calls resolve.
 
 Each step: the worktree of the commit before it, `tools/fsize.py -c`
 on the measure.py listings for the size, `tools/opcount.py` for the
