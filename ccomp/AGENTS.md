@@ -76,7 +76,7 @@ files of the sessions so far, before a move to a new computer.)
   push.** End each message with exactly these two lines, last:
 
       Assisted-by: <agent> (<model>)
-      Signed-off-by: David A. Wheeler <dwheeler@dwheeler.com>
+      Signed-off-by: <git config user.name> <<git config user.email>>
 
   The first line names the agent doing the work and the model it runs
   on. Each example is for the agent it names, not a general rule:
@@ -84,7 +84,9 @@ files of the sessions so far, before a move to a new computer.)
   (updating the model name when the model changes); pi writes
   `Assisted-by: pi (<model>)`, for example `Assisted-by: pi
   (qwen3.8-27b)`. Any other agent does the same with its own name and
-  model. (Not the Co-Authored-By trailer.)
+  model. The second line is the git identity of whoever is working;
+  on this machine that is `Signed-off-by: David A. Wheeler
+  <dwheeler@dwheeler.com>`. (Not the Co-Authored-By trailer.)
 - **Files in `src/` named with a leading comma** (`,parse.c`,
   `,enum-set-membership`) and editor swap files are the user's own:
   never touch, delete or commit them.
