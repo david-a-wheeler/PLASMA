@@ -13,13 +13,38 @@ better is ideal -- but not cccomp: a few bytes in cccomp is fine,
 a kilobyte is not, for now. An optimization that needs a significant
 addition to cccomp is recorded here for later, not built.
 
-**Status (at 471b9370):** B2 is in (33a4082b). B4 is checked, not a
-lever. B1 is measured and designed (section 3) but not implemented:
-that is the next step, all in ccgen, with the evidence re-runnable
-from `python3 .scratch-b1/b1.py` (after tests/run.sh). The opcount
-baseline worktree is ../.wt-base, at this commit, built.
-Builds in this sandbox need a writable TMPDIR that exists first:
-`export TMPDIR=$PWD/.tmpbuild` (the host compiler's /tmp is blocked).
+**Status (at 0d680a43) -- "continue" means:** implement B1, the
+dead stores (section 3): fully designed, all in ccgen, allowed by
+the cost policy; the only remaining compiler-side lever (B2 is in,
+B4 and A3 checked off as non-levers, section 5). Then, only if the
+40K goal is still the aim, the VM-side work in section 7 (streaming
+the RLD at the load) or the levers in `ccomp-rld.md` (a relative
+CALL, or base-plus-indexed table access).
+
+- **B1, the next step.** Design in section 3 (defer the plain frame
+  stores in peep.c, remember which slots each function takes an
+  address of, drop the dead spans at the end of the function in
+  emit.c, re-patching branch offsets and relocs). Evidence is
+  re-runnable: `./tests/run.sh` then `python3 .scratch-b1/b1.py`
+  (expect 897 frame stores, 135 dead under the refined rule, 16
+  under the doc's coarser rule; the per-test table and the two
+  clusters are in section 3). Small steps, each committed.
+- **Verification per step.** `make all small` (clean), `./tests/run.sh`
+  (374 passed, 8 failed -- the same 8 pre-existing ones), `python3
+  tools/opcount.py /home/dwheeler/projects/PLASMA/.wt-base` (B1
+  *should* show savings, unlike the other steps), and the small
+  build's objects still byte-identical (the tests check it).
+- **Baseline.** The opcount worktree ../.wt-base is at 60818510,
+  built; the only commit after it, 0d680a43, is docs-only, so it
+  remains valid.
+- **Environment.** The sandbox blocks /tmp for the host compiler's
+  temp files: `mkdir -p .tmpbuild; export TMPDIR=$PWD/.tmpbuild`
+  before any make.
+- **Where things are.** This file: the levers, the cost policy, the
+  order. `ccomp-rld.md`: the RLD breakdown, by kind, and why it is
+  what it is. `.scratch-b1/b1.py`: the B1 evidence (run it after
+  tests/run.sh; it reads tests/out/*.lst). `../.wt-base`: the
+  baseline worktree.
 
 ## 1. Where cccomp's size goes
 
@@ -191,7 +216,8 @@ every branch offset word around the deletions (the relocs' offsets
 move too; the relocs' targets are absolute, filled by ccrel, and
 unaffected). A store replaced by a DROP is one byte; a fused span
 (const or frame-only expression plus the store) is two to five.
-Status: measured and designed (471b9370); not implemented.
+Status: measured and designed (0d680a43); not implemented -- this
+is what "continue" does (see the status at the top).
 
 **B2. Constant folding the peep doesn't. -- Done (33a4082b).**
 fold_pair() in peep.c folds a constant against a constant for ADD,
