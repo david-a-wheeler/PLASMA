@@ -28,6 +28,10 @@ extern int pt_macro;                /* TC_ID, TC_KEYWORD: names a macro */
  * string), and ##; in an argument, blanks between tokens (for #). */
 enum { TC_PARAM = 0x10, TC_PARAM_RAW, TC_HASH_PARAM, TC_PASTE, TC_SPACE };
 
+/* The three parameter tokens, in the enum's order (ppmac.c): a
+ * parameter, one not to be expanded first, one after #. */
+#define TC_IS_PARAM(c)       ((c) >= TC_PARAM && (c) <= TC_HASH_PARAM)
+
 /* How the lexer reads (pp_mode): ordinary source; a directive's line,
  * up to its newline; or a group #ifdef leaves out. */
 enum { PM_TEXT, PM_DIRECTIVE, PM_SKIP };

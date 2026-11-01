@@ -620,8 +620,7 @@ static void call(int m)
       continue;
     }
     start = stop;
-    s = c == TC_PARAM || c == TC_PARAM_RAW
-        || c == TC_HASH_PARAM ? base + b[1] : 0;
+    s = TC_IS_PARAM(c) ? base + b[1] : 0;
     if (c == TC_PARAM) {
       k = put_tokens(obuf + e_at[s], e_end[s] - e_at[s]);
     } else if (c == TC_PARAM_RAW) {

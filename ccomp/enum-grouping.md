@@ -503,9 +503,10 @@ of its three forms"):
 #define TC_IS_PARAM(c)  ((c) >= TC_PARAM && (c) <= TC_HASH_PARAM)
 ```
 
-Used at ppmac.c:625 (call()'s "which slot does this token name") and,
-if wanted, at token_len() (160). PM_TEXT, PM_DIRECTIVE, PM_SKIP are
-states compared one at a time; no set.
+Used at ppmac.c:623 (call()'s "which slot does this token name");
+token_len()'s switch case labels (160) stay as written (a case label
+can't be a range). PM_TEXT, PM_DIRECTIVE, PM_SKIP are states compared
+one at a time; no set.
 
 ## 8. Headers checked, no change needed
 
