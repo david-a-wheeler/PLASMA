@@ -621,12 +621,14 @@ static char lab_ref[MAX_LABELS];    /* a branch to it has been read */
  * (cl_var, a frame offset) or anything the limit reads (limit_ok()),
  * take the addresses of the variable or the limit's locals, call anything
  * (the two values stay on the eval stack across a call, and a body
- * that recursed would fill it), return, or hold a loop; nor, in a loop
+ * that recursed would fill it), or hold a loop; nor, in a loop
  * inside another loop, store through a pointer (a pointer to the
  * variable might be taken later in the outer loop, before this one
  * runs again). Their addresses mustn't have been taken earlier in the
  * function either (addr_taken[]). Anything else in the body, or a body
  * too big for lp_op[], makes it a loop like any other (body_plain()).
+ * A return in the body first drops the two values under its result,
+ * which waits meanwhile in temporaries (replay_body()).
  *
  * A loop that isn't counted, whose test starts by pushing a local v
  * (LOCAL v, or LOCALB v for a char) and holds no SWAP (whose blocks
@@ -833,7 +835,7 @@ static int limit_ok(int from, int to)
 static int body_ok(int op, int a, int f)
 {
   switch (op) {
-  case IR_CALL: case IR_RETURN: case IR_UDIV: case IR_UMOD: case IR_USHR:
+  case IR_CALL: case IR_UDIV: case IR_UMOD: case IR_USHR:
     return 0;
   case IR_SETLOCAL: case IR_SETLOCALB: case IR_LOCALADDR:
     return !counted_var(a);
@@ -939,6 +941,48 @@ static int counted_shape(int d, int lbody)
   return 1;
 }
 
+/* Is IR op op a push with no side effects, of one word? */
+static int pure_push(int op)
+{
+  return op == IR_CONST || op == IR_LOCAL || op == IR_LOCALB
+         || op == IR_GLOBAL || op == IR_GLOBALB || op == IR_DATAADDR
+         || op == IR_STRADDR || op == IR_HEAPADDR;
+}
+
+/* Lower a counted loop's held body, from from up to (not including) to:
+ * before each RETURN, its result's words (its a) are stored in
+ * temporaries, the loop's limit and count dropped from under them, and
+ * the words pushed again. A one-word result that is one push just
+ * before the RETURN (return i;) is all of it, so the two are just
+ * dropped before that push. */
+static void replay_body(int from, int to)
+{
+  int w, k;
+  for (; from < to; from++) {
+    if (from + 1 < to && lp_op[from + 1] == IR_RETURN
+        && lp_a[from + 1] == 1 && pure_push(lp_op[from])) {
+      hold(IR_DROP, 0, -1);
+      hold(IR_DROP, 0, -1);
+      hold(lp_op[from], lp_a[from], lp_f[from]);
+      hold(IR_RETURN, 1, -1);
+      from++;
+      continue;
+    }
+    if (lp_op[from] == IR_RETURN) {
+      w = lp_a[from];
+      for (k = w; k-- > 0;) {
+        hold(IR_SETLOCAL, FRAME_TEMP(k), -1);
+        hold(IR_DROP, 0, -1);
+      }
+      hold(IR_DROP, 0, -1);
+      hold(IR_DROP, 0, -1);
+      for (k = 0; k < w; k++)
+        hold(IR_LOCAL, FRAME_TEMP(k), -1);
+    }
+    hold(lp_op[from], lp_a[from], lp_f[from]);
+  }
+}
+
 /* At LOOPEND, write the counted loop whose body is held (labels:
  * lp_lbody[d] the top, lcont, lp_ltest[d] the test, lbrk the exit).
  * The init just before the loop, still in the swap buffer, may be
@@ -1000,7 +1044,7 @@ static int counted_loop(int d, int lcont, int lbrk)
   lab_ref[top] = 1;
   hold(IR_LABEL, top, -1);
   hold(IR_SETLOCAL, cl_var, -1);          /* DLW v */
-  replay(cl_body, nlp);
+  replay_body(cl_body, nlp);
   label(lcont);
   if (bottom == OP_BRLT || bottom == OP_BRGT) {
     hold(IR_CONST, k, -1);
@@ -1147,6 +1191,10 @@ static void do_op(int op, int a, int f)
     break;
   case IR_UDIV: case IR_UMOD: case IR_USHR:
     if (a < 0 || a > 1)
+      damaged();
+    break;
+  case IR_RETURN:
+    if (a < 0 || a > MAX_BYVAL / 2)
       damaged();
     break;
   }

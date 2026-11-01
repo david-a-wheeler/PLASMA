@@ -282,7 +282,7 @@ starts with a header:
 | Size | Field |
 |------|-------|
 | 3 bytes | magic `CIR` |
-| byte | IR format version: 5 |
+| byte | IR format version: 6 |
 | word | the name file's stamp: its id count |
 | word | and its checksum |
 

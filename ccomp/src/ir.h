@@ -8,6 +8,9 @@
 
 #define MAX_LABELS   104    /* branch targets in one function (90); at
                              * most 128, since case_label[] is char */
+#define MAX_BYVAL    8      /* bytes in a struct passed or returned by
+                             * value: at most MAX_BYVAL / 2 words, so a
+                             * RETURN's a (below) */
 
 /* ---------- Stage 1 -> 2: IR ops, through NAME.ir ----------
  * Each op's meaning, and why it differs from PLASMA's, is in ../IR.md;
@@ -38,7 +41,9 @@ enum {
   IR_CALL,        /* f, a = argument count: call, push the result */
   IR_DROP,        /* discard the top value */
   IR_DUP,         /* duplicate the top value */
-  IR_RETURN,      /* return the top value from the current function */
+  IR_RETURN,      /* a = the result's words (0 for void, a struct's
+                   * words, else 1): return them from the current
+                   * function */
   /* binary: ( x y -- x op y ) */
   IR_ADD, IR_SUB, IR_MUL, IR_DIV, IR_MOD,
   IR_AND, IR_OR, IR_XOR, IR_SHL, IR_SHR,
@@ -95,7 +100,7 @@ enum {
 /* The IR file: the output name plus this suffix, and its format's
  * version (in its header, after the magic "CIR"). */
 #define SUFFIX_IR   ".ir"
-#define IR_VERSION  5
+#define IR_VERSION  6
 
 /* Its record tags besides the stream's D, R and S (below), and the bit
  * that marks an IR op followed by a one-byte operand. An IR op's tag is

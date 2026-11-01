@@ -130,7 +130,6 @@
 #define MAX_NEST     32     /* nesting of parentheses and blocks */
 #define MAX_PARAM_TYPES 401 /* parameter types of all declared functions
                              * (364) */
-#define MAX_BYVAL    8      /* bytes in a struct passed or returned by value */
 #define MAX_CASES    36     /* case labels in all the switches open at once
                              * (29); at most 255, a SEL table's limit */
 
@@ -1402,6 +1401,13 @@ static int struct_words(int t)
   return (type_size(t) + 1) / 2;
 }
 
+/* The words a function of return type t returns: none for void, a
+ * struct's words, else 1 (a RETURN's operand, for ccgen). */
+static int result_words(int t)
+{
+  return t == TY_VOID ? 0 : is_struct(t) ? struct_words(t) : 1;
+}
+
 /* Discard the value of an expression used as a statement. A pending
  * variable or constant ("x;") emits nothing, nor does the result of an
  * assignment through a pointer. A load through a pointer is still
@@ -1694,7 +1700,7 @@ static void materialize(Operand *o)
  * as many words as it returns, so that the stack stays balanced. */
 static void push_zero_result(int t)
 {
-  int k, w = is_struct(t) ? struct_words(t) : 1;
+  int k, w = result_words(t);
   for (k = 0; k < w; k++)
     put(IR_CONST, 0, -1);
 }
@@ -3793,7 +3799,7 @@ static void parse_statement(void)
       end_expr();
     }
     expect(';', 146 /* "expected ';' after return value, not" */);
-    put(IR_RETURN, 0, -1);
+    put(IR_RETURN, result_words(fn_type[cur_fn]), -1);
     return;
   case T_INT:
   case T_CHAR:
@@ -4470,7 +4476,7 @@ static void parse_toplevel(void)
    * dead code. */
   if (type != TY_VOID)
     push_zero_result(type);
-  put(IR_RETURN, 0, -1);
+  put(IR_RETURN, result_words(type), -1);
   put(IR_ENDFUNC, frame_max, f);
   cur_fn = -1;
   nvars = nglobals;

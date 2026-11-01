@@ -1,6 +1,6 @@
 /* Loops that must not be counted (approach.md, "Loop design", step 2),
  * though they have a counted loop's shape: the body changes the
- * variable, or the limit, calls, or returns; the variable's address is
+ * variable, or the limit, or calls; the variable's address is
  * taken before the loop, or later in an outer loop, before the inner
  * loop runs again; every != loop; and limits the body could change, or
  * that might differ on each pass (limits()). Each must give C's results, and no counted-loop op
@@ -17,14 +17,14 @@ void show(int n)
   putc(' ');
 }
 
-/* The first i whose square is at least n: returns from its loop. */
+/* The first i whose square is at least n (a loop that isn't counted,
+ * so that a loop calling it has a call in its body). */
 int find(int n)
 {
-  int i;
-  for (i = 0; i < 100; i++)
-    if (i * i >= n)
-      return i;
-  return -1;
+  int i = 0;
+  while (i * i < n)
+    i++;
+  return i;
 }
 
 /* Not counted: the body changes the variable, or the limit, or calls;

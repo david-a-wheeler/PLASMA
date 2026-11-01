@@ -571,6 +571,9 @@ LOOPEND  Lcont Lbrk
   and `continue` (to `Lcont`) in the body can branch to them, and
   writes the test as `parse_cond(Lbody, 1)`. A `for` with no
   condition has the test `JUMP Lbody`.
+- **`IR_RETURN`'s *a*** is the result's words (0, 1, or a struct's
+  words, up to `MAX_BYVAL` / 2), so that a `return` inside a counted
+  loop can drop the loop's two values from under it.
 - **Counted loops:** when a loop's test and step have a counted loop's
   shape (an `int` local stepped by a constant, compared signed with a
   constant or another local), `ccgen` holds its body too, and if the
@@ -644,21 +647,25 @@ variable (`x;`) emits nothing at all.
   side effects, the peephole stage can remove both the value's code
   and the `DROP`.
 
-### `IR_RETURN`
+### `IR_RETURN` *a* = the result's words
 
 Return from the current function. For an `int` function, the return
-value is on top of the stack; for a `void` function, nothing is.
+value is on top of the stack; for a `void` function, nothing is; for a
+struct (returned by value), its words are. *a* says how many (version
+6: 0 before).
 
-- **Stack:** `( value -- )` or `( -- )`.
+- **Stack:** `( value -- )`, `( -- )` or `( words -- )`.
 - **Now:** `LEAVE ?`. Stage 4 fills in the frame size at
   `IR_ENDFUNC`.
 - **Why it differs from `LEAVE`/`RET`:** PLASMA must pick between
   `LEAVE n` and `RET` depending on the frame, which isn't known yet
   (reason 3).
 - **Also:** `RET` when the frame turns out empty (see `IR_FUNC`).
-- **Later:** a return inside a `for` loop that uses PLASMA's FOR
-  opcodes must first drop the loop's two stack values. The parser knows
-  the loop nesting, so it will emit those drops (17, P18).
+- **In a counted loop:** a return inside a loop that keeps its count
+  and limit on the eval stack (approach.md, "Loop design", step 2)
+  must first drop the two from under its result: `ccgen` does it, with
+  *a* to know how many words to keep (approach.md, "A `return` in a
+  counted loop's body").
 
 ## Between stages 2 and 4: machine ops
 

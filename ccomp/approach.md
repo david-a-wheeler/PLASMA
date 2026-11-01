@@ -4762,6 +4762,31 @@ improvement 2 only pays together with 3 (calls that can't recurse:
 `memcpy` and `strcmp` are library calls; `unqual` and `sig_type` may be
 leaves) and a `return` in the body (5).
 
+*A `return` in a counted loop's body* (part of improvement 5, built
+2026-10-31). The two values are on the eval stack under the result, so
+a `return` must drop them first. `IR_RETURN`'s *a*, 0 until now, is the
+result's words (0 for `void`, a struct's words, 1 otherwise: IR version
+6; `MAX_BYVAL` moved to ir.h, since ccgen checks *a* against it), which
+cccomp's `result_words()` gives. When ccgen replays a counted loop's
+body (`replay_body()`), each `RETURN` is preceded by: the result's
+words stored in temporaries, `DROP`, `DROP`, the words loaded again.
+A one-word result that is a single push right before the `RETURN`
+(`return i;`, `return -1;`) is the whole result, so then the two are
+just dropped before that push: `DROP DROP LLW i LEAVE`. New test:
+`counted_ret.c` (an `int`, a `char`, no result, 2- and 4-word structs,
+a return from a `switch` in the body, and 40 calls in a row, which would
+overflow the eval stack if a return left the two values); `counted_not.c`'s
+`find()` became a `while` loop, since a loop that returns is now counted.
+380 pass. cccomp now has 10 counted loops (none before). Code (small
+build): ccgen +306, and cccomp +37 (parse.c +35, name.c and type.c +3
+each, nam.c -4), from 2 bytes of `DROP DROP` for each return, and from
+inits that aren't folded: `id_find()` starts at `i = nids - 1`, an
+expression, so it stores `i` and the entry loads it again, where the
+`DLW` fix had made the two one `DLW`. Folding an init that is any
+expression `limit_ok()` would accept would save those 4 bytes; that is
+the next thing to do for size. Op counts: only `counted_ret.c` changes
+(-22.3%).
+
 
 **Step 2 is done** (2026-10-31): counted loops, in ccgen (irin.c,
 `counted_shape()`, `counted_loop()`), with the forms, the init folding
