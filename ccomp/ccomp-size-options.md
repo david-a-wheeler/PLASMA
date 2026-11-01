@@ -13,6 +13,14 @@ better is ideal -- but not cccomp: a few bytes in cccomp is fine,
 a kilobyte is not, for now. An optimization that needs a significant
 addition to cccomp is recorded here for later, not built.
 
+**Status (at 471b9370):** B2 is in (33a4082b). B4 is checked, not a
+lever. B1 is measured and designed (section 3) but not implemented:
+that is the next step, all in ccgen, with the evidence re-runnable
+from `python3 .scratch-b1/b1.py` (after tests/run.sh). The opcount
+baseline worktree is ../.wt-base, at this commit, built.
+Builds in this sandbox need a writable TMPDIR that exists first:
+`export TMPDIR=$PWD/.tmpbuild` (the host compiler's /tmp is blocked).
+
 ## 1. Where cccomp's size goes
 
 The loader reads a whole module file into memory before running a
@@ -184,6 +192,7 @@ every branch offset word around the deletions (the relocs' offsets
 move too; the relocs' targets are absolute, filled by ccrel, and
 unaffected). A store replaced by a DROP is one byte; a fused span
 (const or frame-only expression plus the store) is two to five.
+Status: measured and designed (471b9370); not implemented.
 
 **B2. Constant folding the peep doesn't. -- Done (33a4082b).**
 fold_pair() in peep.c folds a constant against a constant for ADD,
@@ -306,9 +315,14 @@ the stores of the first group and B3 at the second.
    (the case count is known only after the body; the cost lands in
    cccomp or in a risky mid-function emit rewrite; about 24 bytes in
    the corpus).
-3. B1 (dead stores, the refined rule of section 3): in progress,
-   in ccgen (the peep's deferred candidates plus an edit at the
-   function's end in emit, with the branch offsets re-patched).
+3. B1 (dead stores, the refined rule of section 3): **next.** The
+   design is complete (section 3), the implementation is not
+   started; it is all in ccgen (the peep's deferred candidates plus
+   an edit at the function's end in emit, with the branch offsets
+   re-patched). Verification, as for every step: the worktree
+   baseline (../.wt-base), tools/opcount.py (this one does change
+   generated code: expect the dead stores' ops to go), tests,
+   the small build's byte-identical objects, and measure.py.
 4. A2 (MAX_FUNCS, if the limit may drop): about 1,100 data bytes of
    cccomp plus its RLD, for a lower limit on functions per program.
    cccomp's own data, not the generated code's: a project decision
