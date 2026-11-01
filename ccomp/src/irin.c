@@ -941,12 +941,64 @@ static int counted_shape(int d, int lbody)
   return 1;
 }
 
+/* How IR op op, with no side effects, changes the stack: 1 for a push,
+ * 0 for a load through an address or a unary op, -1 for a binary op;
+ * or -2 if it isn't such an op. */
+static int pure_effect(int op)
+{
+  switch (op) {
+  case IR_CONST: case IR_LOCAL: case IR_LOCALB: case IR_GLOBAL:
+  case IR_GLOBALB: case IR_DATAADDR: case IR_STRADDR: case IR_HEAPADDR:
+    return 1;
+  case IR_LOAD: case IR_LOADB: case IR_NEG: case IR_COMP:
+    return 0;
+  case IR_ADD: case IR_SUB: case IR_MUL: case IR_DIV: case IR_MOD:
+  case IR_AND: case IR_OR: case IR_XOR: case IR_SHL: case IR_SHR:
+    return -1;
+  }
+  return -2;
+}
+
 /* Is IR op op a push with no side effects, of one word? */
 static int pure_push(int op)
 {
-  return op == IR_CONST || op == IR_LOCAL || op == IR_LOCALB
-         || op == IR_GLOBAL || op == IR_GLOBALB || op == IR_DATAADDR
-         || op == IR_STRADDR || op == IR_HEAPADDR;
+  return pure_effect(op) == 1;
+}
+
+/* The init folded into a counted loop's count (init_fold()). */
+#define FOLD_MAX 12
+static char fo_op[FOLD_MAX];
+static int fo_a[FOLD_MAX], fo_f[FOLD_MAX];
+
+/* Is the swap buffer's tail an init of the counted loop's variable,
+ * v = e, with e an expression of no side effects (pure_effect()) and no
+ * load through an I/O address ($C000 and above)? If so, copy e's ops
+ * to fo_op[] and the rest, and return how many; else 0. Walking back
+ * from the store, e starts where the ops met so far leave one value. */
+static int init_fold(void)
+{
+  int need = 1, i = nbuf - 3, n, hw = 0, load = 0, e;
+  if (nbuf < 3 || buf_op[nbuf - 1] != IR_DROP
+      || buf_op[nbuf - 2] != IR_SETLOCAL || buf_a[nbuf - 2] != cl_var
+      || buf_pre[nbuf - 2] || buf_pre[nbuf - 1])
+    return 0;
+  for (; i >= 0 && need > 0; i--) {
+    if ((e = pure_effect(buf_op[i])) == -2 || buf_pre[i])
+      return 0;
+    need -= e;
+    hw |= buf_op[i] == IR_CONST && (buf_a[i] & 0xFFFF) >= 0xC000;
+    load |= e == 0 && buf_op[i] != IR_NEG && buf_op[i] != IR_COMP;
+  }
+  n = nbuf - 3 - i;             /* e is from i + 1 */
+  if (need != 0 || n > FOLD_MAX || (hw && load)
+      || (i >= 0 && buf_op[i] == IR_SWAP))
+    return 0;
+  for (e = 0; e < n; e++) {
+    fo_op[e] = buf_op[i + 1 + e];
+    fo_a[e] = buf_a[i + 1 + e];
+    fo_f[e] = buf_f[i + 1 + e];
+  }
+  return n;
 }
 
 /* Lower a counted loop's held body, from from up to (not including) to:
@@ -986,7 +1038,7 @@ static void replay_body(int from, int to)
 /* At LOOPEND, write the counted loop whose body is held (labels:
  * lp_lbody[d] the top, lcont, lp_ltest[d] the test, lbrk the exit).
  * The init just before the loop, still in the swap buffer, may be
- * folded in: a CONST or a LOCAL stored into the variable, which is
+ * folded in (init_fold()): the value stored into the variable is
  * pushed as the count instead (the loop always stores the variable
  * itself). Then:
  *   <limit> <count>  [entry]  top: DLW v  body  cont: <bottom>
@@ -1001,17 +1053,9 @@ static void replay_body(int from, int to)
 static int counted_loop(int d, int lcont, int lbrk)
 {
   int up = cl_step > 0, k = up ? cl_step : -cl_step, lim = cl_lim;
-  int fold = 0, c = 0, sure = 0, bottom, top = lp_lbody[d];
-  int ltest = lp_ltest[d];
-  if (nbuf >= 3 && buf_op[nbuf - 1] == IR_DROP
-      && buf_op[nbuf - 2] == IR_SETLOCAL && buf_a[nbuf - 2] == cl_var
-      && (buf_op[nbuf - 3] == IR_CONST || buf_op[nbuf - 3] == IR_LOCAL)
-      && !buf_pre[nbuf - 3] && !buf_pre[nbuf - 2] && !buf_pre[nbuf - 1]
-      && (nbuf == 3 || buf_op[nbuf - 4] != IR_SWAP)) {
-    fold = buf_op[nbuf - 3];
-    c = buf_a[nbuf - 3];
-  }
-  if (fold == IR_CONST && cl_const) {
+  int fold = init_fold(), c = fo_a[0], sure = 0, bottom, i;
+  int top = lp_lbody[d], ltest = lp_ltest[d];
+  if (fold == 1 && fo_op[0] == IR_CONST && cl_const) {
     sure = cl_cmp == IR_LT ? c < lim : cl_cmp == IR_LE ? c <= lim
            : cl_cmp == IR_GT ? c > lim : c >= lim;
     if (!sure)
@@ -1029,12 +1073,15 @@ static int counted_loop(int d, int lcont, int lbrk)
     bottom = up ? OP_BRLT : OP_BRGT;
   }
   if (fold)
-    nbuf -= 3;                  /* the init's store: done by the loop */
+    nbuf -= fold + 2;           /* the init: its value is the count */
   if (cl_const)
     hold(IR_CONST, lim, -1);
   else
     replay(cl_ls, cl_le);       /* the limit, computed once */
-  hold(fold ? fold : IR_LOCAL, fold ? c : cl_var, -1);
+  if (!fold)
+    hold(IR_LOCAL, cl_var, -1);
+  for (i = 0; i < fold; i++)
+    hold(fo_op[i], fo_a[i], fo_f[i]);
   if (!sure) {
     if (bottom == OP_BRLT || bottom == OP_BRGT)
       jump(ltest);

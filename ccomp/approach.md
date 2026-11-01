@@ -4787,6 +4787,27 @@ expression `limit_ok()` would accept would save those 4 bytes; that is
 the next thing to do for size. Op counts: only `counted_ret.c` changes
 (-22.3%).
 
+*Inits that are expressions, folded* (built 2026-10-31). A counted
+loop's init, still in ccgen's swap buffer, folds into the count when
+its value is any expression of no side effects (`init_fold()`, with
+`pure_effect()`: the ops of `limit_ok()` less its bookkeeping, and no
+load through an I/O address): walking back from its `SETLOCAL v`,
+`DROP`, the init's value starts where the ops met leave one value. Up
+to 12 ops are moved after the limit's (neither has side effects, so
+their order can't matter). `id_find()`'s `i = nids - 1` is now pushed
+as the count: `CN 0 LAW nids DECR BRLT exit`, with no store and load of
+`i`. `counted_lim.c` gains two loops whose inits are expressions (`n -
+1`, `at[m] + 1`), and pins the folding by counting the stores of `i`.
+380 pass. Code (small build): cccomp 26,119 → 26,107 (-12), ccgen
++285. So with returns and this, cccomp is 25 bytes over its size
+before returns (26,082), for 10 counted loops (2 or 3 ops of loop work
+per pass, against 5 or 6): 14 of those are the 7 returns' `DROP DROP`.
+One more: a loop whose exit is followed by a return (`SLW i DROP
+MINUS1 LEAVE`, as in `id_find()`) stores `i` for nothing, since the
+frame goes; a peephole rule making a store to a local just before a
+`LEAVE` or `RET` (with no load of it or label between) a `DROP` would
+save a byte there, and anywhere else that happens.
+
 
 **Step 2 is done** (2026-10-31): counted loops, in ccgen (irin.c,
 `counted_shape()`, `counted_loop()`), with the forms, the init folding
