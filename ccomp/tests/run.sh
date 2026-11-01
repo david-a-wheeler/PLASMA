@@ -17,7 +17,8 @@
 # Afterward, no IR or stream files may be left over, and -k must keep
 # them. The passes as programs of their own, ccpp, cccomp, ccgen and
 # ccrel, must write the same module as ccish for every run test. The
-# message file must agree with the sources (tests/check_msgs.sh). The
+# message file must agree with the sources (tests/check_msgs.sh), and
+# every function must have a comment (tests/check_comments.sh). The
 # small build (ccpp-small, cccomp-small, ccgen-small, ccrel-small) must
 # write the same token streams, objects and modules as the full build,
 # for every run test and link test.
@@ -1061,6 +1062,13 @@ if ./tests/check_msgs.sh; then
     pass=$((pass + 1))
 else
     echo "FAIL tests/check_msgs.sh: ccish.msg and the sources disagree"
+    fail=$((fail + 1))
+fi
+# Every function has a comment right above it (AGENTS.md, "Code style").
+if ./tests/check_comments.sh; then
+    pass=$((pass + 1))
+else
+    echo "FAIL tests/check_comments.sh: functions without a comment"
     fail=$((fail + 1))
 fi
 # Without the message file, a message is just its numbers (here 41,

@@ -95,10 +95,8 @@ files of the sessions so far, before a move to a new computer.)
 - **Every function has a comment directly above it** (1-2 lines, what
   it does), including one-line static helpers; with `#ifdef` versions,
   one directly above each. Each peephole pattern in peep.c has a
-  comment. Check before each commit with this scan: for each
-  `src/*.c`, where a line is exactly `{` and the line before matches
-  `^[a-zA-Z].*\(` (a definition), report it unless the line before
-  that ends in `*/` or starts with `//`.
+  comment. `tests/check_comments.sh` checks the functions (`make test`
+  runs it).
 - Messages: every message text is in `ccish.msg` (NUMBER TEXT); code
   writes `error(N /* "text" */, ...)`; `tests/check_msgs.sh` checks them.
 - Prose in the docs: plain, direct sentences; numbers given.
@@ -140,21 +138,23 @@ files of the sessions so far, before a move to a new computer.)
   short path (ccish's output names are limited to 128 characters, and
   the scratchpad path is too long): `git worktree add --detach
   /tmp/claude-1000/wb HEAD`, build it, measure both, remove it after.
-- **Op counts:** build a copy of plvm that counts each opcode it
-  dispatches (in `src/vmsrc/plvm.c`, add `opcount[*vm_ip]++;` before
-  `switch (*vm_ip++)`, and an `atexit()` handler that writes the counts
-  to a file), compile every run test with the old and the new ccish,
-  run both, and compare totals per test. Report how many tests change,
-  that no output changed, and the totals.
+- **Op counts:** `tools/opcount.py BASE` (BASE: a built ccomp
+  directory, such as the worktree above) builds a copy of plvm that
+  counts each op it runs, compiles every run test with BASE's ccish and
+  this tree's, and prints each test whose count changed, any whose
+  output differs, and the totals (`-v`: by opcode). Report how many
+  tests change, that no output changed, and the totals.
 - **Why an optimization doesn't apply:** build a scratch copy of ccgen
   with `fprintf(stderr, ...)` at each rejection, and run it on ccish's
   own sources (as measure.py prepares them in `tools/out/src`). That is
   how we found that cccomp's loops were blocked by calls and returns in
   their bodies, not by their limits.
-- Per-function sizes: from a ccrel `-l` listing, each `name:` line
-  starts a function; sizes are the address ranges. Static functions
-  whose names didn't fit are `static@$ADDR`, which shifts between
-  builds: compare per file instead (measure.py's table).
+- Per-function sizes: `tools/fsize.py LISTING [FUNCTION...]`, or
+  `tools/fsize.py -c OLD NEW` to compare two listings (such as
+  `tools/out/cccomp.lst` from a worktree and from this tree). Static
+  functions whose names didn't fit are `static@$ADDR`, which shifts
+  between builds, so `-c` leaves them out: compare per file instead
+  (measure.py's table).
 
 ## Verified PLASMA VM facts that shape the code
 
