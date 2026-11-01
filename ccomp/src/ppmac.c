@@ -170,8 +170,7 @@ static int encode(unsigned char *p, int code, int val,
 {
   int i;
   p[0] = (unsigned char)code;
-  if (code == TC_ID || code == TC_NUM || code == TC_UNUM
-      || code == TC_KEYWORD) {
+  if (TC_IS_WORDVAL(code)) {
     p[1] = (unsigned char)(val & 0xFF);
     p[2] = (unsigned char)((val >> 8) & 0xFF);
     return 3;
@@ -190,8 +189,7 @@ static int encode(unsigned char *p, int code, int val,
 static int decode(const unsigned char *p)
 {
   int i;
-  if (p[0] == TC_ID || p[0] == TC_NUM || p[0] == TC_UNUM
-      || p[0] == TC_KEYWORD) {
+  if (TC_IS_WORDVAL(p[0])) {
     pt_val = p[1] | (p[2] << 8);
   } else if (p[0] == TC_STR) {
     pt_len = p[1];

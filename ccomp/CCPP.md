@@ -147,7 +147,7 @@ All words are 16-bit little-endian. The file is written once, in
 order, through a 512-byte block buffer (`src/bio.c`).
 
 **The header**: the 3 bytes `CTK`, then the format version, a byte:
-**1**. The source file's name is not here: it is file 1 in
+**3**. The source file's name is not here: it is file 1 in
 `NAME.nam`.
 
 **Then the tokens**, each a code byte, followed by its operands:
@@ -161,8 +161,8 @@ order, through a 512-byte block buffer (`src/bio.c`).
 | `$04` | an identifier | its id (word) |
 | `$05` | a number, `int` | its value (word) |
 | `$06` | a number, `unsigned` (a `u` suffix, or a hex or octal constant over `$7FFF`) | its value (word) |
-| `$07` | a string literal | its length (byte, 0-255), then its bytes |
-| `$08` | a C keyword ccish doesn't support (`float`, `union`, ...) | its id (word), for the message's spelling |
+| `$07` | a C keyword ccish doesn't support (`float`, `union`, ...) | its id (word), for the message's spelling |
+| `$08` | a string literal | its length (byte, 0-255), then its bytes |
 | `$09` | a struct tag: an identifier right after `struct` (no other identifier is written so) | its id (word); the hash *h* of its spelling, from 0, for each byte *b*: *h* = (*h* × 31 + *b*) mod 65536 (word); and 31^*n* mod 65536, for its *n* bytes (word) |
 | `$20`-`$7E` | a one-character token, as itself: one of `! % & ( ) * + , - . / : ; < = > ? [ ] ^ { \| } ~` | none |
 | `$80`-`$BF` | a supported keyword (table below) | none |
@@ -318,11 +318,11 @@ For `t.c` holding the one line `int main() { return 0; }`, `ccpp`
 writes `t.i`:
 
 ```
-43 54 4B 01    "CTK", version 1
+43 54 4B 03    "CTK", version 3
 80             int
 04 1A 00       an identifier: id 26, main
 28 29 7B       ( ) {
-82             return
+89             return
 05 00 00       the number 0
 3B 7D          ; }
 01             the next line

@@ -1,5 +1,5 @@
 # #line, __LINE__ and __FILE__ (approach.md, "ccpp design", step 6).
-43 54 4b 02     # "CTK", version 2
+43 54 4b 03     # "CTK", version 3
 80 04 20 00 3b  # line 1: int a;  (a: id 32)
 # line 2 makes the next line 50, of a file named other.c (file 2)
 03 02 32 00     # file 2, line 50
@@ -8,7 +8,7 @@
 # line 51: char *f = "other.c";  (f: id 34); the string is held for
 # the ';', on the same line
 81 2a 04 22 00 3d
-07 07 6f 74 68 65 72 2e 63
+08 07 6f 74 68 65 72 2e 63
 3b
 01              # the end is on line 52
 00 22 00 ss ss  # the end: 34 ids, the checksum

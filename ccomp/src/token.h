@@ -8,10 +8,12 @@
 
 #define SUFFIX_I     ".i"
 #define SUFFIX_NAM   ".nam"
-#define TOK_VERSION  2        /* NAME.i's format, after its "CTK" */
+#define TOK_VERSION  3        /* NAME.i's format, after its "CTK" */
 #define NAM_VERSION  1        /* NAME.nam's, in its stamp line */
 
-/* The codes of NAME.i. A one-character token ($20-$7E) is itself. */
+/* The codes of NAME.i. A one-character token ($20-$7E) is itself.
+ * TC_ID through TC_KEYWORD are the tokens that carry a 16-bit value
+ * in the stream (TC_IS_WORDVAL, below). */
 enum {
   TC_END = 0x00,          /* then the stamp: id count, checksum (words) */
   TC_NL = 0x01,           /* the next line */
@@ -20,12 +22,16 @@ enum {
   TC_ID = 0x04,           /* an id (word) */
   TC_NUM = 0x05,          /* an int (word) */
   TC_UNUM = 0x06,         /* an unsigned (word) */
-  TC_STR = 0x07,          /* a length (byte), then the bytes */
-  TC_KEYWORD = 0x08,      /* an unsupported keyword's id (word) */
+  TC_KEYWORD = 0x07,      /* an unsupported keyword's id (word) */
+  TC_STR = 0x08,          /* a length (byte), then the bytes */
   TC_TAG = 0x09,          /* a struct tag: id, its spelling's hash and
                            * 31^length (words) */
   TC_KEYWORDS = 0x80      /* the supported keywords, in CCPP.md's order */
 };
+
+/* The tokens that carry a 16-bit value in the stream, their bytes
+ * the code plus the value's low and high bytes (CCPP.md). */
+#define TC_IS_WORDVAL(c)   ((c) >= TC_ID && (c) <= TC_KEYWORD)
 
 /* The multi-character operators, in CCPP.md's order (and T_EQ's). */
 enum {

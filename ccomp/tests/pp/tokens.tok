@@ -1,5 +1,5 @@
 # Each code step 1 writes (CCPP.md), from tokens.c.
-43 54 4b 02     # "CTK", version 2
+43 54 4b 03     # "CTK", version 3
 # line 1: a comment's newline is a line too
 01
 # line 2: x = 0x8000 + 10u - 'A' * 65535;
@@ -25,9 +25,9 @@ ca              # +=
 3d
 01              # the newline is written before the held string
 # line 5: "\x41\101" joins it; then the digraphs and float
-07 05 61 09 62 41 41    # "a\tbAA": 5 bytes
+08 05 61 09 62 41 41    # "a\tbAA": 5 bytes
 5b 5d 7b 7d     # <: :> <% %>
-08 23 00        # float: unsupported, id 35
+07 23 00        # float: unsupported, id 35
 3b
 01
 # line 6: the operators

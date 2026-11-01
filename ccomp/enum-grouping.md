@@ -379,26 +379,34 @@ savings of a couple of ops; it changes IR_VERSION and the parallel
 tables in lower.c (ir_names[], lw_kind[], lw_op[]) and irin.c
 (stk_effect[]) for nothing cccomp gains. Leave it out of this change.
 
-## 4. token.h: TC_IS_WORDVAL
+## 4. token.h: TC_IS_WORDVAL; move TC_STR after TC_KEYWORD
 
-The codes of NAME.i are a file format, so they are not reordered. The
-one set worth a macro is already contiguous: TC_ID, TC_NUM, TC_UNUM,
-TC_KEYWORD are 0x04 through 0x07.
+The set worth a macro is the tokens that carry a 16-bit value in the
+stream: TC_ID, TC_NUM, TC_UNUM and TC_KEYWORD. They were not
+contiguous (TC_STR sat between TC_UNUM and TC_KEYWORD, at 0x07), so
+TC_STR moves to 0x08, after TC_KEYWORD: the 16-bit-value tokens are
+the range 0x04 through 0x07, TC_TAG stays at 0x09, and the
+stream's version byte goes 2 to 3 (the header is CTK plus the
+version; CCPP.md's table and example move with it, as do the
+tests/pp token streams' prose). Every use of the codes in the .c
+files is symbolic, so only token.h, the version, and the documents
+change.
 
 ```c
-/* A token with a word operand: an id, a number, an unsigned number,
- * or an unsupported keyword. TC_ID through TC_KEYWORD, adjacent. */
-#define TC_IS_WORDVAL(c)  ((c) >= TC_ID && (c) <= TC_KEYWORD)
+/* The tokens that carry a 16-bit value in the stream, their bytes
+ * the code plus the value's low and high bytes (CCPP.md). */
+#define TC_IS_WORDVAL(c)   ((c) >= TC_ID && (c) <= TC_KEYWORD)
 ```
 
 Used at the four places that write or read the token: ppmac.c's
-token_len(), encode() and decode() (156, 173, 193), and ppout.c's
-out_token() (180). A 4-term chain becomes a range in ccpp's hot path
-(every macro body byte and every token out). The two-term sets
-{TC_NUM, TC_UNUM} (ppif.c:117) and {TC_ID, TC_KEYWORD} (pp.c:118,
-146; ppif.c:57, 63; ppmac.c:243, 391, 677) are left as they are: a
-two-term check is the same size as a range, and making TC_ID and
-TC_KEYWORD adjacent would be a format change for nothing.
+token_len(), encode() and decode() (156, 173, 193 — token_len's
+switch case labels stay as written: a case label can't be a range),
+and ppout.c's out_token() (180). A 4-term chain becomes a range in
+ccpp's hot path (every macro body byte and every token out). The
+two-term sets {TC_NUM, TC_UNUM} (ppif.c:117) and {TC_ID, TC_KEYWORD}
+(pp.c:118, 146; ppif.c:57, 63; ppmac.c:243, 391, 677) are left as
+they are: a two-term check is the same size as a range, and each
+pair is tested only in one or a few places.
 
 TC_STRUCT (section 2) moves with the keyword reorder.
 
@@ -587,7 +595,9 @@ the other way is reported plainly, per AGENTS.md.
    the ordering-constraint comments; parse.c and irin.c use them.
    IR_VERSION 6 to 7; lower.c's and irin.c's parallel tables move the
    SEL and JOIN entries one slot.
-3. token.h: TC_IS_WORDVAL; ppmac.c, ppout.c use it.
+3. token.h: the TC_STR/TC_KEYWORD move (section 4), TC_IS_WORDVAL,
+   TOK_VERSION 3; ppmac.c and ppout.c use it; CCPP.md and the
+   tests/pp token streams move with it.
 4. mop.h: the families comment, the four OP_IS_* macros, the FIX_
    comment; peep.c uses them, and frame_expr() drops the dead INCR and
    DECR comparisons.

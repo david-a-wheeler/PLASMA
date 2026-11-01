@@ -1,6 +1,6 @@
 # A struct tag (CCPP.md, $09): an identifier after "struct", with its
 # spelling's hash h (each byte b: h = h * 31 + b, from 0) and 31^length.
-43 54 4b 02     # "CTK", version 2
+43 54 4b 03     # "CTK", version 3
 87              # struct
 09 20 00 73 00 1f 00    # s: id 32, h = 's' = 115, 31^1 = 31
 2a

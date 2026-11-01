@@ -177,8 +177,7 @@ void pp_out(int code, int val, const unsigned char *s, int n)
   }
   last = code;
   bputc(&out, code);
-  if (code == TC_ID || code == TC_NUM || code == TC_UNUM
-      || code == TC_KEYWORD)
+  if (TC_IS_WORDVAL(code))
     bputw(&out, val);
 }
 
