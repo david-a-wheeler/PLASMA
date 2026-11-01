@@ -1,4 +1,4 @@
-# Working notes for ccish (for Claude Code, and anyone)
+# Working notes for ccish (for coding agents such as Claude Code, and anyone)
 
 What a new session needs to know to carry on working on ccish the way
 it has been worked on: the goal, the user's working rules, how to test
