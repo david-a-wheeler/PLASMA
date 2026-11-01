@@ -740,7 +740,7 @@ static void list_code(const char *label, int len, int start)
     fmt = opinfo[op / 2].fmt;
     if (fmt == F_BYTE)
       n = 2;
-    else if (fmt == F_WORD || fmt == F_REL || fmt == F_ENTER)
+    else if (fmt >= F_WORD && fmt <= F_ENTER)
       n = 3;
     else if (fmt == F_STR)
       n = 2 + fbuf[pc + 1];

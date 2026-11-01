@@ -851,9 +851,10 @@ static void join_label(int from, int to)
 /* ---------- Expressions ---------- */
 
 /*
- * An operand on its way through the expression parser. The last three
- * kinds are places (lvalues, or arrays): what to load or store isn't
- * decided until the parser sees what follows.
+ * An operand on its way through the expression parser. The middle
+ * three kinds, K_VAR, K_DEREF and K_ELEM, are places (lvalues, or
+ * arrays): what to load or store isn't decided until the parser sees
+ * what follows.
  *
  * K_VAR is a variable, local or global; locals are in the frame, and
  * globals are in the data segment (LAW / SAW, with relocated addresses).
@@ -1078,7 +1079,7 @@ static int store_op(int t)
  * whose value hasn't been loaded? */
 static int is_place(Operand *o)
 {
-  return o->kind == K_VAR || o->kind == K_DEREF || o->kind == K_ELEM;
+  return o->kind >= K_VAR && o->kind <= K_ELEM;
 }
 
 /* The type of a value of type t: an array's value is a pointer to its
