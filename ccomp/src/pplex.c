@@ -436,10 +436,15 @@ static void lex_string(void)
  * codes. */
 static const char *const keywords[] = {
   /* supported: in the order of TC_KEYWORDS (CCPP.md) and T_INT ... */
-  "int", "void", "return", "if", "else", "while", "do", "for", "break",
-  "continue", "char", "sizeof", "static", "const", "volatile", "struct",
-  "switch", "case", "default", "typedef", "enum", "extern", "signed",
-  "unsigned",
+  "int", "char", "signed", "unsigned",
+  "void",
+  "const", "volatile",
+  "struct", "enum",
+  "return", "if", "else", "while", "do", "for", "break", "continue",
+  "sizeof",
+  "static", "extern",
+  "switch", "case", "default",
+  "typedef",
   /* the rest of C89's keywords: recognized so the error is clear */
   "auto", "double",
   "float", "goto", "long", "register", "short", "union",

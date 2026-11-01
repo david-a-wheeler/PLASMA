@@ -7,17 +7,28 @@
 #define TOKIN_H
 
 /* Single-character tokens are their character code; others start at
- * 256. T_INT ... T_UNSIGNED are in the order of the token stream's
+ * 256. T_INT ... T_TYPEDEF are in the order of the token stream's
  * keyword codes, and T_EQ ... T_ELLIPSIS of its operator codes
- * (token.h). */
+ * (token.h). The type-name keywords are grouped, so that the T_IS_*
+ * sets below are ranges. */
 enum {
   T_EOF = 0,
   T_ID = 256, T_NUM, T_STR,
-  /* keywords supported now */
-  T_INT, T_VOID, T_RETURN, T_IF, T_ELSE, T_WHILE, T_DO, T_FOR, T_BREAK,
-  T_CONTINUE, T_CHAR, T_SIZEOF, T_STATIC, T_CONST, T_VOLATILE, T_STRUCT,
-  T_SWITCH, T_CASE, T_DEFAULT, T_TYPEDEF, T_ENUM, T_EXTERN, T_SIGNED,
-  T_UNSIGNED,
+  /* keywords supported now. The type-name keywords first, in the
+   * groups the parser tests: the int-type specifiers, then void, the
+   * qualifiers, the tagged types */
+  T_INT, T_CHAR, T_SIGNED, T_UNSIGNED,
+  T_VOID,
+  T_CONST, T_VOLATILE,
+  T_STRUCT, T_ENUM,
+  /* the other keywords: the control-flow ones, then the rest, with
+   * the storage-class keywords and the switch keywords each kept
+   * adjacent */
+  T_RETURN, T_IF, T_ELSE, T_WHILE, T_DO, T_FOR, T_BREAK, T_CONTINUE,
+  T_SIZEOF,
+  T_STATIC, T_EXTERN,
+  T_SWITCH, T_CASE, T_DEFAULT,
+  T_TYPEDEF,
   /* any other C keyword: reported as "not supported yet" */
   T_KEYWORD,
   /* multi-character operators (not all are supported by the parser yet) */
@@ -25,6 +36,15 @@ enum {
   T_ADDEQ, T_SUBEQ, T_MULEQ, T_DIVEQ, T_MODEQ, T_ANDEQ, T_OREQ, T_XOREQ,
   T_SHLEQ, T_SHREQ, T_ARROW, T_ELLIPSIS
 };
+
+/* The sets of tokens the parser tests, each a range in the order
+ * above. A new token joins a group by taking a place in it. */
+#define T_IS_TYPE_START(t)  ((t) >= T_INT && (t) <= T_ENUM)
+#define T_IS_INT_TYPE(t)    ((t) >= T_INT && (t) <= T_UNSIGNED)
+#define T_IS_QUAL(t)        ((t) >= T_CONST && (t) <= T_VOLATILE)
+#define T_IS_TAGGED(t)      ((t) >= T_STRUCT && (t) <= T_ENUM)
+#define T_IS_STORAGE(t)     ((t) >= T_STATIC && (t) <= T_EXTERN)
+#define T_IS_CASE_LABEL(t)  ((t) >= T_CASE && (t) <= T_DEFAULT)
 
 /* The current token. */
 extern int tok;

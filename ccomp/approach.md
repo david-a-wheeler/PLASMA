@@ -3536,6 +3536,16 @@ issue. In summary:
     `ccpp` nests as deep as the system's open files allow, with a clear
     message past that. ccish.h is split up in commits of its own,
     between the `ccpp` steps.
+26. **Enum sets live in the `.h` files, as ranges** (decided in
+    discussion, 2026-11-01; `enum-grouping.md`). Where the compiler
+    tests "is this token/ op a kind of X", the enum values of the Xs
+    are kept adjacent in the defining header, and a #define there
+    names the set as a range, so the `.c` files don't restate the
+    membership. First applied: the keywords are reordered (TOK_VERSION
+    2) so the type-name keywords are one range, with T_IS_* macros in
+    `tokin.h`; IR_IS_* macros in `ir.h` (no reorder, but the JOIN and
+    SEL ops swap, so IR_VERSION 7); and the like in `token.h`, `mop.h`,
+    `obj.h` and `pplex.h`.
 
 
 ## Milestones

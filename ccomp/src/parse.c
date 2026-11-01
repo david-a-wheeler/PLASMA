@@ -470,9 +470,7 @@ static void set_param_types(int f, int n)
  * qualifier, or a visible typedef name? */
 static int is_type_start(void)
 {
-  return tok == T_INT || tok == T_CHAR || tok == T_VOID || tok == T_CONST
-         || tok == T_VOLATILE || tok == T_STRUCT || tok == T_ENUM
-         || tok == T_SIGNED || tok == T_UNSIGNED
+  return T_IS_TYPE_START(tok)
          || (tok == T_ID && typedef_type(tok_val) >= 0);
 }
 
@@ -501,7 +499,7 @@ static void need_complete(int t, int msg)
 static int parse_quals(void)
 {
   int q = 0;
-  while (tok == T_CONST || tok == T_VOLATILE) {
+  while (T_IS_QUAL(tok)) {
     q |= tok == T_CONST ? Q_CONST : Q_VOLATILE;
     next();
   }
@@ -523,9 +521,8 @@ static int base_tagged;
 static int parse_int_type(int *q)
 {
   int base = 0, sign = 0;
-  while (tok == T_INT || tok == T_CHAR || tok == T_SIGNED
-         || tok == T_UNSIGNED || tok == T_CONST || tok == T_VOLATILE) {
-    if (tok == T_CONST || tok == T_VOLATILE) {
+  while (T_IS_INT_TYPE(tok) || T_IS_QUAL(tok)) {
+    if (T_IS_QUAL(tok)) {
       *q |= parse_quals();
       continue;
     }
@@ -552,13 +549,12 @@ static int parse_int_type(int *q)
 static int parse_base_type(void)
 {
   int q = parse_quals(), t = TY_INT;
-  int tagged = tok == T_STRUCT || tok == T_ENUM;  /* after the quals */
+  int tagged = T_IS_TAGGED(tok);  /* after the quals */
   if (tok == T_STRUCT) {
     t = parse_struct();
   } else if (tok == T_ENUM) {
     t = parse_enum();
-  } else if (tok == T_INT || tok == T_CHAR || tok == T_SIGNED
-             || tok == T_UNSIGNED) {
+  } else if (T_IS_INT_TYPE(tok)) {
     t = parse_int_type(&q);
   } else {
     if (tok == T_VOID)
@@ -3618,7 +3614,7 @@ static void parse_case_labels(void)
   char buf[8];
   Operand e;
   int l, i;
-  while (tok == T_CASE || tok == T_DEFAULT) {
+  while (T_IS_CASE_LABEL(tok)) {
     if (sw_first < 0)
       error(tok == T_CASE ? 133 /* "'case' is not inside a switch" */
                           : 134 /* "'default' is not inside a switch" */,
@@ -4381,7 +4377,7 @@ static void parse_toplevel(void)
     parse_typedef();
     return;
   }
-  if (tok == T_STATIC || tok == T_EXTERN) {
+  if (T_IS_STORAGE(tok)) {
     storage = tok;
     next();
     if (!is_type_start())

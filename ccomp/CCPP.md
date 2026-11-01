@@ -171,13 +171,16 @@ order, through a 512-byte block buffer (`src/bio.c`).
 Any other code is a damaged file.
 
 **The keywords**, `$80` up, in this order (the order of `T_INT` to
-`T_UNSIGNED` in `cccomp`, and of `keywords[]` in `src/pplex.c`):
+`T_TYPEDEF` in `cccomp`, and of `keywords[]` in `src/pplex.c`). The
+type-name keywords come first, in the groups the parser tests: the
+int-type specifiers, then `void`, the qualifiers, the tagged types
+(approach.md, decision 26):
 
 | | +0 | +1 | +2 | +3 | +4 | +5 | +6 | +7 |
 |---|---|---|---|---|---|---|---|---|
-| `$80` | `int` | `void` | `return` | `if` | `else` | `while` | `do` | `for` |
-| `$88` | `break` | `continue` | `char` | `sizeof` | `static` | `const` | `volatile` | `struct` |
-| `$90` | `switch` | `case` | `default` | `typedef` | `enum` | `extern` | `signed` | `unsigned` |
+| `$80` | `int` | `char` | `signed` | `unsigned` | `void` | `const` | `volatile` | `struct` |
+| `$88` | `enum` | `return` | `if` | `else` | `while` | `do` | `for` | `break` |
+| `$90` | `continue` | `sizeof` | `static` | `extern` | `switch` | `case` | `default` | `typedef` |
 
 **The operators**, `$C0` up (the order of `T_EQ` to `T_ELLIPSIS`):
 

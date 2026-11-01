@@ -406,8 +406,10 @@ printf 'X' | dd of="$OUT/tok_magic.i" bs=1 seek=0 conv=notrunc 2>/dev/null
 tok_damaged_test tok_magic "with a wrong magic" \
     "not a token file from ccpp, or the wrong version"
 ./ccpp -o "$OUT/tok_version" tests/run/hello.c
-printf '\002' | dd of="$OUT/tok_version.i" bs=1 seek=3 conv=notrunc \
-    2>/dev/null
+# The version byte (offset 3, after "CTK") made one other value.
+v=$(od -An -tu1 -j 3 -N1 "$OUT/tok_version.i" | tr -d ' ')
+printf "\\$(printf '%03o' $(( (v + 1) % 256 )))" \
+    | dd of="$OUT/tok_version.i" bs=1 seek=3 conv=notrunc 2>/dev/null
 tok_damaged_test tok_version "of another version" \
     "not a token file from ccpp, or the wrong version"
 ./ccpp -o "$OUT/tok_cut" tests/run/hello.c
@@ -1089,17 +1091,17 @@ else
 fi
 
 # Without the message file, a keyword or operator in a message is its
-# message's number (tok_desc(): 'while' is 267, the keywords being
+# message's number (tok_desc(): 'while' is 274, the keywords being
 # 262-285 in T_INT's order).
 printf 'int main() { return while; }\n' > "$OUT/nomsg/k.c"
 if "$OUT/nomsg/ccish" -o "$OUT/nomsg/k" "$OUT/nomsg/k.c" 2>"$OUT/nomsg/k.err"
 then
     echo "FAIL no message file: compiled, but should have failed"
     fail=$((fail + 1))
-elif grep -qF "k.c:1: error 65: '267'" "$OUT/nomsg/k.err"; then
+elif grep -qF "k.c:1: error 65: '274'" "$OUT/nomsg/k.err"; then
     pass=$((pass + 1))
 else
-    echo "FAIL no message file: wanted \"error 65: '267'\", got:"
+    echo "FAIL no message file: wanted \"error 65: '274'\", got:"
     sed 's/^/    /' "$OUT/nomsg/k.err"
     fail=$((fail + 1))
 fi

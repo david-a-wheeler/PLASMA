@@ -8,7 +8,7 @@
 
 #define SUFFIX_I     ".i"
 #define SUFFIX_NAM   ".nam"
-#define TOK_VERSION  1        /* NAME.i's format, after its "CTK" */
+#define TOK_VERSION  2        /* NAME.i's format, after its "CTK" */
 #define NAM_VERSION  1        /* NAME.nam's, in its stamp line */
 
 /* The codes of NAME.i. A one-character token ($20-$7E) is itself. */
@@ -34,8 +34,8 @@ enum {
   TC_ANDEQ, TC_OREQ, TC_XOREQ, TC_SHLEQ, TC_SHREQ, TC_ARROW, TC_ELLIPSIS
 };
 
-#define TC_STRUCT    (TC_KEYWORDS + 15)   /* struct, for TC_TAG */
-#define NKEYWORDS    24       /* supported keywords: int ... unsigned */
+#define TC_STRUCT    (TC_KEYWORDS + 7)    /* struct, for TC_TAG */
+#define NKEYWORDS    24       /* supported keywords: int ... typedef */
 #define NOPS         22       /* operators: == ... "..." */
 
 #endif
