@@ -7,6 +7,12 @@ peephole, for user programs). The numbers are from
 `python3 tools/measure.py` on this tree, `tools/fsize.py` on its
 listings, and a one-off opcode profile of the tests (section 4).
 
+**Cost policy (settled while working section 5):** an optimization may
+freely grow ccgen -- ccgen getting bigger to make the generated code
+better is ideal -- but not cccomp: a few bytes in cccomp is fine,
+a kilobyte is not, for now. An optimization that needs a significant
+addition to cccomp is recorded here for later, not built.
+
 ## 1. Where cccomp's size goes
 
 The loader reads a whole module file into memory before running a
@@ -153,26 +159,46 @@ together is the sample.
 dead_stores() removes stores to locals that nothing reads back, but
 only at a LEAVE or RET, with nothing between but stack ops. The same
 fact is true at any point: a store to a local that is not read again
-before the function ends (or before a call that might reach it
-through a pointer) is dead. A backward scan of the function at each
-store, stopping at calls, would find stores dead in the middle of
-functions, not only the last ones. Local traffic is about a third of
-all ops in the profile (section 4): DLW 5.1%, SLW 4.6%, LLW 17.5%
-(with ADDLW and IDXLW, the fused forms, about another 6%); even a
-fifth of the stores going would be about two percent of all ops.
-The scan has to be conservative: a call may take a pointer to the
-local (C allows &local and the pointer can be stored), so a call
-stops the scan, which is also what keeps the proof simple.
+is dead. Measured on the final listings (a scratch scan of every
+run test, after the peep has run): of 897 frame stores, 135 are
+never read again and never addressed (no LLA of the slot anywhere in
+the function -- that is the escape that makes a later read through a
+pointer untrackable). Under the coarser rule this doc first stated
+(a call also stops the scan) only 16 qualify: the refined rule
+needs no call barrier at all, because without an LLA a call cannot
+see the slot (a value passed to it is a read; an address would be an
+LLA). The dead stores cluster in dead initializations (an
+`int a[7] = {1, ...}` never read: a CN then a SLW, 25 of them) and
+in x++ forms (an LLW, INCR, store, 20+). The implementation, all in
+ccgen (section 5's policy): the peep defers each plain store (SLW,
+SLB -- not the keep-value DLW / DLB, whose kept copy flows into the
+stack that follows, which would need value tracking) as a candidate
+for its slot, with the side-effect-free expression that feeds it as
+the span (the peep's own frame_expr and drop_dup shapes, seen at the
+window's end when the store arrives); the candidate is decided dead
+when the function ends (a read of the slot, an LLA of it, or a new
+store to it keeps it -- all conservative); at the function's end the
+peep hands emit the dead spans, and emit, where it already edits the
+finished buffer (drop_frame), deletes or replaces them and re-patches
+every branch offset word around the deletions (the relocs' offsets
+move too; the relocs' targets are absolute, filled by ccrel, and
+unaffected). A store replaced by a DROP is one byte; a fused span
+(const or frame-only expression plus the store) is two to five.
 
-**B2. Constant folding the peep doesn't do.** rewrite_const() folds
-a constant against ADD, SUB, NEG, COMP and AND. The same backstop
-applies to the other binary ops: `CN a SHL CN b`, `const MUL const`,
-`const DIV const`, `const AND / IOR / XOR const`, the comparisons
-against a constant when both sides are constant. These sequences are
-rare (the parser folds C constant expressions), but the peep creates
-new constants (SHL's count, ANDI's mask), so leftovers do occur; the
-cost of the check is a branch in rewrite_const(), a few bytes in
-ccgen, and it runs on every program compiled.
+**B2. Constant folding the peep doesn't. -- Done (33a4082b).**
+fold_pair() in peep.c folds a constant against a constant for ADD,
+SUB, MUL, DIV, MOD, AND, IOR, XOR, SHL, SHR and the six comparisons,
+with the VM's 16-bit two's-complement semantics checked against both
+VM implementations (plvm.c; plvm02.s's DIV is magnitude-then-sign,
+C's toward-zero, and its SHR rounds toward minus infinity). Not
+folded: a zero divisor (the VMs disagree, and C is undefined) and a
+shift by sixteen or more. The literals stay 16 bits for the small
+build's compiler (parse.c's wrap16 style). Measured: 4 of the 67
+run tests fold something (an AND, a XOR, two comparisons; 16 ops and
+28 bytes of module, opcount.py), 0 output differences. Cost: +528
+code bytes in ccgen-small -- the small compiler's if-chain switch;
+this doc's "a few bytes" estimate was low, and accepted under the
+cost policy (ccgen may grow).
 
 **B3. Leaf inlining, at the IR.** The biggest single lever and the
 biggest project: irin.c holds every function's IR at once, so a call
@@ -189,20 +215,37 @@ inlined body's labels must be renumbered into the caller's). Do it
 only after B1, which is smaller and independent, with the op count
 as the measured goal (a test by test `opcount.py` before and after).
 
-**B4. Small switches as comparisons.** parse.c always lowers a switch
-to a case table: SEL (three bytes) and the table as data (one count
-byte, then each case's value word and target word, no opcode bytes
-of their own: emit.c's CASES, CASEVAL and CASETO) -- four plus four
-per case. A comparison chain is six per case (CW, ISEQ, BREQ) with
-the default as the fall-through, and needs no table at all. So one
-case: the chain is two bytes less; two: even; three or more: the
-table wins. A threshold at parse.c (one case: a compare) is two
-bytes per such switch, and it also drops the SEL. The tests have one
-(counted_ret.c's kind(): case 0, no default); user code, more.
+**B4. Small switches as comparisons. -- Checked, not a lever.**
+The arithmetic holds (one case: the compare chain is two bytes less
+than SEL plus a one-entry table, five less when there is a default;
+zero cases -- a switch with only a default -- is up to eleven less):
+but the case count is known only after the body is parsed, and the
+dispatch (the SEL) is emitted before it. So the threshold is not at
+parse.c: it needs a tokenizer pre-scan of the body (save/restore of
+tokin's position, a mechanism cccomp does not have; roughly three
+hundred bytes of cccomp, the 40K-budget program) or a mid-function
+rewrite in emit.c's finished buffer, with every branch offset
+re-patched around the edit. The corpus has five one-case switches
+and one zero-case one (counted_ret.c and switch.c): about 24 bytes.
+Recorded per the cost policy; not built.
 
 
 
-**B5. Not levers, checked:** a return is already direct (IR_RETURN
+**B5. Not levers, checked:** a redundant ANDI 1 after a comparison
+before a branch: the pattern does not exist -- comparisons (ISEQ
+and kin) are lowered without any mask (lower.c's L_COMPARE adds the
+NEG that makes C's 1; the 0xFFFF/0 is the known VM looseness), and
+!x feeding a branch is already peeped (NOT ANDI 1 BRFLS/BRTRU ->
+BRTRU/BRFLS; 5 of the 11 NOTs in the corpus); the only gap is a
+double negation, once in the corpus (3 bytes). Common equivalent
+tails: the IR-level duplicate arms do exist (22 pairs in the corpus,
+all the CONST-then-JUMP arms of && and ||), but the machine code
+already merges them: IR JOIN and emit.c's join_labels move the
+branches so far to the earlier label, so one CONST serves them all
+(verified in the listings); and a textual merge of longer tails
+beyond adjacent labels is provably zero (a tail from an earlier point
+is strictly longer, so two identical ones cannot end together).
+Checked too: a return is already direct (IR_RETURN
 lowers to LEAVE with the result on the evaluation stack, lower.c:
 `return f(x);` is the call's args, CALL, LEAVE, with no store of the
 result in between); the counted loops already use all four
@@ -256,26 +299,87 @@ forms) is about 33%; calls and frames (CALL, ENTER, LEAVE) about
 17.5%; constants (CN, the CN range, CB, CW) about 11%. B1 aims at
 the stores of the first group and B3 at the second.
 
-## 5. Suggested order
+## 5. Suggested order, and where the work is
 
-1. B2 (const op const in the peephole): a day, a few bytes in ccgen,
-   a few ops here and there, no behaviour change possible beyond the
-   fold.
-2. B4 (one-case switches as comparisons): a threshold, two bytes per
-   such switch.
-3. B1 (dead stores, backward scan, calls as barriers): the biggest
-   safe win on the profile's largest group; the proof is the
-   backward scan itself (a store is dead when no later read of the
-   local is reachable without a call).
+1. B2 (const op const in the peephole): **done** (33a4082b).
+2. B4 (one-case switches as comparisons): **checked, not a lever**
+   (the case count is known only after the body; the cost lands in
+   cccomp or in a risky mid-function emit rewrite; about 24 bytes in
+   the corpus).
+3. B1 (dead stores, the refined rule of section 3): in progress,
+   in ccgen (the peep's deferred candidates plus an edit at the
+   function's end in emit, with the branch offsets re-patched).
 4. A2 (MAX_FUNCS, if the limit may drop): about 1,100 data bytes of
    cccomp plus its RLD, for a lower limit on functions per program.
+   cccomp's own data, not the generated code's: a project decision
+   on the limit, not a build.
 5. A1 (the parser's shape): the biggest code win and the hardest
-   review; take it one function at a time, measured.
+   review; take it one function at a time, measured. A1's ideas
+   that would grow cccomp by more than a few bytes (such as a
+   tokenizer pre-scan, B4's rejected mechanism) go to section 6
+   first.
 6. B3 (leaf inlining): a project with its own design doc (recursion,
    the label remap, the size threshold), after 1-4 have settled how
    the IR and the window are to be read.
 7. A3 (message merging) and A4 (the error path's frames): when the
    others are done, or not at all; they buy the least.
+
+## 6. Levers that cost cccomp: recorded, for later
+
+Per the cost policy, these are real but not built, because each
+needs a significant addition to cccomp (the 40K-budget program), not
+ccgen:
+
+- **B4's mechanism** (a switch body's case count before the
+  dispatch): a tokenizer save/restore (a Bfile seek or a shadow
+  buffer in bio/tokin) plus a brace-matched token walk in parse.c.
+  About three hundred bytes of cccomp, for about 24 bytes in the
+  corpus and a bit more in user programs (one-case switches with a
+  default are the common shape).
+- **A2's neighbours**: dropping MAX_VARS / MAX_FUNC_CODE with
+  MAX_FUNCS (A2 itself) would save cccomp data, but changes the
+  language's limits -- a decision, not a build.
+
+And one lever that costs neither: section 7.
+
+## 7. The VM's load: stream the RLD, don't hold it
+
+The binding limit is the load: the VM reads a whole module file into
+memory before running it (AGENTS.md, "The goal"), and cccomp's file
+is 42,613 against about 40K. Of that, 12,398 is the RLD and ESD the
+linker appends -- the four-byte relocation entries and the export
+symbol directory, freed after linking but present during the load.
+The C VM's loader (src/vmsrc/cmdsys.c's load_mod) reads the whole
+remainder of the file into one heap block and then walks the RLD in
+place; the 6502 hardware VMs load through their own loaders (the
+Apple II's cmd.pla, the C64's), the same format.
+
+The RLD needs no memory of its own: its entries are applied to the
+code and data, which must be resident anyway. A streaming loader
+would (1) read the header (it already does: 128 bytes), from which
+the RLD's file offset is computable (the header's length plus
+modsize); (2) allocate and read only the code and data; (3) walk the
+RLD four bytes at a time from the file, applying each entry -- the
+existing loop, with a pointer in the heap changed to a four-byte
+buffer; the order of the entries does not matter, since the code and
+data are all in memory by then; (4) hold only the ESD, in a small
+buffer (a few hundred bytes), because lookup_extern() searches it
+while the RLD is applied. Peak memory then drops from the whole file
+to code plus data plus the ESD: for cccomp, 42,613 to about 30.2K --
+under the 40K limit without changing cccomp's size at all, and the
+biggest single lever this analysis has found.
+
+It is a VM change, not a compiler change, and it is moderate: the
+fixup logic is unchanged, only where its entries come from; the
+re-entrancy (a module's dependencies load before its own bytes are
+allocated) and the 128-byte-header assumption stay as they are. The
+hardware loaders are separate work: the Apple II's ProDOS seeks, so
+the same two-pass shape works; the C64's sequential channel prefers
+a one-pass loader, which the format could give by writing the ESD
+before the RLD (a ccrel change, a module-format version, and every
+VM's loader updated together). Risk is low: a module that loads and
+runs is a module that loads and runs, and the tests run every module
+they build.
 
 Each step: the worktree of the commit before it, `tools/fsize.py -c`
 on the measure.py listings for the size, `tools/opcount.py` for the
