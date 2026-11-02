@@ -1,13 +1,13 @@
 /* xarith.c — arithmetic: first the constant expressions the parser
  * folds at compile time (the peephole folds what it leaves), then
- * every binary operator at run time through show_ops, then the same
- * operators in multi-level expressions, whose partial results must
- * sit on the arithmetic stack while the next tier is computed: at
- * run time (the operands are parameters the folder can't touch),
- * left- and right-nested, and folded as deep constants. The mixed
- * operators are unparenthesized on purpose: C's precedence is the
- * test, and the file is compiled with -Wno-parentheses
- * (xarith.flags). */
+ * every binary operator at run time through show_ops, the compound
+ * assignments one by one, the same operators in multi-level
+ * expressions, whose partial results must sit on the arithmetic
+ * stack while the next tier is computed: at run time (the operands
+ * are parameters the folder can't touch), left- and right-nested,
+ * and folded as deep constants. The mixed operators are
+ * unparenthesized on purpose: C's precedence is the test, and the
+ * file is compiled with -Wno-parentheses (xarith.flags). */
 #include "ptest.h"
 
 int prec(int a, int b, int c, int d)
@@ -96,6 +96,63 @@ int compare_mix(int a, int b, int c, int d, int e, int f)
   return a + b * c < d * e + f;
 }
 
+/* Every compound assignment, in turn, on a value passed in: each
+ * must compute old OP b, store it, and the next must read back what
+ * was stored. The shifts are by b, small enough to be defined, and
+ * every value stays in the 16-bit range. Prints v after each. */
+void comps(int a, int b)
+{
+  int v;
+  v = a;
+  v <<= b;
+  puti(v);
+  putln();
+  v >>= b;
+  puti(v);
+  putln();
+  v += b;
+  puti(v);
+  putln();
+  v -= b;
+  puti(v);
+  putln();
+  v *= b;
+  puti(v);
+  putln();
+  v /= b;
+  puti(v);
+  putln();
+  v %= b;
+  puti(v);
+  putln();
+  v &= b;
+  puti(v);
+  putln();
+  v |= b;
+  puti(v);
+  putln();
+  v ^= b;
+  puti(v);
+  putln();
+}
+
+/* Compound assignments on array elements (a different code path
+ * than on plain variables), and a post-decrement as the index: the
+ * old i is the index, and i itself moves on for the last read. */
+int comp_elem(int a, int b)
+{
+  int v[4];
+  int i, r;
+  for (i = 0; i < 4; i++)
+    v[i] = a;
+  v[1] += b;          // 10
+  v[2] -= b;          // 4
+  i = 3;
+  v[i--] ^= a;        // the old i is the index: v[3] = 7^7 = 0
+  r = v[0] + v[1] + v[2] + v[3];
+  return r + i;       // i is 2 now: 21 + 2 = 23
+}
+
 int main(void)
 {
   puti(3 << 4);            // 48
@@ -164,6 +221,11 @@ int main(void)
   puti(compare_mix(7, 6, 5, 10, 3, 2));  // 37 < 32, so 0
   putln();
   puti(compare_mix(7, 6, 5, 40, 3, 2));  // 37 < 122, so 1
+  putln();
+  // The compound assignments, each on the value the last stored.
+  comps(7, 3);      // 56 7 10 7 21 7 1 1 3 0
+  comps(-7, 3);     // -56 -7 -4 -7 -21 -7 -1 3 3 0
+  puti(comp_elem(7, 3));  // 23
   putln();
   return 0;
 }
