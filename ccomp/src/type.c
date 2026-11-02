@@ -16,7 +16,9 @@
  * Struct tags and members are parallel arrays too (approach.md, "M6
  * design"). Tag i has name tg_name[i] (an id, or -1 if anonymous), size
  * tg_size[i] (-1 until its member list is complete), block depth
- * tg_depth[i] (-1 once hidden), and its name's hash, tg_hsum[i] and
+ * tg_depth[i], one more than the depth (0 once hidden, since char is
+ * unsigned: the 0-means-none idiom, as in irin.c's lab_depth), and its
+ * name's hash, tg_hsum[i] and
  * tg_hmul[i], for type hashes (ccpp gives them, since cccomp has no
  * spellings). Member i
  * belongs to tag mb_tag[i], and has name mb_name[i], type mb_type[i]
@@ -224,7 +226,7 @@ int tag_new(int name, int depth, int hsum, int hmul)
   tg_hsum[ntags] = (unsigned)hsum;
   tg_hmul[ntags] = (unsigned)hmul;
   tg_size[ntags] = -1;
-  tg_depth[ntags] = (char)depth;
+  tg_depth[ntags] = (char)(depth + 1);
   return ntags++;
 }
 
@@ -234,8 +236,8 @@ int tag_find(int name, int depth)
 {
   int i;
   for (i = ntags - 1; i >= 0; i--)
-    if (tg_name[i] == name && tg_depth[i] >= 0
-        && (depth < 0 || tg_depth[i] == depth))
+    if (tg_name[i] == name && tg_depth[i] != 0
+        && (depth < 0 || tg_depth[i] == depth + 1))
       return i;
   return -1;
 }
@@ -247,8 +249,8 @@ void tag_hide(int depth)
 {
   int i;
   for (i = 0; i < ntags; i++)
-    if (tg_depth[i] > depth)
-      tg_depth[i] = -1;
+    if (tg_depth[i] > depth + 1)
+      tg_depth[i] = 0;
 }
 
 /* The name of tag (an id), or -1 if anonymous. */

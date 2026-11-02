@@ -2,7 +2,9 @@
  * The table of enum constants and typedef names (approach.md, "enum and
  * typedef design"), as parallel arrays: entry i has name id_nm[i] (an
  * id, the number ccpp gave the name: ../CCPP.md), value id_v[i], kind
- * id_k[i] (ID_*), and block depth id_d[i] (-1 once hidden). Names need
+ * id_k[i] (ID_*), and block depth id_d[i], one more than the depth
+ * (0 once hidden, since char is unsigned: the 0-means-none idiom, as
+ * in irin.c's lab_depth). Names need
  * no pool of their own: cccomp keeps no spellings (approach.md, "ccpp
  * design").
  */
@@ -33,7 +35,7 @@ int id_add(int name, int kind, int val, int depth)
   id_nm[nids] = name;
   id_v[nids] = val;
   id_k[nids] = (char)kind;
-  id_d[nids] = (char)depth;
+  id_d[nids] = (char)(depth + 1);
 #ifdef CCISH_STATS
   if (nids + 1 > nids_peak)
     nids_peak = nids + 1;
@@ -46,7 +48,7 @@ int id_find(int name)
 {
   int i;
   for (i = nids - 1; i >= 0; i--)
-    if (id_nm[i] == name && id_d[i] >= 0)
+    if (id_nm[i] == name && id_d[i] != 0)
       return i;
   return -1;
 }
@@ -63,10 +65,10 @@ int id_val(int i)
   return id_v[i];
 }
 
-/* The block depth entry i was declared at. */
+/* The block depth entry i was declared at (visible entries only). */
 int id_depth(int i)
 {
-  return id_d[i];
+  return id_d[i] - 1;
 }
 
 /* Hide the entries declared deeper than depth, at the end of their
@@ -76,9 +78,9 @@ void id_hide(int depth)
 {
   int i;
   for (i = 0; i < nids; i++)
-    if (id_d[i] > depth)
-      id_d[i] = -1;
-  while (nids > 0 && id_d[nids - 1] < 0)
+    if (id_d[i] > depth + 1)
+      id_d[i] = 0;
+  while (nids > 0 && id_d[nids - 1] == 0)
     nids--;
 }
 

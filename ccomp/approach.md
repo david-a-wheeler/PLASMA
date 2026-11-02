@@ -3693,6 +3693,22 @@ issue. In summary:
     `tokin.h`; IR_IS_* macros in `ir.h` (no reorder, but the JOIN and
     SEL ops swap, so IR_VERSION 7); and the like in `token.h`, `mop.h`,
     `obj.h` and `pplex.h`.
+27. **A `char` is a byte, never negative; "none" is 0** (2026-11-02,
+    from the scope-table bug). Plain `char` is unsigned (section 7:
+    `LB` zero-extends), so a `char` that must mark "none" alongside
+    values stores one more than the value, and 0 means none - the
+    idiom irin.c's `lab_depth` already used. The front end's scope
+    tables (`id_d` in name.c, `tg_depth` in type.c) instead stored
+    -1 for "hidden" and tested `>= 0`, which is always true: hidden
+    block-scope typedefs, enum constants and struct tags stayed
+    visible past their blocks (the scope tests failed, and a
+    variable no longer beat a same-named outer typedef in an
+    expression), and the host build's three `-Wtype-limits`
+    warnings were the same comparisons. Fixed with the idiom; the
+    build is warning-free and all 382 tests pass. `signed char`
+    stays a feature to add (parse_int_type's error 227, with the
+    sign extension of section 7) if the source ever needs signed
+    bytes; the compiler's own tables no longer need it.
 
 
 ## Milestones
