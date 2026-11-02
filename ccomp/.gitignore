@@ -9,3 +9,5 @@
 /ccgen-small
 /ccpp
 /ccpp-small
+.tmpbuild/
+.scratch-b1/

@@ -1316,10 +1316,13 @@ Bootstrap path:
 
 The real Apple II test comes later, once an emulator is available.
 
-Note: the draft code in `src/` uses an expression tree per statement,
-plus host-only conveniences (`realloc`, `strndup`, varargs `fatal`).
-It does not fit this approach and should be rewritten or treated as a
-throwaway prototype.
+Cross tests (decision 28): the hand-written expected files are the
+oracle for what ccish does *differently* (16-bit ints, no padding,
+its own sizeof), and `tests/xrun` is the oracle for everything else:
+the same C89 program, run under gcc or clang and under ccish + plvm,
+must print the same answer. Its portability contract is in
+`inc/ptest.h`, which an end user can `#include` to test their own
+program the same way.
 
 ### 16. Using ccish instead of PLASMA's language
 
@@ -3642,7 +3645,10 @@ issue. In summary:
     135,813 bytes (18.6 E3's table predates this).
 20. **Separate compilation, statically linked by `ccrel`** (decided in
     discussion, 2026-10-30; issue 11). Functions must be declared
-    before they are called (no implicit declarations); `extern` data
+    before they are called (no implicit declarations: besides the
+    error checking, this fixes each argument's type at the call, so a
+    declared char parameter takes the byte, never C's promoted word,
+    which is more expensive on the 6502); `extern` data
     and functions are shared between files through object format 4
     (data symbols, `static` kept local, a type hash); `ccrel` links any
     number of objects into one module, later also into one object, and
@@ -3709,6 +3715,43 @@ issue. In summary:
     stays a feature to add (parse_int_type's error 227, with the
     sign extension of section 7) if the source ever needs signed
     bytes; the compiler's own tables no longer need it.
+28. **Cross tests: one program, two compilers, one answer**
+    (2026-11-02). A second oracle for compiled results, beside the
+    hand-written `tests/run/*.expected` files: `tests/xrun/NAME.c`
+    must print the same answer under a host C compiler (XCC: gcc by
+    default, clang for `make test XCC=clang`; the flags are
+    `-Wall -Wextra -Werror -funsigned-char -O2`) and under ccish +
+    plvm. XCC's output is cached in `tests/xrun/NAME.ref`, written by
+    `make xref` when NAME.c or `inc/ptest.h` is newer; an up-to-date
+    set of references needs no host compiler, so the suite runs
+    anywhere once generated. The portability contract (in ptest.h):
+    C89 only, every int value and intermediate in the 16-bit range,
+    char unsigned (hence -funsigned-char), no sizeof except portable
+    ratios like `sizeof a / sizeof a[0]`, no pointer values or struct
+    layout in the output (ccish packs, the host may pad), no
+    uninitialized reads or undefined behavior, ASCII output. The host
+    flags deliberately pin no `-std`: the contract's C89 is enforced
+    by ccish's parser, where a violation should surface (a host flag
+    would also hide a ccish that wrongly accepts C99). ptest.h is
+    keyed on `__CCISH__` (ccpp's predefined macro) and is meant to be
+    reusable by end users testing their own programs: the `__CCISH__`
+    branch declares the CMDSYS I/O (putc, putln, puts, puti) and the
+    pstr builtin; the other branch defines them in C, matching
+    plvm's observable behavior (puti a signed 16-bit decimal, putc
+    raw with \r/\n as the line break, puts up to the NUL with no
+    newline added, pstr the literal's address). A test that deliberately uses a
+    valid-but-discouraged construct (unparenthesized mixed
+    precedence, a dead store, an assignment as a condition) ships a
+    NAME.flags file with -Wno-... entries for the host build: the
+    construct is the test, and ccish compiles the source without the
+    suppression. Two ccish additions could simplify testing further
+    later; both are deferred because they would land in cccomp, the
+    component we are shrinking toward 32K, and neither is needed for
+    the tests to work: `__attribute__((...))` parsed and ignored in
+    declarators (a test could then suppress a host warning in the
+    source itself, dropping the NAME.flags sidecar), and `short` (a
+    16-bit int alias, a completeness feature). The suite also checks the small build writes
+    the full build's modules for every cross test.
 
 
 ## Milestones

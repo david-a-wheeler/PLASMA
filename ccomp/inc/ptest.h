@@ -1,0 +1,102 @@
+/* ptest.h — run one program under ccish and under a host C compiler
+ * (gcc or clang), and expect the same answer.
+ *
+ * A program that includes this header and prints only through puti,
+ * putc, putln, puts and pstr will build and run under both, provided
+ * it honors the portability contract:
+ *
+ *   - C89 int, char, pointers, arrays, structs and functions only.
+ *     No long, float or double (ccish has none yet).
+ *   - Every int value, and every intermediate result of an
+ *     expression, stays within -32768 to 32767: ccish's int is 16
+ *     bits, the host's is wider, and a wraparound would differ.
+ *   - char is unsigned in both: compile the host build with
+ *     -funsigned-char.
+ *   - No sizeof, except portable ratios whose answer does not depend
+ *     on element size: sizeof a / sizeof a[0] (the element count), or
+ *     a type over itself. (sizeof(int) is 2 in ccish, wider on the
+ *     host, and a pointer is 2 bytes against 4 or 8.)
+ *   - No printing of pointer values, and no dependence on struct
+ *     layout: ccish lays out members in order with no padding, the
+ *     host may pad. A pointer difference, in elements, is fine.
+ *   - No reading uninitialized storage, no undefined behavior; the
+ *     host build is checked with -Wall -Wextra.
+ *   - puts takes only pstr's result: PLASMA strings are
+ *     length-prefixed (pstr points at the length byte), and a C char
+ *     array has no such prefix, so it is not a string. Build a
+ *     runtime string's bytes and print it with putc.
+ *   - Printed bytes are ASCII (0 to 127). plvm's \n and \r come out
+ *     as CRLF and the comparison ignores \r, so print \n.
+ *
+ * Build:
+ *   ccish -I <ptest.h's directory> -o p p.c
+ *   gcc -Wall -Wextra -funsigned-char -O2 -I <ptest.h's directory> -o p p.c
+ * (clang takes the same flags.) The host flags deliberately pin no
+ * language standard: the contract's C89 is enforced by ccish's parser,
+ * which is where a violation should surface, not by a host flag.
+ * The shim's parameters are const char *, so string literals pass
+ * cleanly whatever standard the host defaults to.
+ *
+ * Under ccish (__CCISH__, predefined by ccpp), puti, putc, putln and
+ * puts are the CMDSYS's: these are just their declarations, and the
+ * module links them from the CMDSYS. They must state the CMDSYS's
+ * exact signatures (ccish checks a declaration against them, error
+ * 173): putc takes a char, not an int. pstr is the parser's builtin
+ * (the address of a string literal), declared here for the same
+ * reason. Every other compiler takes the #else branch, which defines
+ * them in C, matching the CMDSYS's observable behavior for the
+ * contract above.
+ */
+#ifdef __CCISH__
+extern void puti(int);
+extern void putc(char);
+extern void putln(void);
+extern void puts(const char *);
+extern char *pstr(const char *);
+#else
+/* The host's printf and putchar, declared here rather than taking
+ * <stdio.h> (a program should not mix C's I/O and PLASMA's anyway).
+ * putc and puts are builtins of gcc and clang with different
+ * signatures and meanings - a FILE and a return value, and C's puts
+ * adds a newline - so the PLASMA ones are defined under other names
+ * and the #defines at the end map the names to them; a direct
+ * definition may not clash with the builtins.
+ * extern int printf(const char *, ...);
+ * extern int putchar(int); */
+extern int printf(const char *, ...);
+extern int putchar(int);
+/* Write one byte the way plvm does: raw, with \r and \n becoming the
+ * line break (CRLF under plvm; \n here, and the comparison ignores
+ * \r). */
+__attribute__((unused)) static void ptest_c(int c)
+{
+  if (c == '\r' || c == '\n')
+    putchar('\n');
+  else
+    putchar(c & 0xFF);
+}
+/* A signed 16-bit int in decimal, as plvm's puti. */
+__attribute__((unused)) static void puti(int n)
+{
+  printf("%d", n);
+}
+__attribute__((unused)) static void putln(void)
+{
+  putchar('\n');
+}
+/* The string's bytes, up to its NUL, with no newline added: the
+ * contract's strings are NUL-terminated on the host, and plvm's
+ * length-prefixed literals are NUL-terminated too. */
+__attribute__((unused)) static void ptest_s(const char *s)
+{
+  while (*s)
+    ptest_c(*s++);
+}
+/* The address of the literal. (In ccish, the parser's builtin.) */
+__attribute__((unused)) static char *pstr(const char *s)
+{
+  return (char *)s;
+}
+#define putc(c) ptest_c(c)
+#define puts(s) ptest_s(s)
+#endif

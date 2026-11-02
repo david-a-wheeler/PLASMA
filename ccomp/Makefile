@@ -5,12 +5,19 @@
 #               (the back end) and ccrel (the final pass)
 #   make small  build ccpp-small, cccomp-small, ccgen-small and
 #               ccrel-small: the small build (-DCCISH_SMALL), for the host
-#   make test   build them all and plvm, then run the tests
+#   make test   build them all and plvm, refresh the cross-test
+#               references (make xref), then run the tests
+#   make xref   write the cross tests' reference output (tests/xrun/
+#               NAME.ref) with a host C compiler, XCC (gcc or clang)
 #   make measure  compile ccish's own source with ccish and link its
 #               Apple II programs, reporting sizes (tools/measure.py)
 
 CC ?= cc
 CFLAGS ?= -std=c89 -pedantic -Wall -Wextra -O2
+# The host C compiler that writes the cross tests' references: gcc by
+# default, clang for "make test XCC=clang" (the flags are the same).
+XCC ?= $(shell command -v gcc 2>/dev/null || command -v clang 2>/dev/null)
+XREF_FLAGS = -Wall -Wextra -Werror -funsigned-char -O2
 
 COMMON = src/diag.c src/bio.c
 PP     = src/ppname.c src/pplex.c src/ppmac.c src/ppif.c src/ppout.c src/pp.c
@@ -58,8 +65,44 @@ ccrel-small: src/ccrel.c $(COMMON) $(LINK) $(HEADERS)
 $(PLVM):
 	$(MAKE) -C ../src plvm
 
-test: all small $(PLVM)
+test: all small $(PLVM) xref
 	./tests/run.sh
+
+# The cross tests' references (tests/xrun): NAME.ref is NAME.c's
+# stdout under XCC, LF only. Rewritten when NAME.c, inc/ptest.h or
+# NAME.flags is newer (or NAME.ref is missing); an up-to-date set of
+# references needs no compiler at all, so XCC is required only to
+# regenerate. NAME.flags (optional) holds extra XCC flags for that
+# one test: -Wno-... entries that admit valid-but-discouraged
+# constructs (mixed precedence, a dead store) that ccish must still
+# handle; the .c is compiled unchanged by both compilers.
+xref:
+	@mkdir -p tests/out
+	@bad=0; \
+	for src in tests/xrun/*.c; do \
+	  n=$${src##*/}; n=$${n%.c}; \
+	  ref="tests/xrun/$$n.ref"; \
+	  if [ ! -f "$$ref" ] || [ "$$src" -nt "$$ref" ] \
+	     || [ inc/ptest.h -nt "$$ref" ] \
+	     || { [ -f "tests/xrun/$$n.flags" ] \
+	         && [ "tests/xrun/$$n.flags" -nt "$$ref" ]; }; then \
+	    if [ -z "$(XCC)" ]; then \
+	      echo "xref: $$src: no gcc or clang to write $$ref"; bad=1; \
+	      continue; \
+	    fi; \
+	    echo "xref: $$n (with $(XCC))"; \
+	    extra=""; \
+	    [ -f "tests/xrun/$$n.flags" ] && extra=$$(cat "tests/xrun/$$n.flags"); \
+	    if ! "$(XCC)" $(XREF_FLAGS) $$extra -Iinc -o tests/out/xc_$n "$$src"; then \
+	      bad=1; continue; \
+	    fi; \
+	    if ! timeout 10 tests/out/xc_$n > "$$ref"; then \
+	      echo "xref: $$n: the $(XCC) run failed or hung"; bad=1; \
+	    fi; \
+	  fi; \
+	done; \
+	rm -f tests/out/xc_*; \
+	[ "$$bad" -eq 0 ]
 
 measure: all
 	python3 tools/measure.py
@@ -69,4 +112,4 @@ clean:
 	rm -f ccpp-small cccomp-small ccgen-small ccrel-small
 	rm -rf tests/out tools/out
 
-.PHONY: all small test measure clean
+.PHONY: all small test xref measure clean

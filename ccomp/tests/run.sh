@@ -12,6 +12,18 @@
 #                          // stderr-has: TEXT       some line contains TEXT
 #                        A test with no stderr-has lines must compile with
 #                        no messages at all.
+# tests/xrun/NAME.c      cross test: the same source must print the
+#                        same answer under a host C compiler (XCC: gcc
+#                        or clang; "make xref" caches its output in
+#                        tests/xrun/NAME.ref, rewriting it when NAME.c,
+#                        inc/ptest.h or NAME.flags changes) and under
+#                        ccish + plvm, whose \r are stripped before
+#                        comparing. The portability contract is in
+#                        inc/ptest.h. Optional NAME.flags holds extra
+#                        XCC flags for that test alone (-Wno-... for a
+#                        valid-but-discouraged construct the test is
+#                        deliberately exercising; ccish compiles the
+#                        source without them).
 # tests/errors/NAME.c    must fail to compile; stderr must contain the
 #                        text after "// expect: " on the file's first line.
 # Afterward, no IR or stream files may be left over, and -k must keep
@@ -42,9 +54,11 @@ mkdir -p "$OUT"
 
 # Compile source $3 into the object of output name $2 (its .obj and
 # .syms) with the preprocessor, front end and back end: ccpp, cccomp,
-# then ccgen; $1 is "" for the full build or "-small" for the small one.
+# then ccgen; $1 is "" for the full build or "-small" for the small
+# one, and $4 is an extra option for ccpp ("-I inc" for the cross
+# tests, which include ptest.h).
 cc_obj() {
-    ./ccpp$1 -o "$2" "$3" && ./cccomp$1 "$2" && ./ccgen$1 "$2"
+    ./ccpp$1 ${4:-} -o "$2" "$3" && ./cccomp$1 "$2" && ./ccgen$1 "$2"
 }
 
 # Compile source $2 into the IR file of output name $1 ($1.ir) with
@@ -136,6 +150,45 @@ for src in tests/run/*.c; do
     elif ! problems=$(check_stderr "$src" "$OUT/$name.err"); then
         echo "FAIL $src: compiler messages (see $OUT/$name.err):"
         echo "$problems"
+        fail=$((fail + 1))
+    else
+        pass=$((pass + 1))
+    fi
+done
+
+# Cross tests (inc/ptest.h): the same source must print the same
+# answer under XCC (gcc or clang; "make xref" cached its output in
+# tests/xrun/NAME.ref, rewriting it when NAME.c or inc/ptest.h
+# changed) and under ccish + plvm.
+for src in tests/xrun/*.c; do
+    name=$(basename "$src" .c)
+    mod=$(echo "$name" | tr 'A-Z' 'a-z')
+    if [ ! -f "tests/xrun/$name.ref" ] \
+       || [ "$src" -nt "tests/xrun/$name.ref" ] \
+       || [ inc/ptest.h -nt "tests/xrun/$name.ref" ]; then
+        echo "FAIL $src: reference missing or stale (run: make xref)"
+        fail=$((fail + 1))
+        continue
+    fi
+    if ! "$CCISH" -I inc -o "$OUT/xc_$mod" "$src" 2>"$OUT/$name.err"; then
+        echo "FAIL $src: compile error"
+        sed 's/^/    /' "$OUT/$name.err"
+        fail=$((fail + 1))
+        continue
+    fi
+    if [ -s "$OUT/$name.err" ]; then
+        echo "FAIL $src: unexpected compiler messages:"
+        sed 's/^/      /' "$OUT/$name.err"
+        fail=$((fail + 1))
+        continue
+    fi
+    (cd "$OUT" && timeout 10 "$PLVM" "xc_$mod" 2>&1 \
+         | tr -d '\r' >"xc_$name.actual")
+    if ! cmp -s "$OUT/xc_$name.actual" "tests/xrun/$name.ref"; then
+        echo "FAIL $src: ccish output differs from XCC's (ref, then actual):"
+        sed 's/^/    /' "tests/xrun/$name.ref"
+        echo "    ---"
+        sed 's/^/    /' "$OUT/xc_$name.actual"
         fail=$((fail + 1))
     else
         pass=$((pass + 1))
@@ -496,6 +549,34 @@ for src in tests/run/*.c; do
        || ! cmp -s "$OUT/full_$mod.syms" "$OUT/small_$mod.syms" \
        || ! ./ccrel-small "$OUT/small_$mod" 2>/dev/null \
        || ! cmp -s "$OUT/small_$mod" "$OUT/$mod"; then
+        echo "FAIL $src: the small build doesn't write the full build's" \
+             "object and module"
+        small_bad=1
+    fi
+    rm -f "$OUT/full_$mod.obj" "$OUT/full_$mod.syms" \
+          "$OUT/small_$mod.obj" "$OUT/small_$mod.syms"
+done
+# ...and for every cross test, against the modules the cross loop
+# left in $OUT/xc_*.
+for src in tests/xrun/*.c; do
+    name=$(basename "$src" .c)
+    mod=$(echo "$name" | tr 'A-Z' 'a-z')
+    if ! ./ccpp -I inc -o "$OUT/full_$mod" "$src" 2>/dev/null \
+       || ! ./ccpp-small -I inc -o "$OUT/small_$mod" "$src" 2>/dev/null \
+       || ! cmp -s "$OUT/full_$mod.i" "$OUT/small_$mod.i" \
+       || ! cmp -s "$OUT/full_$mod.nam" "$OUT/small_$mod.nam"; then
+        echo "FAIL $src: the small ccpp doesn't write the full build's" \
+             "token stream and name file"
+        small_bad=1
+    fi
+    rm -f "$OUT/full_$mod.i" "$OUT/full_$mod.nam" \
+          "$OUT/small_$mod.i" "$OUT/small_$mod.nam"
+    if ! cc_obj "" "$OUT/full_$mod" "$src" "-I inc" 2>/dev/null \
+       || ! cc_obj -small "$OUT/small_$mod" "$src" "-I inc" 2>/dev/null \
+       || ! cmp -s "$OUT/full_$mod.obj" "$OUT/small_$mod.obj" \
+       || ! cmp -s "$OUT/full_$mod.syms" "$OUT/small_$mod.syms" \
+       || ! ./ccrel-small "$OUT/small_$mod" 2>/dev/null \
+       || ! cmp -s "$OUT/small_$mod" "$OUT/xc_$mod"; then
         echo "FAIL $src: the small build doesn't write the full build's" \
              "object and module"
         small_bad=1
