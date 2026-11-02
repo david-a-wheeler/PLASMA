@@ -178,6 +178,7 @@ extern int cur_fn;          /* the function being parsed, or -1 */
 #define MAX_NEST     32     /* nesting of parentheses and blocks */
 extern int nest;            /* nesting depth, to limit recursion */
 extern int in_params;       /* parsing a function's parameter list */
+#define MAX_HELD      8     /* left operands held back at once */
 extern int nheld;          /* left operands held back, so far */
 extern int suppress;       /* parsing code that can never run */
 extern char label_used[MAX_LABELS];  /* some branch to it so far */
@@ -218,6 +219,7 @@ void branch(int op, int n);
 void place_label(int n);
 void place_forward(int n);
 void join_label(int from, int to);
+void place_true(Operand *o);
 void cond_branch(Operand *o, int n, int on_true);
 void enter_nest(void);
 int  wrap16(unsigned u);
@@ -251,4 +253,34 @@ int  data_sym(int v, int *off, int *size, int *hash, int *name);
 void compile_file(const char *in, const char *base);   /* the front end */
 void compile_abort(void);                   /* after an error */
 
+
+/* The expression machinery's internals, exposed for pexpr.c (the
+ * expression grammar): the rest of the output and constant
+ * folding, the place machinery, and the type checks. */
+extern int in_sizeof;        /* parsing sizeof's operand (no scaling) */
+int  hold(int op, int a, int f);
+int  var_where(int v);
+void check_right_const(int op, int v);
+int  fold(int op, int a, int b, int uns);
+int  swapped_op(int op);
+int  is_compare(int op);
+int  movable(int global);
+void push_var_addr(int off, int global);
+int  max_offset(int global);
+int  store_op(int t);
+int  is_place(Operand *o);
+int  addr_op(Operand *o, int *a, int *f);
+int  is_uns(int t);
+int  arith_type(int a, int b);
+int  promoted(int t);
+void make_elem(Operand *o, int off, int global, int base_arr);
+void push_address(Operand *o);
+int  new_temp(void);
+void spill(Operand *o);
+void swap_blocks(int start, int mid, int fixed);
+void finish_store(Operand *o, int keep);
+void need_lvalue(Operand *o, int what);
+void assign_to(Operand *o);
+int  is_null(Operand *o);
+int  elem_size(int t);
 #endif
