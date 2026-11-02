@@ -1,7 +1,8 @@
 /*
- * cccomp's parser, stage 1 (parse.c): the table of functions, which
- * irout.c reads too, the operand type shared by the parser's files,
- * and the front end's entry. Include after obj.h.
+ * cccomp's parser, stage 1: the table of functions, which irout.c
+ * reads too, the operand type and the state all the parser's files
+ * (parse.c, pexpr.c, pstmt.c, ptop.c) share, and the front end's
+ * entry. Include after obj.h.
  */
 #ifndef PARSE_H
 #define PARSE_H

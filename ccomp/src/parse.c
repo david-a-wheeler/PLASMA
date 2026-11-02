@@ -1,67 +1,18 @@
 /*
- * Stage 1: the parser. Recursive descent for declarations and
- * statements, precedence climbing for expressions (approach.md, issue
- * 5). It emits IR ops as it goes (ir_put) and builds no syntax tree.
+ * Stage 1, the machinery of the parser (approach.md, issue 5): the
+ * functions and variables tables, the CMDSYS table, the type-name
+ * parsing, put/hold with the pending constants and the folding, the
+ * labels, and the place machinery (rvalue, the loads and stores,
+ * push_address, temporaries, spill, swap_blocks, finish_store). The
+ * expression grammar is in pexpr.c, the statements and declarations
+ * in pstmt.c, and the top level and initializers in ptop.c, which
+ * also lists the language the parser covers. It emits IR ops as it
+ * goes (ir_put) and builds no syntax tree.
  *
- * Language so far (milestones 1 to 7, and enum and typedef):
- *   - types int, char, void, structs, pointers to them (int *, char **,
- *     struct node *, ...), and arrays of any of these but void
- *     (int m[3][4]);
- *   - struct definitions at file or block scope, with members of any
- *     complete type, laid out in order with no padding; a struct's tag
- *     is visible until the end of its block (see parse_struct()). A
- *     member is a place at a constant offset in its struct, so s.m and
- *     p->m use the same pending operands as variables and array
- *     elements. A struct assignment copies its bytes (copy_struct()),
- *     and the result is the object assigned to, not an lvalue
- *     (Operand.assigned). Struct and array initializers are flat lists
- *     over their scalar members and elements (init_flat()). A struct
- *     of up to MAX_BYVAL bytes can be passed and returned by value,
- *     as the words of its bytes (see push_struct_words()); a bigger
- *     one is an error, so pass a pointer instead;
- *   - function definitions and prototypes returning int, char, void or
- *     a pointer, with parameters of any of these but void; an array
- *     parameter (int a[], int m[][4]) is a pointer, as in C;
- *   - local variables, declared anywhere in a block (or in a for
- *     statement's first clause), with optional initializers (an array's
- *     are stores into the frame), and block scope;
- *   - global variables, declared anywhere between functions, with
- *     optional initializers, computed at compile time (see "Global
- *     initializers" below);
- *   - static: a static local is a variable in the data segment, as a
- *     global is (V_DATA), with block scope, and a global's kind of
- *     initializer; a static global or function is local to the file;
- *   - extern, at file scope: a global declared without storage, which
- *     another file (or a later definition) provides; see var_link[];
- *   - enum constants, which are int constants, and typedef names, both
- *     with block scope (see find_id()); an enum type is int;
- *   - const and volatile, as part of the type (bits in the type handle;
- *     see type.c). Operands carry unqualified types, and a place keeps
- *     its object's qualifiers in Operand.quals. A const object can't be
- *     assigned to; dropping a qualifier from a pointer's target is a
- *     warning. Reading a const scalar with a constant initializer gives
- *     its value at compile time (see parse_primary()), but that value
- *     isn't a C constant expression (Operand.nonice);
- *   - casts;
- *   - statements: return, if/else, while, do, for, switch (with case
- *     and default labels anywhere in its body), break, continue,
- *     expression statements, empty statements and nested blocks;
- *   - expressions: integer and character constants, string literals,
- *     variables, function calls, parentheses, the pstr() builtin,
- *     unary - + ~ ! * & ++ -- and sizeof, postfix ++ -- [] . ->, binary
- *     * / % + - << >> & ^ |, comparisons, && || ?:, and
- *     = += -= *= /= %= &= |= ^= <<= >>=. Pointer arithmetic scales by
- *     the element size, pointers compare unsigned, pointer types are
- *     checked as strictly as C says, and an array used as a value is a
- *     pointer to its first element.
  * A function must be declared before it is called (no implicit
  * declarations), except the CMDSYS functions in cmdsys_sigs[] below,
  * which their first call declares. A function called but not defined
  * in the file must be one of those; it is imported from CMDSYS.
- *
- * Like PLASMA, a function returns exactly as many values as it is
- * declared to: one for int, none for void. So a void call used as a
- * statement needs no DROP, and a void value can't be used.
  *
  * Streaming and assignment: a variable's load is not emitted as soon as
  * the variable is parsed, because it may turn out to be the target of
@@ -69,7 +20,7 @@
  * *pending* operand, and emits the load only once it knows the value is
  * needed (approach.md 4(a), option A). An object reached through a
  * pointer, and an array element, are pending the same way, so that
- * a[i] = x needs no temporary; see the Operand kinds below.
+ * a[i] = x needs no temporary; see the Operand kinds in parse.h.
  *
  * Reordering: when an address has been emitted before the parser sees
  * that it is stored into (*d++ = *s++), the value's code is emitted

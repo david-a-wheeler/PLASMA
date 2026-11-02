@@ -2449,8 +2449,8 @@ is the main problem. Splitting it is one way, but not the only one:
   are smaller. It needs `extern` and multi-file linking (M8, issue 11),
   which self-hosting needs anyway. But `ccish.h` is read again for
   each file (18.3 would help), and more files mean more steps to
-  build. Adopted (decided in discussion, 2026-11-01): see the
-  `parse.c` split design below.
+  build. Adopted (decided in discussion, 2026-11-01), done in five
+  stages on 2026-11-02: see the `parse.c` split design below.
 - **F2. A stripped copy for the Apple,** made by a tool from the
   commented source, which stays the one maintained by hand. Comments
   are about 45% of parse.c (145K to 80K; 62K without indentation too).
@@ -2652,6 +2652,27 @@ committed on its own:
    `ptop.c`, the streaming, reordering and folding paragraphs to
    where their code goes), the stage-1 line in `build.h`, and F1
    above marked done.
+
+Done in five stages on 2026-11-02, one commit each, every stage
+`make all small` + `tests/run.sh` green: the operand type to
+`parse.h` (cc2e5627); `ptop.c` split off (5b4fc587); `pstmt.c` split
+off, `cond_branch` to `parse.c` (e1c97250); `pexpr.c` split off
+(143aeacc); the docs. The measured result (after the docs stage moved the language
+overview into `ptop.c`'s header): `parse.c` 40,312 bytes, `pexpr.c`
+52,306, `pstmt.c` 28,354, `ptop.c` 26,806, `parse.h` 13,514. Two of the plan's details settled differently from the
+estimate. First, there is no `pexpr.h`: nothing calls into
+`pexpr.c` except through `parse.h`, where its exports (`parse_expr`,
+`parse_skipped`, `check_assign`, `to_char`, `copy_struct`, `discard`,
+`push_struct_words`, `push_zero_result`, `check_byval`) are declared,
+so a fourth header would have been empty; `struct_words` and
+`result_words` (listed above as pexpr's) turned out to be in E1 and
+stayed in `parse.c`. Second, the one-directional seam ran wider than
+"about 20": the expression grammar uses twenty-six of the
+machinery's functions, which lost their `static` and are declared in
+`parse.h`'s block marked "exposed for pexpr.c". The small build's
+objects and modules stayed byte-identical at every stage (374 tests
+passing; the same 8 pre-existing failures from the in-progress enum
+and typedef scope work).
 
 View when listed (not a decision): E1 and E2 first, since they set the
 target; then the biggest levers look like B1 (`Sym` split), B3 (final

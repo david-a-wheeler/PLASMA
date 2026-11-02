@@ -12,7 +12,9 @@
  * (approach.md 18.7; formats in ../OBJECT.md):
  *
  *   tokin.c  the reader of NAME.i, a token at a time
- *   parse.c  stage 1: tokens -> IR ops          (ir_put)
+ *   parse.c  stage 1: tokens -> IR ops (the machinery; with
+ *            pexpr.c, the expressions, pstmt.c, the statements and
+ *            declarations, and ptop.c, the top level)
  *   irout.c  the IR buffer, and the writer of NAME.ir: IR ops, data,
  *            strings, and the symbol summary at the end
  *   irin.c   the reader of NAME.ir                (lower_op)

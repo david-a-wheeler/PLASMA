@@ -1,9 +1,67 @@
 /*
- * cccomp's front end, top level and initializers (approach.md,
- * "parse.c split design"): global variable declarations, function
- * prototypes and definitions, the initializers (global and local),
- * the entry points, and the symbol summary the IR file and the back
- * end read.
+ * Stage 1: the parser (approach.md, issue 5) - this file its top
+ * level and initializers (approach.md, "parse.c split design").
+ * Recursive descent for declarations and statements, precedence
+ * climbing for expressions in pexpr.c; the statements and
+ * declarations are in pstmt.c, and the machinery they drive (the
+ * output and folding, the labels) is in parse.c. The list below
+ * names functions across the parser's four files.
+ *
+ * Language so far (milestones 1 to 7, and enum and typedef):
+ *   - types int, char, void, structs, pointers to them (int *, char **,
+ *     struct node *, ...), and arrays of any of these but void
+ *     (int m[3][4]);
+ *   - struct definitions at file or block scope, with members of any
+ *     complete type, laid out in order with no padding; a struct's tag
+ *     is visible until the end of its block (see parse_struct()). A
+ *     member is a place at a constant offset in its struct, so s.m and
+ *     p->m use the same pending operands as variables and array
+ *     elements. A struct assignment copies its bytes (copy_struct()),
+ *     and the result is the object assigned to, not an lvalue
+ *     (Operand.assigned). Struct and array initializers are flat lists
+ *     over their scalar members and elements (init_flat()). A struct
+ *     of up to MAX_BYVAL bytes can be passed and returned by value,
+ *     as the words of its bytes (see push_struct_words()); a bigger
+ *     one is an error, so pass a pointer instead;
+ *   - function definitions and prototypes returning int, char, void or
+ *     a pointer, with parameters of any of these but void; an array
+ *     parameter (int a[], int m[][4]) is a pointer, as in C;
+ *   - local variables, declared anywhere in a block (or in a for
+ *     statement's first clause), with optional initializers (an array's
+ *     are stores into the frame), and block scope;
+ *   - global variables, declared anywhere between functions, with
+ *     optional initializers, computed at compile time (see "Global
+ *     initializers" below);
+ *   - static: a static local is a variable in the data segment, as a
+ *     global is (V_DATA), with block scope, and a global's kind of
+ *     initializer; a static global or function is local to the file;
+ *   - extern, at file scope: a global declared without storage, which
+ *     another file (or a later definition) provides; see var_link[];
+ *   - enum constants, which are int constants, and typedef names, both
+ *     with block scope (see find_id()); an enum type is int;
+ *   - const and volatile, as part of the type (bits in the type handle;
+ *     see type.c). Operands carry unqualified types, and a place keeps
+ *     its object's qualifiers in Operand.quals. A const object can't be
+ *     assigned to; dropping a qualifier from a pointer's target is a
+ *     warning. Reading a const scalar with a constant initializer gives
+ *     its value at compile time (see parse_primary()), but that value
+ *     isn't a C constant expression (Operand.nonice);
+ *   - casts;
+ *   - statements: return, if/else, while, do, for, switch (with case
+ *     and default labels anywhere in its body), break, continue,
+ *     expression statements, empty statements and nested blocks;
+ *   - expressions: integer and character constants, string literals,
+ *     variables, function calls, parentheses, the pstr() builtin,
+ *     unary - + ~ ! * & ++ -- and sizeof, postfix ++ -- [] . ->, binary
+ *     * / % + - << >> & ^ |, comparisons, && || ?:, and
+ *     = += -= *= /= %= &= |= ^= <<= >>=. Pointer arithmetic scales by
+ *     the element size, pointers compare unsigned, pointer types are
+ *     checked as strictly as C says, and an array used as a value is a
+ *     pointer to its first element.
+ *
+ * Like PLASMA, a function returns exactly as many values as it is
+ * declared to: one for int, none for void. So a void call used as a
+ * statement needs no DROP, and a void value can't be used.
  */
 
 #ifdef CCISH_STATS
