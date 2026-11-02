@@ -138,6 +138,84 @@ enum {
   PREC_SHIFT, PREC_ADD, PREC_MUL
 };
 
+
+/* Variables: one scope stack of parallel arrays in parse.c
+ * (approach.md, "Sym split design"): the globals at the bottom, from 0
+ * to nglobals; a function's parameters and locals above them,
+ * innermost last, popped when it ends. var_flags[] holds the block
+ * depth plus: */
+enum { V_DEPTH = 0x3F, V_DATA = 0x40, V_KNOWN = 0x80 };
+extern int var_name[MAX_VARS];      /* its name: an id, or -1 */
+extern int var_type[MAX_VARS];      /* its type, qualified */
+extern int var_off[MAX_VARS];       /* frame offset, or data offset */
+extern char var_link[MAX_VARS];     /* its linkage (the VL_* bits) */
+extern int nvars, nglobals;
+
+/* A global's linkage, for the symbol summary (approach.md issue 11):
+ * VL_STATIC if it is local to the file, VL_USED if code or data refers
+ * to it, and VL_EXTERN while it is declared extern with no storage in
+ * this file (var_off[] is then 0, the base of an addend). VL_BSS if it
+ * is defined with no initializer and is at least BSS_MIN bytes, so has
+ * no data bytes, only an offset (var_off[]) in the file's zero-filled
+ * space, and may move to the heap (approach.md, "Large zero-filled data
+ * on the heap"); VL_INDATA if an initializer holds its address, which
+ * stops that. 0 for a local. */
+enum { VL_STATIC = 1, VL_USED = 2, VL_EXTERN = 4, VL_BSS = 8,
+       VL_INDATA = 16 };
+
+/* Parameter types of declared functions, in parse.c. */
+#define MAX_PARAM_TYPES 401 /* parameter types of all declared functions
+                             * (364) */
+extern char param_types[MAX_PARAM_TYPES];   /* unqualified types */
+
+/* The parser's state, in parse.c, shared by the parser's files. */
+extern int depth;           /* block depth; parameters are at depth 1 */
+extern int frame_next;      /* next free frame offset */
+extern int frame_max;       /* frame size needed so far */
+extern int cur_fn;          /* the function being parsed, or -1 */
+extern int in_params;       /* parsing a function's parameter list */
+extern int nlabels;         /* labels made in the function, so far */
+extern int base_tagged;     /* parse_base_type() was a struct or enum */
+extern int want_addr;       /* a global's initializer, for an address */
+
+/* What parse.c makes available to the parser's other files: the
+ * message and token helpers, the tables' operations, the type-name
+ * parsing, put (IR output with the pending constants), and the
+ * operand machinery. */
+const char *quote(int name);
+void not_yet(void);
+void expect(int t, int msg);
+int  find_func(int name);
+int  add_func(int name);
+int  nparams_of(int f);
+void set_nparams(int f, int n);
+int  find_cmdsys(int name);
+void declare_cmdsys(int f, int c);
+int  matches_cmdsys(int f, int c);
+int  find_var(int name);
+void check_not_id(int name);
+int  add_global(int name, int type);
+void set_param_types(int f, int n);
+int  is_type_start(void);
+int  parse_base_type(void);
+void parse_typedef(void);
+int  parse_declarator(int base, int *name);
+int  parse_var_type(int type, int may_omit);
+void set_known(int s, int v);
+int  parse_params(void);
+void parse_block(int new_scope);
+void put(int op, int a, int f);
+void begin_expr(void);
+void end_expr(void);
+void rvalue(Operand *o);
+void store_var(Operand *o);
+int  addr_const(Operand *o);
+void parse_expr(int min_prec, Operand *o);
+void parse_skipped(int min_prec, Operand *o);
+void check_assign(int to, Operand *o, int where, const char *detail);
+void push_zero_result(int t);
+int  result_words(int t);
+void check_byval(int t, int is_param);
 void parse_program(void);
 /* For the symbol summary: function f's SYM_* flags and type hash, and
  * the number of globals and global v's flags, data offset, size, type

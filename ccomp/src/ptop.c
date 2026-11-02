@@ -1,0 +1,718 @@
+/*
+ * cccomp's front end, top level and initializers (approach.md,
+ * "parse.c split design"): global variable declarations, function
+ * prototypes and definitions, the initializers (global and local),
+ * the entry points, and the symbol summary the IR file and the back
+ * end read.
+ */
+
+#ifdef CCISH_STATS
+#include <stdio.h>
+#endif
+#include <string.h>
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
+#include "fixed.h"
+#include "nam.h"
+#include "tokin.h"
+#include "obj.h"
+#include "ir.h"
+#include "name.h"
+#include "type.h"
+#include "parse.h"
+#include "irout.h"
+#include "ptop.h"
+
+static int bss_next;                /* the zero-filled space so far */
+
+/* Set by parse_scalar_init(): whether the initializer it parsed was an
+ * integer constant (not an address), and its value. A const variable
+ * initialized so has a known value (set_known()). */
+int init_known, init_val;
+
+/* ---------- Global initializers ----------
+ *
+ * A global's initial value is computed at compile time and written to
+ * the data stream as the global's bytes (approach.md, "M5 design"). It
+ * goes through the expression parser with code output off, and must
+ * fold to a constant, or, for a pointer, to an address constant
+ * (K_ADDR): a string literal or a global's address, with any constant
+ * indexes, members, casts to pointers, and + or - a constant (C6).
+ * Anything else (&*p, a pointer variable's value) is an error. */
+
+/* Parse the initializer of one scalar of type type (an int, char or
+ * pointer), check it as an assignment, and write it to the data stream.
+ * It is an ordinary expression, parsed with code off (and its string
+ * literals stored, want_addr), which must be a constant or, for a
+ * pointer, an address constant (approach.md, "C6 design"). Sets
+ * init_known and init_val. */
+static void parse_scalar_init(int type)
+{
+  Operand o;
+  want_addr++;
+  parse_skipped(PREC_ASSIGN, &o);
+  want_addr--;
+  if (is_pointer(type))
+    addr_const(&o);
+  if (o.kind != K_CONST && o.kind != K_ADDR)
+    error(206 /* "initializer is not a constant ccish supports" */, NULL);
+  if (o.nonice && o.kind == K_CONST)
+    error_in(201 /* "a const variable's value isn't a constant"
+                  " expression in C" */,
+             205 /* "(an initializer here must be one)" */, NULL);
+  check_assign(type, &o, 198 /* "initialization" */, NULL);
+  init_known = o.kind == K_CONST;
+  init_val = o.val;
+  if (o.kind == K_CONST) {
+    if (type_size(type) == 1)
+      data_byte(o.val);
+    else
+      data_word(o.val);
+    return;
+  }
+  /* An address must stay within the data written so far (one past the
+   * end is allowed, as in C), or within its string. */
+  if ((o.global == 1 && (o.off < 0 || o.off > data_offset()))
+      || (o.global == G_STR && (o.off < o.disp || o.off > o.val)))
+    error(155 /* "initializer address is out of range" */, NULL);
+  if (o.global == G_STR) {
+    data_addr(REL_STR, o.off, 0);
+  } else if (o.global == 1) {
+    data_addr(REL_DATA, o.off, 0);
+  } else {
+    /* An extern global's or a zero-filled one's: through its symbol,
+     * and now it can't move to the heap. */
+    var_link[o.global - 2] |= VL_USED | VL_INDATA;
+    data_addr(REL_DSYM, o.global - 2, o.off);
+  }
+}
+
+/*
+ * An array's or struct's initializer is parsed the same way for a
+ * global and a local; only where its elements go differs. A global's
+ * are written to the data stream, in order. A local's are stores into
+ * the frame (approach.md, "M5 design"), at frame offset init_base plus
+ * each element's offset: CN 1 SLW t. Two neighboring char constants are
+ * stored as one word (CW SLW, 5 bytes, not 8), and the zeros after the
+ * last initializer are stored with a chain of DLWs, or by memset when
+ * that is shorter.
+ */
+static int init_local;          /* initializing a local array */
+static int init_base;           /* its frame offset */
+static int init_name;           /* its name (an id), for messages */
+static int held_char = -1;      /* a char constant to be stored with the
+                                 * next one, at frame offset held_at */
+static int held_at;
+
+/* Make sure the frame reaches offset end, for a local array whose size
+ * comes from its initializer, so that it grows as elements are added
+ * (and temporaries come after it). */
+static void reserve(int end)
+{
+  if (end <= frame_next)
+    return;
+  if (end > 255)
+    error(115 /* "local array doesn't fit in the 255-byte frame (make "
+                 "it static or global):" */, quote(init_name));
+  frame_next = end;
+  if (frame_next > frame_max)
+    frame_max = frame_next;
+}
+
+/* Store the held char constant, if any, by itself. */
+static void flush_char(void)
+{
+  if (held_char < 0)
+    return;
+  put(IR_CONST, held_char, -1);
+  put(IR_SETLOCALB, held_at, -1);
+  put(IR_DROP, 0, -1);
+  held_char = -1;
+}
+
+/* Initialize the byte at offset off of the array to v: write it to the
+ * data stream, or, for a local, store it (with the byte before it, if
+ * that is a held constant). */
+static void init_byte(int off, int v)
+{
+  int at = init_base + off;
+  if (!init_local) {
+    data_byte(v);
+    return;
+  }
+  reserve(at + 1);
+  v &= 0xFF;
+  if (held_char >= 0 && held_at == at - 1) {
+    put(IR_CONST, held_char | (v << 8), -1);
+    put(IR_SETLOCAL, held_at, -1);
+    put(IR_DROP, 0, -1);
+    held_char = -1;
+    return;
+  }
+  flush_char();
+  held_char = v;
+  held_at = at;
+}
+
+/* The CMDSYS function memset, declared from the CMDSYS table if the
+ * program hasn't used it yet; or -1 if the program has its own. */
+static int cmdsys_memset(void)
+{
+  int f = find_func(ID_MEMSET), c = find_cmdsys(ID_MEMSET);
+  if (f < 0) {
+    f = add_func(ID_MEMSET);
+    declare_cmdsys(f, c);
+  } else if ((fn_flags[f] & FN_DEFINED) || !matches_cmdsys(f, c)) {
+    return -1;
+  }
+  return f;
+}
+
+/* Initialize n bytes at offset off of the array to 0: write them to the
+ * data stream, or, for a local, store them. Up to 3 words take
+ * CN 0 DLW ... SLW (1 + 2 bytes per word); more take
+ * LLA CN 0 CB n CALL memset (7 or 8 bytes). */
+static void init_zero(int n, int off)
+{
+  int at = init_base + off, words = n / 2, i, f;
+  if (!init_local) {
+    data_zero(n);
+    return;
+  }
+  if (n <= 0)
+    return;
+  reserve(at + n);
+  if (held_char == 0 && held_at == at - 1) {
+    /* A held 0 just before (a string's NUL) joins the zeros. */
+    held_char = -1;
+    at--;
+    n++;
+    words = n / 2;
+  }
+  if (words + n % 2 > 3 && (f = cmdsys_memset()) >= 0) {
+    put(IR_LOCALADDR, at, -1);
+    put(IR_CONST, 0, -1);
+    put(IR_CONST, n, -1);
+    fn_flags[f] |= FN_CALLED;
+    put(IR_CALL, 3, f);
+    return;
+  }
+  put(IR_CONST, 0, -1);
+  for (i = 0; i < words; i++)
+    put(IR_SETLOCAL, at + 2 * i, -1);
+  if (n % 2)
+    put(IR_SETLOCALB, at + n - 1, -1);
+  put(IR_DROP, 0, -1);
+}
+
+/* Parse the initializer of one scalar element of type type, at offset
+ * off of the array. A global's must be constant (parse_scalar_init); a
+ * local's may be any expression, as C99 allows. */
+static void init_elem(int type, int off)
+{
+  Operand e, v;
+  int at = init_base + off;
+  if (!init_local) {
+    parse_scalar_init(type);
+    return;
+  }
+  reserve(at + type_size(type));
+  begin_expr();
+  parse_expr(PREC_ASSIGN, &e);
+  check_assign(type, &e, 198 /* "initialization" */, NULL);
+  if (type == TY_CHAR && e.kind == K_CONST) {
+    init_byte(off, e.val);
+  } else {
+    rvalue(&e);
+    v.kind = K_VAR;
+    v.type = type;
+    v.off = at;
+    v.global = 0;
+    store_var(&v);
+    put(IR_DROP, 0, -1);
+  }
+  end_expr();
+}
+
+/* Initialize the array, from offset off, with the string literal (the
+ * current token): a char array with room for max chars, or for any
+ * number if max is 0. Its NUL is included if there is room, as in C.
+ * Returns the number of bytes initialized. */
+static int init_string(int max, int off)
+{
+  int i, n = tok_len;
+  if (max && n > max)
+    error(156 /* "initializer string is too long for" */,
+          quote(init_name));
+  for (i = 0; i < n; i++)
+    init_byte(off + i, tok_text[i]);
+  if (!max || n < max) {
+    init_byte(off + n, 0);
+    n++;
+  }
+  next();
+  return n;
+}
+
+/* Set by init_flat() when the initializer list's '}' is reached. */
+static int init_done;
+/* The end of what has been initialized so far: the offset after the
+ * last scalar (or string). With no padding, the scalars of an
+ * aggregate are contiguous, so everything before it is initialized. */
+static int init_end;
+
+/* After one scalar (or string) of a brace list: skip a ',', and note
+ * whether the list ends here. */
+static void after_leaf(void)
+{
+  if (tok == ',')
+    next();
+  else if (tok != '}')
+    error(157 /* "expected '}' or ',' in an initializer, not" */,
+          tok_desc());
+  init_done = tok == '}';
+}
+
+/* Initialize the object of type t at offset off (of the variable being
+ * initialized) from a brace list, as far as the list goes. The list is
+ * flat, as C allows: the scalars of arrays and structs, in order, at any
+ * depth (struct pt ps[2] = {1, 2, 3, 4};). A char array in it may be
+ * given a string literal instead ({"abc", 5}). An array of unknown size
+ * (count 0, only at the top) takes as many elements as the list gives. */
+static void init_flat(int t, int off)
+{
+  int n, i, m, tag;
+  if (is_array(t) && unqual(type_sub(t)) == TY_CHAR && tok == T_STR) {
+    n = type_count(t);
+    i = init_string(n, off);
+    init_zero(n - i, off + i);
+    init_end = off + (n ? n : i);
+    after_leaf();
+  } else if (is_array(t)) {
+    n = type_count(t);
+    for (i = 0; (n == 0 || i < n) && !init_done; i++)
+      init_flat(type_sub(t), off + i * type_size(type_sub(t)));
+  } else if (is_struct(t)) {
+    tag = struct_tag(t);
+    for (m = member_next(tag, -1); m >= 0 && !init_done;
+         m = member_next(tag, m))
+      init_flat(member_type(m), off + member_off(m));
+  } else {
+    if (tok == '{')
+      error(158 /* "nested braces in initializers are not supported "
+                   "yet" */,
+            NULL);
+    init_elem(unqual(t), off);
+    init_end = off + type_size(t);
+    after_leaf();
+  }
+}
+
+/* Parse the initializer of an array or struct of type type, named name,
+ * for a global or a local (init_local): a brace list (init_flat()), or,
+ * for a char array, a string literal. Returns the type, with an array
+ * size that was left out filled in from the initializer. Whatever the
+ * list doesn't reach is zero. */
+static int parse_aggr_init(int type, int name)
+{
+  int esize;
+
+  init_name = name;
+  init_end = 0;
+  if (is_array(type) && unqual(type_sub(type)) == TY_CHAR
+      && tok == T_STR) {
+    init_end = init_string(type_count(type), 0);
+  } else {
+    expect('{', is_array(type)
+                ? 159 /* "expected '{' to start an array initializer, "
+                         "not" */
+                : 160 /* "expected '{' to start a struct initializer, "
+                         "not" */);
+    init_done = tok == '}';
+    init_flat(type, 0);
+    if (!init_done)
+      error(161 /* "too many initializers for" */, quote(name));
+    next();                     /* '}' */
+  }
+  if (is_array(type) && type_count(type) == 0) {
+    if (init_end == 0)
+      error(162 /* "an array of unknown size needs initializers:" */,
+            quote(name));
+    esize = type_size(type_sub(type));
+    type = array_of(type_sub(type), (init_end + esize - 1) / esize);
+  }
+  init_zero(type_size(type) - init_end, init_end);    /* the rest */
+  return type;
+}
+
+/* Parse the initializer of a global of type type, named name, and
+ * write its bytes to the data stream. Returns the type, with an array
+ * size that was left out filled in. */
+int parse_global_init(int type, int name)
+{
+  if (is_array(type) || is_struct(type)) {
+    init_local = 0;
+    init_base = 0;
+    return parse_aggr_init(type, name);
+  }
+  if (tok == '{') {                   /* int x = {5}; is valid C */
+    next();
+    parse_scalar_init(type);
+    if (tok == ',')
+      next();
+    expect('}', 117 /* "expected '}' after the initializer, not" */);
+  } else {
+    parse_scalar_init(type);
+  }
+  return type;
+}
+
+/* Parse the brace initializer of a local array or struct of type type,
+ * named name, at frame offset base, as stores into the frame. Returns
+ * the type, with an array size that was left out filled in. */
+int parse_local_init(int type, int name, int base)
+{
+  init_local = 1;
+  init_base = base;
+  held_char = -1;
+  type = parse_aggr_init(type, name);
+  flush_char();
+  init_local = 0;
+  reserve(base + type_size(type));
+  return type;
+}
+
+/* Can a global of type a be declared again with type b? They must be
+ * the same, except that one array may leave its size out. */
+static int same_global_type(int a, int b)
+{
+  if (a == b)
+    return 1;
+  return is_array(a) && is_array(b) && type_sub(a) == type_sub(b)
+         && (type_count(a) == 0 || type_count(b) == 0);
+}
+
+/* Declare a global named name of type type, with storage class storage
+ * (T_STATIC, T_EXTERN or 0), and return it. An extern one has no
+ * storage here (VL_EXTERN); otherwise it is at the next data offset, and
+ * the caller writes its bytes. A global may be declared again if all but
+ * one of its declarations are extern, as in C; the last gives it its
+ * storage. Linkage follows C11 6.2.2: extern after static keeps it
+ * static, and static after a declaration that isn't is an error. */
+static int declare_global(int name, int type, int storage)
+{
+  int s = find_var(name);
+  if (s < 0) {
+    s = add_global(name, type);
+    if (storage == T_EXTERN) {
+      var_off[s] = 0;
+      var_link[s] = VL_EXTERN;
+    } else if (storage == T_STATIC) {
+      var_link[s] = VL_STATIC;
+    }
+    return s;
+  }
+  if (storage != T_EXTERN && !(var_link[s] & VL_EXTERN))
+    error(27 /* "redeclaration of" */, quote(name));    /* two have storage */
+  if (!same_global_type(var_type[s], type))
+    error(165 /* "conflicting declaration of" */, quote(name));
+  if (type_count(type) > 0)
+    var_type[s] = type;         /* extern int a[]; then int a[10]; */
+  if (storage == T_STATIC && !(var_link[s] & VL_STATIC))
+    error(217 /* "static declaration follows a non-static declaration"
+                 " of" */, quote(name));
+  if (storage == T_EXTERN)
+    return s;
+  var_link[s] &= ~VL_EXTERN;
+  var_off[s] = data_offset();
+  return s;
+}
+
+/* Parse global variable declarations, after the base type base and
+ * the first declarator's type and name, with storage class storage
+ * (T_STATIC, T_EXTERN or 0): int x = 1, *p = &x, buf[100]; A global
+ * without an initializer is zero when the module loads. */
+static void parse_globals(int base, int type, int name, int storage)
+{
+  int s;
+  for (;;) {
+    type = parse_var_type(type, 1);
+    if (tok == '(')
+      error(163 /* "declare functions separately from variables" */,
+            NULL);
+    /* In C, the name is in scope in its own initializer. */
+    s = declare_global(name, type, storage);
+    type = var_type[s];
+    if (tok == '=') {
+      if (storage == T_EXTERN)
+        error(216 /* "'extern' with an initializer is not supported" */,
+              NULL);
+      next();
+      var_type[s] = parse_global_init(type, name);
+      if (init_known)
+        set_known(s, init_val);
+    } else if (storage != T_EXTERN) {
+      if (is_array(type) && type_count(type) == 0)
+        error(87 /* "array size missing" */, NULL);
+      if ((is_array(type) || is_struct(type))
+          && type_size(type) >= BSS_MIN) {
+        /* In the zero-filled space, with no data bytes: ccrel places
+         * it, maybe on the heap. */
+        if (bss_next > 0x7FFF - type_size(type))
+          error(182 /* "too much data: globals over 32767 bytes" */,
+                NULL);
+        var_link[s] |= VL_BSS;
+        var_off[s] = bss_next;
+        bss_next += type_size(type);
+      } else {
+        data_zero(type_size(type));
+      }
+    }
+    if (tok != ',')
+      break;
+    next();
+    type = parse_declarator(base, &name);
+  }
+  expect(';', 118 /* "expected ';' after declaration, not" */);
+}
+
+/* Parse one top-level item: global variable declarations, a function
+ * prototype, or a function definition. Any may start with "static",
+ * which makes it local to the file, or "extern", which declares a
+ * global without storage, and changes nothing on a function. */
+static void parse_toplevel(void)
+{
+  int base, type, nparams, pwords, i, f, name, storage = 0;
+
+  depth = 0;                      /* file scope, for tags and names */
+  if (tok == T_TYPEDEF) {
+    parse_typedef();
+    return;
+  }
+  if (T_IS_STORAGE(tok)) {
+    storage = tok;
+    next();
+    if (!is_type_start())
+      error(storage == T_STATIC
+            ? 147 /* "expected a type after 'static', not" */
+            : 218 /* "expected a type after 'extern', not" */,
+            tok_desc());
+  }
+  if (tok == T_KEYWORD)
+    not_yet();
+  if (!is_type_start())
+    error(164 /* "expected a declaration or function definition, not" */,
+          tok_desc());
+  base = parse_base_type();
+  if (tok == ';' && base_tagged) {
+    next();                     /* struct pt { ... }; declares only */
+    return;
+  }
+  type = parse_declarator(base, &name);
+  if (tok != '(') {
+    parse_globals(base, type, name, storage);
+    return;
+  }
+  type = unqual(type);    /* const int f(void) returns an int */
+  check_byval(type, 0);
+  if (find_var(name) >= 0)
+    error(27 /* "redeclaration of" */, quote(name));
+  check_not_id(name);
+  f = find_func(name);
+  if (f < 0)
+    f = add_func(name);
+  if (storage == T_STATIC) {
+    if ((fn_flags[f] & FN_DECLARED) && !(fn_flags[f] & FN_STATIC))
+      error(217 /* "static declaration follows a non-static declaration"
+                   " of" */, quote(name));
+    fn_flags[f] |= FN_STATIC;
+  }
+
+  cur_fn = f;                     /* for messages about its variables */
+  in_params = 1;
+  nparams = parse_params();
+  in_params = 0;
+  pwords = frame_next / 2;
+  if (tok == ';') {
+    /* A prototype. "()" leaves the parameter count unspecified. */
+    if ((fn_flags[f] & FN_DECLARED) && fn_type[f] != type)
+      error(165 /* "conflicting declaration of" */, quote(fn_name[f]));
+    fn_type[f] = type;
+    if (nparams >= 0) {
+      if (nparams_of(f) >= 0 && nparams_of(f) != nparams)
+        error(166 /* "conflicting parameter count for" */,
+              quote(fn_name[f]));
+      set_nparams(f, nparams);
+      set_param_types(f, nparams);
+    }
+    fn_flags[f] |= FN_DECLARED;
+    next();
+    cur_fn = -1;
+    nvars = nglobals;
+    tag_hide(0);                /* tags declared in the parameters */
+    id_hide(0);
+    return;
+  }
+  if (nparams < 0)
+    nparams = 0;
+  if (tok != '{')
+    error(167 /* "expected '{' or ';' after function header, not" */,
+          tok_desc());
+  for (i = nglobals; i < nvars; i++)
+    if (var_name[i] < 0)
+      error(168 /* "parameter name missing in definition of" */,
+            quote(fn_name[f]));
+  if (fn_flags[f] & FN_DEFINED)
+    error(104 /* "redefinition of" */, quote(fn_name[f]));
+  if ((fn_flags[f] & FN_DECLARED) && fn_type[f] != type)
+    error(165 /* "conflicting declaration of" */, quote(fn_name[f]));
+  if (nparams_of(f) >= 0 && nparams_of(f) != nparams)
+    error(169 /* "parameter count differs from earlier use of" */,
+          quote(fn_name[f]));
+  if (fn_name[f] == ID_MAIN && nparams != 0)
+    error(170 /* "main with parameters is not supported yet" */, NULL);
+  set_param_types(f, nparams);
+  fn_type[f] = type;
+  set_nparams(f, nparams);
+  fn_flags[f] |= FN_DECLARED | FN_DEFINED;
+
+  nlabels = 0;
+  put(IR_FUNC, pwords, f);        /* ENTER takes the parameters' words */
+  parse_block(0);
+  /* Falling off the end of an int or char function returns 0. If the
+   * last statement was a return, the peephole stage drops this as
+   * dead code. */
+  if (type != TY_VOID)
+    push_zero_result(type);
+  put(IR_RETURN, result_words(type), -1);
+  put(IR_ENDFUNC, frame_max, f);
+  cur_fn = -1;
+  nvars = nglobals;
+  tag_hide(0);
+  id_hide(0);
+}
+
+#ifdef CCISH_STATS
+/* Report how full the tables got, on one line of stderr, for
+ * tools/measure.py: functions, variables visible at once, parameter
+ * types, enum constants and typedef names at once, types, struct tags
+ * and struct members. */
+static void report_stats(void)
+{
+  int v[7], i;
+  v[0] = nfuncs;
+  v[1] = nvars_peak;
+  v[2] = nparam_types;
+  v[3] = id_peak();
+  type_stats(&v[4], &v[5], &v[6]);
+  fputs("cccomp-stats", stderr);
+  for (i = 0; i < 7; i++) {
+    fputs(" ", stderr);
+    fputs(num_text(v[i]), stderr);
+  }
+  fputs("\n", stderr);
+}
+#endif
+
+/* The front end: compile the token stream and name file of input
+ * name in (ccpp's NAME.i and NAME.nam) into the IR file of output name
+ * base (approach.md 18.7), for the back end. */
+void compile_file(const char *in, const char *base)
+{
+  tok_open(in);
+  ir_open(base);
+  parse_program();
+  tok_close();
+  src_line = 0;
+  ir_finish();
+#ifdef CCISH_STATS
+  report_stats();
+#endif
+}
+
+/* After an error in the front end: close its open files (ProDOS needs
+ * it), writing out what the IR file holds. */
+void compile_abort(void)
+{
+  tok_close();
+  ir_abort();
+}
+
+/* Stage 1's entry: parse the whole source file. A function called but
+ * not defined here is left to the final pass, which finds it in
+ * another file or CMDSYS (approach.md issue 11). */
+void parse_program(void)
+{
+  while (tok != T_EOF)
+    parse_toplevel();
+}
+
+/* Function f's SYM_* flags for the symbol summary, and its type hash
+ * in *hash: of its return type and parameter types, or 0 if they
+ * aren't known (int f();). */
+int func_sym(int f, int *hash)
+{
+  int flags = 0, c, i, h;
+  if (fn_flags[f] & FN_DEFINED)
+    flags |= SYM_DEFINED;
+  if (fn_flags[f] & FN_CALLED)
+    flags |= SYM_CALLED;
+  if (fn_type[f] != TY_VOID)
+    flags |= SYM_RETURNS;
+  if (fn_flags[f] & FN_STATIC)
+    flags |= SYM_LOCAL;
+  c = find_cmdsys(fn_name[f]);
+  if (c >= 0)
+    flags |= matches_cmdsys(f, c) ? SYM_CMDSYS : SYM_NOTCMDSYS;
+  *hash = 0;
+  if (fn_ptypes[f] >= 0) {
+    h = hash_byte(type_hash(fn_type[f], 0), '(');
+    for (i = 0; i < nparams_of(f); i++)
+      h = type_hash(param_types[fn_ptypes[f] + i], h);
+    h = hash_byte(h, ')');
+    *hash = h ? h : 1;
+  }
+  return flags;
+}
+
+/* The number of global variables: the data symbols. */
+int data_sym_count(void)
+{
+  return nglobals;
+}
+
+/* The size of the file's zero-filled space (its VL_BSS globals). */
+int bss_size(void)
+{
+  return bss_next;
+}
+
+/* Global v's SYM_* flags for the symbol summary, with its data offset
+ * (if defined), size (0 if an array's size is unknown), type hash
+ * (leaving out an array's size, so that int a[] matches int a[10]) and
+ * name. */
+int data_sym(int v, int *off, int *size, int *hash, int *name)
+{
+  int t = var_type[v], flags = 0, h = 0;
+  if (!(var_link[v] & VL_EXTERN))
+    flags |= SYM_DEFINED;
+  if (var_link[v] & VL_USED)
+    flags |= SYM_CALLED;
+  if (var_link[v] & VL_STATIC)
+    flags |= SYM_LOCAL;
+  if (var_link[v] & VL_BSS)
+    flags |= SYM_BSS;           /* var_off[] is in the zero-filled space */
+  if (var_link[v] & VL_INDATA)
+    flags |= SYM_INDATA;
+  *off = flags & SYM_DEFINED ? var_off[v] : 0;
+  *size = is_array(t) && type_count(t) == 0 ? 0 : type_size(t);
+  if (is_array(t)) {
+    h = hash_byte(h, '[');
+    t = type_sub(t);
+  }
+  h = type_hash(t, h);
+  *hash = h ? h : 1;
+  *name = var_name[v];
+  return flags;
+}
