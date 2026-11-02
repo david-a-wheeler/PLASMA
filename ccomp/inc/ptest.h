@@ -5,8 +5,12 @@
  * putc, putln, puts and pstr will build and run under both, provided
  * it honors the portability contract:
  *
- *   - C89 int, char, pointers, arrays, structs and functions only.
- *     No long, float or double (ccish has none yet).
+ *   - The ccish dialect (approach.md decision 29): a subset of C89
+ *     plus ccish's own small extensions - int, char, pointers,
+ *     arrays, structs and functions. No long, float or double
+ *     (ccish has none yet). A test that uses a ccish extension must
+ *     also compile under the host compiler; the cross check is the
+ *     gate.
  *   - Every int value, and every intermediate result of an
  *     expression, stays within -32768 to 32767: ccish's int is 16
  *     bits, the host's is wider, and a wraparound would differ. A

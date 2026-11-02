@@ -3756,6 +3756,26 @@ issue. In summary:
     source itself, dropping the NAME.flags sidecar), and `short` (a
     16-bit int alias, a completeness feature). The suite also checks the small build writes
     the full build's modules for every cross test.
+29. **The ccish dialect: a subset of C89, plus small improvements**
+    (2026-11-02). The user: "I don't feel obligated to strictly keep
+    to C89; I want a subset of C89, plus small improvements if they
+    aid implementation ... I want it *possible* to run most ccish
+    programs through gcc, even though many programs for gcc couldn't
+    be handled by ccish; keep them close but not slavishly so." The
+    direction is one-way: most ccish programs should compile under
+    gcc, not that ccish accepts most gcc programs. Candidate
+    extensions discussed: _Bool with true/false (C99's; stdbool.h on
+    the host), and relaxing the C89 rule that a const int is not a
+    constant expression: C99 sidesteps it with VLA, C++ treats a
+    const-initialized int as a constant expression, and ccish
+    enforces the C rule (error 201), so `const int c = 5; int
+    arr[c + 2];` is rejected until one of those lands (the C++ form
+    is the smaller of the two). Tests follow the dialect, not C89,
+    split by where the host compiler stands: an extension the host
+    also accepts is testable in tests/xrun (the cross check is the
+    gate), while a genuinely ccish-only extension can be tested only
+    in tests/run, against hand-written expected output; we will try
+    to keep such host-incompatible extensions few.
 
 
 ## Milestones
