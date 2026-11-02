@@ -9,7 +9,12 @@
  *     No long, float or double (ccish has none yet).
  *   - Every int value, and every intermediate result of an
  *     expression, stays within -32768 to 32767: ccish's int is 16
- *     bits, the host's is wider, and a wraparound would differ.
+ *     bits, the host's is wider, and a wraparound would differ. A
+ *     test that deliberately exercises that wraparound computes the
+ *     exact value on the host, where it must still fit, and passes
+ *     every printed or stored result through w16(), the signed
+ *     16-bit interpretation of its low 16 bits; ccish wraps at run
+ *     time and must agree.
  *   - char is unsigned in both: compile the host build with
  *     -funsigned-char.
  *   - No sizeof, except portable ratios whose answer does not depend
@@ -53,6 +58,15 @@ extern void putc(char);
 extern void putln(void);
 extern void puts(const char *);
 extern char *pstr(const char *);
+/* w16: the signed 16-bit interpretation of a value's low 16 bits,
+ * the conventional sign extension: XOR the sign bit, then subtract
+ * it (no comparison with 0x7FFF, no 0x10000, no shift by the
+ * width). Under ccish, where every int is already 16 bits, it is a
+ * no-op normalization. */
+static int w16(int v)
+{
+  return ((v & 0xFFFF) ^ 0x8000) - 0x8000;
+}
 #else
 /* The host's printf and putchar, declared here rather than taking
  * <stdio.h> (a program should not mix C's I/O and PLASMA's anyway).
@@ -96,6 +110,14 @@ __attribute__((unused)) static void ptest_s(const char *s)
 __attribute__((unused)) static char *pstr(const char *s)
 {
   return (char *)s;
+}
+/* w16: the signed 16-bit interpretation of a value's low 16 bits,
+ * the conventional sign extension: XOR the sign bit, then subtract
+ * it. The host's wider int keeps the exact value, which w16 folds
+ * to what ccish's 16-bit wrap would give. */
+__attribute__((unused)) static int w16(int v)
+{
+  return ((v & 0xFFFF) ^ 0x8000) - 0x8000;
 }
 #define putc(c) ptest_c(c)
 #define puts(s) ptest_s(s)

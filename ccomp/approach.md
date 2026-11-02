@@ -3725,8 +3725,12 @@ issue. In summary:
     `make xref` when NAME.c or `inc/ptest.h` is newer; an up-to-date
     set of references needs no host compiler, so the suite runs
     anywhere once generated. The portability contract (in ptest.h):
-    C89 only, every int value and intermediate in the 16-bit range,
-    char unsigned (hence -funsigned-char), no sizeof except portable
+    C89 only, every int value and intermediate in the 16-bit range
+    (except that a test may deliberately exercise the wraparound by
+    computing the exact value on the host and normalizing with
+    w16(), the conventional XOR-sign-bit-then-subtract sign
+    extension), char unsigned (hence -funsigned-char), no sizeof
+    except portable
     ratios like `sizeof a / sizeof a[0]`, no pointer values or struct
     layout in the output (ccish packs, the host may pad), no
     uninitialized reads or undefined behavior, ASCII output. The host

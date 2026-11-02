@@ -153,6 +153,12 @@ int comp_elem(int a, int b)
   return r + i;       // i is 2 now: 21 + 2 = 23
 }
 
+/* A multiply the folder can't touch, for the wraparound tests. */
+int wrapmul(int a, int b)
+{
+  return a * b;
+}
+
 int main(void)
 {
   puti(3 << 4);            // 48
@@ -226,6 +232,23 @@ int main(void)
   comps(7, 3);      // 56 7 10 7 21 7 1 1 3 0
   comps(-7, 3);     // -56 -7 -4 -7 -21 -7 -1 3 3 0
   puti(comp_elem(7, 3));  // 23
+  putln();
+  // 16-bit wraparound: the exact value is computed on the host,
+  // where it fits, and normalized with w16; ccish wraps itself, at
+  // compile time (the constants) and at run time (wrapmul).
+  puti(w16(30000 + 30000));     // 60000 wraps to -5536
+  putln();
+  puti(w16(wrapmul(20000, 4))); // 80000 wraps to 14464
+  putln();
+  puti(w16(-30000 - 30000));    // -60000 wraps to 5536
+  putln();
+  puti(w16(32767 + 1));         // -32768
+  putln();
+  puti(w16(-32768 - 1));        // 32767
+  putln();
+  puti(w16(1 << 15));           // 32768 wraps to -32768
+  putln();
+  puti(w16(wrapmul(-20000, 4))); // -80000 wraps to -14464
   putln();
   return 0;
 }
