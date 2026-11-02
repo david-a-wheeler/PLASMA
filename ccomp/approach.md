@@ -2448,7 +2448,9 @@ is the main problem. Splitting it is one way, but not the only one:
 - **F1. Split parse.c into several files.** Each file and its streams
   are smaller. It needs `extern` and multi-file linking (M8, issue 11),
   which self-hosting needs anyway. But `ccish.h` is read again for
-  each file (18.3 would help), and more files mean more steps to build.
+  each file (18.3 would help), and more files mean more steps to
+  build. Adopted (decided in discussion, 2026-11-01): see the
+  `parse.c` split design below.
 - **F2. A stripped copy for the Apple,** made by a tool from the
   commented source, which stays the one maintained by hand. Comments
   are about 45% of parse.c (145K to 80K; 62K without indentation too).
@@ -2532,6 +2534,124 @@ is the main problem. Splitting it is one way, but not the only one:
   disk too. Costs: it is no longer text, so `ccpp` needs a text output
   for debugging; line numbers become records in the token stream. It
   changes decision 2's "compact text `.i`".
+
+**`parse.c` split design (decided in discussion, 2026-11-01; option
+F1 of 18.6).** `parse.c` is 153,389 bytes, more than three times the
+next largest file (`link.c`, 46,153), and won't sit on the target
+disk beside ProDOS, the VM and the rest of the compiler (F1). Split
+it into four files at the seams its own section banners already
+draw, so each piece is one logical unit. The split changes nothing
+in the generated programs: every call is a PLASMA `CALL` by name
+(`OP_CALL` with a function fixup), the same within a file as across
+files, and the build already crosses files (the preprocessor is
+five). Naming follows the `pp*` precedent; `parse.c` keeps its name,
+so the comments in `obj.h`, `ppname.c` and `fixed.h` that point at
+it stay right.
+
+The regions, measured on the 2026-11-01 file (line numbers as of
+then; they shift as the stages below proceed):
+
+| Region | Lines | Bytes | What it is |
+|--------|-------|-------|------------|
+| A | 1-152 | 8,040 | header comment, includes, limits, the functions table, parser state |
+| B | 153-470 | 10,790 | the tables' operations, the CMDSYS table, the variables table, parameter types |
+| C | 471-630 | 4,720 | type-name parsing |
+| D | 631-850 | 6,729 | `put`/`hold` with pending constants and folding, the labels |
+| E0 | 851-965 | about 6,400 | the operand type: the `K_*` kinds, `G_STR`, `Operand`, the `PREC_*` levels |
+| E1 | 966-1342 | about 10,400 | the place machinery: `rvalue`, the loads and stores, `push_address`, temporaries, `spill`, `swap_blocks`, `finish_store` |
+| E2 | 1343-3017 | about 55,400 | the grammar: lvalue and type checks, casts, calls, primary, unary, postfix, `sizeof`, `&& \|\| ?:`, binary, assignments, the struct copies, `parse_expr` |
+| F | 3018-3859 | 26,312 | statements: declarators, the struct/enum/typedef definitions, locals, `if`, loops, `switch`, `return`, blocks |
+| G | 3860-3921 | 2,050 | `parse_params` |
+| H | 3922-4487 | 19,126 | the initializers (global and local), `declare_global`, `parse_globals`, `parse_toplevel` |
+| I | 4488-4607 | 3,134 | the entry points, the symbol summary, the stats report |
+
+(The E1/E2 line is before `holds_const`, whose only user is
+`need_lvalue`, in E2.)
+
+- **`parse.c` (about 42K): the machinery.** A to D, and E1: the
+  state, the functions and variables tables and their operations,
+  the CMDSYS table, the parameter types, the type-name parsing,
+  `put`/`hold` and the folding, the labels, and how a pending
+  operand is materialized (`rvalue`, the loads and stores,
+  `push_address`, temporaries, `spill`, `swap_blocks`,
+  `finish_store`). `cond_branch` (in the statements section, but
+  K_JUMP machinery, already forward-declared from the expressions
+  section) moves here, beside the other label functions.
+- **`pexpr.c` (about 56K): the grammar of expressions.** E2: the
+  lvalue and type checks, the casts, the precedence tables, the
+  calls, the primaries, unary and postfix (indexing and members),
+  `sizeof`, `&& || ?:`, the binary operators, the assignments with
+  the struct copies, and the precedence-climbing loop. It calls
+  about 20 of `parse.c`'s machinery functions; the machinery calls
+  nothing back, so the new seam is one-directional.
+- **`pstmt.c` (about 28K): statements and declarations.** F and G:
+  declarators and array sizes, the struct/enum/typedef definitions,
+  local declarations, `if`, the loops (with their markers),
+  `switch` (with the case table), `break` and `continue`, `return`,
+  blocks, `parse_statement` and `parse_params`.
+- **`ptop.c` (about 23K): top level and initializers.** H and I: the
+  scalar and aggregate initializers (the shared `init_*` code, for a
+  global or a local), `declare_global`, `parse_globals`,
+  `parse_toplevel`, the entry points, the symbol summary and the
+  stats. `init_known`/`init_val` (set by the scalar initializer, read
+  by the declarations) and `bss_next` (used only by
+  `parse_globals` and `bss_size`) move here out of the shared
+  regions.
+- **`parse.h`** gains the operand type all four files use (E0: the
+  `K_*` kinds, `G_STR`, the `Operand` struct, the `PREC_*` levels)
+  and declarations of what each file makes available. Its public
+  face (the functions table, the entry points, the symbol summary)
+  is unchanged, so `irout.c`, `cccomp.c` and `main.c` need no
+  change. The Makefile's `FRONT` gains the three new files;
+  `HEADERS` is a wildcard.
+
+Each header declares what its `.c` makes available (the `pp*`
+pattern), and a file includes the headers of the files it calls. The
+exports, as measured on the one file: `parse.c` about 50 functions
+(`put` and `hold`, the six label functions including `cond_branch`,
+the tables' operations, the type-name parsing, the about-20
+machinery functions) plus the tables' arrays and a dozen or so state
+variables (`nheld`, `suppress`, `want_addr`, `depth`, `frame_next`,
+`frame_max`, `cur_fn`, `in_params`, `nest`, `nvars`, `nlabels`,
+`label_used`, `base_tagged`, ...); `pexpr.c` 11 (`parse_expr`,
+`parse_skipped`, `discard`, `check_assign`, `to_char`,
+`struct_words`, `push_struct_words`, `push_zero_result`,
+`result_words`, `check_byval`, `copy_struct`); `pstmt.c` 6
+(`parse_block`, `parse_params`, `parse_declarator`, `parse_var_type`,
+`set_known`, and `parse_dims`, which `pexpr.c` also calls);
+`ptop.c` 2 (`parse_global_init`, `parse_local_init`).
+
+Two call cycles can't be removed; both already exist in the one
+file as static forward declarations, and become prototypes across
+the seams:
+- `parse_expr` (pexpr) and `parse_dims` (pstmt): an array's size is
+  an expression, and a cast and `sizeof` parse a type name;
+- `parse_base_type` (parse) and `parse_struct`/`parse_enum` (pstmt):
+  a type name may carry the definition, whose members are type
+  names.
+
+Invariants, checked at every step: a pure move of whole functions,
+each with its comment (so `tests/check_comments.sh` passes);
+`ccish.msg` untouched; the in-file forward declarations that outlive
+their function are removed as each stage moves it; both builds
+compile with no warnings; the small build still writes byte-identical
+objects and modules, which `tests/run.sh` requires.
+
+Built in stages, each `make all small` + `make test` green and
+committed on its own:
+1. The operand type (the `K_*` kinds, `G_STR`, `Operand`, the
+   `PREC_*` levels) moves to `parse.h`.
+2. Split off `ptop.c` (H and I) and its header; the Makefile's
+   `FRONT` gains it.
+3. Split off `pstmt.c` (F and G) and its header; `cond_branch`
+   moves to `parse.c`.
+4. Split off `pexpr.c` (E2) and its header; the calls in `ptop.c`
+   and `pstmt.c` it serves move to including it.
+5. The docs: a header comment for each new file, `parse.c`'s
+   139-line header comment distributed (the language overview to
+   `ptop.c`, the streaming, reordering and folding paragraphs to
+   where their code goes), the stage-1 line in `build.h`, and F1
+   above marked done.
 
 View when listed (not a decision): E1 and E2 first, since they set the
 target; then the biggest levers look like B1 (`Sym` split), B3 (final
