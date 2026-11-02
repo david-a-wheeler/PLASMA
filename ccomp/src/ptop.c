@@ -23,6 +23,7 @@
 #include "parse.h"
 #include "irout.h"
 #include "ptop.h"
+#include "pstmt.h"
 
 static int bss_next;                /* the zero-filled space so far */
 

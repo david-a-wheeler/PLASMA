@@ -1,0 +1,907 @@
+/*
+ * cccomp's front end, statements and declarations (approach.md,
+ * "parse.c split design"): the declarators and array sizes, the
+ * struct/enum/typedef definitions, local declarations, if, the
+ * loops (with their markers), switch (with the case table), break
+ * and continue, return, blocks, and parse_params.
+ */
+
+#ifdef CCISH_STATS
+#include <stdio.h>
+#endif
+#include <string.h>
+#include "build.h"
+#include "cclimits.h"
+#include "diag.h"
+#include "fixed.h"
+#include "nam.h"
+#include "tokin.h"
+#include "obj.h"
+#include "ir.h"
+#include "name.h"
+#include "type.h"
+#include "parse.h"
+#include "irout.h"
+#include "ptop.h"
+#include "pstmt.h"
+#define MAX_PARAMS   16
+
+#define MAX_CASES    36     /* case labels in all the switches open at once
+                             * (29); at most 255, a SEL table's limit */
+
+/* ---------- Statements ---------- */
+
+
+/* Parse any array sizes ("[3][4]") after a declarator's name, and
+ * return the declared type, given the type t before them: int m[3][4]
+ * is an array of 3 arrays of 4 ints. If may_omit is set (an array
+ * parameter), the first size may be left out, giving a count of 0. */
+int parse_dims(int t, int may_omit)
+{
+  Operand e;
+  int n = 0;
+  if (tok != '[')
+    return t;
+  enter_nest();
+  next();
+  if (tok == ']') {
+    if (!may_omit)
+      error(87 /* "array size missing" */, NULL);
+  } else {
+    parse_expr(PREC_COND, &e);
+    if (e.kind != K_CONST || is_pointer(e.type))
+      error(88 /* "array size must be a constant" */, NULL);
+    if (e.nonice)
+      error_in(201 /* "a const variable's value isn't a constant"
+                    " expression in C" */,
+               202 /* "(an array size must be one)" */, NULL);
+    if (e.val <= 0)
+      error(89 /* "array size must be positive" */, NULL);
+    n = e.val;
+  }
+  expect(']', 90 /* "expected ']' after an array size, not" */);
+  t = parse_dims(t, 0);
+  need_complete(t, 209 /* "an array element can't have the incomplete"
+                          " type" */);
+  if (type_size(t) == 0)
+    error(91 /* "array elements can't have type void" */, NULL);
+  nest--;
+  return array_of(t, n);
+}
+
+/* Parse the start of a declarator after the base type base: any '*'s,
+ * then the name, whose id is stored in *name. Returns the type so far;
+ * any array sizes come after the name. */
+int parse_declarator(int base, int *name)
+{
+  int type = parse_pointers(base);
+  if (tok == '(')
+    error(92 /* "declarators in parentheses are not supported yet" */,
+          "(such as int (*p)[4])");
+  if (tok != T_ID)
+    error(93 /* "expected a name, not" */, tok_desc());
+  *name = tok_val;
+  next();
+  return type;
+}
+
+/* Parse the rest of a variable's declarator after its name (any array
+ * sizes) and return its full type, which can't be void or an
+ * incomplete struct. If may_omit is set, the first array size may be
+ * left out (count 0), for an initializer to give. */
+int parse_var_type(int type, int may_omit)
+{
+  if (unqual(type) == TY_VOID)
+    error(94 /* "a variable can't have type void" */, NULL);
+  type = parse_dims(type, may_omit);
+  need_complete(type, 207 /* "a variable can't have the incomplete type" */);
+  return type;
+}
+
+/* Parse a struct's member list, from '{' to '}', and complete tag's
+ * struct: each member is at the next byte, with no padding, since the
+ * 6502 has no alignment rules (approach.md, "M6 design"). While the
+ * list is parsed, the tag's size is -2, so a nested redefinition of
+ * the same tag is caught. */
+static void parse_members(int tag)
+{
+  int name, off = 0, base, t;
+
+  enter_nest();
+  tag_set_size(tag, -2);
+  next();                         /* '{' */
+  if (tok == '}')
+    error(95 /* "a struct needs at least one member" */, NULL);
+  while (tok != '}') {
+    if (tok == T_KEYWORD)
+      not_yet();
+    if (!is_type_start())
+      error(96 /* "expected a struct member, not" */, tok_desc());
+    base = parse_base_type();
+    for (;;) {
+      t = parse_declarator(base, &name);
+      if (tok == '(')
+        error(97 /* "a struct member can't be a function:" */,
+              quote(name));
+      t = parse_dims(t, 0);
+      if (unqual(t) == TY_VOID)
+        error(98 /* "a struct member can't have type void" */, NULL);
+      need_complete(t, 208 /* "a struct member can't have the"
+                              " incomplete type" */);
+      if (member_find(tag, name) >= 0)
+        error(99 /* "duplicate struct member" */, quote(name));
+      if (off > MAX_OBJECT - type_size(t))
+        error(100 /* "struct too large (over 32767 bytes)" */, NULL);
+      member_add(tag, name, t, off);
+      off += type_size(t);
+      if (tok != ',')
+        break;
+      next();
+    }
+    expect(';', 101 /* "expected ';' after a struct member, not" */);
+  }
+  next();
+  tag_set_size(tag, off);
+  nest--;
+}
+
+/*
+ * Parse a struct type after "struct", and return it: a tag, a member
+ * list, or both. As in C:
+ *   - struct s { ... } defines s in the current block (or at file
+ *     scope), completing an earlier "struct s;" there;
+ *   - struct s; alone declares a new s in the current block, hiding any
+ *     outer one;
+ *   - struct s elsewhere refers to the innermost visible s, or declares
+ *     a new, incomplete one, so that struct node *next; works before
+ *     struct node is complete.
+ * A tag first seen in a parameter list is visible only inside that
+ * function, which is rarely what was meant; gcc warns, and so do we.
+ */
+int parse_struct(void)
+{
+  int name = -1, tag = -1, hsum = 0, hmul = 1;
+
+  next();                         /* struct */
+  if (tok == T_ID) {
+    name = tok_val;
+    hsum = tok_hsum;
+    hmul = tok_hmul;
+    next();
+    tag = tag_find(name, tok == '{' || tok == ';' ? depth : -1);
+  } else if (tok != '{') {
+    error(102 /* "expected a struct name or '{' after 'struct', not" */,
+          tok_desc());
+  }
+  if (tag < 0) {
+    tag = tag_new(name, depth, hsum, hmul);
+    if (in_params && name >= 0)
+      warning(103 /* "declared in a parameter list, so not visible "
+                     "outside it:" */, tag_desc(tag));
+  }
+  if (tok == '{') {
+    if (tag_size(tag) != -1)
+      error(104 /* "redefinition of" */, tag_desc(tag));
+    parse_members(tag);
+  }
+  return struct_type(tag);
+}
+
+/*
+ * Parse an enum type after "enum", and return it: an enum type is int,
+ * which C allows (approach.md, "enum and typedef design"). A list
+ * declares its constants in the current block: each is the given value
+ * (an integer constant expression, which may use earlier constants), or
+ * one more than the one before, starting at 0, and must fit in an int.
+ * The tag isn't recorded, so enum e isn't checked against a definition
+ * (a known difference from C: ccish accepts some wrong programs).
+ */
+int parse_enum(void)
+{
+  Operand e;
+  int v = 0, full = 0, name;
+
+  next();                         /* enum */
+  if (tok == T_ID)
+    next();                     /* the tag */
+  else if (tok != '{')
+    error(105 /* "expected an enum name or '{' after 'enum', not" */,
+          tok_desc());
+  if (tok != '{')
+    return TY_INT;
+  next();
+  if (tok == '}')
+    error(106 /* "an enum needs at least one constant" */, NULL);
+  while (tok != '}') {
+    if (tok != T_ID)
+      error(107 /* "expected an enum constant, not" */, tok_desc());
+    check_not_var(tok_val);
+    check_not_id(tok_val);
+    name = tok_val;
+    next();
+    if (tok == '=') {
+      next();
+      parse_skipped(PREC_COND, &e);
+      if (e.kind != K_CONST || is_pointer(e.type))
+        error(108 /* "an enum value must be an integer constant" */,
+              NULL);
+      if (e.nonice)
+        error_in(201 /* "a const variable's value isn't a constant"
+                      " expression in C" */,
+                 203 /* "(an enum value must be one)" */, NULL);
+      v = e.val;
+      full = 0;
+    } else if (full) {
+      error(109 /* "enum value too large for an int (over 32767)" */,
+            NULL);
+    }
+    id_add(name, ID_CONST, v, depth);
+    full = v == 0x7FFF;
+    v = wrap16((unsigned)v + 1u);
+    if (tok != ',')
+      break;
+    next();
+  }
+  expect('}', 110 /* "expected ',' or '}' in an enum, not" */);
+  return TY_INT;
+}
+
+/* typedef type name, ...; declares each name (with its own '*'s and
+ * array sizes) as a name for its type, in the current block. A typedef
+ * may be repeated with the same type, as C11 allows. */
+void parse_typedef(void)
+{
+  int name, base, t, i;
+
+  next();                         /* typedef */
+  if (!is_type_start())
+    error(111 /* "expected a type after 'typedef', not" */, tok_desc());
+  base = parse_base_type();
+  for (;;) {
+    t = parse_declarator(base, &name);
+    if (tok == '(')
+      error(112 /* "typedefs of function types are not supported" */,
+            NULL);
+    t = parse_dims(t, 0);
+    i = id_find(name);
+    if (i >= 0 && id_depth(i) == depth) {
+      if (id_kind(i) != ID_TYPEDEF || id_val(i) != t)
+        error(27 /* "redeclaration of" */, quote(name));
+    } else {
+      check_not_var(name);
+      id_add(name, ID_TYPEDEF, t, depth);
+    }
+    if (tok != ',')
+      break;
+    next();
+  }
+  expect(';', 113 /* "expected ';' after a typedef, not" */);
+}
+
+/* Initialize the local struct s from a struct expression (after the
+ * '='), as C allows for a local: struct pt b = a; It is a struct
+ * copy into s. */
+static void init_struct_copy(int s)
+{
+  Operand v, e;
+  int mark, h;
+  begin_expr();
+  v.kind = K_VAR;
+  v.type = unqual(var_type[s]);
+  v.quals = 0;
+  v.off = var_off[s];
+  v.global = 0;
+  v.assigned = 0;
+  v.is_bool = 0;
+  mark = ir_here();
+  h = nheld;
+  parse_expr(PREC_ASSIGN, &e);
+  check_assign(v.type, &e, 198 /* "initialization" */, NULL);
+  copy_struct(&v, &e, code_start(mark, h));
+  end_expr();
+}
+
+/* Record that the variable s has the known value v, if reading it may
+ * give v at compile time: it is a const scalar (an int, char or
+ * pointer, not an array or struct) and not volatile. A char keeps the
+ * low byte, as stored. */
+void set_known(int s, int v)
+{
+  if ((var_type[s] & Q_ALL) != Q_CONST || is_array(var_type[s])
+      || is_struct(var_type[s]))
+    return;
+  var_flags[s] |= V_KNOWN;
+  var_val[s] = unqual(var_type[s]) == TY_CHAR ? v & 0xFF : v;
+}
+
+/* A declaration: a base type, then declarators, each a name with any
+ * '*'s before it, any array sizes after it, and an optional
+ * initializer: int a = 1, *p = &a, v[10]; A struct or enum type may
+ * have no declarators (struct pt { int x, y; };). If is_static is set (after
+ * "static"), the variables are static locals: in the data segment, with
+ * constant initializers applied once, when the module loads. */
+static void parse_declaration(int is_static)
+{
+  int base = parse_base_type();
+  if (tok == ';' && base_tagged) {
+    next();                     /* struct pt { ... }; declares only */
+    return;
+  }
+  for (;;) {
+    Operand v, e;
+    int s, name;
+    int type = parse_var_type(parse_declarator(base, &name), 1), braced;
+    if (tok == '(')
+      error(114 /* "local function declarations are not supported" */,
+            NULL);
+    if (is_array(type) && type_count(type) == 0 && tok != '=')
+      error(87 /* "array size missing" */, NULL);
+    if (is_static) {
+      /* In C, the name is in scope in its own initializer. */
+      s = add_static_local(name, type);
+      if (tok == '=') {
+        next();
+        var_type[s] = parse_global_init(type, name);
+        if (init_known)
+          set_known(s, init_val);
+      } else {
+        data_zero(type_size(type));
+      }
+      if (tok != ',')
+        break;
+      next();
+      continue;
+    }
+    if (is_array(type) && frame_next + type_size(type) > 255)
+      error(115 /* "local array doesn't fit in the 255-byte frame "
+                   "(make it static or global):" */, quote(name));
+    if (is_struct(type) && frame_next + type_size(type) > 255)
+      error(116 /* "local struct doesn't fit in the 255-byte frame "
+                   "(make it static or global):" */, quote(name));
+    /* In C, the name is in scope in its own initializer. (An array
+     * whose size comes from its initializer grows as it is parsed:
+     * see reserve().) */
+    s = add_local(name, type, type_size(type));
+    if (tok == '=' && (is_array(type) || is_struct(type))) {
+      next();
+      if (is_struct(type) && tok != '{')
+        init_struct_copy(s);    /* struct pt b = a; */
+      else
+        var_type[s] = parse_local_init(type, name, var_off[s]);
+    } else if (tok == '=') {
+      next();
+      braced = tok == '{';        /* int x = {5}; is valid C */
+      if (braced)
+        next();
+      begin_expr();
+      parse_expr(PREC_ASSIGN, &e);
+      check_assign(type, &e, 198 /* "initialization" */, NULL);
+      if (e.kind == K_CONST)
+        set_known(s, e.val);
+      rvalue(&e);
+      v.kind = K_VAR;
+      v.type = unqual(type);
+      v.off = var_off[s];
+      v.global = 0;
+      store_var(&v);
+      put(IR_DROP, 0, -1);
+      end_expr();
+      if (braced) {
+        if (tok == ',')
+          next();
+        expect('}', 117 /* "expected '}' after the initializer,"
+                           " not" */);
+      }
+    }
+    if (tok != ',')
+      break;
+    next();
+  }
+  expect(';', 118 /* "expected ';' after declaration, not" */);
+}
+
+/* Parse a full expression used as a statement (or a for clause), and
+ * discard its value. */
+static void parse_expr_statement(void)
+{
+  Operand o;
+  begin_expr();
+  parse_expr(PREC_COMMA, &o);
+  discard(&o);
+  end_expr();
+}
+
+
+/* Parse a full expression as a condition, and branch to label n as
+ * cond_branch does. */
+static void parse_cond(int n, int on_true)
+{
+  Operand o;
+  begin_expr();
+  parse_expr(PREC_COMMA, &o);
+  cond_branch(&o, n, on_true);
+  end_expr();
+}
+
+/* Parse "( condition )" and branch to label n as cond_branch does. */
+static void parse_paren_cond(int n, int on_true)
+{
+  expect('(', 119 /* "expected '(' before condition, not" */);
+  parse_cond(n, on_true);
+  expect(')', 120 /* "expected ')' after condition, not" */);
+}
+
+/* The innermost loops' and switches' labels, for break and continue.
+ * A switch's cont_label is its enclosing loop's (-1 if none), since
+ * continue in a switch goes to the loop around it. */
+static int brk_label[MAX_NEST], cont_label[MAX_NEST];
+static int nloops;
+
+static void parse_statement(void);
+
+/* Parse a loop's (or switch's) body, with break going to label brk and
+ * continue to label cont. */
+static void loop_body(int brk, int cont)
+{
+  if (nloops >= MAX_NEST)
+    fatal(121 /* "loops nested too deeply" */, NULL);
+  brk_label[nloops] = brk;
+  cont_label[nloops] = cont;
+  nloops++;
+  parse_statement();
+  nloops--;
+}
+
+/* if (c) s1 [else s2]:  c BRFLS Lelse  s1  [BRNCH Lend]  Lelse: [s2  Lend:] */
+static void parse_if(void)
+{
+  int else_l = new_label(), end_l;
+  next();                         /* "if" */
+  parse_paren_cond(else_l, 0);
+  parse_statement();
+  if (tok == T_ELSE) {
+    next();
+    end_l = new_label();
+    branch(IR_JUMP, end_l);
+    place_forward(else_l);
+    parse_statement();
+    place_forward(end_l);
+  } else {
+    place_forward(else_l);
+  }
+}
+
+/*
+ * Loops (approach.md, "Loop design"). The parser writes a loop's parts
+ * in source order between loop markers, which name its labels, and
+ * ccgen lays it out with the test at the bottom:
+ *   BRNCH Ltest  Lbody: s  Lcont: step  Ltest: c BRTRU Lbody  Lbrk:
+ * So the test is a true-sense branch to the body, and a while loop has
+ * an empty step. ccgen writes the jumps and labels.
+ */
+
+/* Write the marker after a loop's step, and parse its body, with
+ * labels from loop_labels() (body, test, continue, break); then its
+ * end marker. */
+static void loop_rest(int *l)
+{
+  put(IR_LOOPBODY, l[0], l[1]);
+  loop_body(l[3], l[2]);
+  put(IR_LOOPEND, l[2], l[3]);
+}
+
+/* Make a loop's labels (body, test, continue, break), and write its
+ * first marker. */
+static void loop_labels(int *l)
+{
+  int i;
+  for (i = 0; i < 4; i++)
+    l[i] = new_label();
+  put(IR_LOOP, l[1], l[3]);
+}
+
+/* while (c) s */
+static void parse_while(void)
+{
+  int l[4];
+  next();                         /* "while" */
+  loop_labels(l);
+  parse_paren_cond(l[0], 1);
+  put(IR_LOOPSTEP, l[2], l[3]);
+  loop_rest(l);
+}
+
+/* do s while (c);  Ltop: s  Lcont: c BRTRU Ltop  Lbrk: */
+static void parse_do(void)
+{
+  int top = new_label(), cont = new_label(), brk = new_label();
+  next();                         /* "do" */
+  place_label(top);
+  loop_body(brk, cont);
+  expect(T_WHILE, 122 /* "expected 'while' after the body of 'do', not" */);
+  place_forward(cont);
+  parse_paren_cond(top, 1);
+  expect(';', 123 /* "expected ';' after 'do ... while (...)', not" */);
+  place_forward(brk);
+}
+
+/* for (init; c; step) s: the init, then a loop (above); with no
+ * condition, the test is a jump to the body. The init may declare
+ * variables (as in C99); they are in scope only in the loop. */
+static void parse_for(void)
+{
+  int saved_nvars = nvars, saved_next = frame_next;
+  int l[4];
+
+  next();                         /* "for" */
+  expect('(', 124 /* "expected '(' after 'for', not" */);
+  depth++;
+  if (tok == T_STATIC)
+    error(125 /* "a 'for' loop can't declare a static variable" */, NULL);
+  if (tok == T_EXTERN)
+    error(219 /* "'extern' in a block is not supported: declare it at"
+                 " file scope" */, NULL);
+  if (is_type_start()) {
+    parse_declaration(0);       /* includes the ';' */
+  } else {
+    if (tok != ';')
+      parse_expr_statement();
+    expect(';', 126 /* "expected ';' after 'for' initialization, not" */);
+  }
+  loop_labels(l);
+  if (tok != ';')
+    parse_cond(l[0], 1);
+  else
+    branch(IR_JUMP, l[0]);
+  expect(';', 127 /* "expected ';' after 'for' condition, not" */);
+  put(IR_LOOPSTEP, l[2], l[3]);
+  if (tok != ')')
+    parse_expr_statement();
+  expect(')', 128 /* "expected ')' after 'for' clauses, not" */);
+  loop_rest(l);
+  depth--;
+  nvars = saved_nvars;
+  frame_next = saved_next;
+}
+
+/* break; and continue;: jump to the innermost loop's labels (or, for
+ * break, the innermost switch's). */
+static void parse_break_continue(void)
+{
+  int is_break = tok == T_BREAK;
+  next();
+  if (nloops == 0 && is_break)
+    error(129 /* "'break' is not inside a loop or switch" */, NULL);
+  if (!is_break && (nloops == 0 || cont_label[nloops - 1] < 0))
+    error(130 /* "'continue' is not inside a loop" */, NULL);
+  branch(IR_JUMP, is_break ? brk_label[nloops - 1]
+                           : cont_label[nloops - 1]);
+  expect(';', is_break ? 131 /* "expected ';' after 'break', not" */
+                       : 132 /* "expected ';' after 'continue', not" */);
+}
+
+/*
+ * The cases of the switches being parsed, innermost last (approach.md,
+ * "M7 design"). As parallel arrays: case_val[i] is a case's value, and
+ * case_label[i] the label of its code. The innermost switch's cases
+ * start at index sw_first (-1 outside any switch), and sw_default is
+ * its default's label (-1 if none yet).
+ */
+static int case_val[MAX_CASES];
+static char case_label[MAX_CASES];
+static int ncases;
+static int sw_first = -1;
+static int sw_default = -1;
+
+/* Parse the labels before a statement in a switch ("case n:" and
+ * "default:", any number), and place them, recording each in the
+ * innermost switch's cases. A case value must be an integer constant
+ * expression, not already used in this switch. */
+static void parse_case_labels(void)
+{
+  char buf[8];
+  Operand e;
+  int l, i;
+  while (T_IS_CASE_LABEL(tok)) {
+    if (sw_first < 0)
+      error(tok == T_CASE ? 133 /* "'case' is not inside a switch" */
+                          : 134 /* "'default' is not inside a switch" */,
+NULL);
+    l = new_label();
+    if (tok == T_DEFAULT) {
+      next();
+      if (sw_default >= 0)
+        error(135 /* "more than one 'default' in a switch" */, NULL);
+      sw_default = l;
+    } else {
+      next();
+      parse_skipped(PREC_COND, &e);
+      if (e.kind != K_CONST || is_pointer(e.type))
+        error(136 /* "a case label must be an integer constant" */,
+              NULL);
+      if (e.nonice)
+        error_in(201 /* "a const variable's value isn't a constant"
+                      " expression in C" */,
+                 204 /* "(a case label must be one)" */, NULL);
+      for (i = sw_first; i < ncases; i++)
+        if (case_val[i] == e.val) {
+          /* A copy: reporting uses num_text() too. */
+          strcpy(buf, num_text(e.val));
+          error(137 /* "duplicate case value" */, buf);
+        }
+      if (ncases >= MAX_CASES)
+        fatal(138 /* "too many case labels in the switches open at "
+                     "once" */,
+              NULL);
+      case_val[ncases] = e.val;
+      case_label[ncases++] = l;
+    }
+    expect(':', 139 /* "expected ':' after a case label, not" */);
+    place_label(l);
+  }
+}
+
+/* Sort the innermost switch's cases by value, as SEL needs on the 6502
+ * VM, and check that they span at most 32767, another of its limits
+ * (approach.md, "M7 design"). (Its other limit, 255 cases, is kept by
+ * MAX_CASES.) An insertion sort: switches are small. */
+static void sort_cases(void)
+{
+  int i, j, v, l;
+  for (i = sw_first + 1; i < ncases; i++) {
+    v = case_val[i];
+    l = case_label[i];
+    for (j = i; j > sw_first && case_val[j - 1] > v; j--) {
+      case_val[j] = case_val[j - 1];
+      case_label[j] = case_label[j - 1];
+    }
+    case_val[j] = v;
+    case_label[j] = l;
+  }
+  /* Written so that it can't overflow with a 16-bit int. */
+  if (ncases > sw_first && case_val[sw_first] < 0
+      && case_val[ncases - 1] > case_val[sw_first] + 32767)
+    error(140 /* "case values too far apart (more than 32767)" */, NULL);
+}
+
+/* One entry of a case table: value v, leading to label l. */
+static void case_entry(int v, int l)
+{
+  if (!suppress)
+    label_used[l] = 1;
+  put(IR_CASEVAL, v, -1);
+  put(IR_CASETO, l, -1);
+}
+
+/*
+ * switch (e) s, with PLASMA's SEL and a case table after the body,
+ * since the cases aren't known until it is parsed (approach.md, "M7
+ * design"):
+ *   e SEL Ltab  s  BRNCH Lbrk  Ltab: count (value label)...  [BRNCH Ldef]
+ *   Lbrk:
+ * SEL takes the value off the stack, and goes to a case's label, or
+ * past the table if none matches: to the default, or out. A switch with
+ * no cases gets one entry, leading where no match goes, since a table
+ * can't be empty.
+ */
+static void parse_switch(void)
+{
+  Operand o;
+  int tab = new_label(), brk = new_label(), first = sw_first;
+  int def = sw_default, i;
+
+  next();                         /* "switch" */
+  expect('(', 141 /* "expected '(' after 'switch', not" */);
+  begin_expr();
+  parse_expr(PREC_COMMA, &o);
+  if (o.kind == K_VOID || is_struct(o.type)
+      || is_pointer(value_type(o.type)))
+    error(142 /* "a switch needs an integer value" */, NULL);
+  rvalue(&o);
+  branch(IR_SEL, tab);
+  end_expr();
+  expect(')', 143 /* "expected ')' after the switch value, not" */);
+  sw_first = ncases;
+  sw_default = -1;
+  loop_body(brk, nloops > 0 ? cont_label[nloops - 1] : -1);
+  branch(IR_JUMP, brk);           /* the last case doesn't run the table */
+  place_label(tab);
+  sort_cases();
+  put(IR_CASES, ncases > sw_first ? ncases - sw_first : 1, -1);
+  for (i = sw_first; i < ncases; i++)
+    case_entry(case_val[i], case_label[i]);
+  if (ncases == sw_first)
+    case_entry(0, sw_default >= 0 ? sw_default : brk);
+  if (sw_default >= 0)
+    branch(IR_JUMP, sw_default);
+  place_forward(brk);
+  ncases = sw_first;
+  sw_first = first;
+  sw_default = def;
+}
+
+/* Parse one statement (or declaration) and emit its code. */
+static void parse_statement(void)
+{
+  Operand o;
+  if (tok == T_ID && typedef_type(tok_val) >= 0) {
+    parse_declaration(0);       /* T x; with a typedef name T */
+    return;
+  }
+  switch (tok) {
+  case T_IF:
+    parse_if();
+    return;
+  case T_WHILE:
+    parse_while();
+    return;
+  case T_DO:
+    parse_do();
+    return;
+  case T_FOR:
+    parse_for();
+    return;
+  case T_SWITCH:
+    parse_switch();
+    return;
+  case T_CASE:
+  case T_DEFAULT:
+    parse_case_labels();
+    parse_statement();          /* the statement they label */
+    return;
+  case T_BREAK:
+  case T_CONTINUE:
+    parse_break_continue();
+    return;
+  case T_ELSE:
+    error(144 /* "'else' without a matching 'if'" */, NULL);
+    return;
+  case '{':
+    parse_block(1);
+    return;
+  case ';':
+    next();
+    return;
+  case T_RETURN:
+    next();
+    if (tok == ';') {
+      if (fn_type[cur_fn] != TY_VOID)
+        push_zero_result(fn_type[cur_fn]);  /* C89 allows this */
+    } else {
+      if (fn_type[cur_fn] == TY_VOID)
+        error(145 /* "void function returns a value:" */,
+              quote(fn_name[cur_fn]));
+      begin_expr();
+      parse_expr(PREC_COMMA, &o);
+      check_assign(fn_type[cur_fn], &o, 199 /* "return" */, NULL);
+      if (fn_type[cur_fn] == TY_CHAR)
+        to_char(&o);        /* a char function returns 0 to 255 */
+      if (is_struct(fn_type[cur_fn]))
+        push_struct_words(&o);  /* returned as its words */
+      else
+        rvalue(&o);
+      end_expr();
+    }
+    expect(';', 146 /* "expected ';' after return value, not" */);
+    put(IR_RETURN, result_words(fn_type[cur_fn]), -1);
+    return;
+  case T_INT:
+  case T_CHAR:
+  case T_SIGNED:
+  case T_UNSIGNED:
+  case T_VOID:
+  case T_CONST:
+  case T_VOLATILE:
+  case T_STRUCT:
+  case T_ENUM:
+    parse_declaration(0);
+    return;
+  case T_TYPEDEF:
+    parse_typedef();
+    return;
+  case T_EXTERN:
+    error(219 /* "'extern' in a block is not supported: declare it at"
+                 " file scope" */, NULL);
+    return;
+  case T_STATIC:
+    next();
+    if (!is_type_start())
+      error(147 /* "expected a type after 'static', not" */, tok_desc());
+    parse_declaration(1);
+    return;
+  case T_KEYWORD:
+    not_yet();
+    return;
+  }
+  parse_expr_statement();
+  expect(';', 148 /* "expected ';' after expression, not" */);
+}
+
+/* A { } block. new_scope is 0 for a function body, whose outermost
+ * block shares the parameters' scope, as in C. */
+void parse_block(int new_scope)
+{
+  int saved_nvars = nvars, saved_next = frame_next;
+  enter_nest();
+  if (new_scope)
+    depth++;
+  next();                         /* '{' */
+  while (tok != '}') {
+    if (tok == T_EOF)
+      error(149 /* "missing '}' at end of file" */, NULL);
+    parse_statement();
+  }
+  next();
+  if (new_scope) {
+    /* The block's variables and struct tags go out of scope, and
+     * the variables' frame slots can be reused by later blocks. */
+    depth--;
+    nvars = saved_nvars;
+    frame_next = saved_next;
+    tag_hide(depth);
+    id_hide(depth);
+  }
+  nest--;
+}
+
+/* ---------- Declarations ---------- */
+
+/* Parse a parameter list starting at '('. Returns the parameter count,
+ * or -1 for "()" (unspecified in a prototype, none in a definition).
+ * They are pushed as variables above the globals; an unnamed one
+ * (allowed in a prototype) has no name. */
+int parse_params(void)
+{
+  int n = 0;
+  nvars = nglobals;
+  frame_next = frame_max = 0;
+  depth = 1;
+  next();                         /* '(' */
+  if (tok == ')') {
+    next();
+    return -1;
+  }
+  for (;;) {
+    int name, type;
+    if (tok == T_ELLIPSIS)
+      error(150 /* "variable argument lists are not supported yet" */,
+            NULL);
+    if (tok == T_KEYWORD)
+      not_yet();
+    if (!is_type_start())
+      error(151 /* "expected a parameter type, not" */, tok_desc());
+    type = parse_pointers(parse_base_type());
+    if (unqual(type) == TY_VOID) {
+      if (type == TY_VOID && n == 0 && tok == ')') {
+        next();
+        return 0;           /* (void): no parameters */
+      }
+      error(152 /* "a parameter can't have type void" */, NULL);
+    }
+    if (n >= MAX_PARAMS)
+      fatal(153 /* "too many parameters" */, NULL);
+    name = -1;                  /* a prototype may leave it out */
+    if (tok == T_ID) {
+      name = tok_val;
+      next();
+    }
+    /* An array parameter is a pointer to its first element, as in
+     * C: int a[] and int a[10] are int *a, and int m[][4] is a
+     * pointer to arrays of 4 ints. */
+    type = parse_dims(type, 1);
+    if (is_array(type))
+      type = pointer_to(type_sub(type));
+    check_byval(type, 1);
+    /* ENTER puts the parameters' words in consecutive frame words,
+     * one each for a scalar (a char is then read as its low byte),
+     * and a struct's words in its own layout. Parameters are the
+     * first variables allocated, so add_local puts them there. */
+    add_local(name, type, is_struct(type) ? 2 * struct_words(type) : 2);
+    n++;
+    if (tok != ',')
+      break;
+    next();
+  }
+  expect(')', 154 /* "expected ')' after parameters, not" */);
+  return n;
+}

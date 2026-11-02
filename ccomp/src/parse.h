@@ -150,6 +150,8 @@ extern int var_type[MAX_VARS];      /* its type, qualified */
 extern int var_off[MAX_VARS];       /* frame offset, or data offset */
 extern char var_link[MAX_VARS];     /* its linkage (the VL_* bits) */
 extern int nvars, nglobals;
+extern char var_flags[MAX_VARS];  /* the depth, plus the V_* bits */
+extern int var_val[MAX_VARS];     /* its known value (V_KNOWN) */
 
 /* A global's linkage, for the symbol summary (approach.md issue 11):
  * VL_STATIC if it is local to the file, VL_USED if code or data refers
@@ -173,7 +175,12 @@ extern int depth;           /* block depth; parameters are at depth 1 */
 extern int frame_next;      /* next free frame offset */
 extern int frame_max;       /* frame size needed so far */
 extern int cur_fn;          /* the function being parsed, or -1 */
+#define MAX_NEST     32     /* nesting of parentheses and blocks */
+extern int nest;            /* nesting depth, to limit recursion */
 extern int in_params;       /* parsing a function's parameter list */
+extern int nheld;          /* left operands held back, so far */
+extern int suppress;       /* parsing code that can never run */
+extern char label_used[MAX_LABELS];  /* some branch to it so far */
 extern int nlabels;         /* labels made in the function, so far */
 extern int base_tagged;     /* parse_base_type() was a struct or enum */
 extern int want_addr;       /* a global's initializer, for an address */
@@ -193,23 +200,40 @@ int  find_cmdsys(int name);
 void declare_cmdsys(int f, int c);
 int  matches_cmdsys(int f, int c);
 int  find_var(int name);
+int  find_id(int name);
+int  typedef_type(int name);
 void check_not_id(int name);
+void check_not_var(int name);
 int  add_global(int name, int type);
+int  add_local(int name, int type, int size);
+int  add_static_local(int name, int type);
 void set_param_types(int f, int n);
 int  is_type_start(void);
 int  parse_base_type(void);
-void parse_typedef(void);
-int  parse_declarator(int base, int *name);
-int  parse_var_type(int type, int may_omit);
-void set_known(int s, int v);
-int  parse_params(void);
-void parse_block(int new_scope);
+int  parse_pointers(int t);
+const char *tag_desc(int tag);
+void need_complete(int t, int msg);
+int  new_label(void);
+void branch(int op, int n);
+void place_label(int n);
+void place_forward(int n);
+void join_label(int from, int to);
+void cond_branch(Operand *o, int n, int on_true);
+void enter_nest(void);
+int  wrap16(unsigned u);
+int  code_start(int mark, int h);
 void put(int op, int a, int f);
 void begin_expr(void);
 void end_expr(void);
 void rvalue(Operand *o);
+void discard(Operand *o);
+void to_char(Operand *o);
+void push_struct_words(Operand *o);
+void copy_struct(Operand *o, Operand *r, int start);
+int  struct_words(int t);
 void store_var(Operand *o);
 int  addr_const(Operand *o);
+int  value_type(int t);
 void parse_expr(int min_prec, Operand *o);
 void parse_skipped(int min_prec, Operand *o);
 void check_assign(int to, Operand *o, int where, const char *detail);
