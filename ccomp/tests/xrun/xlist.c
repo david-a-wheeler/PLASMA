@@ -1,12 +1,13 @@
 /* xlist.c — loops through non-integers: a chain of struct nodes,
  * whose array positions are scrambled (neither the logical order
  * nor its reverse), walked through the next pointers to the null
- * terminator, beside counted for loops that go up and go down,
- * each in its own function, against bounds passed in, not
- * constants - and chosen so that every answer line is different,
- * so no two lines can stand in for each other. The accumulator is
- * order-sensitive, so a walk in the wrong order gives the wrong
- * answer. */
+ * terminator, and also walked in physical order, forwards through
+ * array dereference and backwards through a pointer to a node,
+ * beside counted for loops that go up and go down, each in its own
+ * function, against bounds passed in, not constants, chosen so that
+ * every answer line is different, so no two lines can stand in for
+ * each other. The accumulator is order-sensitive, so a walk in the
+ * wrong order gives the wrong answer. */
 #include "ptest.h"
 
 struct node
@@ -60,6 +61,30 @@ int up(int n)
   return s;
 }
 
+/* Walk the array in physical order (the scrambled order), reading
+ * each member through the array: nodes[i].value. */
+int walk_phys(struct node *nodes, int n)
+{
+  int i;
+  int accum;
+  accum = 0;
+  for (i = 0; i < n; i++)
+    accum = 2 * accum + nodes[i].value;
+  return accum;
+}
+
+/* Walk the physical array backwards with a pointer to a node:
+ * p->value and p-- through the array of structs. */
+int walk_back(struct node *nodes, int n)
+{
+  struct node *p;
+  int accum;
+  accum = 0;
+  for (p = &nodes[n - 1]; p >= nodes; p--)
+    accum = 2 * accum + p->value;
+  return accum;
+}
+
 /* A for loop going down, bounded by n. */
 int down(int n)
 {
@@ -85,6 +110,10 @@ int main(void)
   puti(down(4));              // 10
   putln();
   puti(walk(build(small, 7))); // 247
+  putln();
+  puti(walk_phys(small, 7));  // 682
+  putln();
+  puti(walk_back(small, 7));  // 421
   putln();
   return 0;
 }
