@@ -3770,7 +3770,16 @@ issue. In summary:
     const-initialized int as a constant expression, and ccish
     enforces the C rule (error 201), so `const int c = 5; int
     arr[c + 2];` is rejected until one of those lands (the C++ form
-    is the smaller of the two). Tests follow the dialect, not C89,
+    is the smaller of the two). Function pointers are a further
+    candidate: the VM is ready (ICAL, $56, doc/Bytecodes.md: "Used
+    for function pointers"; the calling convention allows pushing the
+    function's address and using ICAL, and the address stored must be
+    the loader's entry stub, as for CALL - what FIX_FUNC already
+    resolves to), but the compiler lacks all three pieces: the
+    declarator `int (*fp)(int)` (error 92), a function's address as
+    an operand (error 63), and the call through a pointer, `fp(args)`
+    (error 24). When it lands, the cross test is to assign a pointer
+    between two functions and check which ran by its result. Tests follow the dialect, not C89,
     split by where the host compiler stands: an extension the host
     also accepts is testable in tests/xrun (the cross check is the
     gate), while a genuinely ccish-only extension can be tested only
