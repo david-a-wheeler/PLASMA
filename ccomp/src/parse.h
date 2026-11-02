@@ -230,19 +230,11 @@ void begin_expr(void);
 void end_expr(void);
 void rvalue(Operand *o);
 void discard(Operand *o);
-void to_char(Operand *o);
-void push_struct_words(Operand *o);
-void copy_struct(Operand *o, Operand *r, int start);
 int  struct_words(int t);
 void store_var(Operand *o);
 int  addr_const(Operand *o);
 int  value_type(int t);
-void parse_expr(int min_prec, Operand *o);
-void parse_skipped(int min_prec, Operand *o);
-void check_assign(int to, Operand *o, int where, const char *detail);
-void push_zero_result(int t);
 int  result_words(int t);
-void check_byval(int t, int is_param);
 void parse_program(void);
 /* For the symbol summary: function f's SYM_* flags and type hash, and
  * the number of globals and global v's flags, data offset, size, type

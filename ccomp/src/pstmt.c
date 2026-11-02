@@ -24,6 +24,7 @@
 #include "irout.h"
 #include "ptop.h"
 #include "pstmt.h"
+#include "pexpr.h"
 #define MAX_PARAMS   16
 
 #define MAX_CASES    36     /* case labels in all the switches open at once

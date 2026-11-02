@@ -2657,16 +2657,22 @@ Done in five stages on 2026-11-02, one commit each, every stage
 `make all small` + `tests/run.sh` green: the operand type to
 `parse.h` (cc2e5627); `ptop.c` split off (5b4fc587); `pstmt.c` split
 off, `cond_branch` to `parse.c` (e1c97250); `pexpr.c` split off
-(143aeacc); the docs. The measured result (after the docs stage moved the language
-overview into `ptop.c`'s header): `parse.c` 40,312 bytes, `pexpr.c`
-52,306, `pstmt.c` 28,354, `ptop.c` 26,806, `parse.h` 13,514. Two of the plan's details settled differently from the
-estimate. First, there is no `pexpr.h`: nothing calls into
-`pexpr.c` except through `parse.h`, where its exports (`parse_expr`,
-`parse_skipped`, `check_assign`, `to_char`, `copy_struct`, `discard`,
-`push_struct_words`, `push_zero_result`, `check_byval`) are declared,
-so a fourth header would have been empty; `struct_words` and
-`result_words` (listed above as pexpr's) turned out to be in E1 and
-stayed in `parse.c`. Second, the one-directional seam ran wider than
+(143aeacc); the docs (39ac15a4); then pexpr.c's exports move from
+`parse.h` into their own `pexpr.h`. The measured result (after the
+docs stage moved the language overview into `ptop.c`'s header):
+`parse.c` 40,312 bytes, `pexpr.c` 52,306, `pstmt.c` 28,354,
+`ptop.c` 26,806, `parse.h` 13,171, `pexpr.h` 1,673. Two of the
+plan's details settled differently from the estimate. First, three
+of the eleven pexpr exports listed above (`discard`, `struct_words`,
+`result_words`) turned out to be in E1 and stayed in `parse.c`,
+declared in `parse.h`; the other eight (`parse_expr`,
+`parse_skipped`, `check_assign`, `to_char`, `copy_struct`,
+`push_struct_words`, `push_zero_result`, `check_byval`) rode in
+`parse.h` first - the callers split off in stages 2 and 3 already
+included it, and the functions were still in `parse.c` then - and
+then moved to `pexpr.h`, so each parser file's exports live in its
+own header and the files that call pexpr.c include it. Second, the
+one-directional seam ran wider than
 "about 20": the expression grammar uses twenty-six of the
 machinery's functions, which lost their `static` and are declared in
 `parse.h`'s block marked "exposed for pexpr.c". The small build's

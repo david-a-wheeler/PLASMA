@@ -82,6 +82,7 @@
 #include "irout.h"
 #include "ptop.h"
 #include "pstmt.h"
+#include "pexpr.h"
 
 static int bss_next;                /* the zero-filled space so far */
 

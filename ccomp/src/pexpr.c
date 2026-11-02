@@ -25,6 +25,7 @@
 #include "irout.h"
 #include "pstmt.h"
 #include "ptop.h"
+#include "pexpr.h"
 static void parse_unary(Operand *o);
 static void parse_postfix(Operand *o);
 static void parse_sizeof(Operand *o);
