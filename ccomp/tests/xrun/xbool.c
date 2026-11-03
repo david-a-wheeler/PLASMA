@@ -21,6 +21,12 @@ int t3(int x) { return x ? 5 : 5; }
 int t4(int x) { return x ? 1 : 2; }
 int ad1(int x, int y) { y += x ? 1 : 0; return y; }
 int ad2(int x, int y) { y += x ? 0 : 1; return y; }
+int ad3(int x, int y) { y += x ? 5 : 7; return y; }
+int ad4(int x, int y) {
+  if (x > y)
+    y += x;
+  return y;
+}
 int an1(int a, int b) { return a && b; }
 int ao1(int a, int b) { return a || b; }
 
@@ -42,8 +48,11 @@ int main(void)
     puti(w16(t4(x))); putc(' ');
     puti(w16(ad1(x, 100))); putc(' ');
     puti(w16(ad2(x, 100))); putc(' ');
+    puti(w16(ad3(x, 100))); putc(' ');
+    puti(w16(ad4(x, 2))); putc(' ');
     puti(w16(an1(x, 3))); putc(' ');
     puti(w16(ao1(x, 0))); putc(' ');
+    puti(w16(ao1(x, 3))); putc(' ');
     putln();
   }
   return 0;

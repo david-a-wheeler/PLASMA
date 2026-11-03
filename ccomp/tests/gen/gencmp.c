@@ -22,13 +22,31 @@ int tadd(int x, int y) { y += x ? 1 : 0; return y; }
 int andv(int a, int b) { return a && b; }
 int orv(int a, int b)  { return a || b; }
 
+int general_eq(int a, int b)   { if (a == b) return 7; else return 5; }
+int general_ne(int a, int b)   { if (a != b) return 7; else return 5; }
+int general_isz(int a)         { if (a == 0) return 7; else return 5; }
+int general_nz(int a)          { if (a != 0) return 7; else return 5; }
+int general_3isz(int a)        { if (a == 3) return 7; else return 5; }
+int general_3nz(int a)         { if (a != 3) return 7; else return 5; }
+int general_ngt(int a, int b)  { if (!(a > b)) return 7; else return 5; }
+int general_negx(int x)        { if (-x) return 7; else return 5; }
+int general_notx(int x)        { if (!x) return 7; else return 5; }
+int general_iint(int x)        { if (x) return 7; else return 5; }
+int general_tret(int x)        { return x ? 7 : 5; }
+int general_tsw(int x)         { return x ? 5 : 7; }
+
 int main(void)
 {
   eq(1, 1);
+  eq(2, 1);
   ne(1, 1);
+  ne(2, 1);
   isz(0);
+  isz(5);
   nz(0);
+  nz(5);
   ngt(1, 1);
+  ngt(5, 1);
   negx(0);
   notx(0);
   iint(3);
@@ -37,6 +55,25 @@ int main(void)
   tsame(3);
   tadd(3, 10);
   andv(1, 1);
+  andv(7, 3);
   orv(0, 1);
+  orv(16, 1);
+
+  general_eq(1, 1);
+  general_eq(2, 1);
+  general_ne(1, 1);
+  general_ne(2, 1);
+  general_isz(0);
+  general_isz(5);
+  general_nz(0);
+  general_nz(5);
+  general_3isz(0);
+  general_3nz(0);
+  general_ngt(1, 1);
+  general_negx(0);
+  general_notx(0);
+  general_iint(3);
+  general_tret(3);
+  general_tsw(3);
   return 0;
 }
