@@ -1,0 +1,77 @@
+    ; add3
+    ENTER 2 1
+    LLW 0
+    ADDI 3
+    LEAVE 2
+
+    ; sub5
+    ENTER 2 1
+    LLW 0
+    SUBI 5
+    LEAVE 2
+
+    ; plus1
+    ENTER 2 1
+    LLW 0
+    INCR
+    LEAVE 2
+
+    ; minus1
+    ENTER 2 1
+    LLW 0
+    DECR
+    LEAVE 2
+
+    ; add255
+    ENTER 2 1
+    LLW 0
+    ADDI 255
+    LEAVE 2
+
+    ; zero
+    ENTER 2 1
+    LLW 0
+    LEAVE 2
+
+    ; sum
+    ENTER 4 2
+    LLW 0
+    ADDLW 2
+    LEAVE 4
+
+    ; dbl
+    ENTER 4 2
+    LLW 0
+    IDXLW 2
+    LEAVE 4
+
+    ; main
+    ENTER 0 0
+    CN 1
+    CALL add3
+    DROP
+    CN 1
+    CALL sub5
+    DROP
+    CN 1
+    CALL plus1
+    DROP
+    CN 1
+    CALL minus1
+    DROP
+    CN 1
+    CALL add255
+    DROP
+    CN 1
+    CALL zero
+    DROP
+    CN 1
+    CN 1
+    CALL sum
+    DROP
+    CN 1
+    CN 1
+    CALL dbl
+    DROP
+    CN 0
+    LEAVE 0

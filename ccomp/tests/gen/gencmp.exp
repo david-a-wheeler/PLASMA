@@ -1,0 +1,123 @@
+    ; eq
+    ENTER 4 2
+    LLW 0
+    LLW 2
+    BRNE 0
+    CN 1
+    LEAVE 4
+    ; label 0
+    CN 0
+    LEAVE 4
+    ; label 1
+    CN 0
+    LEAVE 4
+
+    ; ne
+    ENTER 4 2
+    LLW 0
+    LLW 2
+    BREQ 0
+    CN 1
+    LEAVE 4
+    ; label 0
+    CN 0
+    LEAVE 4
+    ; label 1
+    CN 0
+    LEAVE 4
+
+    ; isz
+    ENTER 2 1
+    LLW 0
+    BRTRU 0
+    CN 1
+    LEAVE 2
+    ; label 0
+    CN 0
+    LEAVE 2
+    ; label 1
+    CN 0
+    LEAVE 2
+
+    ; nz
+    ENTER 2 1
+    LLW 0
+    BRFLS 0
+    CN 1
+    LEAVE 2
+    ; label 0
+    CN 0
+    LEAVE 2
+    ; label 1
+    CN 0
+    LEAVE 2
+
+    ; ngt
+    ENTER 4 2
+    LLW 0
+    LLW 2
+    ISGT
+    BRTRU 0
+    CN 1
+    LEAVE 4
+    ; label 0
+    CN 0
+    LEAVE 4
+    ; label 1
+    CN 0
+    LEAVE 4
+
+    ; negx
+    ENTER 2 1
+    LLW 0
+    BRFLS 0
+    CN 1
+    LEAVE 2
+    ; label 0
+    CN 0
+    LEAVE 2
+    ; label 1
+    CN 0
+    LEAVE 2
+
+    ; notx
+    ENTER 2 1
+    LLW 0
+    BRTRU 0
+    CN 1
+    LEAVE 2
+    ; label 0
+    CN 0
+    LEAVE 2
+    ; label 1
+    CN 0
+    LEAVE 2
+
+    ; main
+    ENTER 0 0
+    CN 1
+    CN 1
+    CALL eq
+    DROP
+    CN 1
+    CN 1
+    CALL ne
+    DROP
+    CN 0
+    CALL isz
+    DROP
+    CN 0
+    CALL nz
+    DROP
+    CN 1
+    CN 1
+    CALL ngt
+    DROP
+    CN 0
+    CALL negx
+    DROP
+    CN 0
+    CALL notx
+    DROP
+    CN 0
+    LEAVE 0

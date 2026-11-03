@@ -1,0 +1,14 @@
+    ; f
+    ENTER 0 0
+    CN 5
+    DAW data +0
+    DAW data +2
+    LEAVE 0
+
+    ; main
+    ENTER 0 0
+    CALL f
+    CN 5
+    ISEQ
+    NEG
+    LEAVE 0

@@ -19,6 +19,7 @@ int src_line;
 int opt_list;
 #endif
 int opt_ir;
+int opt_dump;
 int opt_keep;
 
 /* Return base followed by suffix, in a static buffer that the next

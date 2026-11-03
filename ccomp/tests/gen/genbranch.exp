@@ -1,0 +1,58 @@
+    ; both
+    ENTER 4 2
+    LLW 0
+    BRFLS 0
+    LLW 2
+    BRFLS 0
+    CN 1
+    BRNCH 1
+    ; label 0
+    CN 0
+    ; label 1
+    LEAVE 4
+
+    ; either
+    ENTER 4 2
+    LLW 0
+    BRTRU 0
+    LLW 2
+    BRFLS 1
+    ; label 0
+    CN 1
+    BRNCH 2
+    ; label 1
+    CN 0
+    ; label 2
+    LEAVE 4
+
+    ; neither
+    ENTER 4 2
+    LLW 0
+    BRFLS 0
+    LLW 2
+    BRTRU 1
+    ; label 0
+    CN 1
+    BRNCH 2
+    ; label 1
+    CN 0
+    ; label 2
+    LEAVE 4
+
+    ; main
+    ENTER 0 0
+    CN 1
+    CN 0
+    CALL both
+    CN 0
+    CN 1
+    CALL either
+    ADD
+    CN 0
+    CN 1
+    CALL neither
+    ADD
+    CN 2
+    ISEQ
+    NEG
+    LEAVE 0

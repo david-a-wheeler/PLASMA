@@ -1,0 +1,50 @@
+    ; keep
+    ENTER 4 1
+    LLW 0
+    LEAVE 4
+
+    ; drop
+    ENTER 2 0
+    CN 3
+    LEAVE 2
+
+    ; set
+    ENTER 2 1
+    CN 7
+    LLW 0
+    SW
+    CN 0
+    LEAVE 2
+
+    ; bump
+    ENTER 2 1
+    LLW 0
+    INCR
+    LEAVE 2
+
+    ; use2
+    ENTER 4 2
+    CN 0
+    LEAVE 4
+
+    ; main
+    ENTER 2 0
+    CN 1
+    SLW 0
+    CN 1
+    CALL keep
+    DROP
+    CALL drop
+    DROP
+    LLA 0
+    CALL set
+    DROP
+    CN 1
+    CALL bump
+    DROP
+    CN 1
+    CN 2
+    CALL use2
+    DROP
+    LLW 0
+    LEAVE 2

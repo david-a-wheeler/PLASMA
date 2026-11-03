@@ -32,6 +32,8 @@
 #include "mop.h"
 #include "irin.h"
 #include "emit.h"
+#include "lower.h"
+#include "helper.h"
 
 #define MAX_RETURNS  32     /* frame-size bytes (ENTER, LEAVEs) in one
                              * function (23) */
@@ -53,6 +55,15 @@ int helper_sum[NHELPERS];
 /* The function being built (an index into fn_name[] and the other
  * function arrays), or -1. */
 static int fn = -1;
+
+/* For the listing (-d): the current function's ops, kept so they are
+ * printed when the function ends, once its frame size is known. A
+ * function has at most one op per code byte, plus a label or a join
+ * per label. */
+#define NLBUF (MAX_FUNC_CODE + 2 * MAX_LABELS)
+static Mop lbuf[NLBUF];
+static int nlbuf;
+static int nlisted;            /* functions listed so far */
 static unsigned char fbuf[MAX_FUNC_CODE];
 static int nfbuf;
 
@@ -207,8 +218,9 @@ static void branch_word(int n)
 }
 
 /* Place label n here: walk its fixup chain, giving each waiting branch
- * its offset (relative to its own operand word). */
-static void place_label(int n)
+ * its offset (relative to its own operand word). (The front end has its
+ * own place_label, in parse.c; this one is the back end's.) */
+static void patch_label(int n)
 {
   int at = label_word[n];
   if (label_placed[n])
@@ -327,25 +339,217 @@ static void end_function(int frame_size)
   fn = -1;
 }
 
+/*
+ * The listing (-d): the machine ops as the back end's final stream,
+ * one per line, after the peephole stage (the code-generation tests
+ * in tests/gen compare it against a hand-written expectation).
+ * A function's ops are kept until it ends, so ENTER and LEAVE show
+ * the frame size; a relocated word prints the name it will hold;
+ * pseudo-ops print as comments.
+ */
+
+/* The mnemonic of a real op, or NULL. */
+static const char *mnem(int op)
+{
+  switch (op) {
+  case OP_MINUS1: return "MINUS1";
+  case OP_BREQ: return "BREQ";
+  case OP_BRNE: return "BRNE";
+  case OP_LA: return "LA";
+  case OP_LLA: return "LLA";
+  case OP_CB: return "CB";
+  case OP_CW: return "CW";
+  case OP_CFFB: return "CFFB";
+  case OP_DROP: return "DROP";
+  case OP_DUP: return "DUP";
+  case OP_ADDI: return "ADDI";
+  case OP_SUBI: return "SUBI";
+  case OP_ANDI: return "ANDI";
+  case OP_ISEQ: return "ISEQ";
+  case OP_ISNE: return "ISNE";
+  case OP_ISGT: return "ISGT";
+  case OP_ISLT: return "ISLT";
+  case OP_ISGE: return "ISGE";
+  case OP_ISLE: return "ISLE";
+  case OP_BRFLS: return "BRFLS";
+  case OP_BRTRU: return "BRTRU";
+  case OP_BRNCH: return "BRNCH";
+  case OP_SEL: return "SEL";
+  case OP_CALL: return "CALL";
+  case OP_ENTER: return "ENTER";
+  case OP_LEAVE: return "LEAVE";
+  case OP_RET: return "RET";
+  case OP_LB: return "LB";
+  case OP_LW: return "LW";
+  case OP_LLB: return "LLB";
+  case OP_LLW: return "LLW";
+  case OP_LAB: return "LAB";
+  case OP_LAW: return "LAW";
+  case OP_DLB: return "DLB";
+  case OP_DLW: return "DLW";
+  case OP_SB: return "SB";
+  case OP_SW: return "SW";
+  case OP_SLB: return "SLB";
+  case OP_SLW: return "SLW";
+  case OP_SAB: return "SAB";
+  case OP_SAW: return "SAW";
+  case OP_DAB: return "DAB";
+  case OP_DAW: return "DAW";
+  case OP_NOT: return "NOT";
+  case OP_ADD: return "ADD";
+  case OP_SUB: return "SUB";
+  case OP_MUL: return "MUL";
+  case OP_DIV: return "DIV";
+  case OP_MOD: return "MOD";
+  case OP_INCR: return "INCR";
+  case OP_DECR: return "DECR";
+  case OP_NEG: return "NEG";
+  case OP_COMP: return "COMP";
+  case OP_AND: return "AND";
+  case OP_IOR: return "IOR";
+  case OP_XOR: return "XOR";
+  case OP_SHL: return "SHL";
+  case OP_SHR: return "SHR";
+  case OP_IDXW: return "IDXW";
+  case OP_BRGT: return "BRGT";
+  case OP_BRLT: return "BRLT";
+  case OP_INCBRLE: return "INCBRLE";
+  case OP_ADDBRLE: return "ADDBRLE";
+  case OP_DECBRGE: return "DECBRGE";
+  case OP_SUBBRGE: return "SUBBRGE";
+  case OP_ADDLB: return "ADDLB";
+  case OP_ADDLW: return "ADDLW";
+  case OP_ADDAB: return "ADDAB";
+  case OP_ADDAW: return "ADDAW";
+  case OP_IDXLB: return "IDXLB";
+  case OP_IDXLW: return "IDXLW";
+  case OP_IDXAB: return "IDXAB";
+  case OP_IDXAW: return "IDXAW";
+  }
+  return NULL;
+}
+
+/* The name of what a relocated word operand will hold, after the
+ * mnemonic, or the operand itself if it needs no relocation. A data
+ * symbol prints its index: the IR carries names for functions only.
+ */
+static void list_word(Mop *m)
+{
+  if (m->fix == FIX_NONE) {
+    printf(" %d", m->a);
+  } else if (m->fix == FIX_FUNC) {
+    printf(" %s", func_name(m->fn));
+  } else if (m->fix == FIX_HELPER) {
+    printf(" %s", helper_name(m->fn));
+  } else if (m->fix == FIX_DSYM || m->fix == FIX_HEAP) {
+    printf(" var %d", m->fn);
+    if (m->a)
+      printf(" +%d", m->a);
+  } else if (m->fix == FIX_DATA) {
+    printf(" data +%d", m->a);
+  } else {
+    printf(" str +%d", m->a);
+  }
+}
+
+/* Print one op of a function's listing; frame is its size. */
+static void list_op(Mop *m, int frame)
+{
+  int v;
+  switch (m->op) {
+  case OP_LABEL:
+    printf("    ; label %d\n", m->a);
+    return;
+  case OP_JOIN:
+    printf("    ; join %d to %d\n", m->a, m->fn);
+    return;
+  case OP_CASES:
+    printf("    ; cases %d\n", m->a);
+    return;
+  case OP_CASEVAL:
+    printf("    ; case %d", m->a);
+    return;
+  case OP_CASETO:
+    printf(" -> %d\n", m->a);
+    return;
+  }
+  if (m->op < 0x20 && !(m->op & 1)) {
+    printf("    CN %d\n", m->op / 2);
+    return;
+  }
+  printf("    %s", mnem(m->op));
+  switch (m->op) {
+  case OP_ENTER:
+    printf(" %d %d\n", m->a == FRAME_LATER ? frame : m->a, m->fn);
+    return;
+  case OP_LEAVE:
+    printf(" %d\n", m->a == FRAME_LATER ? frame : m->a);
+    return;
+  case OP_CB: case OP_CFFB: case OP_ANDI: case OP_ADDI: case OP_SUBI:
+    printf(" %d\n", m->a);
+    return;
+  case OP_LLA: case OP_LLB: case OP_LLW: case OP_DLB: case OP_DLW:
+  case OP_SLB: case OP_SLW:
+    printf(" %d\n", m->a);
+    return;
+  case OP_CW: case OP_LA: case OP_CALL: case OP_LAB: case OP_LAW:
+  case OP_SAB: case OP_SAW: case OP_DAB: case OP_DAW:
+    list_word(m);
+    break;
+  case OP_BRNCH: case OP_BRFLS: case OP_BRTRU: case OP_BREQ:
+  case OP_BRNE: case OP_SEL: case OP_BRGT: case OP_BRLT:
+  case OP_INCBRLE: case OP_ADDBRLE: case OP_DECBRGE: case OP_SUBBRGE:
+    printf(" %d", m->a);
+    break;
+  default:
+    if (m->op >= OP_ADDLB && m->op <= OP_IDXAW) {
+      if (m->op & 4)      /* the absolute-address form */
+        list_word(m);
+      else
+        printf(" %d", m->a);
+    } else if (m->fix == FIX_NONE && mop_const_value(m, &v))
+      printf(" %d", v);
+  }
+  printf("\n");
+}
+
+/* Print the listing of the function just ended: its name, then its
+ * ops, with frame its frame size. */
+static void list_fn(int frame)
+{
+  int i;
+  if (nlisted++)
+    printf("\n");
+  printf("    ; %s\n", func_name(fn));
+  for (i = 0; i < nlbuf; i++)
+    list_op(&lbuf[i], frame);
+  nlbuf = 0;
+}
+
 /* Stage 4's entry: encode one machine op into the function buffer. The
  * pseudo-ops start a function, or end it and write it out. */
 void emit_put(Mop *m)
 {
   int i, op;
+  if (opt_dump && m->op != OP_FUNC_BEGIN && m->op != OP_FUNC_END
+      && nlbuf < NLBUF)
+    lbuf[nlbuf++] = *m;
   switch (m->op) {
   case OP_FUNC_BEGIN:
     fn = m->fn;
-    nfbuf = nrelocs = nframe = ntemp = temp_words = 0;
+    nfbuf = nrelocs = nframe = ntemp = temp_words = nlbuf = 0;
     for (i = 0; i < MAX_LABELS; i++) {
       label_word[i] = NO_LINK;
       label_placed[i] = 0;
     }
     return;
   case OP_FUNC_END:
+    if (opt_dump)
+      list_fn(m->a);
     end_function(m->a);
     return;
   case OP_LABEL:
-    place_label(m->a);
+    patch_label(m->a);
     return;
   case OP_JOIN:
     join_labels(m->a, m->fn);

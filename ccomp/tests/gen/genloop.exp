@@ -1,0 +1,74 @@
+    ; total
+    ENTER 6 1
+    CN 0
+    SLW 4
+    LLW 0
+    CN 0
+    BRNCH 1
+    ; label 0
+    DLW 2
+    LLW 4
+    ADDLW 2
+    SLW 4
+    INCR
+    ; label 1
+    BRLT 0
+    DROP
+    DROP
+    LLW 4
+    LEAVE 6
+
+    ; up3
+    ENTER 6 1
+    CN 0
+    SLW 4
+    LLW 0
+    CN 0
+    BRNCH 1
+    ; label 0
+    DLW 2
+    LLW 4
+    ADDLW 2
+    SLW 4
+    ADDI 3
+    ; label 1
+    BRLT 0
+    DROP
+    DROP
+    LLW 4
+    LEAVE 6
+
+    ; down2
+    ENTER 6 1
+    CN 0
+    SLW 4
+    CN 0
+    LLW 0
+    BRNCH 1
+    ; label 0
+    DLW 2
+    LLW 4
+    ADDLW 2
+    SLW 4
+    SUBI 2
+    ; label 1
+    BRGT 0
+    DROP
+    DROP
+    LLW 4
+    LEAVE 6
+
+    ; main
+    ENTER 0 0
+    CN 9
+    CALL up3
+    DROP
+    CN 9
+    CALL down2
+    DROP
+    CN 4
+    CALL total
+    CN 6
+    ISEQ
+    NEG
+    LEAVE 0

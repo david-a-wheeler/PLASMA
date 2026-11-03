@@ -1,0 +1,18 @@
+    ; pick
+    ENTER 2 1
+    LLW 0
+    BRFLS 0
+    CN 1
+    LEAVE 2
+    ; label 0
+    CN 2
+    LEAVE 2
+
+    ; main
+    ENTER 0 0
+    CN 0
+    CALL pick
+    CN 2
+    ISEQ
+    NEG
+    LEAVE 0

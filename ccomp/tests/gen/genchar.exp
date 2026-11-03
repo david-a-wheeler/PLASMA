@@ -1,0 +1,29 @@
+    ; letter
+    ENTER 1 0
+    CB 65
+    ANDI 255
+    LEAVE 1
+
+    ; ch
+    ENTER 1 0
+    CB 65
+    ANDI 255
+    LEAVE 1
+
+    ; mask
+    ENTER 2 1
+    LLB 0
+    ANDI 63
+    LEAVE 2
+
+    ; main
+    ENTER 0 0
+    CALL letter
+    DROP
+    CALL ch
+    DROP
+    CB 97
+    CALL mask
+    DROP
+    CN 0
+    LEAVE 0

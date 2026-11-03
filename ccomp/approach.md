@@ -3785,6 +3785,49 @@ issue. In summary:
     gate), while a genuinely ccish-only extension can be tested only
     in tests/run, against hand-written expected output; we will try
     to keep such host-incompatible extensions few.
+30. **Code-generation tests: ccish -d and tests/gen** (2026-11-02).
+    The user: "beef up the tests of existing features ... so that we
+    can detect if an optimization broke something ... for
+    optimization we should probably also write some very small
+    functions and verify their exact final generated opcodes (to
+    verify that in fact the optimizer *did* implement the correct
+    optimization)." Mechanism: ccgen gained a -d flag (opt_dump,
+    always built) that prints the machine ops as the back end's final
+    stream, after the peephole stage: one op per line, a function
+    header and a blank line between functions, labels and joins as
+    comments, a SEL's case table as comments, and a relocated word's
+    name (a function or helper by name, a data symbol by index, the
+    IR carries names for functions only). A function's ops are
+    buffered (lbuf, 10K) and printed at its end, so ENTER and LEAVE
+    show the frame size. This is distinct from the existing -l
+    (ccrel's listing of the linked module, with addresses and bytes,
+    defined by build.h's CCISH_LISTING; the run tests' // listing-*
+    directives check it). tests/gen/NAME.c plus NAME.exp: the .exp is
+    the whole -d listing, written by hand from the source and the
+    peep patterns (src/peep.c's header lists them), and run.sh
+    diffs them exactly, requires no compiler messages, and runs the
+    module; the small build must write the same objects and module
+    for the gen tests as the full build. Coverage of peep.c's
+    rewrites, by test: DLW-DROP-to-SLW, SLW-LLW-to-DLW (both
+    directions, incl. SAW-LAW-to-DAW), dead stores at LEAVE (SLW-to-
+    DROP, DLW-gone, DLB-to-ANDI-255), DUP-update-store-DROP, expr-
+    DROP, CN-0-ADD-gone, CN-1-to-INCR/DECR, const-to-ADDI/SUBI,
+    LLW-ADD/IDXW-to-ADDLW/IDXLW, ISEQ/ISNE-to-BREQ/BRNE, CN-0-
+    BREQ/BRNE-to-BRFLS/BRTRU, NEG-BRFLS, NOT-ANDI-1-to-the-opposite
+    test, Bcond-L-BRNCH-T-to-Binv-T (genbranch.neither), CN-2/3/0/1-
+    MUL, 2^n-MUL-to-SHL (genmul), const-AND-to-ANDI (genchar),
+    counted branches BRLT and BRGT (genloop), and the dead code
+    after a return (gendead). genadd's dbl also exercises DUP-ADD-
+    ADD-to-IDXW, though it fuses on to IDXLW before the line is
+    final. Not reachable from C source (recorded, not failures):
+    the const-OP-const and const-NEG/COMP backstops (the parser
+    folds first), the PLASMA-for fusions INCBRLE, ADDBRLE, DECBRGE
+    and SUBBRGE (C's for lowers to a counted test branch plus a
+    plain ADDI or SUBI), and the bare BRNCH-to-the-very-next-op form
+    of the label pattern. The constant-address load/store rewrite
+    (CW addr LB/LW/SB/SW to the absolute form) is covered by
+    tests/run/speaker.c's listing-has: LAB $C030, since a C global
+    lowers straight to the absolute op.
 
 
 ## Milestones

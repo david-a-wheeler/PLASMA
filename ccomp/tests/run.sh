@@ -33,7 +33,14 @@
 # every function must have a comment (tests/check_comments.sh). The
 # small build (ccpp-small, cccomp-small, ccgen-small, ccrel-small) must
 # write the same token streams, objects and modules as the full build,
-# for every run test and link test.
+# for every run, cross and code-generation test.
+# tests/gen/NAME.c       code-generation test: ccish -d (the machine
+#                        ops after the peephole stage, one per line,
+#                        with a relocated word's name) must equal
+#                        tests/gen/NAME.exp exactly, which is written
+#                        by hand from the source and the peep patterns
+#                        (src/peep.c, whose header lists them); the
+#                        module must also run under plvm.
 # tests/pp/NAME.c        ccpp's output, NAME.i and NAME.nam, must equal
 #                        tests/pp/NAME.tok (the bytes of NAME.i in hex,
 #                        "#" starting a comment) and tests/pp/NAME.nam,
@@ -150,6 +157,36 @@ for src in tests/run/*.c; do
     elif ! problems=$(check_stderr "$src" "$OUT/$name.err"); then
         echo "FAIL $src: compiler messages (see $OUT/$name.err):"
         echo "$problems"
+        fail=$((fail + 1))
+    else
+        pass=$((pass + 1))
+    fi
+done
+
+# Code-generation tests (tests/gen): see the header.
+for src in tests/gen/*.c; do
+    name=$(basename "$src" .c)
+    mod=$(echo "$name" | tr 'A-Z' 'a-z')
+    if ! "$CCISH" -d -o "$OUT/$mod" "$src" >"$OUT/$name.lst" 2>"$OUT/$name.err"; then
+        echo "FAIL $src: compile error"
+        sed 's/^/    /' "$OUT/$name.err"
+        fail=$((fail + 1))
+        continue
+    fi
+    if [ -s "$OUT/$name.err" ]; then
+        echo "FAIL $src: compiler messages:"
+        sed 's/^/    /' "$OUT/$name.err"
+        fail=$((fail + 1))
+        continue
+    fi
+    if ! cmp -s "$OUT/$name.lst" "tests/gen/$name.exp"; then
+        echo "FAIL $src: generated code differs (expected, then actual):"
+        sed 's/^/    E /' "tests/gen/$name.exp"
+        echo "    ---"
+        sed 's/^/    A /' "$OUT/$name.lst"
+        fail=$((fail + 1))
+    elif ! (cd "$OUT" && timeout 10 "$PLVM" "$mod" >/dev/null 2>&1); then
+        echo "FAIL $src: the module would not run"
         fail=$((fail + 1))
     else
         pass=$((pass + 1))
@@ -577,6 +614,24 @@ for src in tests/xrun/*.c; do
        || ! cmp -s "$OUT/full_$mod.syms" "$OUT/small_$mod.syms" \
        || ! ./ccrel-small "$OUT/small_$mod" 2>/dev/null \
        || ! cmp -s "$OUT/small_$mod" "$OUT/xc_$mod"; then
+        echo "FAIL $src: the small build doesn't write the full build's" \
+             "object and module"
+        small_bad=1
+    fi
+    rm -f "$OUT/full_$mod.obj" "$OUT/full_$mod.syms" \
+          "$OUT/small_$mod.obj" "$OUT/small_$mod.syms"
+done
+# ...and for every code-generation test, against the modules the
+# gen loop left in $OUT.
+for src in tests/gen/*.c; do
+    name=$(basename "$src" .c)
+    mod=$(echo "$name" | tr 'A-Z' 'a-z')
+    if ! cc_obj "" "$OUT/full_$mod" "$src" 2>/dev/null \
+       || ! cc_obj -small "$OUT/small_$mod" "$src" 2>/dev/null \
+       || ! cmp -s "$OUT/full_$mod.obj" "$OUT/small_$mod.obj" \
+       || ! cmp -s "$OUT/full_$mod.syms" "$OUT/small_$mod.syms" \
+       || ! ./ccrel-small "$OUT/small_$mod" 2>/dev/null \
+       || ! cmp -s "$OUT/small_$mod" "$OUT/$mod"; then
         echo "FAIL $src: the small build doesn't write the full build's" \
              "object and module"
         small_bad=1

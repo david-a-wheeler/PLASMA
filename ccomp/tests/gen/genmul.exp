@@ -1,0 +1,62 @@
+    ; m2
+    ENTER 2 1
+    LLW 0
+    DUP
+    ADD
+    LEAVE 2
+
+    ; m3
+    ENTER 2 1
+    LLW 0
+    DUP
+    IDXW
+    LEAVE 2
+
+    ; m0
+    ENTER 2 1
+    LLW 0
+    DROP
+    CN 0
+    LEAVE 2
+
+    ; m1
+    ENTER 2 1
+    LLW 0
+    LEAVE 2
+
+    ; m16
+    ENTER 2 1
+    LLW 0
+    CN 4
+    SHL
+    LEAVE 2
+
+    ; m1024
+    ENTER 2 1
+    LLW 0
+    CN 10
+    SHL
+    LEAVE 2
+
+    ; main
+    ENTER 0 0
+    CN 1
+    CALL m2
+    DROP
+    CN 1
+    CALL m3
+    DROP
+    CN 1
+    CALL m0
+    DROP
+    CN 1
+    CALL m1
+    DROP
+    CN 1
+    CALL m16
+    DROP
+    CN 1
+    CALL m1024
+    DROP
+    CN 0
+    LEAVE 0
