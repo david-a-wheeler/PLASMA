@@ -17,7 +17,7 @@
 // listing-lacks: ENTER
 // listing-lacks: LEAVE
 // listing-lacks: CW $C0
-// listing-count: 6 RET
+// listing-count: 4 RET
 volatile char *const SPEAKER = (volatile char *)0xC030;
 volatile char *const KEYBOARD = (volatile char *)0xC000;
 

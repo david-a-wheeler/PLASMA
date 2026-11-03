@@ -3829,6 +3829,67 @@ issue. In summary:
     tests/run/speaker.c's listing-has: LAB $C030, since a C global
     lowers straight to the absolute op.
 
+31. **Truth runs: an if whose arms return constants is a value**
+    (2026-11-03).
+    The user: "the optimizer could produce a much simpler sequence" —
+    gencmp's eq was twelve lines of branch code for what is the
+    condition's truth. Generalized, the rule: an if whose arms both
+    return constants, in either order,
+    cond BRFALSE L0  CONST k1  RETURN  JUMP E  LABEL L0  CONST k2
+    RETURN
+    or the same without the JUMP when the if's other arm falls out,
+    or a ternary whose arms end in a branch to the expression's end
+    instead of returns,
+    cond BRFALSE L0  CONST k1  JUMP L2  LABEL L0  CONST k2  [JUMP
+    L2]  LABEL L2
+    is the condition's truth: the arms pick out 1 and 0, or both the
+    same k. The run rewrites to the value it computes, dropping the
+    branch, labels and arms: equal arms become DROP CONST k1 (the
+    condition still runs, for its side effects); 1-then-0 the
+    condition, already 0 or 1 when it ends in a comparison or C's !
+    (PLASMA's NOT is logical, $FFFF or 1 for a zero operand, so NOT
+    then AND 1 is C's ! for every int, verified against the host
+    compiler), else boolified, CONST 0 NE; 0-then-1 the negation,
+    NOT or CONST 0 EQ. In the if spelling the run's RETURN is kept,
+    so the implicit return the parser appends after it is dead code
+    for the peephole stage; in the ternary spelling the value stays
+    on the stack for whatever follows the expression (y += x ? 1 : 0
+    is LLW y, <x>, CN 0, ISNE, NEG, ADD). A JUMP's label, or the
+    ternary's end label, is eaten with the run when nothing else
+    references it, so it is no barrier for that dead code either.
+    The runs are fixed suffixes, matched against the hold buffer's
+    tail as each op is held: the if spelling defers a step, so the
+    end label after its core may still be eaten. Implemented in
+    irin.c's existing hold-and-lower machinery (no new file), beside
+    the SWAP and unsigned-rewrite passes; a label is rewritable only
+    when it is referenced, through the held JOINs, exactly by the
+    run's own branches (lab_cnt[] the lowered branches, buf_cnt[] the
+    held ones, target_of[] the JOIN re-pointings, a label joined at
+    most once, parse.c's join_label consuming it), which keeps the
+    rewrite off short-circuit values: a && b branches to the same
+    false label twice, and a || b's end label has its own two
+    references. Guards found by probes, not review: the arm check
+    (run_ok, equal or 1-0 or 0-1) was missing from three of the four
+    shapes, and run_do's last branch assumed 1-0, so c ? 'Y' : 'N'
+    (arms 89 and 78) was "rewritten" to the condition's truth:
+    logical_flow's Y/N lines became NUL and SOH bytes and
+    pointers.c's p ? 1 : 2 printed 0. Not generalized further,
+    recorded: arbitrary arm constants (branchless would need a MUL,
+    a sixteen-step loop on the 6502 VMs), return-x and return-y
+    arms (the ternary is inherently branch-based; the op set has no
+    branchless value select), and De Morgan's flip (a NOT after a
+    comparison becomes the opposite comparison: ngt would gain ISLE
+    NEG over ISGT NEG NOT ANDI 1, but the flip on its own regresses
+    the branch-only case, ISLE NEG BRFALSE is three ops where the
+    peephole's ISGT BRTRU is two; a flip-before-the-run special case
+    is the refinement). Tests: gencmp grew the shapes, including
+    andv and orv, the shared-label values that must keep their
+    branches; xbool.c cross-checks the semantics against the host
+    compiler (boolifying, negation, equal arms, non-truth arms
+    keeping the branch, the ternary flowing into a use, short-
+    circuit values); branches.c and speaker.c's listing assertions
+    now state the branch-free form.
+
 
 ## Milestones
 

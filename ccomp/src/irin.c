@@ -437,6 +437,35 @@ static void lower_unsigned(int op, int how)
   lower_op(op, 0, -1);
 }
 
+/* Label reference counts, by the target a branch names: lab_cnt[]
+ * counts the branches that have been lowered (gone from the hold
+ * buffer), buf_cnt[] the branches still held, and lab_placed[] the
+ * labels whose LABEL op has been lowered. A JOIN, which re-points the
+ * branches so far to its a at its f (a label joined at most once,
+ * parse.c's join_label), is noted in target_of[] when held, and
+ * followed to the end where a count is wanted. The truth runs'
+ * lab_clean (below) reads all of this. */
+static int lab_cnt[MAX_LABELS];
+static int buf_cnt[MAX_LABELS];
+static int target_of[MAX_LABELS]; /* a JOIN's a now goes to its f */
+static char lab_placed[MAX_LABELS];
+
+/* Count a label's references as its ops are lowered: branches
+ * accumulate in lab_cnt[], and the op leaves the hold buffer, so
+ * buf_cnt[] loses it; a LABEL places its label and resets the
+ * counts. A JOIN's re-pointing is noted when it is held. */
+static void lab_count(int op, int a)
+{
+  if (IR_REFS_LABEL(op)) {
+    lab_cnt[a]++;
+    buf_cnt[a]--;
+  } else if (op == IR_LABEL) {
+    lab_cnt[a] = 0;
+    buf_cnt[a] = 0;
+    lab_placed[a] = 1;
+  }
+}
+
 /* Lower the oldest n held ops (or one more, if a SWAP takes the op
  * after it), keeping the rest. A SWAP is never lowered before it has
  * been decided, with the op after it held. */
@@ -465,6 +494,8 @@ static void lower_held(int n)
     } else if (buf_a[i] == SW_EXCHANGE) {
       lower_op(IR_SWAP, buf_f[i], -1);
     }
+    if (op != IR_SWAP)
+      lab_count(op, buf_a[i]);
     i++;
   }
   for (j = i; j < nbuf; j++) {
@@ -474,6 +505,182 @@ static void lower_held(int n)
     buf_pre[j - i] = buf_pre[j];
   }
   nbuf -= i;
+}
+
+/*
+ * The truth runs (approach.md, decision 31). An if whose arms both
+ * return constants, in either order,
+ *   cond BRFALSE L0  CONST k1  RETURN  JUMP E  LABEL L0  CONST k2
+ *   RETURN
+ * or the same without the JUMP when the if's other arm falls out,
+ * or a ternary whose arms end in a branch to the ternary's end
+ * instead of returns,
+ *   cond BRFALSE L0  CONST k1  JUMP L2  LABEL L0  CONST k2  [JUMP
+ *   L2]  LABEL L2
+ * is the condition's truth: the arms pick out 1 and 0, or both the
+ * same k. The run rewrites to the value it computes, dropping the
+ * branch, labels and arms (lower_held's nbuf and the lab_* below
+ * stay in step):
+ *   k1 == k2:  DROP CONST k1
+ *   1, then 0: the condition, already 0 or 1 when it ends in a
+ *              comparison or C's ! (the lowering masks that to 0
+ *              or 1), else boolified: CONST 0 NE
+ *   0, then 1: its negation: NOT, or CONST 0 EQ
+ * In the if spelling the run's RETURN is kept, so the implicit
+ * return the parser appends after it is dead code for the peephole
+ * stage; in the ternary spelling the value stays on the stack for
+ * whatever follows the expression. A JUMP's label, or the ternary's
+ * end label, is eaten with the run when nothing else references it,
+ * so it is no barrier for that dead code either. The runs are fixed
+ * suffixes, matched against the hold buffer's tail as each op is
+ * held; the if spelling defers a step, so the end label after its
+ * core may still be eaten. The front end's invariant that all the
+ * branches to a label come before the label (parse.c's
+ * place_forward) makes the reference counts complete (lab_count,
+ * above lower_held).
+ */
+
+/* The pending core of an if-spelling run: buf[rp_s] holds its seven
+ * ops, and the next op held may be the JUMP's label, eaten with the
+ * run. */
+static int rp_on, rp_s, rp_k1, rp_k2, rp_ret, rp_e;
+
+/* Are k1 then k2 the arms the run rewrites: equal arms, or the two
+ * truth values in either order? */
+static int run_ok(int k1, int k2)
+{
+  return k1 == k2 || (k1 == 0 && k2 == 1) || (k1 == 1 && k2 == 0);
+}
+
+/* Is the value a run tests, whose last op is held just before the
+ * run at s, already 0 or 1: a comparison, or C's !? */
+static int bool_at(int s)
+{
+  int op = s > 0 ? buf_op[s - 1] : -1;
+  return (op >= IR_EQ && op <= IR_GE) || op == IR_NOT;
+}
+
+/* Where a branch to label x goes, through the held JOINs. */
+static int lab_final(int x)
+{
+  while (target_of[x] != x)
+    x = target_of[x];
+  return x;
+}
+
+/* Is label x referenced, through the JOINs, exactly by the own
+ * branches of a run, none of them lowered? A label shared with a
+ * short-circuit condition's branches (a && b branches to the same
+ * false label twice) fails this. */
+static int lab_clean(int x, int own)
+{
+  int i, n = 0;
+  if (lab_placed[x])
+    return 0;
+  for (i = 0; i < MAX_LABELS; i++)
+    if (lab_final(i) == x)
+      n += lab_cnt[i] + buf_cnt[i];
+  return n == own;
+}
+
+/* Rewrite the len-op run at buf[s] to the value it computes: sp 1
+ * when its arms end in RETURN (kept, with its a, the words
+ * returned), 0 when in a branch to the end. The run's own branches
+ * leave the buffer, so buf_cnt[] loses them before the rewrite.
+ * Lowers what is decidable, the whole buffer. */
+static void run_do(int s, int len, int sp, int k1, int k2, int ret)
+{
+  int o[3][3], m = 0, i;
+  if (!run_ok(k1, k2))      /* the callers gate this; be sure */
+    { lower_held(nbuf); return; }
+  for (i = 0; i < len; i++)
+    if (IR_REFS_LABEL(buf_op[s + i]))
+      buf_cnt[buf_a[s + i]]--;
+  if (k1 == k2) {
+    o[m][0] = IR_DROP;  o[m][1] = 0;  o[m][2] = -1;  m++;
+    o[m][0] = IR_CONST; o[m][1] = k1; o[m][2] = -1;  m++;
+  } else if (k1 == 0) {            /* k2 is 1: the value is !cond */
+    if (bool_at(s)) {
+      o[m][0] = IR_NOT; o[m][1] = 0; o[m][2] = -1;  m++;
+    } else {
+      o[m][0] = IR_CONST; o[m][1] = 0; o[m][2] = -1;  m++;
+      o[m][0] = IR_EQ;    o[m][1] = 0; o[m][2] = -1;  m++;
+    }
+  } else {                         /* k1 is 1, k2 is 0: the value is
+                                    * cond */
+    if (!bool_at(s)) {
+      o[m][0] = IR_CONST; o[m][1] = 0; o[m][2] = -1;  m++;
+      o[m][0] = IR_NE;    o[m][1] = 0; o[m][2] = -1;  m++;
+    }
+  }
+  if (sp) {
+    o[m][0] = IR_RETURN; o[m][1] = ret; o[m][2] = -1;  m++;
+  }
+  for (i = 0; i < m; i++) {
+    buf_op[s + i] = (char)o[i][0];
+    buf_a[s + i] = o[i][1];
+    buf_f[s + i] = o[i][2];
+    buf_pre[s + i] = 0;
+  }
+  nbuf = s + m;
+  lower_held(nbuf);
+}
+
+/* Match the hold buffer's tail against a truth run and act on it: the
+ * if spelling's core sets the pending step for its end label, the
+ * other shapes rewrite at once. */
+static void run_match(void)
+{
+  int n = nbuf, s, l0, k1, k2;
+  if (n < 6)
+    return;
+  if (buf_op[n - 1] == IR_RETURN && buf_op[n - 2] == IR_CONST
+      && buf_op[n - 3] == IR_LABEL) {
+    l0 = buf_a[n - 3];
+    k2 = buf_a[n - 2];
+    if (n > 6 && buf_op[n - 7] == IR_BRFALSE && buf_a[n - 7] == l0
+        && buf_op[n - 6] == IR_CONST && buf_op[n - 5] == IR_RETURN
+        && buf_op[n - 4] == IR_JUMP) {
+      /* cond BRFALSE L0 C1 RETURN JUMP E LABEL L0 C2 RETURN */
+      k1 = buf_a[n - 6];
+      if (run_ok(k1, k2) && lab_clean(l0, 1)) {
+        rp_on = 1;
+        rp_s = n - 7;
+        rp_k1 = k1;
+        rp_k2 = k2;
+        rp_ret = buf_a[n - 5];
+        rp_e = buf_a[n - 4];
+      }
+    } else if (buf_op[n - 4] == IR_RETURN && buf_op[n - 5] == IR_CONST
+               && buf_op[n - 6] == IR_BRFALSE && buf_a[n - 6] == l0
+               && run_ok(buf_a[n - 5], k2) && lab_clean(l0, 1)) {
+      /* cond BRFALSE L0 C1 RETURN LABEL L0 C2 RETURN */
+      run_do(n - 6, 6, 1, buf_a[n - 5], k2, buf_a[n - 4]);
+    }
+  } else if (n > 7 && buf_op[n - 1] == IR_LABEL && buf_op[n - 2] == IR_JUMP
+             && buf_a[n - 2] == buf_a[n - 1] && buf_op[n - 3] == IR_CONST
+             && buf_op[n - 4] == IR_LABEL && buf_op[n - 5] == IR_JUMP
+             && buf_a[n - 5] == buf_a[n - 1] && buf_op[n - 6] == IR_CONST
+             && buf_op[n - 7] == IR_BRFALSE
+             && buf_a[n - 7] == buf_a[n - 4]
+             && run_ok(buf_a[n - 6], buf_a[n - 3])
+             && lab_clean(buf_a[n - 4], 1)
+             && lab_clean(buf_a[n - 1], 2)) {
+    /* cond BRFALSE L0 C1 JUMP L2 LABEL L0 C2 JUMP L2 LABEL L2 */
+    s = n - 8;
+    run_do(s, 8, 0, buf_a[n - 6], buf_a[n - 3], 0);
+  } else if (n > 5 && buf_op[n - 1] == IR_LABEL && buf_op[n - 2] == IR_CONST
+             && buf_op[n - 3] == IR_LABEL && buf_op[n - 4] == IR_JUMP
+             && buf_a[n - 4] == buf_a[n - 1] && buf_op[n - 5] == IR_CONST
+             && buf_op[n - 6] == IR_BRFALSE
+             && buf_a[n - 6] == buf_a[n - 3]
+             && run_ok(buf_a[n - 5], buf_a[n - 2])
+             && lab_clean(buf_a[n - 3], 1)
+             && lab_clean(buf_a[n - 1], 1)) {
+    /* cond BRFALSE L0 C1 JUMP L2 LABEL L0 C2 LABEL L2 */
+    s = n - 6;
+    run_do(s, 7, 0, buf_a[n - 5], buf_a[n - 2], 0);
+  }
 }
 
 /* Rewrite unsigned op *op (IR_UDIV, IR_UMOD or IR_USHR) on a constant
@@ -516,6 +723,13 @@ static int unsigned_const(int *op)
  * chosen now (in a). The end of a function lowers all. */
 static void hold(int op, int a, int f)
 {
+  if (rp_on) {
+    int eat = op == IR_LABEL && a == rp_e && lab_clean(rp_e, 1);
+    rp_on = 0;
+    run_do(rp_s, 7, 1, rp_k1, rp_k2, rp_ret);
+    if (eat)
+      return;
+  }
   if (nbuf > 0 && buf_op[nbuf - 1] == IR_SWAP
       && buf_a[nbuf - 1] == SW_PENDING)
     decide(nbuf - 1, op);
@@ -562,6 +776,11 @@ static void hold(int op, int a, int f)
   buf_f[nbuf] = f;
   buf_pre[nbuf] = 0;
   nbuf++;
+  if (IR_REFS_LABEL(op))
+    buf_cnt[a]++;
+  else if (op == IR_JOIN)
+    target_of[a] = f;
+  run_match();
   if (op == IR_ENDFUNC)
     lower_held(nbuf);
 }
@@ -1248,8 +1467,13 @@ static void do_op(int op, int a, int f)
   if (op == IR_FUNC) {
     in_func = 1;
     nwritten++;
-    for (i = 0; i < MAX_LABELS; i++)
+    for (i = 0; i < MAX_LABELS; i++) {
       lab_ref[i] = 0;
+      lab_cnt[i] = 0;
+      buf_cnt[i] = 0;
+      target_of[i] = i;
+      lab_placed[i] = 0;
+    }
     for (i = 0; i < 32; i++)
       addr_taken[i] = 0;
   } else if (op == IR_ENDFUNC) {
