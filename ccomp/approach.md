@@ -3995,16 +3995,20 @@ issue. In summary:
     a forward goto reserves the label, its ':' defines it, a second
     ':' is an error, and the function's end rejects a target never
     defined.
-    The one ccgen rule: a counted loop keeps its limit and count
-    under its body, so its body may hold neither a goto (a jump
-    that would leave them) nor a goto label (a target a goto could
-    fall into, on the wrong stack); body_ok rejects IR_JUMP to a
-    goto label and IR_LABEL in the block, and such a loop takes the
-    plain form (decision 33's argument: no loop layout keeps values
-    under a held body). A goto loop (top; ...; goto top) is never
-    counted, and an if (cond) goto lowers to the if's ordinary
-    branch to a skip label plus the goto's IR_JUMP, so only the
-    IR_JUMP and the IR_LABEL need the check. Tests, per the rule,
+    The one ccgen rule, applied on purpose: a counted loop runs its
+    body with its limit and count on the stack under it, so every way
+    into the body must leave them there. A label in the body is a way
+    in, and a forward goto can reach it from before the loop, where
+    the limit and count are absent and the stack's depth is unknown,
+    so they cannot be placed; and a goto that jumps out of the body
+    skips the loop's drops, leaving the limit and count behind. So
+    body_ok rejects a goto (an IR_JUMP to a goto label) and a goto
+    label (an IR_LABEL in the block), and such a loop takes the plain
+    form. This only switches off the counted optimization: gotos and
+    labels always work in a function. A goto loop (top; ...; goto
+    top) is never counted, and an if (cond) goto lowers to the if's
+    ordinary branch to a skip label plus the goto's IR_JUMP, so only
+    the IR_JUMP and the IR_LABEL need the check. Tests, per the rule,
     pin the form and the demotion: tests/gen/gengoto.c (pick, a
     forward goto to label 104; sum, a counted loop demoted to the
     plain form by a goto in its body) and its hand-audited .exp;

@@ -18,11 +18,12 @@
  * [GOTO_LABEL_BASE, MAX_LABELS), the block above the entry label. The
  * front end allocates goto labels from GOTO_LABEL_BASE up and ordinary
  * labels from 0 up (stopping at ENTRY_LABEL), so the two never meet
- * until the function has too many of one. A counted loop keeps its
- * limit and count on the stack under its body, so its body may hold
- * neither a goto (a jump to a goto label) nor a goto label: ccgen's
- * body_ok keeps such loops uncounted, and every goto then runs on a
- * clean stack and is just an unconditional branch. */
+ * until the function has too many of one. A counted loop runs its body
+ * with its limit and count on the stack under it, so, on purpose, its
+ * body may hold neither a goto nor a goto label: a forward goto into
+ * the body lands where the stack's depth is unknown, and a goto out of
+ * it skips the loop's drops (body_ok, irin.c). Such a loop stays
+ * uncounted (the plain form) and its gotos run on a clean stack. */
 #define GOTO_LABEL_BASE (ENTRY_LABEL + 1)
 #define GOTO_LABELS (MAX_LABELS - GOTO_LABEL_BASE)
 #define IS_GOTO_LABEL(n) ((n) >= GOTO_LABEL_BASE && (n) < MAX_LABELS)
