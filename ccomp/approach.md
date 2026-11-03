@@ -3889,6 +3889,64 @@ issue. In summary:
     keeping the branch, the ternary flowing into a use, short-
     circuit values); branches.c and speaker.c's listing assertions
     now state the branch-free form.
+32. **De Morgan's flip: a ! after a comparison is the opposite
+    comparison (2026-11-03)** A comparison already gives C's 1 or 0,
+    so ! of one is the opposite comparison, the De Morgan opposite
+    (EQ <-> NE, LT <-> GE, GT <-> LE, and the unsigned), one op
+    shorter, and it is valid wherever the value goes, a branch, a
+    truth run or an expression. hold() drops a held ! whose
+    preceding op is a comparison, setting IR_COMPARE_FLIP. This is
+    the flip decision 31 deferred, and its deferral's argument is
+    void: the peephole drops a comparison's NEG before a zero test
+    (NEG-BRFLS and NEG-BRTRU), so a branch-only condition ties
+    rather than regresses (ISGT BRTRU becomes ISLE BRFLS, two ops
+    either way), while elsewhere the flip wins and it composes with
+    the truth runs: if (!(a > b)) return 1; else return 0 is now
+    ISLE NEG LEAVE, three ops where the run alone left ISGT NEG NOT
+    ANDI 1 LEAVE. bool_at() broadens to the unsigned comparisons,
+    which also lower to 1 or 0, so a truth run over an unsigned
+    condition skips the boolify.
+    The flip needed the comparison ops renumbered into one
+    contiguous range (IR_IS_COMPARE) in adjacent De Morgan pairs, so
+    the opposite is bit 0 (IR_COMPARE_FLIP): EQ NE, LT GE, GT LE,
+    then the unsigned at the offset IR_ULT - IR_LT (parse.c's
+    offset arithmetic adapts by construction). Every range test and
+    value manipulation on IR ops is now a #define next to the values
+    in ir.h (decision 26, amended); lower_free_swap's bit-0 flip
+    was the operand exchange, not this, and now calls the new
+    mirror(). IR_VERSION is 8. The renumbering writes byte-identical
+    output: all 404 tests passed with no .exp changed (e22161dc);
+    the flip and its tests are eed5203f. The tests, per the rule,
+    pin both the flippable forms (value, double-flip, one-armed run,
+    branch-only, unsigned, fused constant) and the unflippable ones
+    (a ! not after a comparison, a sum's !, a comparison with no !):
+    gencmp's dfv, dfn, dfl, dbr, dfl2, dfx, dfa, dfc, and xbool's
+    v1 to v4 cross-check the values against gcc and clang.
+    **Optimization tasks, updated.** With the IR-level machinery in
+    irin.c (hold-and-lower, label counting, suffix matching), the
+    remaining optimization work is:
+    - **Simple tail recursion** (src/,tail-recursion.md): a
+      function's own tail call, return f(...); in f, whose CALL
+      would push a fresh ENTER/LEAVE frame per recursion, becomes a
+      JUMP to a label at the function's beginning, after its ENTER
+      (one is added unconditionally to every function), with the
+      call's arguments stored into the frame's parameter slots
+      first. No new frame per recursion, and the ENTER/LEAVE pair
+      per call is dropped. Open question at implementation: do the
+      rewrite in the front end (the parser knows the return is of
+      the current function and can emit the stores and jump
+      directly) or in ccgen (where the CALL-then-RETURN tail may be
+      split by a buffer flush). Tests per the rule: the recursive
+      form, and forms that must stay calls (a call whose result is
+      not returned, a call to another function, a use after the
+      call).
+    - **Still deferred, reasons unchanged:** truth runs with
+      arbitrary constant arms (branchless would need a MUL, a
+      sixteen-step loop on the 6502 VMs); truth runs returning the
+      condition's operands (the op set has no branchless value
+      select); PLASMA's fused FOR opcodes (INCBRLE and the rest,
+      unreachable from C's for, which lowers to a counted test
+      branch and a plain ADDI or SUBI).
 
 
 ## Milestones
