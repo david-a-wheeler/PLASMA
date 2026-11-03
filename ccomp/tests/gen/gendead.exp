@@ -1,5 +1,6 @@
     ; pick
     ENTER 2 1
+    ; label 103
     LLW 0
     BRFLS 0
     CN 1
@@ -10,6 +11,7 @@
 
     ; main
     ENTER 0 0
+    ; label 103
     CN 0
     CALL pick
     CN 2

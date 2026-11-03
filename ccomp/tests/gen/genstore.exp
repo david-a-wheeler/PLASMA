@@ -1,15 +1,18 @@
     ; keep
     ENTER 4 1
+    ; label 103
     LLW 0
     LEAVE 4
 
     ; drop
     ENTER 2 0
+    ; label 103
     CN 3
     LEAVE 2
 
     ; set
     ENTER 2 1
+    ; label 103
     CN 7
     LLW 0
     SW
@@ -18,17 +21,20 @@
 
     ; bump
     ENTER 2 1
+    ; label 103
     LLW 0
     INCR
     LEAVE 2
 
     ; use2
     ENTER 4 2
+    ; label 103
     CN 0
     LEAVE 4
 
     ; main
     ENTER 2 0
+    ; label 103
     CN 1
     SLW 0
     CN 1

@@ -1,5 +1,6 @@
     ; eq
     ENTER 4 2
+    ; label 103
     LLW 0
     LLW 2
     ISEQ
@@ -8,6 +9,7 @@
 
     ; ne
     ENTER 4 2
+    ; label 103
     LLW 0
     LLW 2
     ISNE
@@ -16,6 +18,7 @@
 
     ; isz
     ENTER 2 1
+    ; label 103
     LLW 0
     CN 0
     ISEQ
@@ -24,6 +27,7 @@
 
     ; nz
     ENTER 2 1
+    ; label 103
     LLW 0
     CN 0
     ISNE
@@ -32,6 +36,7 @@
 
     ; ngt
     ENTER 4 2
+    ; label 103
     LLW 0
     LLW 2
     ISLE
@@ -40,6 +45,7 @@
 
     ; negx
     ENTER 2 1
+    ; label 103
     LLW 0
     NEG
     CN 0
@@ -49,6 +55,7 @@
 
     ; notx
     ENTER 2 1
+    ; label 103
     LLW 0
     NOT
     ANDI 1
@@ -56,6 +63,7 @@
 
     ; iint
     ENTER 2 1
+    ; label 103
     LLW 0
     CN 0
     ISNE
@@ -64,6 +72,7 @@
 
     ; tret
     ENTER 2 1
+    ; label 103
     LLW 0
     CN 0
     ISNE
@@ -72,6 +81,7 @@
 
     ; tsw
     ENTER 2 1
+    ; label 103
     LLW 0
     CN 0
     ISEQ
@@ -80,11 +90,13 @@
 
     ; tsame
     ENTER 2 1
+    ; label 103
     CN 5
     LEAVE 2
 
     ; tadd
     ENTER 4 2
+    ; label 103
     LLW 2
     LLW 0
     CN 0
@@ -95,6 +107,7 @@
 
     ; andv
     ENTER 4 2
+    ; label 103
     LLW 0
     BRFLS 0
     LLW 2
@@ -108,6 +121,7 @@
 
     ; orv
     ENTER 4 2
+    ; label 103
     LLW 0
     BRTRU 0
     LLW 2
@@ -122,6 +136,7 @@
 
     ; general_eq
     ENTER 4 2
+    ; label 103
     LLW 0
     LLW 2
     BRNE 0
@@ -136,6 +151,7 @@
 
     ; general_ne
     ENTER 4 2
+    ; label 103
     LLW 0
     LLW 2
     BREQ 0
@@ -150,6 +166,7 @@
 
     ; general_isz
     ENTER 2 1
+    ; label 103
     LLW 0
     BRTRU 0
     CN 7
@@ -163,6 +180,7 @@
 
     ; general_nz
     ENTER 2 1
+    ; label 103
     LLW 0
     BRFLS 0
     CN 7
@@ -176,6 +194,7 @@
 
     ; general_3isz
     ENTER 2 1
+    ; label 103
     LLW 0
     CN 3
     BRNE 0
@@ -190,6 +209,7 @@
 
     ; general_3nz
     ENTER 2 1
+    ; label 103
     LLW 0
     CN 3
     BREQ 0
@@ -204,6 +224,7 @@
 
     ; general_ngt
     ENTER 4 2
+    ; label 103
     LLW 0
     LLW 2
     ISLE
@@ -219,6 +240,7 @@
 
     ; general_negx
     ENTER 2 1
+    ; label 103
     LLW 0
     BRFLS 0
     CN 7
@@ -232,6 +254,7 @@
 
     ; general_notx
     ENTER 2 1
+    ; label 103
     LLW 0
     BRTRU 0
     CN 7
@@ -245,6 +268,7 @@
 
     ; general_iint
     ENTER 2 1
+    ; label 103
     LLW 0
     BRFLS 0
     CN 7
@@ -258,6 +282,7 @@
 
     ; general_tret
     ENTER 2 1
+    ; label 103
     LLW 0
     BRFLS 0
     CN 7
@@ -269,6 +294,7 @@
 
     ; general_tsw
     ENTER 2 1
+    ; label 103
     LLW 0
     BRFLS 0
     CN 5
@@ -280,6 +306,7 @@
 
     ; dfv
     ENTER 4 2
+    ; label 103
     LLW 0
     LLW 2
     ISLE
@@ -288,6 +315,7 @@
 
     ; dfn
     ENTER 4 2
+    ; label 103
     LLW 0
     LLW 2
     ISGT
@@ -296,6 +324,7 @@
 
     ; dfl
     ENTER 4 2
+    ; label 103
     LLW 0
     LLW 2
     ISGE
@@ -304,6 +333,7 @@
 
     ; dbr
     ENTER 4 2
+    ; label 103
     LLW 0
     LLW 2
     ISGE
@@ -316,6 +346,7 @@
 
     ; dfl2
     ENTER 4 2
+    ; label 103
     LLW 0
     CW 32768
     XOR
@@ -328,6 +359,7 @@
 
     ; dfx
     ENTER 2 1
+    ; label 103
     LLW 0
     NOT
     ANDI 1
@@ -335,6 +367,7 @@
 
     ; dfa
     ENTER 4 2
+    ; label 103
     LLW 0
     ADDLW 2
     NOT
@@ -343,6 +376,7 @@
 
     ; dfc
     ENTER 4 2
+    ; label 103
     LLW 0
     LLW 2
     ISGT
@@ -351,6 +385,7 @@
 
     ; main
     ENTER 0 0
+    ; label 103
     CN 1
     CN 1
     CALL eq

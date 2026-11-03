@@ -1,5 +1,6 @@
     ; m2
     ENTER 2 1
+    ; label 103
     LLW 0
     DUP
     ADD
@@ -7,6 +8,7 @@
 
     ; m3
     ENTER 2 1
+    ; label 103
     LLW 0
     DUP
     IDXW
@@ -14,6 +16,7 @@
 
     ; m0
     ENTER 2 1
+    ; label 103
     LLW 0
     DROP
     CN 0
@@ -21,11 +24,13 @@
 
     ; m1
     ENTER 2 1
+    ; label 103
     LLW 0
     LEAVE 2
 
     ; m16
     ENTER 2 1
+    ; label 103
     LLW 0
     CN 4
     SHL
@@ -33,6 +38,7 @@
 
     ; m1024
     ENTER 2 1
+    ; label 103
     LLW 0
     CN 10
     SHL
@@ -40,6 +46,7 @@
 
     ; main
     ENTER 0 0
+    ; label 103
     CN 1
     CALL m2
     DROP

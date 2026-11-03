@@ -1,5 +1,6 @@
     ; f
     ENTER 0 0
+    ; label 103
     CN 5
     DAW data +0
     DAW data +2
@@ -7,6 +8,7 @@
 
     ; main
     ENTER 0 0
+    ; label 103
     CALL f
     CN 5
     ISEQ

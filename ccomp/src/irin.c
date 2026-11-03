@@ -553,6 +553,15 @@ static void lower_held(int n)
  * run. */
 static int rp_on, rp_s, rp_k1, rp_k2, rp_ret, rp_e;
 
+/* The current function (fn_cur) and its parameters' words
+ * (fn_params), from IR_FUNC: the tail rewrite (tail_rewrite) stores
+ * the call's args into the slots ENTER leaves them, 2k for the kth
+ * parameter. Nothing sits under a tail call: it is held only where
+ * the body's code is, and no loop layout keeps values there (the
+ * counted form's limit and count do sit under its body, but body_ok
+ * keeps calls out of such a body, demoting the loop). */
+static int fn_cur, fn_params;
+
 /* Are k1 then k2 the arms the run rewrites: equal arms, or the two
  * truth values in either order? */
 static int run_ok(int k1, int k2)
@@ -806,6 +815,26 @@ static void hold(int op, int a, int f)
     not_cmp();
   if (op == IR_ENDFUNC)
     lower_held(nbuf);
+}
+
+/* The hold buffer's tail is the self tail call at index at, its args
+ * held before it and nothing under them: lower what is held, drop
+ * the call, and hold the replacement: the args' stores into the
+ * parameter slots, a word each at the offsets ENTER leaves them (2k
+ * for the kth), and the jump to the function's entry label, after
+ * its ENTER. The jump reuses the current frame (no new ENTER per
+ * recursion), and the base case's return is the function's, so the
+ * call's return is dropped. */
+static void tail_rewrite(int at)
+{
+  int i, p = fn_params;
+  lower_held(at);
+  nbuf = 0;                     /* the call, now at 0, is gone */
+  for (i = p - 1; i >= 0; i--) {
+    hold(IR_SETLOCAL, 2 * i, -1);
+    hold(IR_DROP, 0, -1);
+  }
+  hold(IR_JUMP, ENTRY_LABEL, -1);
 }
 
 /*
@@ -1481,6 +1510,8 @@ static void do_op(int op, int a, int f)
   }
   if (op == IR_FUNC) {
     in_func = 1;
+    fn_cur = f;
+    fn_params = a;
     nwritten++;
     for (i = 0; i < MAX_LABELS; i++) {
       lab_ref[i] = 0;
@@ -1510,8 +1541,14 @@ static void do_op(int op, int a, int f)
     loop_op(op, a, f);
   else if (lp_fill)
     keep(op, a, f);
-  else
+  else {
     hold(op, a, f);
+    if (op == IR_RETURN && nbuf >= 2
+        && buf_op[nbuf - 2] == IR_CALL && buf_f[nbuf - 2] == fn_cur)
+      tail_rewrite(nbuf - 2);   /* a self tail call */
+  }
+  if (op == IR_FUNC)
+    hold(IR_LABEL, ENTRY_LABEL, -1);
 }
 
 /* Read the summary, the last record, and write NAME.syms from it, with

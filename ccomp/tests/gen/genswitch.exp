@@ -1,5 +1,6 @@
     ; pick3
     ENTER 2 1
+    ; label 103
     LLW 0
     SEL 0
     ; label 2
@@ -22,6 +23,7 @@
 
     ; main
     ENTER 0 0
+    ; label 103
     CN 2
     CALL pick3
     CB 20

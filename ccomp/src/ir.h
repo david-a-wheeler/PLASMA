@@ -8,6 +8,10 @@
 
 #define MAX_LABELS   104    /* branch targets in one function (90); at
                              * most 128, since case_label[] is char */
+/* The function's entry label, after its ENTER: ccgen's target for a
+ * self tail call's jump (decision 33); ccgen holds it at the
+ * function's start, and the front end's labels stop below it. */
+#define ENTRY_LABEL (MAX_LABELS - 1)
 #define MAX_BYVAL    8      /* bytes in a struct passed or returned by
                              * value: at most MAX_BYVAL / 2 words, so a
                              * RETURN's a (below) */

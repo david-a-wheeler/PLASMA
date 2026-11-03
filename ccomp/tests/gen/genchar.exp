@@ -1,23 +1,27 @@
     ; letter
     ENTER 1 0
+    ; label 103
     CB 65
     ANDI 255
     LEAVE 1
 
     ; ch
     ENTER 1 0
+    ; label 103
     CB 65
     ANDI 255
     LEAVE 1
 
     ; mask
     ENTER 2 1
+    ; label 103
     LLB 0
     ANDI 63
     LEAVE 2
 
     ; main
     ENTER 0 0
+    ; label 103
     CALL letter
     DROP
     CALL ch

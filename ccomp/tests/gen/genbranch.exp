@@ -1,5 +1,6 @@
     ; both
     ENTER 4 2
+    ; label 103
     LLW 0
     BRFLS 0
     LLW 2
@@ -13,6 +14,7 @@
 
     ; either
     ENTER 4 2
+    ; label 103
     LLW 0
     BRTRU 0
     LLW 2
@@ -27,6 +29,7 @@
 
     ; neither
     ENTER 4 2
+    ; label 103
     LLW 0
     BRFLS 0
     LLW 2
@@ -41,6 +44,7 @@
 
     ; main
     ENTER 0 0
+    ; label 103
     CN 1
     CN 0
     CALL both

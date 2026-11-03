@@ -1,5 +1,6 @@
     ; total
     ENTER 6 1
+    ; label 103
     CN 0
     SLW 4
     LLW 0
@@ -20,6 +21,7 @@
 
     ; up3
     ENTER 6 1
+    ; label 103
     CN 0
     SLW 4
     LLW 0
@@ -40,6 +42,7 @@
 
     ; down2
     ENTER 6 1
+    ; label 103
     CN 0
     SLW 4
     CN 0
@@ -60,6 +63,7 @@
 
     ; main
     ENTER 0 0
+    ; label 103
     CN 9
     CALL up3
     DROP

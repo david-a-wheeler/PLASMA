@@ -730,10 +730,12 @@ int is_compare(int op)
 int nlabels;
 char label_used[MAX_LABELS];  /* some branch to it so far */
 
-/* Allocate a new label in the current function. */
+/* Allocate a new label in the current function. The top label number
+ * is ccgen's tail-jump entry (ENTRY_LABEL), so the front end stops
+ * below it. */
 int new_label(void)
 {
-  if (nlabels >= MAX_LABELS)
+  if (nlabels >= ENTRY_LABEL)
     error(36 /* "too many branches in" */, quote(fn_name[cur_fn]));
   label_used[nlabels] = 0;
   return nlabels++;
