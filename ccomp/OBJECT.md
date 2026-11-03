@@ -14,7 +14,11 @@ version number bumped.
 For output `NAME`, the files are `NAME.obj` and `NAME.syms`. `ccish`
 removes them after the module is written, and after any error, unless
 `-k` is given; `ccgen` leaves them for `ccrel`, which keeps them. This
-is format version 6, which adds zero-filled globals (approach.md,
+is format version 8, which renumbers the comparison ops into one range
+in De Morgan pairs (src/ir.h, IR_COMPARE_FLIP): no new records, but an
+earlier file's op numbers are unreadable, so the version is bumped,
+as version 7's, which grouped the label-referencing ops (IR_REFS_LABEL)
+the same way. Version 6 added zero-filled globals (approach.md,
 "Large zero-filled data on the heap"): a `Z` record for a run of zero
 bytes, the summary's zero-filled size, and data symbol flags 64 and 128, so that
 `ccrel` can move large zero-filled globals to the heap (below,

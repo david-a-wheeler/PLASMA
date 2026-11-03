@@ -1135,7 +1135,7 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
     }
   } else if (!is_pointer(lt) && !is_pointer(rt)) {
     a = unsigned_op(o, r, &op, mid);
-    if (op >= IR_ULT && op <= IR_UGE) {     /* already put */
+    if (IR_IS_U_COMPARE(op)) {     /* already put */
       o->kind = K_VALUE;
       o->type = TY_INT;
       o->is_bool = 1;

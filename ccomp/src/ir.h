@@ -47,10 +47,15 @@ enum {
   /* binary: ( x y -- x op y ) */
   IR_ADD, IR_SUB, IR_MUL, IR_DIV, IR_MOD,
   IR_AND, IR_OR, IR_XOR, IR_SHL, IR_SHR,
-  /* comparisons, binary, giving C's 1 or 0 (not PLASMA's $FFFF). LT,
-   * GT and LE, GE stay adjacent pairs, IR_LT even: irin.c reverses one
-   * by flipping bit 0. */
-  IR_EQ, IR_NE, IR_LT, IR_GT, IR_LE, IR_GE,
+  /* comparisons, binary, giving C's 1 or 0 (not PLASMA's $FFFF): all
+   * in one range (IR_IS_COMPARE), in adjacent De Morgan pairs, so the
+   * opposite of any is its number with bit 0 flipped
+   * (IR_COMPARE_FLIP): EQ NE, LT GE, GT LE, then the unsigned (18.7,
+   * C) in the same order at the offset IR_ULT - IR_LT from them
+   * (parse.c adds that offset to find one); the unsigned's a = the
+   * right operand's block length in IR ops, or 0 if not known */
+  IR_EQ, IR_NE, IR_LT, IR_GE, IR_GT, IR_LE,
+  IR_ULT, IR_UGE, IR_UGT, IR_ULE,
   /* unary: ( x -- op x ) */
   IR_NEG, IR_COMP,
   IR_NOT,         /* C's !: 1 if x is 0, else 0 (not PLASMA's NOT) */
@@ -71,11 +76,6 @@ enum {
   IR_SWAP,        /* a = the top block's length in IR ops, f = the
                    * block below's, or -1 if code must not move:
                    * exchange the values the two blocks left */
-  /* unsigned comparisons (18.7, C), in the order of LT GT LE GE and
-   * at the offset IR_ULT - IR_LT from them (parse.c adds that offset
-   * to find one); a = the right operand's block length in IR ops, or
-   * 0 if not known */
-  IR_ULT, IR_UGT, IR_ULE, IR_UGE,
   /* unsigned arithmetic PLASMA lacks, binary ( x y -- x op y ), for
    * unsigned operands; ccgen lowers them (approach.md, "unsigned and
    * helper functions design") */
@@ -105,23 +105,33 @@ enum {
 /* The IR file: the output name plus this suffix, and its format's
  * version (in its header, after the magic "CIR"). */
 #define SUFFIX_IR   ".ir"
-#define IR_VERSION  7
+#define IR_VERSION  8
 
-/* The sets of ops the compiler tests in more than one place, each a
- * range in the order above (approach.md, decision 26); a set tested in
- * only one place stays a plain comparison there. Changing the order
- * changes IR_VERSION; the constraints on it are in the comments at
- * the ops. */
+/* The sets of ops the compiler tests in more than one place, and its
+ * value manipulations on ops, each defined here next to the values it
+ * names, so all such tests and manipulations are in one place
+ * (approach.md, decision 26, amended); changing the order changes
+ * IR_VERSION, and the constraints on it are in the comments at the
+ * ops. */
 #define IR_IS_BINARY(op)     ((op) >= IR_ADD && (op) <= IR_SHR)
-#define IR_IS_COMPARE(op)    ((op) >= IR_EQ && (op) <= IR_GE)
-#define IR_IS_RELATIONAL(op) ((op) >= IR_LT && (op) <= IR_GE)
+#define IR_IS_COMPARE(op)    ((op) >= IR_EQ && (op) <= IR_ULE)  /* both signs */
+#define IR_IS_S_COMPARE(op)  ((op) >= IR_EQ && (op) <= IR_LE)   /* the signed half */
+#define IR_IS_RELATIONAL(op) ((op) >= IR_LT && (op) <= IR_LE)   /* signed < > <= >= */
+/* The opposite comparison, the one ! gives (De Morgan): EQ <-> NE,
+ * LT <-> GE, GT <-> LE, and the unsigned. The pairs are adjacent in
+ * the order above, so it is bit 0; it is valid only on an
+ * IR_IS_COMPARE op. (Exchanging the operands of a relational keeps its
+ * sense for LT <-> GT and LE <-> GE: that is irin.c's mirror, not
+ * this.) */
+#define IR_COMPARE_FLIP(op)  ((op) ^ 1)
 #define IR_IS_DIVMOD(op)     ((op) >= IR_DIV && (op) <= IR_MOD)
 #define IR_IS_S_SHIFT(op)    ((op) >= IR_SHL && (op) <= IR_SHR)
-#define IR_IS_U_COMPARE(op)  ((op) >= IR_ULT && (op) <= IR_UGE)
+#define IR_IS_U_COMPARE(op)  ((op) >= IR_ULT && (op) <= IR_ULE)
 #define IR_IS_U_ARITH(op)    ((op) >= IR_UDIV && (op) <= IR_USHR)
 #define IR_IS_BRANCH(op)     ((op) >= IR_JUMP && (op) <= IR_BRTRUE)
 #define IR_REFS_LABEL(op)    (((op) >= IR_JUMP && (op) <= IR_SEL) \
                               || (op) == IR_CASETO)
+#define IR_IS_LOOP_MARKER(op) ((op) >= IR_LOOP && (op) <= IR_LOOPEND)
 
 /* Its record tags besides the stream's D, R and S (below), and the bit
  * that marks an IR op followed by a one-byte operand. An IR op's tag is

@@ -274,12 +274,12 @@ static const char stk_effect[IR_NOPS] = {
   0x11, 0x11, 0x20, 0x20,                   /* LOAD ... STOREB */
   0x00, 0x10, 0x12, -1,                     /* CALL, DROP, DUP, RETURN */
   0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21,
-  0x21, 0x21, 0x21, 0x21, 0x21, 0x21,       /* comparisons */
+  0x21, 0x21, 0x21, 0x21, 0x21, 0x21,       /* ... SHR, comparisons */
+  0x21, 0x21, 0x21, 0x21,                   /* both signs */
   0x11, 0x11, 0x11,                         /* NEG, COMP, NOT */
   0x00, 0x00, 0x10, 0x10, -1,               /* LABEL ... SEL */
   0x00, -1, -1, -1,                          /* JOIN, the case table */
   0x22,                                     /* SWAP */
-  0x21, 0x21, 0x21, 0x21,                   /* ULT ... */
   0x21, 0x21, 0x21,                         /* UDIV, UMOD, USHR */
   0x01,                                     /* HEAPADDR */
   -1, -1, -1, -1                            /* loop markers: never held */
@@ -389,6 +389,15 @@ static void decide(int s, int next)
   buf_f[s] = values;
 }
 
+/* The relational comparison that means the same with its operands
+ * exchanged; valid only on an IR_IS_RELATIONAL op. (Not IR_COMPARE_FLIP:
+ * that is the opposite comparison, the one ! gives. */
+static int mirror(int cmp)
+{
+  return cmp == IR_LT ? IR_GT : cmp == IR_GT ? IR_LT
+         : cmp == IR_LE ? IR_GE : IR_LE;
+}
+
 /* Lower the SW_FREE SWAP at held index i with the op after it, and
  * return how many ops that took: just the SWAP (which needs no code)
  * before a commutative op, or both. */
@@ -400,10 +409,9 @@ static int lower_free_swap(int i)
     lower_op(IR_NEG, 0, -1);
     return 2;
   }
-  if (next >= IR_LT && next <= IR_GE) {
-    /* LT, GT and LE, GE are adjacent pairs in the IR's numbering
-     * (ir.h): each is the other with bit 0 flipped. */
-    lower_op(next ^ 1, 0, -1);
+  if (IR_IS_RELATIONAL(next)) {
+    /* The operands are exchanged, so is the comparison. */
+    lower_op(mirror(next), 0, -1);
     return 2;
   }
   return 1;
@@ -557,7 +565,7 @@ static int run_ok(int k1, int k2)
 static int bool_at(int s)
 {
   int op = s > 0 ? buf_op[s - 1] : -1;
-  return (op >= IR_EQ && op <= IR_GE) || op == IR_NOT;
+  return IR_IS_S_COMPARE(op) || op == IR_NOT;
 }
 
 /* Where a branch to label x goes, through the held JOINs. */
@@ -1066,13 +1074,6 @@ static int body_ok(int op, int a, int f)
   return 1;
 }
 
-/* The comparison that means the same with its operands exchanged. */
-static int mirror(int cmp)
-{
-  return cmp == IR_LT ? IR_GT : cmp == IR_GT ? IR_LT
-         : cmp == IR_LE ? IR_GE : IR_LE;
-}
-
 /* Is open loop d's held step (up to nlp) v++ (LOCAL v, DUP, CONST k,
  * ADD or SUB, SETLOCAL v, DROP, DROP), or ++v or v += k (the same
  * without the DUP and a DROP), for a local v? If so, set *v, and *k
@@ -1138,8 +1139,7 @@ static int counted_shape(int d, int lbody)
   if (st - t < 4 || lp_op[st - 1] != IR_BRTRUE || lp_a[st - 1] != lbody)
     return 0;
   cl_cmp = lp_op[st - 2];
-  if (cl_cmp != IR_LT && cl_cmp != IR_LE && cl_cmp != IR_GT
-      && cl_cmp != IR_GE)
+  if (!IR_IS_RELATIONAL(cl_cmp))
     return 0;
   if (lp_op[t] == IR_LOCAL && lp_a[t] == cl_var) {
     cl_ls = t + 1;              /* v, then the limit */
@@ -1491,7 +1491,7 @@ static void do_op(int op, int a, int f)
     dump_ir(op, a, f);
   if (lp_fill == 2 && (op == IR_LOOP || !body_ok(op, a, f)))
     body_plain();               /* this loop can't be counted */
-  if (op >= IR_LOOP)
+  if (IR_IS_LOOP_MARKER(op))
     loop_op(op, a, f);
   else if (lp_fill)
     keep(op, a, f);

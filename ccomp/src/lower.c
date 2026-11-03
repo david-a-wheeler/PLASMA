@@ -24,10 +24,11 @@ static const char *const ir_names[] = {
   "SETGLOBALB", "LOAD", "LOADB", "STORE", "STOREB", "CALL",
   "DROP", "DUP", "RETURN",
   "ADD", "SUB", "MUL", "DIV", "MOD", "AND", "OR", "XOR", "SHL", "SHR",
-  "EQ", "NE", "LT", "GT", "LE", "GE",
+  "EQ", "NE", "LT", "GE", "GT", "LE",
+  "ULT", "UGE", "UGT", "ULE",
   "NEG", "COMP", "NOT",
   "LABEL", "JUMP", "BRFALSE", "BRTRUE", "SEL",
-  "JOIN", "CASES", "CASEVAL", "CASETO", "SWAP", "ULT", "UGT", "ULE", "UGE",
+  "JOIN", "CASES", "CASEVAL", "CASETO", "SWAP",
   "UDIV", "UMOD", "USHR", "HEAPADDR",
   "LOOP", "LOOPSTEP", "LOOPBODY", "LOOPEND"
 };
@@ -61,12 +62,12 @@ static const char lw_kind[IR_NOPS] = {
   L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,        /* ADD ... */
   L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,        /* ... SHR */
   L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,
+  L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,   /* the unsigned (irin.c
+                                                 * flips the sign bits first) */
   L_SIMPLE, L_SIMPLE, L_SPECIAL,            /* NEG, COMP, NOT */
   L_PSEUDO, L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,    /* ... SEL */
   L_SPECIAL, L_PSEUDO, L_PSEUDO, L_PSEUDO,  /* JOIN, the case table */
   L_SPECIAL,                                /* SWAP */
-  L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,   /* ULT ... (irin.c flips
-                                                 * the sign bits first) */
   L_SPECIAL, L_SPECIAL, L_SPECIAL,          /* UDIV, UMOD, USHR */
   L_SPECIAL,                                /* HEAPADDR */
   L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL    /* loop markers: irin.c
@@ -82,12 +83,13 @@ static const unsigned char lw_op[IR_NOPS] = {
   0, OP_DROP, OP_DUP, 0,
   OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD,
   OP_AND, OP_IOR, OP_XOR, OP_SHL, OP_SHR,
-  OP_ISEQ, OP_ISNE, OP_ISLT, OP_ISGT, OP_ISLE, OP_ISGE,
+  OP_ISEQ, OP_ISNE, OP_ISLT, OP_ISGE, OP_ISGT, OP_ISLE,
+  OP_ISLT, OP_ISGE, OP_ISGT, OP_ISLE,       /* the unsigned: the signed
+                                             * opcode, after the flip */
   OP_NEG, OP_COMP, 0,
   OP_LABEL & 0xFF, OP_BRNCH, OP_BRFLS, OP_BRTRU, OP_SEL,
   0, OP_CASES & 0xFF, OP_CASEVAL & 0xFF, OP_CASETO & 0xFF,
   0,
-  OP_ISLT, OP_ISGT, OP_ISLE, OP_ISGE,
   0, 0, 0,
   OP_LA,
   0, 0, 0, 0
@@ -110,7 +112,7 @@ void dump_ir(int op, int a, int f)
   fputs(ir_names[op], stdout);
   while (n++ < 8)
     fputs(" ", stdout);
-  if (op >= IR_LOOP)
+  if (IR_IS_LOOP_MARKER(op))
     op = IR_JOIN;               /* a loop marker's two labels, the same */
   switch (op) {
   case IR_FUNC:     fputs(" ", stdout); fputs(func_name(f), stdout); break;

@@ -17,3 +17,7 @@ src/rel/
 
 # macOS
 .DS_Store
+
+# pi session and worktree working files
+.tmp/
+.wt-base
