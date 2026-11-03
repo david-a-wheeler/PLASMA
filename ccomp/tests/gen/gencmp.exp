@@ -34,10 +34,8 @@
     ENTER 4 2
     LLW 0
     LLW 2
-    ISGT
+    ISLE
     NEG
-    NOT
-    ANDI 1
     LEAVE 4
 
     ; negx
@@ -208,8 +206,8 @@
     ENTER 4 2
     LLW 0
     LLW 2
-    ISGT
-    BRTRU 0
+    ISLE
+    BRFLS 0
     CN 7
     LEAVE 4
     ; label 0
@@ -279,6 +277,77 @@
     CN 7
     ; label 1
     LEAVE 2
+
+    ; dfv
+    ENTER 4 2
+    LLW 0
+    LLW 2
+    ISLE
+    NEG
+    LEAVE 4
+
+    ; dfn
+    ENTER 4 2
+    LLW 0
+    LLW 2
+    ISGT
+    NEG
+    LEAVE 4
+
+    ; dfl
+    ENTER 4 2
+    LLW 0
+    LLW 2
+    ISGE
+    NEG
+    LEAVE 4
+
+    ; dbr
+    ENTER 4 2
+    LLW 0
+    LLW 2
+    ISGE
+    BRFLS 0
+    CN 3
+    LEAVE 4
+    ; label 0
+    CN 4
+    LEAVE 4
+
+    ; dfl2
+    ENTER 4 2
+    LLW 0
+    CW 32768
+    XOR
+    LLW 2
+    CW 32768
+    XOR
+    ISLE
+    NEG
+    LEAVE 4
+
+    ; dfx
+    ENTER 2 1
+    LLW 0
+    NOT
+    ANDI 1
+    LEAVE 2
+
+    ; dfa
+    ENTER 4 2
+    LLW 0
+    ADDLW 2
+    NOT
+    ANDI 1
+    LEAVE 4
+
+    ; dfc
+    ENTER 4 2
+    LLW 0
+    LLW 2
+    ISGT
+    NEG
+    LEAVE 4
 
     ; main
     ENTER 0 0
@@ -408,6 +477,41 @@
     DROP
     CN 3
     CALL general_tsw
+    DROP
+    CN 1
+    CN 2
+    CALL dfv
+    DROP
+    CN 2
+    CN 1
+    CALL dfv
+    DROP
+    CN 1
+    CN 2
+    CALL dfn
+    DROP
+    CN 2
+    CN 1
+    CALL dfl
+    DROP
+    CN 2
+    CN 1
+    CALL dbr
+    DROP
+    CN 1
+    CN 2
+    CALL dfl2
+    DROP
+    CN 3
+    CALL dfx
+    DROP
+    CN 1
+    CN 2
+    CALL dfa
+    DROP
+    CN 2
+    CN 1
+    CALL dfc
     DROP
     CN 0
     LEAVE 0

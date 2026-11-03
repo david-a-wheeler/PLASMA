@@ -5,7 +5,9 @@
  * boolified, the arms' order negates, equal arms keep the constant,
  * non-truth arms keep the branch, the ternary spelling flows the
  * value on to the use, and short-circuit conditions keep their
- * branches. */
+ * branches. A ! directly after a comparison is the De Morgan
+ * opposite of it (decision 32), tested here as values, signed and
+ * unsigned, and in a branch. */
 #include "ptest.h"
 
 int b1(int x) { if (x) return 1; else return 0; }
@@ -29,6 +31,10 @@ int ad4(int x, int y) {
 }
 int an1(int a, int b) { return a && b; }
 int ao1(int a, int b) { return a || b; }
+int v1(int a, int b)   { return !(a > b); }
+int v2(int a, int b)   { return !(!(a <= b)); }
+int v3(unsigned a, unsigned b) { return !(a > b); }
+int v4(int a, int b)   { if (!(a < b)) return 9; return 1; }
 
 int main(void)
 {
@@ -53,6 +59,10 @@ int main(void)
     puti(w16(an1(x, 3))); putc(' ');
     puti(w16(ao1(x, 0))); putc(' ');
     puti(w16(ao1(x, 3))); putc(' ');
+    puti(w16(v1(x, 2))); putc(' ');
+    puti(w16(v2(x, 2))); putc(' ');
+    puti(w16(v3(x, 2))); putc(' ');
+    puti(w16(v4(x, 2))); putc(' ');
     putln();
   }
   return 0;

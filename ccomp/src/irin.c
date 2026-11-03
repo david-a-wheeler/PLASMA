@@ -561,11 +561,12 @@ static int run_ok(int k1, int k2)
 }
 
 /* Is the value a run tests, whose last op is held just before the
- * run at s, already 0 or 1: a comparison, or C's !? */
+ * run at s, already 0 or 1: a comparison, signed or unsigned, or
+ * C's !? */
 static int bool_at(int s)
 {
   int op = s > 0 ? buf_op[s - 1] : -1;
-  return IR_IS_S_COMPARE(op) || op == IR_NOT;
+  return IR_IS_COMPARE(op) || op == IR_NOT;
 }
 
 /* Where a branch to label x goes, through the held JOINs. */
@@ -691,6 +692,18 @@ static void run_match(void)
   }
 }
 
+/* The held tail is a comparison and its !: the De Morgan opposite of
+ * the comparison, IR_COMPARE_FLIP, is the same value, one op shorter,
+ * and it holds wherever the value goes, a branch, a run or an
+ * expression, so the ! is dropped. The unsigned comparisons' sign-bit
+ * flips (a, and PRE_FLIP on the operand block) are kept, as they are
+ * independent of the De Morgan flip. */
+static void not_cmp(void)
+{
+  buf_op[nbuf - 2] = (char)IR_COMPARE_FLIP(buf_op[nbuf - 2]);
+  nbuf--;
+}
+
 /* Rewrite unsigned op *op (IR_UDIV, IR_UMOD or IR_USHR) on a constant
  * right operand, the held CONST just before it, to be done inline, and
  * return its f: x >> c is USHR with f = c (SHR, then a mask); x / 2^n
@@ -789,6 +802,8 @@ static void hold(int op, int a, int f)
   else if (op == IR_JOIN)
     target_of[a] = f;
   run_match();
+  if (op == IR_NOT && nbuf >= 2 && IR_IS_COMPARE(buf_op[nbuf - 2]))
+    not_cmp();
   if (op == IR_ENDFUNC)
     lower_held(nbuf);
 }
@@ -1633,8 +1648,7 @@ void gen_file(const char *base)
   src_line = 0;
 }
 
-/* After an error in the back end: close its open files (ProDOS needs
- * it). */
+/* After an error in the back end: close its open files (ProDOS needs it). */
 void gen_abort(void)
 {
   bclose(&in);
