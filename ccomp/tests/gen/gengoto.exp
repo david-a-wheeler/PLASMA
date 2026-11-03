@@ -1,0 +1,51 @@
+    ; pick
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    BRTRU 104
+    ; label 0
+    CN 0
+    LEAVE 2
+    ; label 104
+    CN 1
+    LEAVE 2
+
+    ; sum
+    ENTER 6 1
+    ; label 103
+    CN 0
+    SLW 4
+    CN 0
+    DLW 2
+    BRNCH 1
+    ; label 0
+    LLW 2
+    CN 3
+    BREQ 104
+    ; label 4
+    LLW 4
+    ADDLW 2
+    SLW 4
+    LLW 2
+    INCR
+    DLW 2
+    ; label 1
+    LLW 0
+    ISLT
+    BRTRU 0
+    ; label 104
+    LLW 4
+    LEAVE 6
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CN 1
+    CALL pick
+    CN 5
+    CALL sum
+    ADD
+    CN 4
+    ISEQ
+    NEG
+    LEAVE 0

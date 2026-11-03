@@ -277,27 +277,34 @@
 283 case
 284 default
 285 typedef
-286 ==
-287 !=
-288 <=
-289 >=
-290 <<
-291 >>
-292 &&
-293 ||
-294 ++
-295 --
-296 +=
-297 -=
-298 *=
-299 /=
-300 %=
-301 &=
-302 |=
-303 ^=
-304 <<=
-305 >>=
-306 ->
-307 ...
-308 too many large globals to move to the heap
-309 too much data to move to the heap
+286 goto
+287 ==
+288 !=
+289 <=
+290 >=
+291 <<
+292 >>
+293 &&
+294 ||
+295 ++
+296 --
+297 +=
+298 -=
+299 *=
+300 /=
+301 %=
+302 &=
+303 |=
+304 ^=
+305 <<=
+306 >>=
+307 ->
+308 ...
+309 too many large globals to move to the heap
+310 too much data to move to the heap
+311 too many goto labels in
+312 duplicate label
+313 undefined label
+314 expected ':' after a label, not
+315 expected a label after 'goto', not
+316 expected ';' after 'goto', not

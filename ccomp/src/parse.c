@@ -726,19 +726,106 @@ int is_compare(int op)
 
 /* ---------- Labels ---------- */
 
-/* Labels are numbered per function. Stage 4 resolves them. */
+/* Labels are numbered per function. Stage 4 resolves them. Ordinary
+ * labels (loops, branches, cases) take 0 up; goto labels take a
+ * reserved block at the top (ir.h), so ccgen can tell a goto and its
+ * target from the rest by the number alone. */
 int nlabels;
+int ngoto_labels;             /* goto labels made (from GOTO_LABEL_BASE) */
 char label_used[MAX_LABELS];  /* some branch to it so far */
 
-/* Allocate a new label in the current function. The top label number
- * is ccgen's tail-jump entry (ENTRY_LABEL), so the front end stops
- * below it. */
+/* The current function's goto labels: lbl_id[i] is a label's id (its
+ * identifier's), lbl_num[i] its goto label, and lbl_def[i] whether its
+ * ':' has been seen. C allows a goto before its label, so a forward
+ * goto reserves the label (undefined so far) and the later ':' defines
+ * it; a label never defined is an error, checked at the function's end
+ * (check_goto_labels). */
+static int lbl_id[GOTO_LABELS];
+static int lbl_num[GOTO_LABELS];
+static char lbl_def[GOTO_LABELS];
+static int nlbls;
+
+/* Allocate a new ordinary label in the current function (0 up, stopping
+ * at the entry label, which is reserved for a self tail call's jump). */
 int new_label(void)
 {
   if (nlabels >= ENTRY_LABEL)
     error(36 /* "too many branches in" */, quote(fn_name[cur_fn]));
   label_used[nlabels] = 0;
   return nlabels++;
+}
+
+/* Allocate a new goto label in the current function (the block above
+ * the entry label, GOTO_LABEL_BASE up). */
+static int new_goto_label(void)
+{
+  int n = GOTO_LABEL_BASE + ngoto_labels;
+  if (ngoto_labels >= GOTO_LABELS)
+    error(311 /* "too many goto labels in" */, quote(fn_name[cur_fn]));
+  label_used[n] = 0;
+  ngoto_labels++;
+  return n;
+}
+
+/* Reset the goto label table (at a function's start). */
+void reset_goto_labels(void)
+{
+  ngoto_labels = 0;
+  nlbls = 0;
+}
+
+/* The goto label reserved or defined for id, or -1 if there is none. */
+static int goto_label_find(int id)
+{
+  int i;
+  for (i = 0; i < nlbls; i++)
+    if (lbl_id[i] == id)
+      return lbl_num[i];
+  return -1;
+}
+
+/* The goto label for a 'goto id': find it, or reserve it (undefined so
+ * far, for the ':' that may come later). */
+int reserve_goto_label(int id)
+{
+  int n = goto_label_find(id);
+  if (n < 0) {
+    n = new_goto_label();
+    lbl_id[nlbls] = id;
+    lbl_num[nlbls] = n;
+    lbl_def[nlbls] = 0;
+    nlbls++;
+  }
+  return n;
+}
+
+/* The goto label for an 'id:': find and define it, or create it.
+ * A second ':' for the same label is a duplicate. */
+int define_goto_label(int id)
+{
+  int i, n;
+  for (i = 0; i < nlbls; i++)
+    if (lbl_id[i] == id) {
+      if (lbl_def[i])
+        error(312 /* "duplicate label" */, quote(id));
+      lbl_def[i] = 1;
+      return lbl_num[i];
+    }
+  n = new_goto_label();
+  lbl_id[nlbls] = id;
+  lbl_num[nlbls] = n;
+  lbl_def[nlbls] = 1;
+  nlbls++;
+  return n;
+}
+
+/* At a function's end: a goto's target that was never defined. */
+void check_goto_labels(void)
+{
+  int i;
+  for (i = 0; i < nlbls; i++)
+    if (!lbl_def[i])
+      error(313 /* "undefined label" */, quote(lbl_id[i]));
 }
 
 /* Emit branch op (IR_JUMP, IR_BRFALSE, ...) to label n. */

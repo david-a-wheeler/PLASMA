@@ -1102,12 +1102,20 @@ static int limit_ok(int from, int to)
   return depth == 1 && !(hw && cl_load);
 }
 
-/* May IR op op (with a and f) be in a counted loop's body? */
+/* May IR op op (with a and f) be in a counted loop's body? A counted
+ * body keeps its limit and count on the stack under its code, so it
+ * may hold no goto (a jump to a goto label, which would leave them)
+ * and no goto label (a target a goto could fall into, where the stack
+ * would be wrong): such a loop is kept uncounted instead (decision 34).
+ * A goto is an IR_JUMP to a goto label (ir.h), so both are told by the
+ * label's number. */
 static int body_ok(int op, int a, int f)
 {
   switch (op) {
   case IR_CALL: case IR_UDIV: case IR_UMOD: case IR_USHR:
     return 0;
+  case IR_LABEL: case IR_JUMP:
+    return !IS_GOTO_LABEL(a);   /* a goto, or its target */
   case IR_SETLOCAL: case IR_SETLOCALB: case IR_LOCALADDR:
     return !counted_var(a);
   case IR_STORE: case IR_STOREB:

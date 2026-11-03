@@ -6,12 +6,26 @@
 #ifndef IR_H
 #define IR_H
 
-#define MAX_LABELS   104    /* branch targets in one function (90); at
+#define MAX_LABELS   128    /* branch targets in one function (90); at
                              * most 128, since case_label[] is char */
 /* The function's entry label, after its ENTER: ccgen's target for a
  * self tail call's jump (decision 33); ccgen holds it at the
- * function's start, and the front end's labels stop below it. */
-#define ENTRY_LABEL (MAX_LABELS - 1)
+ * function's start, and the front end's ordinary labels stop below it.
+ * It is fixed at 103 (not MAX_LABELS - 1) so the goto block can grow
+ * above it without moving it (decision 34). */
+#define ENTRY_LABEL    103
+/* Goto labels (decision 34): a label is a goto's target iff it is in
+ * [GOTO_LABEL_BASE, MAX_LABELS), the block above the entry label. The
+ * front end allocates goto labels from GOTO_LABEL_BASE up and ordinary
+ * labels from 0 up (stopping at ENTRY_LABEL), so the two never meet
+ * until the function has too many of one. A counted loop keeps its
+ * limit and count on the stack under its body, so its body may hold
+ * neither a goto (a jump to a goto label) nor a goto label: ccgen's
+ * body_ok keeps such loops uncounted, and every goto then runs on a
+ * clean stack and is just an unconditional branch. */
+#define GOTO_LABEL_BASE (ENTRY_LABEL + 1)
+#define GOTO_LABELS (MAX_LABELS - GOTO_LABEL_BASE)
+#define IS_GOTO_LABEL(n) ((n) >= GOTO_LABEL_BASE && (n) < MAX_LABELS)
 #define MAX_BYVAL    8      /* bytes in a struct passed or returned by
                              * value: at most MAX_BYVAL / 2 words, so a
                              * RETURN's a (below) */

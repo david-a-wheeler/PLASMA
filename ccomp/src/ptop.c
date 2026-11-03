@@ -638,8 +638,10 @@ static void parse_toplevel(void)
   fn_flags[f] |= FN_DECLARED | FN_DEFINED;
 
   nlabels = 0;
+  reset_goto_labels();
   put(IR_FUNC, pwords, f);        /* ENTER takes the parameters' words */
   parse_block(0);
+  check_goto_labels();            /* every goto's target was defined */
   /* Falling off the end of an int or char function returns 0. If the
    * last statement was a return, the peephole stage drops this as
    * dead code. */

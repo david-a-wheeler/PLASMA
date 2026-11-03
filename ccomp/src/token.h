@@ -41,7 +41,7 @@ enum {
 };
 
 #define TC_STRUCT    (TC_KEYWORDS + 7)    /* struct, for TC_TAG */
-#define NKEYWORDS    24       /* supported keywords: int ... typedef */
+#define NKEYWORDS    25       /* supported keywords: int ... goto */
 #define NOPS         22       /* operators: == ... "..." */
 
 #endif

@@ -581,6 +581,37 @@ static void parse_break_continue(void)
                        : 132 /* "expected ';' after 'continue', not" */);
 }
 
+/* label: statement. The label is an identifier (its own namespace, so
+ * it may spell a variable or typedef too), defined here and targeted
+ * only by gotos. In C a label's only use is as a goto's target, so the
+ * front end gives it a goto label (ir.h), and ccgen keeps any loop
+ * whose body holds it uncounted. A label is followed by a statement,
+ * which may be another label. */
+static void parse_label(void)
+{
+  int l = define_goto_label(tok_val);
+  next();                         /* the id */
+  expect(':', 314 /* "expected ':' after a label, not" */);
+  place_label(l);
+  parse_statement();              /* the statement it labels */
+}
+
+/* goto label;: an unconditional jump to the label (reserved if it comes
+ * after its ':', defined if before). It is a plain branch to a goto
+ * label; ccgen keeps such loops uncounted, so it always runs on a clean
+ * stack. */
+static void parse_goto(void)
+{
+  int l;
+  next();                         /* 'goto' */
+  if (tok != T_ID)
+    error(315 /* "expected a label after 'goto', not" */, tok_desc());
+  l = reserve_goto_label(tok_val);
+  next();                         /* the label */
+  branch(IR_JUMP, l);
+  expect(';', 316 /* "expected ';' after 'goto', not" */);
+}
+
 /*
  * The cases of the switches being parsed, innermost last (approach.md,
  * "M7 design"). As parallel arrays: case_val[i] is a case's value, and
@@ -725,6 +756,11 @@ static void parse_switch(void)
 static void parse_statement(void)
 {
   Operand o;
+  if (tok == T_ID && next_is_colon()) {
+    parse_label();              /* label: (before the typedef check, as
+                                  a label may spell a typedef) */
+    return;
+  }
   if (tok == T_ID && typedef_type(tok_val) >= 0) {
     parse_declaration(0);       /* T x; with a typedef name T */
     return;
@@ -753,6 +789,9 @@ static void parse_statement(void)
   case T_BREAK:
   case T_CONTINUE:
     parse_break_continue();
+    return;
+  case T_GOTO:
+    parse_goto();
     return;
   case T_ELSE:
     error(144 /* "'else' without a matching 'if'" */, NULL);

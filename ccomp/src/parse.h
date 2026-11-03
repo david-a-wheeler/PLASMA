@@ -220,6 +220,13 @@ void branch(int op, int n);
 void place_label(int n);
 void place_forward(int n);
 void join_label(int from, int to);
+/* Goto labels (decision 34): id is the label's identifier. A forward
+ * goto reserves the label; its ':' defines it; the function's end
+ * checks that every target was defined. */
+void reset_goto_labels(void);
+int  reserve_goto_label(int id);
+int  define_goto_label(int id);
+void check_goto_labels(void);
 void place_true(Operand *o);
 void cond_branch(Operand *o, int n, int on_true);
 void enter_nest(void);

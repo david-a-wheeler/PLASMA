@@ -166,13 +166,26 @@ int next_is_rbracket(void)
   return c == ']';
 }
 
+/* Is the token after the current one a ':'? The parser uses this to
+ * tell a label (an identifier followed by ':') from an expression. */
+int next_is_colon(void)
+{
+  int c;
+  if (at_end)
+    return 0;
+  c = bgetc(&in);
+  if (c != EOF)
+    bungetc(&in, c);
+  return c == ':';
+}
+
 /* The spellings of the supported keywords and the multi-character
  * operators, for messages, are in the message file, as messages' texts
- * are, not in cccomp (approach.md, "C2 design"): messages 262-285 are
- * the keywords, in T_INT's order, and messages 286-307 the operators,
+ * are, not in cccomp (approach.md, "C2 design"): messages 262-286 are
+ * the keywords, in T_INT's order, and messages 287-308 the operators,
  * in T_EQ's. */
 #define MSG_KEYWORDS 262
-#define MSG_OPS      286
+#define MSG_OPS      287
 
 /* Describe the current token for an error message, e.g. "'while'" or
  * "a number". The result is in a static buffer. Without the message

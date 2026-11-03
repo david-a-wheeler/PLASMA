@@ -3976,6 +3976,42 @@ issue. In summary:
     select); PLASMA's fused FOR opcodes (INCBRLE and the rest,
     unreachable from C's for, which lowers to a counted test
     branch and a plain ADDI or SUBI).
+34. **Goto and labels: a label is a goto's target, in a reserved
+    label block (2026-11-03)** C's label exists only as a goto's
+    target (case and default are separate keywords), so the front
+    end gives each label a goto label from a reserved block above
+    the entry label (GOTO_LABEL_BASE up, ir.h) and each ordinary
+    label (loops, branches, cases) one from 0 up to the entry
+    label. A goto is an ordinary branch (IR_JUMP) to a goto label
+    and a label an ordinary IR_LABEL in the block: no new IR ops,
+    so the IR file and IR_VERSION are unchanged, and ccgen tells a
+    goto and its target from the rest by the label's number alone
+    (IS_GOTO_LABEL). The block sits above ENTRY_LABEL, which stays
+    fixed at 103 (decision 33), and MAX_LABELS grows 104 to 128,
+    so ordinary labels keep their whole 0 to 102 range (a label-
+    heavy function is unregressed) and the 24 goto labels are new
+    space. The front end tracks each function's labels by id (a
+    label may spell a variable or typedef, a separate namespace):
+    a forward goto reserves the label, its ':' defines it, a second
+    ':' is an error, and the function's end rejects a target never
+    defined.
+    The one ccgen rule: a counted loop keeps its limit and count
+    under its body, so its body may hold neither a goto (a jump
+    that would leave them) nor a goto label (a target a goto could
+    fall into, on the wrong stack); body_ok rejects IR_JUMP to a
+    goto label and IR_LABEL in the block, and such a loop takes the
+    plain form (decision 33's argument: no loop layout keeps values
+    under a held body). A goto loop (top; ...; goto top) is never
+    counted, and an if (cond) goto lowers to the if's ordinary
+    branch to a skip label plus the goto's IR_JUMP, so only the
+    IR_JUMP and the IR_LABEL need the check. Tests, per the rule,
+    pin the form and the demotion: tests/gen/gengoto.c (pick, a
+    forward goto to label 104; sum, a counted loop demoted to the
+    plain form by a goto in its body) and its hand-audited .exp;
+    tests/run/gotoloop.c, a goto loop summing 5 down to 1; and
+    tests/xrun/xgoto.c, a three-state machine driven by a chain of
+    gotos, cross-checked against gcc and clang (18 9 3 for 30
+    ticks). The error test that goto is unsupported is dropped.
 
 
 ## Milestones

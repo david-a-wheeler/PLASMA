@@ -445,9 +445,10 @@ static const char *const keywords[] = {
   "static", "extern",
   "switch", "case", "default",
   "typedef",
+  "goto",
   /* the rest of C89's keywords: recognized so the error is clear */
   "auto", "double",
-  "float", "goto", "long", "register", "short", "union",
+  "float", "long", "register", "short", "union",
   NULL
 };
 

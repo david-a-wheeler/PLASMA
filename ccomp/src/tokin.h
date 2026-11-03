@@ -29,6 +29,11 @@ enum {
   T_STATIC, T_EXTERN,
   T_SWITCH, T_CASE, T_DEFAULT,
   T_TYPEDEF,
+  T_GOTO,
+  /* spare supported-keyword codes, so a new keyword takes one instead
+   * of renumbering T_KEYWORD and the operators (ccpp never writes a
+   * spare: NKEYWORDS stops below them) */
+  T_KW_SPARE1, T_KW_SPARE2, T_KW_SPARE3,
   /* any other C keyword: reported as "not supported yet" */
   T_KEYWORD,
   /* multi-character operators (not all are supported by the parser yet) */
@@ -60,6 +65,7 @@ void tok_open(const char *base);    /* NAME.i and NAME.nam; the first token */
 void tok_close(void);
 void next(void);                    /* advance to the next token */
 int  next_is_rbracket(void);        /* is the token after this one ']'? */
+int  next_is_colon(void);           /* is the token after this one ':'? */
 const char *tok_desc(void);         /* the current token, for messages */
 
 #endif
