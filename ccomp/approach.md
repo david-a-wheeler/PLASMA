@@ -3922,31 +3922,60 @@ issue. In summary:
     (a ! not after a comparison, a sum's !, a comparison with no !):
     gencmp's dfv, dfn, dfl, dbr, dfl2, dfx, dfa, dfc, and xbool's
     v1 to v4 cross-check the values against gcc and clang.
-    **Optimization tasks, updated.** With the IR-level machinery in
-    irin.c (hold-and-lower, label counting, suffix matching), the
-    remaining optimization work is:
-    - **Simple tail recursion** (src/,tail-recursion.md): a
-      function's own tail call, return f(...); in f, whose CALL
-      would push a fresh ENTER/LEAVE frame per recursion, becomes a
-      JUMP to a label at the function's beginning, after its ENTER
-      (one is added unconditionally to every function), with the
-      call's arguments stored into the frame's parameter slots
-      first. No new frame per recursion, and the ENTER/LEAVE pair
-      per call is dropped. Open question at implementation: do the
-      rewrite in the front end (the parser knows the return is of
-      the current function and can emit the stores and jump
-      directly) or in ccgen (where the CALL-then-RETURN tail may be
-      split by a buffer flush). Tests per the rule: the recursive
-      form, and forms that must stay calls (a call whose result is
-      not returned, a call to another function, a use after the
-      call).
-    - **Still deferred, reasons unchanged:** truth runs with
-      arbitrary constant arms (branchless would need a MUL, a
-      sixteen-step loop on the 6502 VMs); truth runs returning the
-      condition's operands (the op set has no branchless value
-      select); PLASMA's fused FOR opcodes (INCBRLE and the rest,
-      unreachable from C's for, which lowers to a counted test
-      branch and a plain ADDI or SUBI).
+33. **Simple tail recursion: a self tail call is a jump to the
+    function's own entry (2026-11-03)** A function's own tail call,
+    return f(...); in f, whose CALL would push a fresh ENTER/LEAVE
+    frame per recursion, becomes the args' stores into the frame's
+    parameter slots (2k for the kth, ENTER's offsets) and a JUMP to
+    the function's entry label, after its ENTER: the jump reuses
+    the current frame, so no frame per recursion, and the base
+    case's return is the function's, so the call's result is
+    dropped. The entry label is ENTRY_LABEL, MAX_LABELS - 1, held
+    after every IR_FUNC, and the front end's label space
+    (new_label) loses it; it is a label like any other (the -d
+    listing shows its ; label 103 line), so every existing gen .exp
+    gains that line, pure additions. Implemented in irin.c's
+    do_op, beside the hold: the buffer's tail, an IR_CALL to the
+    current function just followed by the IR_RETURN, is rewritten
+    by tail_rewrite (lower what is held, drop the call, hold the
+    stores and the jump); fn_cur and fn_params come from IR_FUNC.
+    The rewrite is the only live path, and it is enough: a counted
+    loop's body keeps its limit and count under its code, but
+    body_ok keeps calls (and loops) out of counted bodies,
+    demoting such a loop to the DLW fix or the plain form, whose
+    bodies run on a clean stack; no loop layout keeps values under
+    a held body (the DLW fix's kept count is consumed by the test
+    before the body, in the step to test window). Relaxing body_ok
+    to admit a self tail call into a counted body would fuse the
+    call into the loop's bottom and needs the two drops first;
+    deferred. The per-arg store is the usual unused-assignment
+    idiom, IR_SETLOCAL plus the IR_DROP the peep folds to the
+    plain store (DLW DROP becomes SLW). Not rewritten: a self call
+    whose result is used (return n * f(n - 1);), a call not
+    followed by the return (f(n - 1); return n; would return the
+    base case's value, not n), and a call to another function.
+    src/,tail-recursion.md's open question (front end or ccgen) is
+    answered by the third option, irin.c: the CALL-then-RETURN is
+    one hold-buffer tail here, and ccgen would see it split across
+    flushes. Tests, per the rule, pin the form and the non-forms:
+    tests/gen/gentail.c and its hand-audited .exp (gt0 the simple
+    form, gt1 void through a pointer, gt2 the call in a for body,
+    which takes the DLW fix loop form, gt3 the call in a while
+    body, the plain form, gt4 and gt5 the calls that stay, gt6 the
+    unbounded call, no base case and never called, a constant-frame
+    loop); tests/run/taildeep.c runs the tail form at depth 5000,
+    far past the plvm stack's few hundred non-tail frames
+    (measured dead by 1000), the wrapped sum printed signed, -14876
+    for 12502500; tests/xrun/xtail.c cross-checks the values
+    against gcc and clang at host-safe depths.
+    **Optimization tasks, updated.** Tail recursion is done
+    (decision 33). Still deferred, reasons unchanged: truth runs
+    with arbitrary constant arms (branchless would need a MUL, a
+    sixteen-step loop on the 6502 VMs); truth runs returning the
+    condition's operands (the op set has no branchless value
+    select); PLASMA's fused FOR opcodes (INCBRLE and the rest,
+    unreachable from C's for, which lowers to a counted test
+    branch and a plain ADDI or SUBI).
 
 
 ## Milestones
