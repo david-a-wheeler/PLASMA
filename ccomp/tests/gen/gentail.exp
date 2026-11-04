@@ -164,6 +164,5 @@
     DROP
     CN 2
     CALL gt5
-    DROP
-    CN 0
+    ANDI 0
     LEAVE 2

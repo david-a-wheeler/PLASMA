@@ -56,6 +56,5 @@
     DROP
     CB 42
     CALL or1
-    DROP
-    CN 0
+    ANDI 0
     LEAVE 0

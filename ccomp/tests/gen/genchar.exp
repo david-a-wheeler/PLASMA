@@ -28,6 +28,5 @@
     DROP
     CB 97
     CALL mask
-    DROP
-    CN 0
+    ANDI 0
     LEAVE 0

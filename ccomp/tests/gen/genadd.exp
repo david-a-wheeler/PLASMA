@@ -81,6 +81,5 @@
     CN 1
     CN 1
     CALL dbl
-    DROP
-    CN 0
+    ANDI 0
     LEAVE 0

@@ -18,8 +18,7 @@
     ENTER 2 1
     ; label 103
     LLW 0
-    DROP
-    CN 0
+    ANDI 0
     LEAVE 2
 
     ; m1
@@ -64,6 +63,5 @@
     DROP
     CN 1
     CALL m1024
-    DROP
-    CN 0
+    ANDI 0
     LEAVE 0

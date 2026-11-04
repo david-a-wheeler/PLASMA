@@ -31,6 +31,9 @@
  *                                          ANDI after it is redundant
  *                                          (a word load keeps it)
  *   const  NEG / COMP        -> const      e.g. -5 is one constant
+ *   CW v   CW v              -> CW v DUP     two equal WORD constants: a CW
+ *                                          loads two operand bytes, so a stack
+ *                                          DUP beats a second CW (4 cyc, 2B)
  *   const OP const           -> const      for ADD, SUB, MUL, DIV, MOD,
  *                                          AND, IOR, XOR, SHL, SHR and the
  *                                          six comparisons: a backstop
@@ -64,6 +67,7 @@
  *   CN 3  MUL                -> DUP IDXW
  *   CN 0  MUL                -> DROP CN 0
  *   CN 1  MUL                -> (nothing)
+ *   DROP  CN 0               -> ANDI 0     one op pops it and pushes 0
  *   const MUL, const = 2^n   -> CN n SHL   for n from 2 to 15
  *   DUP  ADD  ADD            -> IDXW       p + 2*i
  *   DUP  update  store  DROP -> update  store   x++ whose old value is
@@ -508,6 +512,42 @@ static int rewrite_load_andi(Mop *a, Mop *b)
   return 0;
 }
 
+/* DROP CN 0 (discard a value, then push 0) is one ANDI 0: it pops the
+ * value and pushes 0 in one op instead of two. The value is still
+ * computed, for its side effects; only the drop-and-replace is cheaper.
+ * Same two bytes, one fewer instruction. Pure stack, safe even for a
+ * volatile value. */
+static int rewrite_drop_zero(Mop *a, Mop *b)
+{
+  int v;
+  if (a->op == OP_DROP && mop_const_value(b, &v) && v == 0) {
+    a->op = OP_ANDI;
+    a->a = 0;
+    nwin--;
+    return 1;
+  }
+  return 0;
+}
+
+/* Two equal WORD (CW) constants in a row push the same value twice; the
+ * second is a DUP. A CW loads two operand bytes, so the stack copy (DUP,
+ * 44 cycles) is cheaper than a second CW (48) by 4 cycles and 2 bytes. The
+ * cheaper forms (MINUS1, CN, CB, CFFB) load from the opcode or one operand
+ * byte (36-43 cycles), where a DUP is a cycle regression or a wash, so they
+ * stay as two constants. Pure stack, safe even for a volatile value. */
+static int rewrite_dup_const(Mop *a, Mop *b)
+{
+  int va, vb;
+  if (a->op == OP_CW && b->op == OP_CW
+      && mop_const_value(a, &va) && mop_const_value(b, &vb)
+      && va == vb) {
+    b->op = OP_DUP;
+    b->a = 0;
+    return 1;
+  }
+  return 0;
+}
+
 /* The 16-bit pattern in v as a signed int, as parse.c's wrap16: the
  * unsigned arithmetic works whether the host's int has 16 or 32 bits. */
 static int signed_word(int v)
@@ -781,7 +821,8 @@ static int rewrite(void)
   if (rewrite_load_store(a, b) || rewrite_const(a, b)
       || rewrite_branch(a, b) || rewrite_mul(a, b)
       || rewrite_andi(a, b) || rewrite_addsub(a, b)
-      || rewrite_noop(a, b) || rewrite_load_andi(a, b))
+      || rewrite_noop(a, b) || rewrite_load_andi(a, b)
+      || rewrite_drop_zero(a, b) || rewrite_dup_const(a, b))
     return 1;
   /* DUP ADD ADD -> IDXW: adding twice x is PLASMA's word index op
    * (p + i for a pointer to 2-byte elements). */

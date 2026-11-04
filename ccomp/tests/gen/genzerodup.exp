@@ -1,0 +1,24 @@
+    ; zero
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    ANDI 0
+    LEAVE 2
+
+    ; dargs
+    ENTER 4 2
+    ; label 103
+    LLW 0
+    LEAVE 4
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CB 100
+    CALL zero
+    DROP
+    CW 1000
+    DUP
+    CALL dargs
+    ANDI 0
+    LEAVE 0

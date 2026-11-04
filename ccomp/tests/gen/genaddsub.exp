@@ -73,6 +73,5 @@
     DROP
     CB 100
     CALL nowide
-    DROP
-    CN 0
+    ANDI 0
     LEAVE 0
