@@ -15,7 +15,29 @@ on small systems. This page is about doing better.
 "Hacker's Delight" pages 51-52 provides a good solution if the system has an
 efficient unsigned comparison operator. It exploits the fact that you can subtract the
 first constant, causing numbers less than zero to "wrap around" and be interpreted as
-huge unsigned integers. However, in our VM, only signed integer comparisons are built-in.
+huge unsigned integers.
+
+A C macro implementation is:
+
+~~~~
+#define IS_BETWEEN_U(x, c1, c2) \
+  (((unsigned)(x) - (unsigned)(c1)) <= ((unsigned)(c2) - (unsigned)(c1)))
+~~~~
+
+Everything is done in unsigned arithmetic, so the subtraction wraps instead of
+overflowing and there is no signed-overflow undefined behavior; it is well
+defined for any int width. In C, unsigned integers are guaranteed to wrap.
+Subtracting `c1` from `x` leaves a small value when
+`x >= c1` and a huge one when `x < c1`, so a single unsigned `<=` against the
+small constant `c2 - c1` yields exactly `c1 <= x <= c2`. It works on ccish and
+on ordinary C compilers alike.
+
+However, in our VM only signed integer comparisons are built in. ccish emulates
+the unsigned `<=` by flipping both sign bits and using a signed `<=`, which
+costs more than the native signed comparison that the next section turns into
+`IS_BETWEEN`. We could do it with a call, but a call more costly in time.
+On a host compiler the unsigned `<=` is a single native instruction, but not in
+our VM (PLASMA) at this time.
 
 ## General approach if unsigned ops are not efficient
 
@@ -29,7 +51,7 @@ with anything. I did. So hooray for team humans I guess.
 ### Replacing unsigned comparison
 
 Instead subtracting by C1 to force wrapping around 0 of values we don't want,
-we'll add enough to force wrapping of unwanted nubmers
+we'll add enough to force wrapping of unwanted numbers
 around `MAX_INT`. Since we don't know if `MAX_INT` will be defined, we will
 define our own `MY_MAX_INT` == `(int)((~0U) >> 1)`.
 
@@ -69,7 +91,7 @@ const int MY_MAX_INT = (int) (~0U >> 1);
 ~~~~
 
 Note that `MY_MAX_INT` could also be a #define; it's shown as a constant here so
-that the copmiler front end doesn't need to recompute and re-fold the constant every time
+that the compiler front end doesn't need to recompute and re-fold the constant every time
 `IS_BETWEEN` is used.
 
 ## Specialized byte optimization using AND
@@ -190,7 +212,61 @@ Notes:
 
 ### Extending for unaligned values
 
-If `c2-c1` is a power of 2, but c1 is not aligned,
-we could go even further: subtract all values by the misalignment.
-This would add an extra substraction to the value being tested before the AND.
-However, this would also make the macro even more complicated.
+The aligned form above needs `c1` to be a multiple of the width `w`.
+If `w` is a power of two but `c1` is *not* aligned to it, we can still use
+`ANDI` by first shifting `x` back onto an aligned block.
+
+Let the misalignment be `r == c1 mod w`, the low `log2(w)` bits of `c1`
+(equivalently `c1 & (w - 1)`). Subtracting `r` from both `x` and `c1` moves
+the range onto the aligned block of width `w` that starts at the multiple of
+`w` just below `c1`, namely `c1 - r`. The same masking argument as above now
+applies to `x - r` instead of `x`, with the aligned base `c1 - r`:
+
+~~~~
+c1 <= x <= c2          if and only if          ((x - r) & M) == (c1 - r)
+~~~~
+
+Because `c1 - r` is a multiple of `w` by construction, its low `log2(w)` bits
+are zero, and the mask `M == 256 - w` keeps exactly the high bits that
+identify the block. When `c1` *is* aligned, `r == 0` and `x - r` is just `x`,
+so this collapses to the aligned macro above (ccish folds the `x - 0`). So a
+power-of-two width is always usable, aligned or not; only the misalignment
+`r` changes.
+
+The two new helpers, in the same style, are:
+
+~~~~
+#define BB_R(c1,w)     ((c1) & ((w) - 1))      // misalignment, c1 mod w
+#define BB_K(c1,w)     ((c1) - BB_R(c1,w))     // aligned base, c1 - r
+~~~~
+
+and the macro generalizes by dropping the `IS_ALIGNED` test and feeding
+`x - r` and the aligned base to the same `ANDI`:
+
+~~~~
+#define IS_BYTE_BETWEEN(x, c1, c2) \
+  ( IS_POW_2(BB_W(c1,c2)) \
+    ? (((char)(x - BB_R(c1, BB_W(c1,c2)))) & BB_M(BB_W(c1,c2))) == BB_K(c1, BB_W(c1,c2)) \
+    : IS_BETWEEN(x, c1, c2) )
+~~~~
+
+This is the more general of the two macros on this page: it is identical to
+the aligned-only one when `c1` is aligned, and additionally handles unaligned
+power-of-two widths. Use it when you need that generality. It costs more, in
+a few ways that matter in a 64 K target:
+
+* An extra `SUBI r` (two bytes) before the `ANDI`, but only in the unaligned
+  case (`r != 0`). When `r == 0` ccish folds `x - 0` to `x`, so the aligned
+  arm emits no `SUBI` at all.
+* The `(char)(x - r)` cast emits an `ANDI 255` immediately before the mask
+  `ANDI`, and that pair is redundant (the `ANDI` already clears the high
+  byte). Until ccish folds the pair, the unaligned arm is about nine bytes,
+  *larger* than the eight-byte `IS_BETWEEN`, while the aligned arm stays the
+  cheaper four to seven. A small peephole (drop an `ANDI 255` immediately
+  followed by an `ANDI`) would bring the unaligned arm down to six or seven
+  bytes and make it worth using.
+
+Its expansion is also longer than the aligned macro's, because the width is
+re-expanded inside `BB_R` and `BB_K`; it sits closer to ccish's 255-character
+expansion limit, though the small numeric bounds the compiler actually uses
+fit comfortably.
