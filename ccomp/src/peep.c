@@ -20,6 +20,12 @@
  *   CW a   LB / LW / SB / SW -> LAB / LAW / SAB / SAW a   constant address
  *                                          (also after CB, CFFB, or LA)
  *   const  AND               -> ANDI const for a constant from 0 to 255
+ *   ANDI m ANDI n            -> ANDI (m & n)  two byte-ANDs merge: AND
+ *                                          is associative, and both clear
+ *                                          the high byte, so a (char)
+ *                                          cast on an int (ANDI 255)
+ *                                          before a mask (ANDI n) is just
+ *                                          the mask (255 & n is n)
  *   const  NEG / COMP        -> const      e.g. -5 is one constant
  *   const OP const           -> const      for ADD, SUB, MUL, DIV, MOD,
  *                                          AND, IOR, XOR, SHL, SHR and the
@@ -396,6 +402,22 @@ static int rewrite_const(Mop *a, Mop *b)
   return 0;
 }
 
+/* Two consecutive byte-ANDs merge into one (ANDI m ANDI n becomes
+ * ANDI (m & n)): AND is associative, and both clear the high byte, so
+ * the earlier one is subsumed by the combined mask. A (char) cast on
+ * an int (ANDI 255) meeting a small & constant (ANDI n) is the case
+ * this folds, since 255 & n is n. It is pure stack arithmetic (no read
+ * is added or removed), so it is safe even for a volatile value. */
+static int rewrite_andi(Mop *a, Mop *b)
+{
+  if (a->op == OP_ANDI && b->op == OP_ANDI) {
+    a->a &= b->a;
+    nwin--;
+    return 1;
+  }
+  return 0;
+}
+
 /* The 16-bit pattern in v as a signed int, as parse.c's wrap16: the
  * unsigned arithmetic works whether the host's int has 16 or 32 bits. */
 static int signed_word(int v)
@@ -667,7 +689,8 @@ static int rewrite(void)
     }
   }
   if (rewrite_load_store(a, b) || rewrite_const(a, b)
-      || rewrite_branch(a, b) || rewrite_mul(a, b))
+      || rewrite_branch(a, b) || rewrite_mul(a, b)
+      || rewrite_andi(a, b))
     return 1;
   /* DUP ADD ADD -> IDXW: adding twice x is PLASMA's word index op
    * (p + i for a pointer to 2-byte elements). */

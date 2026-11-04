@@ -160,7 +160,9 @@ Two ccish behaviors turn the macro below into one `ANDI` per check:
 * ccish lowers `(char)(x) & byte-constant` to `ANDI` even when `x` is an `int`.
   The `(char)` cast is what lets a value *known* to be 0 to 255 take the fast
   path. On a real `char` the cast is a no-op; on an `int` ccish emits an
-  `ANDI 255` for the cast and then the mask `ANDI`.
+  `ANDI 255` for the cast and then the mask `ANDI`, and its peephole merges
+  the pair (`ANDI m ANDI n` becomes `ANDI (m & n)`, and `255 & n` is `n`),
+  leaving a single mask `ANDI`.
 
 The `(char)` cast also states the contract: "treat `x` as its low byte", which
 is correct exactly when `x` is 0 to 255. Because this is decided by the macro,
@@ -197,13 +199,13 @@ Notes:
 * The macro is split into short helper lines because a single `#define` body is
   limited to a 255-character logical line in ccish.
 * Cost of the chosen arm (the comparison, before the result is boolified):
-  `ANDI` + `CN`/`CB` + `ISEQ` is 4–5 bytes for a `char` `x` and 6–7 for an
-  `int` (the extra `ANDI 255` cast); the general form is 8.
+  `ANDI` + `CN`/`CB` + `ISEQ` is 4–5 bytes whether `x` is a `char` or an `int`
+  (an `int`'s `ANDI 255` cast folds into the mask); the general form is 8.
 * A singleton `c1 == c2` (width 1) and the whole byte (width 256, always true)
-  are both handled. On an `int`, a singleton emits two `ANDI 255` in a row
-  (the cast and the width-1 mask) that ccish does not fold, and the whole-byte
-  case emits the tautology `ANDI 0, CN 0, ISEQ`; both are still smaller than
-  the general form.
+  are both handled. On an `int`, a singleton's cast and width-1 mask are both
+  `ANDI 255`, which the peephole merges to one, and the whole-byte case folds
+  to the tautology `ANDI 0, CN 0, ISEQ`; both are still smaller than the
+  general form.
 * For a true word value (an `int` not known to be 0 to 255) `ANDI` cannot be
   used, because the block mask has high bits set; the full-word `CW`+`AND` form
   is only marginally smaller than, and no cheaper than, the general
@@ -259,12 +261,10 @@ a few ways that matter in a 64 K target:
   case (`r != 0`). When `r == 0` ccish folds `x - 0` to `x`, so the aligned
   arm emits no `SUBI` at all.
 * The `(char)(x - r)` cast emits an `ANDI 255` immediately before the mask
-  `ANDI`, and that pair is redundant (the `ANDI` already clears the high
-  byte). Until ccish folds the pair, the unaligned arm is about nine bytes,
-  *larger* than the eight-byte `IS_BETWEEN`, while the aligned arm stays the
-  cheaper four to seven. A small peephole (drop an `ANDI 255` immediately
-  followed by an `ANDI`) would bring the unaligned arm down to six or seven
-  bytes and make it worth using.
+  `ANDI`, but the peephole merges that pair (`ANDI m ANDI n` to
+  `ANDI (m & n)`, and `255 & n` is `n`), so the redundant `ANDI 255` never
+  survives. The unaligned arm is then six to seven bytes, *cheaper* than the
+  eight-byte `IS_BETWEEN`; the aligned arm is four to five.
 
 Its expansion is also longer than the aligned macro's, because the width is
 re-expanded inside `BB_R` and `BB_K`; it sits closer to ccish's 255-character
