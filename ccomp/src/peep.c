@@ -26,6 +26,10 @@
  *                                          cast on an int (ANDI 255)
  *                                          before a mask (ANDI n) is just
  *                                          the mask (255 & n is n)
+ *   LLB/LAB n  ANDI 255      -> LLB/LAB n    a byte load already
+ *                                          zero-extends, so a full-byte
+ *                                          ANDI after it is redundant
+ *                                          (a word load keeps it)
  *   const  NEG / COMP        -> const      e.g. -5 is one constant
  *   const OP const           -> const      for ADD, SUB, MUL, DIV, MOD,
  *                                          AND, IOR, XOR, SHL, SHR and the
@@ -489,6 +493,21 @@ static int rewrite_noop(Mop *a, Mop *b)
   return 0;
 }
 
+/* A byte load (LLB, LAB) already zero-extends, so a full-byte ANDI 255
+ * right after it is redundant and goes. Not a word load (LLW, LAW),
+ * whose high byte may be set. Pure stack, safe even for a volatile.
+ * Feeds on the const AND -> ANDI peep (c & 255 becomes LLB ANDI 255).
+ */
+static int rewrite_load_andi(Mop *a, Mop *b)
+{
+  if (b->op == OP_ANDI && b->a == 0xFF
+      && (a->op == OP_LLB || a->op == OP_LAB)) {
+    nwin--;
+    return 1;
+  }
+  return 0;
+}
+
 /* The 16-bit pattern in v as a signed int, as parse.c's wrap16: the
  * unsigned arithmetic works whether the host's int has 16 or 32 bits. */
 static int signed_word(int v)
@@ -762,7 +781,7 @@ static int rewrite(void)
   if (rewrite_load_store(a, b) || rewrite_const(a, b)
       || rewrite_branch(a, b) || rewrite_mul(a, b)
       || rewrite_andi(a, b) || rewrite_addsub(a, b)
-      || rewrite_noop(a, b))
+      || rewrite_noop(a, b) || rewrite_load_andi(a, b))
     return 1;
   /* DUP ADD ADD -> IDXW: adding twice x is PLASMA's word index op
    * (p + i for a pointer to 2-byte elements). */

@@ -1,0 +1,61 @@
+    ; loc
+    ENTER 2 1
+    ; label 103
+    LLB 0
+    LEAVE 2
+
+    ; glo
+    ENTER 0 0
+    ; label 103
+    LAB data +0
+    LEAVE 0
+
+    ; plain
+    ENTER 2 1
+    ; label 103
+    LLB 0
+    LEAVE 2
+
+    ; notbyte
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    ANDI 255
+    LEAVE 2
+
+    ; masked
+    ENTER 2 1
+    ; label 103
+    LLB 0
+    ANDI 240
+    LEAVE 2
+
+    ; both
+    ENTER 2 1
+    ; label 103
+    LLB 0
+    ANDI 240
+    LEAVE 2
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CB 97
+    CALL loc
+    DROP
+    CALL glo
+    DROP
+    CB 97
+    CALL plain
+    DROP
+    CW 300
+    CALL notbyte
+    DROP
+    CB 97
+    CALL masked
+    DROP
+    CB 97
+    CALL both
+    DROP
+    CN 0
+    LEAVE 0
