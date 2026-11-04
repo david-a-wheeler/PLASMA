@@ -158,9 +158,9 @@ const int MY_MAX_INT = (int) (~0U >> 1);
 #define IS_BETWEEN(x, c1, c2) ((int) (x) + (MY_MAX_INT - c2) >= (MY_MAX_INT - c2 + c1))
 
 #define IS_POW_2(w)    (((w) & ((w) - 1)) == 0)       // is w a power of two?
-#define IS_ALIGNED(c1,w)   (((c1) & ((w) - 1)) == 0)  // is c1 is aligned to w?
+#define IS_ALIGNED(c1,w)   (((c1) & ((w) - 1)) == 0)  // is c1 aligned to w?
 
-#define BB_W(c1,c2)   ((c2) - (c1) + 1)               // width of common low bits
+#define BB_W(c1,c2)   ((c2) - (c1) + 1)               // # of distinct values in [c1,c2]
 #define BB_M(w)       (256 - (w))                     // the byte ANDI mask
 
 // Is byte x between constants c1 and c2? Use AND if you can
@@ -186,6 +186,7 @@ Notes:
   used, because the block mask has high bits set; the full-word `CW`+`AND` form
   is only marginally smaller than, and no cheaper than, the general
   `IS_BETWEEN`. The byte case is the one that pays.
+* This presumes `//` is supported for comments; ccish does.
 
 ### Extending for unaligned values
 
