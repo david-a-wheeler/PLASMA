@@ -17,7 +17,10 @@ CFLAGS ?= -std=c89 -pedantic -Wall -Wextra -O2
 # The host C compiler that writes the cross tests' references: gcc by
 # default, clang for "make test XCC=clang" (the flags are the same).
 XCC ?= $(shell command -v gcc 2>/dev/null || command -v clang 2>/dev/null)
-XREF_FLAGS = -Wall -Wextra -Werror -funsigned-char -O2
+# -fwrapv makes signed overflow wrap to two's complement (as the 16-bit
+# VM does) instead of undefined behavior, so the host oracle agrees with
+# ccish on wrapping arithmetic; int is still a different width.
+XREF_FLAGS = -Wall -Wextra -Werror -funsigned-char -fwrapv -O2
 
 COMMON = src/diag.c src/bio.c
 PP     = src/ppname.c src/pplex.c src/ppmac.c src/ppif.c src/ppout.c src/pp.c
