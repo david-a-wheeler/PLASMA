@@ -38,6 +38,9 @@
  *                                          undefined in C (and the VMs
  *                                          disagree on the first)
  *   CN 0   ADD / SUB         -> (nothing)
+ *   CN 0  IOR/XOR/SHL/SHR    -> (nothing)    x | 0, x ^ 0, x << 0, x >> 0
+ *                                          and ~~x (COMP COMP) are no-ops,
+ *                                          so both ops go
  *   CN 1   ADD / SUB         -> INCR / DECR   (also MINUS1 SUB, ...)
  *   const  ADD / SUB         -> ADDI / SUBI n  for adding n from 2 to 255
  *                                          either way (x - 5, x + -5:
@@ -466,6 +469,26 @@ static int rewrite_addsub(Mop *a, Mop *b)
   return 1;
 }
 
+/* A constant 0 under a no-op op (x | 0, x ^ 0, x << 0, x >> 0), or a
+ * double complement (~~x), leaves the value unchanged, so both ops go.
+ * The front end already folds x + 0 and x - 0; these are the rest.
+ * Pure stack arithmetic, safe even for a volatile value. */
+static int rewrite_noop(Mop *a, Mop *b)
+{
+  int v;
+  if (mop_const_value(a, &v) && v == 0
+      && (b->op == OP_IOR || b->op == OP_XOR || b->op == OP_SHL
+          || b->op == OP_SHR)) {
+    nwin -= 2;
+    return 1;
+  }
+  if (a->op == OP_COMP && b->op == OP_COMP) {
+    nwin -= 2;
+    return 1;
+  }
+  return 0;
+}
+
 /* The 16-bit pattern in v as a signed int, as parse.c's wrap16: the
  * unsigned arithmetic works whether the host's int has 16 or 32 bits. */
 static int signed_word(int v)
@@ -738,7 +761,8 @@ static int rewrite(void)
   }
   if (rewrite_load_store(a, b) || rewrite_const(a, b)
       || rewrite_branch(a, b) || rewrite_mul(a, b)
-      || rewrite_andi(a, b) || rewrite_addsub(a, b))
+      || rewrite_andi(a, b) || rewrite_addsub(a, b)
+      || rewrite_noop(a, b))
     return 1;
   /* DUP ADD ADD -> IDXW: adding twice x is PLASMA's word index op
    * (p + i for a pointer to 2-byte elements). */

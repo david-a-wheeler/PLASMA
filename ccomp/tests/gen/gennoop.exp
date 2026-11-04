@@ -1,0 +1,61 @@
+    ; or0
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LEAVE 2
+
+    ; xor0
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LEAVE 2
+
+    ; shl0
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LEAVE 2
+
+    ; shr0
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LEAVE 2
+
+    ; dblcomp
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LEAVE 2
+
+    ; or1
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CN 1
+    IOR
+    LEAVE 2
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CB 42
+    CALL or0
+    DROP
+    CB 42
+    CALL xor0
+    DROP
+    CB 42
+    CALL shl0
+    DROP
+    CB 42
+    CALL shr0
+    DROP
+    CB 42
+    CALL dblcomp
+    DROP
+    CB 42
+    CALL or1
+    DROP
+    CN 0
+    LEAVE 0
