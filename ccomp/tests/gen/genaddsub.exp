@@ -1,0 +1,78 @@
+    ; sum
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    ADDI 2
+    LEAVE 2
+
+    ; zero
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LEAVE 2
+
+    ; cross
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    SUBI 2
+    LEAVE 2
+
+    ; crossback
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    SUBI 2
+    LEAVE 2
+
+    ; decrements
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    SUBI 2
+    LEAVE 2
+
+    ; novar
+    ENTER 4 2
+    ; label 103
+    LLW 0
+    ADDI 5
+    ADDLW 2
+    LEAVE 4
+
+    ; nowide
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CW 300
+    ADD
+    SUBI 5
+    LEAVE 2
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CB 100
+    CALL sum
+    DROP
+    CB 100
+    CALL zero
+    DROP
+    CB 100
+    CALL cross
+    DROP
+    CB 100
+    CALL crossback
+    DROP
+    CB 100
+    CALL decrements
+    DROP
+    CB 100
+    CN 4
+    CALL novar
+    DROP
+    CB 100
+    CALL nowide
+    DROP
+    CN 0
+    LEAVE 0

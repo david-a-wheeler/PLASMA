@@ -42,6 +42,11 @@
  *   const  ADD / SUB         -> ADDI / SUBI n  for adding n from 2 to 255
  *                                          either way (x - 5, x + -5:
  *                                          SUBI 5)
+ *   ADDI/SUBI/INCR/DECR pair -> one op      two small constant adds/subs
+ *                                          merge to their sum (x + 5 - 3:
+ *                                          ADDI 5 SUBI 3 -> ADDI 2; the
+ *                                          front end can't fold it, since
+ *                                          x + 5 is not a constant)
  *   LLW n  ADD / IDXW        -> ADDLW / IDXLW n  (also LLB, LAW, LAB:
  *                                          ADDLB, IDXLB, ADDAW, ...)
  *   NEG  BRFLS / BRTRU       -> BRFLS / BRTRU    comparison used as a test
@@ -418,6 +423,49 @@ static int rewrite_andi(Mop *a, Mop *b)
   return 0;
 }
 
+/* If m adds a small constant to the top of the stack (INCR, DECR, ADDI
+ * or SUBI), set *v to that constant (positive for an add) and return 1;
+ * 0 otherwise. INCR and DECR are the +/-1 forms of ADDI and SUBI. */
+static int add_value(Mop *m, int *v)
+{
+  switch (m->op) {
+  case OP_INCR: *v = 1; return 1;
+  case OP_DECR: *v = -1; return 1;
+  case OP_ADDI: *v = m->a; return 1;
+  case OP_SUBI: *v = -m->a; return 1;
+  }
+  return 0;
+}
+
+/* Two small additive updates merge into one: the front end emits each
+ * constant add or subtract as its own op (x + 5 - 3 is ADDI 5 SUBI 3,
+ * since x + 5 is not a constant), but their sum is a constant, so one
+ * op suffices. The sum is 0 -> drop both, +/-1 -> INCR / DECR,
+ * +/-2 to +/-255 -> ADDI / SUBI; a larger magnitude stays as two ops.
+ * It is pure stack arithmetic, safe even for a volatile value. */
+static int rewrite_addsub(Mop *a, Mop *b)
+{
+  int x, y, t;
+  if (!add_value(a, &x) || !add_value(b, &y))
+    return 0;
+  t = x + y;
+  if (t < -255 || t > 255)
+    return 0;
+  if (t == 0) {
+    nwin -= 2;
+    return 1;
+  }
+  if (t > 0) {
+    a->op = t == 1 ? OP_INCR : OP_ADDI;
+  } else {
+    a->op = t == -1 ? OP_DECR : OP_SUBI;
+    t = -t;
+  }
+  a->a = t;
+  nwin--;
+  return 1;
+}
+
 /* The 16-bit pattern in v as a signed int, as parse.c's wrap16: the
  * unsigned arithmetic works whether the host's int has 16 or 32 bits. */
 static int signed_word(int v)
@@ -690,7 +738,7 @@ static int rewrite(void)
   }
   if (rewrite_load_store(a, b) || rewrite_const(a, b)
       || rewrite_branch(a, b) || rewrite_mul(a, b)
-      || rewrite_andi(a, b))
+      || rewrite_andi(a, b) || rewrite_addsub(a, b))
     return 1;
   /* DUP ADD ADD -> IDXW: adding twice x is PLASMA's word index op
    * (p + i for a pointer to 2-byte elements). */
