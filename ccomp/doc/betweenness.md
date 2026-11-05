@@ -565,3 +565,111 @@ Bottom line: when `x` is a byte, reach for `IS_BYTE_BETWEEN` (aligned if you
 can, unaligned otherwise). When `x` is a general integer, use `IS_BETWEEN`
 (it is smaller and within a few cycles of the obvious form on average).
 Avoid the signed-emulated unsigned form.
+
+## Implementing betweenness in the compiler
+
+So far the better forms come from `#define` macros the programmer writes.
+This section asks whether ccish should produce them itself, and where.
+
+ccish rewrites patterns in two stages. The parser is out of the question: it
+is a single pass that emits IR as it goes, with no view of the IR it has
+already emitted and no knowledge of a value's type yet. The two real homes
+are:
+
+* **The IR pass** (irin.c) reads the IR and holds a window of it, rewriting
+  patterns before lowering to machine ops. It already matches across control
+  flow: it recognizes counted loops by matching shapes that straddle
+  `IR_BRFALSE` and `IR_JUMP`, and it rewrites the De Morgan flip, the unsigned
+  compare's sign-bit flip, and unsigned division, modulo, and shift by a
+  constant. It is, in effect, a peephole at the IR level, and it is the only
+  stage that knows a value's type as a type (`IR_LOCALB` versus `IR_LOCAL`).
+* **The peephole** (peep.c) rewrites the machine ops after lowering. It
+  already does many multi-op rewrites (`CN 1 ADD` to `INCR`, `ANDI m ANDI n`
+  to `ANDI (m&n)`, `CW v CW v` to `CW v DUP`, dropping unused expressions),
+  and it can already read a constant's value out of any form (`CN`, `CB`,
+  `CW`, `CFFB`) and a load's width (`LLB` versus `LLW`).
+
+### The shape, and what each stage sees
+
+In the op stream, `if (x >= c1 && x <= c2)` is a fixed eight-op shape:
+
+~~~~
+LLx n    const c1    ISGE    BRFLS L
+LLx n    const c2    ISLE    BRFLS L
+~~~~
+
+where `LLx` is `LLW` or `LLB`, the two loads are the same `n`, and both
+branches go to the same `L`. The transform rewrites it to the `CW`+`ADD`+`CW`
++`ISGE` shape (general) or the `ANDI`+`BRNE` shape (byte, power-of-two block).
+Both stages can see the shape: the IR pass as IR ops, the peephole as machine
+ops. The difference is the type: the IR pass knows `x` is a byte because the
+load is `IR_LOCALB`; the peephole can only tell because the load is `LLB`.
+
+### Difficulty
+
+* **General form** (any int, any constants): a fixed eight-op match with two
+  equalities to check (same load, same branch target) and two constants to
+  read. In the IR pass the across-branch matching is already there (the loop
+  recognizer does it), so this is a new shape in an existing mechanism. In the
+  peephole it is a new case in the existing linear matcher. Both are real but
+  bounded work.
+* **Byte form**: the general match plus (a) the value is a byte and (b) `[c1,
+  c2]` is a power-of-two block. (b) is a small compile-time computation; (a)
+  is a type the IR pass has directly and the peephole only by reading the
+  load. This is the part that is more than a pattern match: it is a small
+  data-flow fact (the value is a byte) deciding a different lowering.
+
+### Pros and cons of building it in
+
+Pros:
+
+* Automatic: every `x >= c1 && x <= c2` gets the better form with no macro,
+  and the programmer cannot forget it or mistype the range.
+* Preconditions are checked, not trusted: the byte form is emitted only when
+  the value really is a byte and the range really is a power-of-two block, so
+  the macro's "treat x as its low byte" contract stops being something the
+  programmer has to guarantee by hand.
+* One place to get it right and test, instead of a macro to `#include` in
+  every program that wants it.
+
+Cons:
+
+* Compiler size, the live constraint for a self-hosting 64 K target. The
+  matcher, the byte test, and the power-of-two test are new code in the
+  compiler that stays for every program it compiles, most of which have no
+  betweenness at all.
+* A larger correctness surface. A macro is checked as ordinary C, so a
+  mistake is a compile error or a wrong answer in the program that uses it. A
+  built-in rewrite is checked only by the compiler's own tests; a subtle miss
+  (a value that is almost a byte, a range that is almost a power-of-two
+  block) is a silent wrong-code bug.
+* A small, local win: about two bytes for the general form, a little more for
+  the byte form, per occurrence.
+
+### Recommendation
+
+Keep the macros for now; do not build the transform into the compiler. The
+macros total less code (none in the compiler), are checked as ordinary C, and
+already emit the same op stream the compiler would. The compiler's own source
+has only a handful of betweenness shapes, so a built-in transform would not
+pay for its size on the self-hosting target.
+
+If you do want it built in, do the **general form first, in the IR pass**, and
+defer the byte form:
+
+* The IR pass is the right home, not the peephole: it is the IR-level
+  peephole, it already matches shapes across `BRFLS` and `JUMP` (the loop
+  recognizer), and it knows the type as a type. The peephole could do it too
+  (it reads the load's width and the constant's form), but it would be
+  inferring the type from the op rather than using it.
+* Emit only the general `CW`+`ADD`+`CW`+`ISGE` shape at first. It is correct
+  for any int, needs no type beyond the load's width, and is the always-safe
+  win.
+* Add the byte `ANDI` form only if the general form proves its worth. It is
+  the part that needs the data-flow fact (the value is a byte) and the
+  power-of-two test, and it is the part most likely to misfire silently. In
+  the IR pass the type is available, so that is where the byte form belongs
+  when it is wanted.
+
+That ordering gets the automatic, always-correct win first and defers the one
+that needs a data-flow fact until the machinery for it is wanted.
