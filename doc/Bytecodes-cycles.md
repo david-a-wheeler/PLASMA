@@ -9,17 +9,25 @@ This file is written operation-by-operation so a reviewer can re-verify each
 number: check each 6502 instruction's cycle count, add them up, and confirm
 the op-specific subtotal, the ending dispatch, and the total.
 
-> **Status: draft, pending re-review.** These are a first careful pass, not
-> yet final. Re-verify the numbers against `plvm02.s` (and the 6502 timing
-> table) before they are considered settled and copied into the "Cycles"
+> **Status: reviewed.** Each number has been re-verified against `plvm02.s`
+> (and the 6502 timing table) and is settled enough to copy into the "Cycles"
 > column of `Bytecodes.md`. The per-op breakdowns are meant to make that
-> re-review tractable.
+> re-verification tractable.
 >
-> One thing to re-check in particular: upstream has changed the boolean
-> "true" value so it is consistently `$FFFF` (it used to be `1` in a few
-> places). Any op whose cost depends on that value (the `ISTRU`/`ISFLS`
-> result-push, the `NOT` handler, etc.) should be re-verified once that
-> change is merged into this branch.
+> The boolean "true" value is now consistently `$FFFF` on every VM (upstream
+> changed the C VM to match the 6502 VMs; the 6502 VM's `NOT` and the
+> `ISTRU`/`ISFLS` comparison push already gave `$FFFF`, so the counts here
+> were unaffected by that change). Re-verified during review:
+> - `NOT` (`LNOT`): 42 (nonzero -> 0) / 45 (zero -> `$FFFF` via `MINUS1`).
+> - `ISTRU`/`ISFLS` result-push + `JMP DROP` + `DROP`: 10 + 24 = 34, so a
+>   comparison is `test + 34` (the test is 10-21 depending on where the
+>   decision is made).
+>
+> Corrections made during review: the five simple constants (`ZERO` 34->32,
+> `CN` 38->36, `MINUS1` 36->34, `CB` 43->41, `CFFB` 43->41) had arithmetic
+> slips in their "op-specific + 22" totals; `SAB`'s formula omitted the second
+> `INY`; and `IDXAB`'s overflow case is 84 (the `CLC` is in the overflow
+> path), not 83.
 
 ## The counting convention
 
@@ -101,7 +109,7 @@ The two most common corrections versus a naive count:
 
 ## Constants
 
-### ZERO — `$00` (34)
+### ZERO — `$00` (32)
 
 The constant 0. `$00` is the bit form of `CN 0`, but it dispatches to the
 `ZERO` handler, not `CN`. Because A already holds the opcode (0) on entry,
@@ -116,9 +124,9 @@ STA     ESTKH,X         ; 4   (A is 0)
 JMP     NEXTOP          ; 6
 ; NEXTOP                ; 16
 ```
-op-specific 10 + 22 = **34**.
+op-specific 10 + 22 = **32**.
 
-### CN 1-15 — `$02`-`$1E`, handler `CN` (38)
+### CN 1-15 — `$02`-`$1E`, handler `CN` (36)
 
 ```
 DEX                     ; 2
@@ -129,9 +137,9 @@ STA     ESTKH,X         ; 4
 JMP     NEXTOP          ; 6
 ; NEXTOP                ; 16
 ```
-op-specific 14 + 22 = **38**.
+op-specific 14 + 22 = **36**.
 
-### MINUS1 — `$20` (36)
+### MINUS1 — `$20` (34)
 
 ```
 DEX                     ; 2
@@ -141,9 +149,9 @@ STA     ESTKH,X         ; 4
 JMP     NEXTOP          ; 6
 ; NEXTOP                ; 16
 ```
-op-specific 12 + 22 = **36**.
+op-specific 12 + 22 = **34**.
 
-### CB — `$2A` (43)
+### CB — `$2A` (41)
 
 ```
 DEX                     ; 2
@@ -155,9 +163,9 @@ STA     ESTKL,X         ; 4
 JMP     NEXTOP          ; 6
 ; NEXTOP                ; 16
 ```
-op-specific 19 + 22 = **43**.
+op-specific 19 + 22 = **41**.
 
-### CFFB — `$5E` (43)
+### CFFB — `$5E` (41)
 
 Same shape as CB, but the high byte is `$FF` instead of `$00`.
 
@@ -171,7 +179,7 @@ STA     ESTKL,X         ; 4
 JMP     NEXTOP          ; 6
 ; NEXTOP                ; 16
 ```
-op-specific 19 + 22 = **43**.
+op-specific 19 + 22 = **41**.
 
 ### CW — `$2C` (46)
 
@@ -819,8 +827,8 @@ SLB: INY                     ; 2
 ### SAB — `$78` (58) and SAW — `$7A` (74)
 
 Store to a 2-byte absolute address operand. `SAB` (byte) has the `BMI -`
-IP-wrap check (not taken): INY 2 + BMI 2 + 2×(LDA 5 + STA 4) + LDA 4 + STA 6 +
-24 = **58**. `SAW` (word) stages the address in `TMP` and stores both bytes at
+IP-wrap check (not taken): INY 2 + BMI 2 + (LDA 5 + STA 4) + (INY 2 + LDA 5 +
+STA 4) + LDA 4 + STA 6 + 24 = **58**. `SAW` (word) stages the address in `TMP` and stores both bytes at
 `(TMP),0/1`, ending in `JMP DROP`: 2+5+3+2+5+3+3+2+4+5+2+4+5+3+2+24 = **74**.
 
 ### DLB — `$6C` (52) and DLW — `$6E` (57)
@@ -891,7 +899,7 @@ IDXLB: INY                     ; 2
 `IDXLW` (word) reads the index as a word and does `ASL`/`ROL` into `TMP`:
 2+5+3+2+5+2+3+2+5+2+3+3+2+4+4+3+4+4+3+22 = **83**.
 
-### IDXAB — `$BC` (79 / 83) and IDXAW — `$BE` (96)
+### IDXAB — `$BC` (79 / 84) and IDXAW — `$BE` (96)
 
 Index an absolute byte array. `IDXAB`:
 
@@ -918,7 +926,7 @@ IDXAB: INY                     ; 2
        JMP     NEXTOP          ; 6
 ; NEXTOP                ; 16
 ```
-`IDXAB` = **79** (no overflow) / **83** (overflow).
+`IDXAB` = **79** (no overflow) / **84** (overflow).
 
 `IDXAW` (word) reads the index as a word from the absolute address and does
 `ASL`/`ROL` into `TMP`: 2+5+3+2+5+3+3+2+5+2+3+2+5+2+3+3+2+4+4+3+4+4+3+22 = **96**.
