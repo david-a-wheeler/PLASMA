@@ -56,6 +56,41 @@ OUT=tests/out
 pass=0
 fail=0
 
+# The passes must be up to date with their sources, or a stale one writes
+# a different module and the small-build check below fails confusingly
+# ("the small build doesn't write the full build's object"). "make test"
+# rebuilds them first; this guard catches running the tests directly after
+# a source edit. The per-pass file lists mirror the Makefile's.
+COMMON="src/diag.c src/bio.c"
+PP="src/ppname.c src/pplex.c src/ppmac.c src/ppif.c src/ppout.c src/pp.c"
+NAM="src/nam.c"
+FRONT="src/tokin.c src/name.c src/type.c src/parse.c src/pexpr.c \
+       src/pstmt.c src/ptop.c src/irout.c"
+BACK="src/irin.c src/lower.c src/peep.c src/emit.c src/helper.c"
+LINK="src/link.c"
+HDRS=$(cd src && ls *.h 2>/dev/null | sed 's|^|src/|')
+stale() {  # $1 the pass binary, $2 the source files it is built from
+    if [ ! -x "$1" ]; then
+        echo "run.sh: $1 is missing; run 'make all small'" >&2
+        exit 1
+    fi
+    for f in $2; do
+        if [ -f "$f" ] && [ "$f" -nt "$1" ]; then
+            echo "run.sh: $1 is older than $f; run 'make all small'" >&2
+            exit 1
+        fi
+    done
+}
+stale ./ccish "src/main.c $COMMON $PP $NAM $FRONT $BACK $LINK $HDRS"
+stale ./ccpp "src/ccpp.c $COMMON $PP $HDRS"
+stale ./cccomp "src/cccomp.c $COMMON $NAM $FRONT $HDRS"
+stale ./ccgen "src/ccgen.c $COMMON $NAM $BACK $HDRS"
+stale ./ccrel "src/ccrel.c $COMMON $LINK $HDRS"
+stale ./ccpp-small "src/ccpp.c $COMMON $PP $HDRS"
+stale ./cccomp-small "src/cccomp.c $COMMON $NAM $FRONT $HDRS"
+stale ./ccgen-small "src/ccgen.c $COMMON $NAM $BACK $HDRS"
+stale ./ccrel-small "src/ccrel.c $COMMON $LINK $HDRS"
+
 rm -rf "$OUT"
 mkdir -p "$OUT"
 

@@ -713,6 +713,57 @@ static void not_cmp(void)
   nbuf--;
 }
 
+/* The held tail is a betweenness: the same local loaded twice, each time
+ * compared against a constant, x >= c1 (or >) and x <= c2 (or <), the two
+ * fails both branching to the same label, nothing between that could change
+ * the local (only the compare and its branch). Rewrite it to one load, one
+ * add of (MAX - high), and one compare >= (MAX - high + low), where low and
+ * high are the inclusive ends the two comparisons describe: > c1 means low
+ * is c1 + 1, < c2 means high is c2 - 1. The add wraps past MAX for x below
+ * low (and the compare fails) and wraps negative for x above high (and the
+ * compare fails), so one compare covers the whole range. Signed only: an
+ * unsigned compare is sign-bit flipped before it is held, so it never
+ * reaches here as a signed op. */
+static void between_rewrite(void)
+{
+  int n = nbuf;
+  int load, cmp1, cmp2, lab, low, high, cadd, ccmp, i;
+  if (n < 8)
+    return;
+  load = buf_op[n - 8];
+  if (load != IR_LOCAL && load != IR_LOCALB)
+    return;
+  if (buf_op[n - 4] != load || buf_a[n - 8] != buf_a[n - 4])
+    return;                 /* the second load must be the same local */
+  if (buf_op[n - 7] != IR_CONST || buf_op[n - 3] != IR_CONST)
+    return;
+  cmp1 = buf_op[n - 6];
+  cmp2 = buf_op[n - 2];
+  if (cmp1 != IR_GE && cmp1 != IR_GT)
+    return;
+  if (cmp2 != IR_LE && cmp2 != IR_LT)
+    return;
+  if (buf_op[n - 5] != IR_BRFALSE || buf_op[n - 1] != IR_BRFALSE)
+    return;
+  lab = buf_a[n - 5];
+  if (buf_a[n - 1] != lab)
+    return;                 /* both fails must go to the same label */
+  for (i = n - 8; i < n; i++)          /* no pending flip or stash in the tail */
+    if (buf_pre[i])
+      return;
+  low = buf_a[n - 7] + (cmp1 == IR_GT);
+  high = buf_a[n - 3] - (cmp2 == IR_LT);
+  cadd = (0x7FFF - high) & 0xFFFF;
+  ccmp = (cadd + low) & 0xFFFF;
+  buf_op[n - 7] = IR_CONST;  buf_a[n - 7] = cadd;
+  buf_op[n - 6] = IR_ADD;    buf_a[n - 6] = 0;
+  buf_op[n - 5] = IR_CONST;  buf_a[n - 5] = ccmp;
+  buf_op[n - 4] = IR_GE;     buf_a[n - 4] = 0;
+  buf_op[n - 3] = IR_BRFALSE; buf_a[n - 3] = lab;
+  buf_cnt[lab]--;           /* the dropped IR_BRFALSE no longer names lab */
+  nbuf = n - 2;
+}
+
 /* Rewrite unsigned op *op (IR_UDIV, IR_UMOD or IR_USHR) on a constant
  * right operand, the held CONST just before it, to be done inline, and
  * return its f: x >> c is USHR with f = c (SHR, then a mask); x / 2^n
@@ -813,6 +864,7 @@ static void hold(int op, int a, int f)
   run_match();
   if (op == IR_NOT && nbuf >= 2 && IR_IS_COMPARE(buf_op[nbuf - 2]))
     not_cmp();
+  between_rewrite();
   if (op == IR_ENDFUNC)
     lower_held(nbuf);
 }
