@@ -620,10 +620,14 @@ static int rewrite_branch(Mop *a, Mop *b)
     nwin--;
     return 1;
   }
-  /* NOT ANDI 1 BRFLS / BRTRU -> BRTRU / BRFLS: branch on !x by
-   * testing x with the opposite branch. */
+  /* NOT ANDI n BRFLS / BRTRU -> BRTRU / BRFLS: branch on !x by testing x
+   * with the opposite branch. The ANDI n (n non-zero) only normalizes the
+   * truth value to 1 (PLASMA's NOT gives $FFFF), and a test branch cares
+   * only about zero vs non-zero, so the mask is dropped. (Eliding it before
+   * a non-branch truth use is NOT done: a following NOT belongs to another
+   * !expr and would be clobbered.) */
   if (nwin >= 3 && win[nwin - 3].op == OP_NOT && a->op == OP_ANDI
-      && a->a == 1 && is_test_branch(b->op)) {
+      && a->a != 0 && is_test_branch(b->op)) {
     win[nwin - 3] = *b;
     win[nwin - 3].op = invert_branch(b->op);
     nwin -= 2;

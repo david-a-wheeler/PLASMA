@@ -269,9 +269,10 @@ static void lower_special(Mop *m, int op, int a, int f)
     m->a = FRAME_LATER;
     break;
   case IR_NOT:
-    /* C's !x is 1 or 0. PLASMA's NOT gives $FFFF (6502 VMs) or 1
-     * (C VM) for true, so mask it: NOT then AND 1 gives 1 or 0 on
-     * every VM, in two ops. */
+    /* C's !x is 1 or 0; PLASMA's NOT gives $FFFF (true) or 0 on
+     * every VM, so mask it: NOT then AND 1 gives 1 or 0. When the
+     * result only feeds a truth test (a branch, or another NOT), the
+     * peephole stage drops the ANDI, since $FFFF is already "true". */
     put_simple(OP_NOT);
     m->op = OP_ANDI;
     m->a = 1;
