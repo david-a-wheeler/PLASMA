@@ -30,11 +30,9 @@ Where the C VM disagrees, the 6502 behavior is treated as authoritative.
   Comparisons and the fused compare/branch opcodes are **signed**. There are
   no unsigned comparison opcodes. CMDSYS provides `isugt`, `isuge`, `isult`
   and `isule` as callable functions.
-* **Booleans:** comparison opcodes produce `$FFFF` (-1) for true and `$0000`
-  for false, in every VM, the C VM included. Conditional branches treat any
-  nonzero value as true. The one exception is logical `NOT` (`$80`): the C
-  VM returns `1` rather than `$FFFF` for true. See
-  [Significant discrepancies](#significant-discrepancies).
+* **Booleans:** comparison opcodes and logical `NOT` (`$80`) produce `$FFFF`
+  (-1) for true and `$0000` for false, in every VM, the C VM included.
+  Conditional branches treat any nonzero value as true.
 * **Byte order** of all multi-byte values (operands and memory) is
   little-endian.
 * **Bytes** loaded from memory are zero-extended to 16 bits. Byte stores
@@ -91,18 +89,25 @@ Opcodes above `$C4` are undefined.
 
 "Size" is the total instruction length in bytes, including the opcode.
 
+The **Cycles** column is the 6502 Apple II (64K) VM's cycle count for the op,
+with the trailing fetch/dispatch included (see `Bytecodes-cycles.md` for the
+per-op breakdown). A `*` marks a variable-time op (the value is an average;
+the assumption is noted there). Two-number entries are the two cases (e.g.
+no-carry / carry, or a branch's not-taken / taken).
+
 ### Constants
 
-| Op | Name | Operands | Size | Stack effect | Description |
-|----|------|----------|------|--------------|-------------|
-| $00–$1E | CN n | — | 1 | `( -- n )` | Push the constant `n = opcode/2` (0–15). `$00` is zero. |
-| $20 | MINUS1 | — | 1 | `( -- -1 )` | Push `$FFFF`. |
-| $2A | CB | b | 2 | `( -- b )` | Push byte `b`, zero-extended (`$00bb`). |
-| $5E | CFFB | b | 2 | `( -- $FFbb )` | Push byte `b` with high byte `$FF`, i.e. -256..-1. |
-| $2C | CW | w | 3 | `( -- w )` | Push word `w`. |
-| $26 | LA | addr | 3 | `( -- addr )` | Push an address. Same as `CW` at run time; use it when the operand is relocated, which also makes listings clearer. |
-| $28 | LLA | b | 2 | `( -- IFP+b )` | Push the address of the local at frame offset `b`. |
-| $2E | CS | len, chars… | 2+len | `( -- straddr )` | In-line string literal: a length byte followed by `len` characters (a length-prefixed string). IP continues after the last character. If the bytecode is in main memory (64K Apple II, Apple 1), this pushes the address of the length byte inside the bytecode. If the bytecode runs from elsewhere (128K Apple II auxiliary memory, Apple ///, 65802, the C VM), the string is first copied into the string pool and the copy's address is pushed. An identical string already in the current pool is reused. The pool is released when the function returns. **To be portable, treat a `CS` address as valid only until the current function returns, and never write through it.** |
+| Op | Name | Operands | Size | Cycles | Stack effect | Description |
+|----|------|----------|------|--------|--------------|-------------|
+| $00 | ZERO (CN 0) | — | 1 | 32 | `( -- 0 )` | Push 0. The `$00` form of `CN 0`; dispatches to its own `ZERO` handler, 4 cycles faster than `CN` 1-15. |
+| $02–$1E | CN 1-15 | — | 1 | 36 | `( -- n )` | Push the constant `n = opcode/2` (1–15). |
+| $20 | MINUS1 | — | 1 | 34 | `( -- -1 )` | Push `$FFFF`. |
+| $2A | CB | b | 2 | 41 | `( -- b )` | Push byte `b`, zero-extended (`$00bb`). |
+| $5E | CFFB | b | 2 | 41 | `( -- $FFbb )` | Push byte `b` with high byte `$FF`, i.e. -256..-1. |
+| $2C | CW | w | 3 | 46 | `( -- w )` | Push word `w`. |
+| $26 | LA | addr | 3 | 48 | `( -- addr )` | Push an address. Same as `CW` at run time; use it when the operand is relocated, which also makes listings clearer. |
+| $28 | LLA | b | 2 | 51 | `( -- IFP+b )` | Push the address of the local at frame offset `b`. |
+| $2E | CS | len, chars… | 2+len | 59 | `( -- straddr )` | In-line string literal: a length byte followed by `len` characters (a length-prefixed string). IP continues after the last character. If the bytecode is in main memory (64K Apple II, Apple 1), this pushes the address of the length byte inside the bytecode. If the bytecode runs from elsewhere (128K Apple II auxiliary memory, Apple ///, 65802, the C VM), the string is first copied into the string pool and the copy's address is pushed. An identical string already in the current pool is reused. The pool is released when the function returns. **To be portable, treat a `CS` address as valid only until the current function returns, and never write through it.** |
 
 Constant selection used by the PLASMA compiler (`emit_const` in
 `src/toolsrc/codegen.c`): `$FFFF` → `MINUS1`; 0–15 → `CN`; `$0010–$00FF` →
@@ -110,11 +115,11 @@ Constant selection used by the PLASMA compiler (`emit_const` in
 
 ### Stack manipulation
 
-| Op | Name | Operands | Size | Stack effect | Description |
-|----|------|----------|------|--------------|-------------|
-| $30 | DROP | — | 1 | `( a -- )` | Discard TOS. |
-| $32 | DROP2 | — | 1 | `( a b -- )` | Discard two values. |
-| $34 | DUP | — | 1 | `( a -- a a )` | Duplicate TOS. |
+| Op | Name | Operands | Size | Cycles | Stack effect | Description |
+|----|------|----------|------|--------|--------------|-------------|
+| $30 | DROP | — | 1 | 18 | `( a -- )` | Discard TOS. |
+| $32 | DROP2 | — | 1 | 26 | `( a b -- )` | Discard two values. |
+| $34 | DUP | — | 1 | 44 | `( a -- a a )` | Duplicate TOS. |
 
 There are no SWAP, OVER or ROT opcodes. Use locals for anything more complex.
 
@@ -122,53 +127,66 @@ There are no SWAP, OVER or ROT opcodes. Use locals for anything more complex.
 
 All take their operands from the stack and push one result, except DIVMOD.
 
-| Op | Name | Operands | Size | Stack effect | Description |
-|----|------|----------|------|--------------|-------------|
-| $82 | ADD | — | 1 | `( a b -- a+b )` | Add. The compiler also uses it to index byte arrays (IDXB). |
-| $84 | SUB | — | 1 | `( a b -- a-b )` | Subtract TOS from NOS. |
-| $86 | MUL | — | 1 | `( a b -- a*b )` | Multiply (low 16 bits). |
-| $88 | DIV | — | 1 | `( a b -- a/b )` | Signed divide, truncating toward zero. Division by zero is not trapped: the 6502 VMs return a garbage value, and the C VM crashes. |
-| $8A | MOD | — | 1 | `( a b -- a%b )` | Signed remainder; its sign follows the dividend `a`. Division by zero as for DIV. |
-| $36 | DIVMOD | — | 1 | `( a b -- a/b a%b )` | Quotient and remainder; **remainder is TOS**. Not emitted by the current compilers. The C VM pushes them in the opposite order; see [Significant discrepancies](#significant-discrepancies). |
-| $8C | INCR | — | 1 | `( a -- a+1 )` | Increment. |
-| $8E | DECR | — | 1 | `( a -- a-1 )` | Decrement. |
-| $90 | NEG | — | 1 | `( a -- -a )` | Two's-complement negate. |
-| $92 | COMP | — | 1 | `( a -- ~a )` | Bitwise complement. |
-| $94 | AND | — | 1 | `( a b -- a&b )` | Bitwise AND. |
-| $96 | IOR | — | 1 | `( a b -- a\|b )` | Bitwise inclusive OR. |
-| $98 | XOR | — | 1 | `( a b -- a^b )` | Bitwise exclusive OR. |
-| $9A | SHL | — | 1 | `( a n -- a<<n )` | Shift left by `n`. The 6502 VMs use only `n`'s low byte. For portability keep `n` in 0–15. |
-| $9C | SHR | — | 1 | `( a n -- a>>n )` | **Arithmetic** (sign-propagating) shift right by `n`. Same limits on `n` as SHL. There is no logical shift right; for one, AND off the sign-extended bits afterward. |
-| $9E | IDXW | — | 1 | `( a i -- a+2*i )` | Index a word array: add twice TOS to NOS. |
-| $80 | NOT | — | 1 | `( a -- !a )` | Logical NOT: `$FFFF` if `a` is 0, otherwise 0. The C VM pushes 1 instead of `$FFFF`; see [Significant discrepancies](#significant-discrepancies). |
-| $38 | ADDI | b | 2 | `( a -- a+b )` | Add unsigned immediate byte. |
-| $3A | SUBI | b | 2 | `( a -- a-b )` | Subtract unsigned immediate byte. |
-| $3C | ANDI | b | 2 | `( a -- a&b )` | AND with immediate byte (result high byte is 0). |
-| $3E | ORI | b | 2 | `( a -- a\|b )` | OR with immediate byte (high byte unchanged). |
+| Op | Name | Operands | Size | Cycles | Stack effect | Description |
+|----|------|----------|------|--------|--------------|-------------|
+| $82 | ADD | — | 1 | 50 | — | 1 | `( a b -- a+b )` | Add. The compiler also uses it to index byte arrays (IDXB). |
+| $84 | SUB | — | 1 | 50 | `( a b -- a-b )` | Subtract TOS from NOS. |
+| $86 | MUL | — | 1 | ~580* | `( a b -- a*b )` | Multiply (low 16 bits). |
+| $88 | DIV | — | 1 | ~700* | `( a b -- a/b )` | Signed divide, truncating toward zero. Division by zero is not trapped: the 6502 VMs return a garbage value, and the C VM crashes. |
+| $8A | MOD | — | 1 | ~700* | `( a b -- a%b )` | Signed remainder; its sign follows the dividend `a`. Division by zero as for DIV. |
+| $36 | DIVMOD | — | 1 | ~700* | `( a b -- a/b a%b )` | Quotient and remainder; **remainder is TOS**. Not emitted by the current compilers. The C VM pushes them in the opposite order; see [Significant discrepancies](#significant-discrepancies). |
+| $8C | INCR | — | 1 | 29 / 35 | `( a -- a+1 )` | Increment. |
+| $8E | DECR | — | 1 | 33 / 39 | `( a -- a-1 )` | Decrement. |
+| $90 | NEG | — | 1 | 44 | `( a -- -a )` | Two's-complement negate. |
+| $92 | COMP | — | 1 | 42 | `( a -- ~a )` | Bitwise complement. |
+| $94 | AND | — | 1 | 48 | `( a b -- a&b )` | Bitwise AND. |
+| $96 | IOR | — | 1 | 48 | `( a b -- a\|b )` | Bitwise inclusive OR. |
+| $98 | XOR | — | 1 | 48 | `( a b -- a^b )` | Bitwise exclusive OR. |
+| $9A | SHL | — | 1 | ~43+11n* | `( a n -- a<<n )` | Shift left by `n`. The 6502 VMs use only `n`'s low byte. For portability keep `n` in 0–15. |
+| $9C | SHR | — | 1 | ~43+11n* | `( a n -- a>>n )` | **Arithmetic** (sign-propagating) shift right by `n`. Same limits on `n` as SHL. There is no logical shift right; for one, AND off the sign-extended bits afterward. |
+| $9E | IDXW | — | 1 | 57 | `( a i -- a+2*i )` | Index a word array: add twice TOS to NOS. |
+| $80 | NOT | — | 1 | 42 / 45 | `( a -- !a )` | Logical NOT: `$FFFF` if `a` is 0, otherwise 0, on every VM (the C VM previously pushed 1; that was fixed to match). |
+| $38 | ADDI | b | 2 | 41 / 47 | `( a -- a+b )` | Add unsigned immediate byte. |
+| $3A | SUBI | b | 2 | 41 / 47 | `( a -- a-b )` | Subtract unsigned immediate byte. |
+| $3C | ANDI | b | 2 | 43 | `( a -- a&b )` | AND with immediate byte (result high byte is 0). |
+| $3E | ORI | b | 2 | 37 | `( a -- a\|b )` | OR with immediate byte (high byte unchanged). |
+
+The two-number entries (INCR, DECR, NOT, ADDI, SUBI) are the two cases
+(e.g. no carry / carry, or the `NOT`'s zero / nonzero input); see
+`Bytecodes-cycles.md` for the breakdown. `MUL`/`DIV`/`MOD`/`DIVMOD` are
+variable (a full 16-bit operation with half the bits set); `SHL`/`SHR` are
+per-bit loops (`~43 + 11n` for a shift by `n`, `n` in 0-7).
 
 ### Comparisons
 
 All are signed, pop two values, and push `$FFFF` (true) or `0` (false).
 
-| Op | Name | Size | Stack effect |
-|----|------|------|--------------|
-| $40 | ISEQ | 1 | `( a b -- a==b )` |
-| $42 | ISNE | 1 | `( a b -- a<>b )` |
-| $44 | ISGT | 1 | `( a b -- a>b )` |
-| $46 | ISLT | 1 | `( a b -- a<b )` |
-| $48 | ISGE | 1 | `( a b -- a>=b )` |
-| $4A | ISLE | 1 | `( a b -- a<=b )` |
+| Op | Name | Size | Cycles | Stack effect |
+|----|------|------|--------|--------------|
+| $40 | ISEQ | 1 | ~50 | `( a b -- a==b )` |
+| $42 | ISNE | 1 | ~50 | `( a b -- a<>b )` |
+| $44 | ISGT | 1 | ~54 | `( a b -- a>b )` |
+| $46 | ISLT | 1 | ~54 | `( a b -- a<b )` |
+| $48 | ISGE | 1 | ~54 | `( a b -- a>=b )` |
+| $4A | ISLE | 1 | ~54 | `( a b -- a<=b )` |
+
+The count is the compare (10-21, depending on whether the low byte decides
+or the high byte, and for the signed forms whether there is a sign change)
+plus the `$FFFF`/`0` push and drop (34).
 
 ### Loads
 
-| Op | Name | Operands | Size | Stack effect | Description |
-|----|------|----------|------|--------------|-------------|
-| $60 | LB | — | 1 | `( addr -- byte )` | Load byte from address on TOS. |
-| $62 | LW | — | 1 | `( addr -- word )` | Load word from address on TOS. |
-| $64 | LLB | b | 2 | `( -- L[b] )` | Load local byte at frame offset `b`. |
-| $66 | LLW | b | 2 | `( -- L[b] )` | Load local word at frame offset `b`. |
-| $68 | LAB | addr | 3 | `( -- byte )` | Load byte from absolute address. |
-| $6A | LAW | addr | 3 | `( -- word )` | Load word from absolute address. |
+| Op | Name | Operands | Size | Cycles | Stack effect | Description |
+|----|------|----------|------|--------|--------------|-------------|
+| $60 | LB | — | 1 | 45 | `( addr -- byte )` | Load byte from address on TOS. |
+| $62 | LW | — | 1 | 55 / 61 | `( addr -- word )` | Load word from address on TOS. |
+| $64 | LLB | b | 2 | 54 | `( -- L[b] )` | Load local byte at frame offset `b`. |
+| $66 | LLW | b | 2 | 59 | `( -- L[b] )` | Load local word at frame offset `b`. |
+| $68 | LAB | addr | 3 | 61 | `( -- byte )` | Load byte from absolute address. |
+| $6A | LAW | addr | 3 | 72 | `( -- word )` | Load word from absolute address. |
+
+`LW`'s 55 / 61 is the no-page-change / address-ends-in-`$FF` cases (the
+high-byte read crosses a 256-byte page).
 
 ### Stores
 
@@ -177,33 +195,38 @@ on the stack, which supports chained assignment and `FOR` loop variables. The
 byte "D" forms also clear the high byte of the value left on the stack, so it
 equals what was stored.
 
-| Op | Name | Operands | Size | Stack effect | Description |
-|----|------|----------|------|--------------|-------------|
-| $70 | SB | — | 1 | `( val addr -- )` | Store low byte of `val` at `addr`. Note: the **address is TOS**. |
-| $72 | SW | — | 1 | `( val addr -- )` | Store word `val` at `addr` (address is TOS). |
-| $74 | SLB | b | 2 | `( val -- )` | Store byte to local frame offset `b`. |
-| $76 | SLW | b | 2 | `( val -- )` | Store word to local frame offset `b`. |
-| $78 | SAB | addr | 3 | `( val -- )` | Store byte to absolute address. |
-| $7A | SAW | addr | 3 | `( val -- )` | Store word to absolute address. |
-| $6C | DLB | b | 2 | `( val -- val&$FF )` | Store byte to local `b`, keep value. |
-| $6E | DLW | b | 2 | `( val -- val )` | Store word to local `b`, keep value. |
-| $7C | DAB | addr | 3 | `( val -- val&$FF )` | Store byte to absolute address, keep value. |
-| $7E | DAW | addr | 3 | `( val -- val )` | Store word to absolute address, keep value. |
+| Op | Name | Operands | Size | Cycles | Stack effect | Description |
+|----|------|----------|------|--------|--------------|-------------|
+| $70 | SB | — | 1 | 44 | `( val addr -- )` | Store low byte of `val` at `addr`. Note: the **address is TOS**. |
+| $72 | SW | — | 1 | 61 / 67 | `( val addr -- )` | Store word `val` at `addr` (address is TOS). |
+| $74 | SLB | b | 2 | 50 | `( val -- )` | Store byte to local frame offset `b`. |
+| $76 | SLW | b | 2 | 61 | `( val -- )` | Store word to local frame offset `b`. |
+| $78 | SAB | addr | 3 | 58 | `( val -- )` | Store byte to absolute address. |
+| $7A | SAW | addr | 3 | 74 | `( val -- )` | Store word to absolute address. |
+| $6C | DLB | b | 2 | 52 | `( val -- val&$FF )` | Store byte to local `b`, keep value. |
+| $6E | DLW | b | 2 | 57 | `( val -- val )` | Store word to local `b`, keep value. |
+| $7C | DAB | addr | 3 | 60 | `( val -- val&$FF )` | Store byte to absolute address, keep value. |
+| $7E | DAW | addr | 3 | 70 | `( val -- val )` | Store word to absolute address, keep value. |
+
+`SW`'s 61 / 67 is the no-page-change / address-low-byte-is-`$FF` cases.
 
 ### Fused add/index with memory operand
 
 These combine a load with an add, for array indexing and `x + var`.
 
-| Op | Name | Operands | Size | Stack effect |
-|----|------|----------|------|--------------|
-| $B0 | ADDLB | b | 2 | `( a -- a + L[b] byte )` |
-| $B2 | ADDLW | b | 2 | `( a -- a + L[b] word )` |
-| $B4 | ADDAB | addr | 3 | `( a -- a + byte[addr] )` |
-| $B6 | ADDAW | addr | 3 | `( a -- a + word[addr] )` |
-| $B8 | IDXLB | b | 2 | `( a -- a + 2 * L[b] byte )` |
-| $BA | IDXLW | b | 2 | `( a -- a + 2 * L[b] word )` |
-| $BC | IDXAB | addr | 3 | `( a -- a + 2 * byte[addr] )` |
-| $BE | IDXAW | addr | 3 | `( a -- a + 2 * word[addr] )` |
+| Op | Name | Operands | Size | Cycles | Stack effect |
+|----|------|----------|------|--------|--------------|
+| $B0 | ADDLB | b | 2 | 54 / 60 | `( a -- a + L[b] byte )` |
+| $B2 | ADDLW | b | 2 | 67 | `( a -- a + L[b] word )` |
+| $B4 | ADDAB | addr | 3 | 61 / 67 | `( a -- a + byte[addr] )` |
+| $B6 | ADDAW | addr | 3 | 80 | `( a -- a + word[addr] )` |
+| $B8 | IDXLB | b | 2 | 66 / 71 | `( a -- a + 2 * L[b] byte )` |
+| $BA | IDXLW | b | 2 | 83 | `( a -- a + 2 * L[b] word )` |
+| $BC | IDXAB | addr | 3 | 79 / 84 | `( a -- a + 2 * byte[addr] )` |
+| $BE | IDXAW | addr | 3 | 96 | `( a -- a + 2 * word[addr] )` |
+
+The two-number entries are the no-carry / carry (or, for the `IDX` forms,
+no-overflow / overflow) cases.
 
 ### Branches
 
@@ -212,21 +235,23 @@ to the address of the offset word itself** (the byte right after the
 opcode). If the branch is taken, `IP = address_of_offset + offset`. If it is
 not taken, execution continues after the offset word. In assembler syntax,
 the compiler emits `!WORD target-*` right after the opcode byte. Relative
-branches need no relocation.
+branches need no relocation. In the Cycles column, two numbers are
+"not taken / taken" (an unconditional op has one).
 
-| Op | Name | Operands | Size | Stack effect | Branches when |
-|----|------|----------|------|--------------|---------------|
-| $50 | BRNCH | rel | 3 | `( -- )` | Always. |
-| $4C | BRFLS | rel | 3 | `( a -- )` | `a == 0`. |
-| $4E | BRTRU | rel | 3 | `( a -- )` | `a != 0`. |
-| $22 | BREQ | rel | 3 | `( a b -- )` | `a == b`. |
-| $24 | BRNE | rel | 3 | `( a b -- )` | `a != b`. |
-| $AC | BRAND | rel | 3 | `( a -- a )` taken / `( a -- )` not taken | Short-circuit AND: if `a == 0`, branch and **leave** `a` (the result); otherwise drop `a` and fall through to evaluate the right-hand side. |
-| $AE | BROR | rel | 3 | `( a -- a )` taken / `( a -- )` not taken | Short-circuit OR: if `a != 0`, branch and leave `a`; otherwise drop it and fall through. |
-| $C4 | JUMP | addr | 3 | `( -- )` | Always, to an **absolute** address (used by compiled Forth). Needs relocation. |
-| $C2 | JUMPZ | addr | 3 | `( a -- )` | To an absolute address when `a == 0` (compiled Forth). Needs relocation. |
+| Op | Name | Operands | Size | Cycles | Stack effect | Branches when |
+|----|------|----------|------|--------|--------------|---------------|
+| $50 | BRNCH | rel | 3 | 63 | `( -- )` | Always. |
+| $4C | BRFLS | rel | 3 | 41 / 75 | `( a -- )` | `a == 0`. |
+| $4E | BRTRU | rel | 3 | 40 / 76 | `( a -- )` | `a != 0`. |
+| $22 | BREQ | rel | 3 | 43–55 / 88 | `( a b -- )` | `a == b`. |
+| $24 | BRNE | rel | 3 | 55 / 78–88 | `( a b -- )` | `a != b`. |
+| $AC | BRAND | rel | 3 | 42 / 74 | `( a -- a )` taken / `( a -- )` not taken | Short-circuit AND: if `a == 0`, branch and **leave** `a` (the result); otherwise drop `a` and fall through to evaluate the right-hand side. |
+| $AE | BROR | rel | 3 | 42 / 74 | `( a -- a )` taken / `( a -- )` not taken | Short-circuit OR: if `a != 0`, branch and leave `a`; otherwise drop it and fall through. |
+| $C4 | JUMP | addr | 3 | 46 | `( -- )` | Always, to an **absolute** address (used by compiled Forth). Needs relocation. |
+| $C2 | JUMPZ | addr | 3 | 40 / 59 | `( a -- )` | To an absolute address when `a == 0` (compiled Forth). Needs relocation. |
 
-Both paths out of BRAND/BROR leave exactly one value, because the
+`BREQ`/`BRNE`'s range is where the compare decides (low byte vs high byte).
+Both paths out of `BRAND`/`BROR` leave exactly one value, because the
 right-hand side pushes its own result when the branch is not taken.
 
 #### FOR-loop branches
@@ -236,14 +261,18 @@ These do **not** pop the loop limit or counter. The stack holds
 cleans it up after the loop. `step` is popped where present. All
 comparisons are signed.
 
-| Op | Name | Operands | Size | Stack effect | Branches when |
-|----|------|----------|------|--------------|---------------|
-| $A0 | BRGT | rel | 3 | `( limit count -- limit count )` | `count > limit` (skip an empty `TO` loop). |
-| $A2 | BRLT | rel | 3 | `( limit count -- limit count )` | `count < limit` (skip an empty `DOWNTO` loop). |
-| $A4 | INCBRLE | rel | 3 | `( limit count -- limit count+1 )` | after incrementing, `count <= limit`. |
-| $A6 | ADDBRLE | rel | 3 | `( limit count step -- limit count+step )` | after adding, `count <= limit`. |
-| $A8 | DECBRGE | rel | 3 | `( limit count -- limit count-1 )` | after decrementing, `count >= limit`. |
-| $AA | SUBBRGE | rel | 3 | `( limit count step -- limit count-step )` | after subtracting, `count >= limit`. |
+| Op | Name | Operands | Size | Cycles | Stack effect | Branches when |
+|----|------|----------|------|--------|--------------|---------------|
+| $A0 | BRGT | rel | 3 | 49 / 86 | `( limit count -- limit count )` | `count > limit` (skip an empty `TO` loop). |
+| $A2 | BRLT | rel | 3 | 49 / 86 | `( limit count -- limit count )` | `count < limit` (skip an empty `DOWNTO` loop). |
+| $A4 | INCBRLE | rel | 3 | 58 / 91 | `( limit count -- limit count+1 )` | after incrementing, `count <= limit`. |
+| $A6 | ADDBRLE | rel | 3 | 81 / 114 | `( limit count step -- limit count+step )` | after adding, `count <= limit`. |
+| $A8 | DECBRGE | rel | 3 | 64 / 97 | `( limit count -- limit count-1 )` | after decrementing, `count >= limit`. |
+| $AA | SUBBRGE | rel | 3 | 81 / 114 | `( limit count step -- limit count-step )` | after subtracting, `count >= limit`. |
+
+Cycles are "not taken / taken"; `BRGT`/`BRLT` have no update, the `INCR`/`DECR`
+forms add ~7 for the update, and the `ADD`/`SUB` forms ~30. The signed
+overflow path adds ~3 (not shown).
 
 The code shape the PLASMA compiler uses for `FOR v = from TO limit [STEP s]`
 (from `parse.c`):
@@ -265,9 +294,12 @@ a loop whose limit is `$7FFF` (`TO`) or `$8000` (`DOWNTO`) never ends.
 
 #### SEL (WHEN/IS multi-way branch)
 
-| Op | Name | Operands | Size | Stack effect |
-|----|------|----------|------|--------------|
-| $52 | SEL | rel | 3 | `( val -- )` |
+| Op | Name | Operands | Size | Cycles | Stack effect |
+|----|------|----------|------|--------|--------------|
+| $52 | SEL | rel | 3 | variable | `( val -- )` |
+
+The `SEL` cost grows with the number of cases (each is a compare and a
+branch); the jump to the matched case is the `BRNCH`/`NOBRNCH` cost.
 
 `SEL` pops `val` and follows `rel` (relative to the offset word, like any
 branch) to a **case table** with this layout:
@@ -301,14 +333,18 @@ value_n, rel_n
 
 <a name="frames"></a>
 
-| Op | Name | Operands | Size | Stack effect | Description |
-|----|------|----------|------|--------------|-------------|
-| $54 | CALL | addr | 3 | `( args… -- results… )` | Call the 6502-callable routine at `addr` with a 6502 `JSR`. Bytecode resumes after the operand when it returns. |
-| $56 | ICAL | — | 1 | `( args… addr -- results… )` | Indirect call: pop `addr` (TOS, pushed after the arguments), then call as `CALL`. Used for function pointers. |
-| $58 | ENTER | framesize, nparams | 3 | `( p1 … pn -- )` | Allocate a local frame of `framesize` bytes, then pop `nparams` words into it: parameter *k* (1-based, left to right) goes to offset `2*(k-1)`. So the first parameter is at offset 0 and the last, which was TOS, at `2*(n-1)`. `framesize` includes the parameters (`framesize ≥ 2*nparams`). Other locals are **not** initialized. |
-| $5A | LEAVE | framesize | 2 | `( -- )` | Release the frame and return to the caller (6502 `RTS`). `framesize` must equal the one given to `ENTER`. |
-| $5C | RET | — | 1 | `( -- )` | Return to the caller without touching the frame. Only for functions that have no `ENTER`. |
-| $C0 | NATV | — | 1 | — | Leave the interpreter and jump to the native 6502 code that immediately follows this byte. No opcode returns to bytecode afterward; the native code normally ends the function with `RTS`. Not portable: see [Significant discrepancies](#significant-discrepancies). |
+| Op | Name | Operands | Size | Cycles | Stack effect | Description |
+|----|------|----------|------|--------|--------------|-------------|
+| $54 | CALL | addr | 3 | 77 | `( args… -- results… )` | Call the 6502-callable routine at `addr` with a 6502 `JSR`. Bytecode resumes after the operand when it returns. |
+| $56 | ICAL | — | 1 | 73 | `( args… addr -- results… )` | Indirect call: pop `addr` (TOS, pushed after the arguments), then call as `CALL`. Used for function pointers. |
+| $58 | ENTER | framesize, nparams | 3 | 46 + ~26/param* | `( p1 … pn -- )` | Allocate a local frame of `framesize` bytes, then pop `nparams` words into it: parameter *k* (1-based, left to right) goes to offset `2*(k-1)`. So the first parameter is at offset 0 and the last, which was TOS, at `2*(n-1)`. `framesize` includes the parameters (`framesize ≥ 2*nparams`). Other locals are **not** initialized. |
+| $5A | LEAVE | framesize | 2 | 23 / 29 | `( -- )` | Release the frame and return to the caller (6502 `RTS`). `framesize` must equal the one given to `ENTER`. |
+| $5C | RET | — | 1 | 6 | `( -- )` | Return to the caller without touching the frame. Only for functions that have no `ENTER`. |
+| $C0 | NATV | — | 1 | 18 / 24 | — | Leave the interpreter and jump to the native 6502 code that immediately follows this byte. No opcode returns to bytecode afterward; the native code normally ends the function with `RTS`. Not portable: see [Significant discrepancies](#significant-discrepancies). |
+
+`ENTER`'s base 46 is for zero parameters (each added parameter is ~26);
+`LEAVE`'s 23 / 29 is the no-borrow / borrow cases; `NATV`'s 18 / 24 is the
+no-carry / carry cases.
 
 How `ENTER`/`LEAVE` manage the frame differs between VMs. The 64K Apple II
 and Apple 1 VMs subtract `framesize` from IFP and `LEAVE` adds it back,
@@ -377,15 +413,10 @@ the differences found when the two were compared opcode by opcode:
 
 | Opcode | 6502 VMs | C VM | How a compiler can avoid it |
 |--------|----------|------|-----------------------------|
-| `$80` NOT | `$FFFF` if TOS is 0, else 0 | `1` if TOS is 0, else 0 | Don't emit `NOT` when the value is kept. Emit `CN 0` + `ISEQ` (`$00 $40`) instead: `ISEQ` gives `$FFFF`/`0` on every VM. If you want C's 1/0 instead, `NOT` + `ANDI 1` (`$80 $3C $01`) gives 1/0 on every VM. Make sure no peephole optimizer turns that back into `NOT`. When the result is only used by a conditional branch, invert the branch instead (e.g. `BRTRU` in place of `NOT` + `BRFLS`). Branches on a `NOT` result are safe on both VMs, since they agree on which values are zero. |
 | `$36` DIVMOD | `( a b -- a/b a%b )`: **remainder** is TOS | `( a b -- a%b a/b )`: **quotient** is TOS | Don't emit `DIVMOD`; use `DIV` and `MOD` separately. The current PLASMA compilers never emit it either. |
 | `$C0` NATV | Jumps to native code after the opcode | Not implemented: reported as an illegal opcode, and the VM exits | Don't emit `NATV`. Put native code in a separate `asm` function and `CALL` it. (`NATV` also can't work where bytecode runs from auxiliary or extended memory.) |
 | `$52` SEL | Table must be sorted ascending (signed); the search stops early, and the values must span ≤ 32767 | Linear search: unsorted or wide tables still work | Always sort, and keep the span ≤ 32767. Code that works on the C VM can fail on real hardware. |
 | `$88` DIV, `$8A` MOD, `$36` DIVMOD, by zero | Garbage result, execution continues | Host process crashes (SIGFPE) | Check the divisor first if it might be zero. |
-
-The `NOT` difference shows up with PLASMA's own compiler today. Its
-optimizer compiles `x == 0` into `NOT`, so `puti(z == 0)` with `z` = 0
-prints `-1` on an Apple II but `1` under `plvm` (checked with `plvm`).
 
 Frame handling also differs internally between the VMs (see
 [Frames](#frames)), but bytecode can't see the difference as long as it
@@ -395,18 +426,21 @@ A compiler that avoids `NOT` for kept values, never emits `DIVMOD` or
 `NATV`, keeps `SEL` tables sorted and within the 32767 span, and guards
 against division by zero produces code that behaves the same on both.
 
-### Cross-compiler optimizer: folded comparisons give 1, not `$FFFF`
+### Cross-compiler optimizer: folded comparisons (now fixed)
 
-This one is not a VM difference. It's in the PLASMA cross-compiler
-(`xplasm`) itself, so it affects every VM.
+This one is not a VM difference. It was in the PLASMA cross-compiler
+(`xplasm`) itself, so it affected every VM. **It is now fixed:** the
+cross-compiler's constant folding (`crunch_seq()` in `src/toolsrc/codegen.c`)
+produces `$FFFF` (-1) for true, matching the run-time opcodes, so folded and
+unfolded comparisons now agree on every VM. The description below is kept
+for history (it describes the bug as it was before the fix).
 
-At run time, PLASMA's comparisons and `not` produce `$FFFF` for true
-(on the 6502 VMs; see `NOT` above for the C VM). But the cross-compiler's
-optimizer (`-O`), when it folds a comparison or `not` whose operands are
-all constants, produces **1**. This is in `crunch_seq()` in
-`src/toolsrc/codegen.c`:
-- `EQ`, `NE`, `GE`, `LT`, `GT` and `LE` fold to `? 1 : 0`;
-- `not` folds to `? 0 : 1`.
+At run time, PLASMA's comparisons and `not` produce `$FFFF` for true. But
+the cross-compiler's optimizer (`-O`), when it folded a comparison or `not`
+whose operands are all constants, used to produce **1**. This was in
+`crunch_seq()` in `src/toolsrc/codegen.c`:
+- `EQ`, `NE`, `GE`, `LT`, `GT` and `LE` folded to `? 1 : 0`;
+- `not` folded to `? 0 : 1`.
 
 So the same source gives different values depending on `-O`. Checked
 with `xplasm` and `plvm`:
