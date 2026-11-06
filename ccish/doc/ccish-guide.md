@@ -2,6 +2,18 @@
 
 A user guide to ccish, the C compiler for the PLASMA virtual machine.
 
+1. [What ccish is](#1-what-ccish-is)
+2. [Using the compiler](#2-using-the-compiler)
+3. [Lexical conventions](#3-lexical-conventions)
+4. [Types and values](#4-types-and-values)
+5. [Declarations and storage](#5-declarations-and-storage)
+6. [Expressions and operators](#6-expressions-and-operators)
+7. [Statements](#7-statements)
+8. [The preprocessor](#8-the-preprocessor)
+9. [What ccish doesn't (yet) do](#9-what-ccish-doesnt-yet-do)
+10. [How the compiler works](#10-how-the-compiler-works)
+11. [Writing small and fast code](#11-writing-small-and-fast-code)
+
 ## 1. What ccish is
 
 ccish compiles a dialect of C into PLASMA REL modules that run on the
@@ -68,7 +80,7 @@ everything:
 ccish's output is a PLASMA module. It runs under `plvm` on the host
 for testing, and under PLASMA's 6502 VMs on the Apple II, Apple 1,
 C64 and the JIT target. A ccish program may use CMDSYS functions
-(`puts`, `putc`, `puti`, `heapalloc`, and the rest, section 5.4), and
+(`puts`, `putc`, `puti`, `heapalloc`, and the rest, section 5.3), and
 it can share data with PLASMA: a ccish `struct` has the same layout
 as PLASMA's `struc` (members in order, no padding), and a struct
 returned by value is PLASMA's multi-value return, so
@@ -236,9 +248,7 @@ exactly the same objects and modules; the tests check that.
 
 An identifier is a letter or underscore, followed by letters, digits
 and underscores. Only the first 31 characters are significant; the
-rest are ignored (which is how ccish fits PLASMA's 16-character
-symbol world without its case folding). A keyword is not an
-identifier.
+rest are ignored. A keyword is not an identifier.
 
 The supported keywords are:
 
@@ -696,7 +706,7 @@ be defined in another file linked with it (section 2.3), or it is an
 an initializer, and `extern` in a block, aren't supported. `sizeof`
 an array of unknown size is an error.
 
-`static` has three uses:
+`static` has two uses:
 
 * A static local (`static int n = 10;`) keeps its value between
   calls. It has block scope, like any local, but lives in the data
@@ -779,8 +789,7 @@ The comma operator is not supported (section 9.1).
   constant makes unreachable; a run-time zero divisor is not checked.
 * `>>` on a negative `int` is an arithmetic shift (it keeps the sign);
   on `unsigned` it is logical.
-* `<<` shifts in zeros; the shift count is taken modulo nothing, it
-  must be 0-15.
+* `<<` shifts in zeros; the shift count must be 0-15.
 * Multiplying by 0, 1, 3 or a power of two needs no multiply
   (section 10.3); the rest use the VM's `MUL`, a 16-step loop.
 
@@ -863,8 +872,7 @@ Reading a `const` with a constant initializer folds too
 
 Code that a constant makes unreachable is not compiled at all: the
 right side of `0 && f()`, the body of `if (0)` or `while (0)`, the
-untaken branch of a constant `?:`. A `for` loop with a constant-false
-test is the same. One exception: string literals in a statement that
+untaken branch of a constant `?:`. One exception: string literals in a statement that
 can never run (such as the body of `if (0)`) still take space in the
 data segment, since the strings are emitted as the source is read; in
 an expression that is never run (such as `0 && f("x")`) they don't.
@@ -950,9 +958,9 @@ for (init; cond; step) body;
   `switch`) are errors.
 
 ccish reorders every `while` and `for` so the test sits at the bottom
-of the loop (one branch per pass instead of two, section 10.2), and
-some loops get PLASMA's counted-loop form, which is faster still
-(section 11.2). A `goto` loop is never counted (section 7.6).
+of the loop (one branch per pass instead of two, sections 10.2 and
+10.3), and some loops get PLASMA's counted-loop form, which is faster
+still (section 11.2). A `goto` loop is never counted (section 7.6).
 
 ### 7.5 switch
 
@@ -1025,7 +1033,7 @@ the return type). A non-`void` function should end in a `return`; if
 the last statement isn't one, the compiler adds an implicit
 `return` of an undefined value rather than fall off the end. A
 `return` inside a loop drops the loop's state first
-(section 10.2).
+(section 11.2).
 
 ## 8. The preprocessor
 
@@ -1294,8 +1302,9 @@ ccgen works in stages over the IR stream:
    one op), direct forms for locals and globals (`LLW n`, `LAW g`),
    and the absolute forms for constant addresses (reading the
    speaker is `LAB $C030`). An unsigned comparison is lowered to the
-   signed form with both sides' sign bits flipped (or, for some
-   shapes, to the CMDSYS `isule`-family call; section 11.4).
+   signed form with both sides' sign bits flipped (the CMDSYS
+   `isule`-family calls are an alternative a program can use
+   directly; section 11.4).
 2. **Reordering.** The code for a store's value is moved ahead of the
    code for its address, so `*p++ = x` and `a[i + 1] = x` work without
    a hidden local. The loop's test and step are held and written
@@ -1343,9 +1352,9 @@ The layout choices, in one place:
   stepped by a constant, compared signed with a constant or another
   local, in a body that calls nothing, returns nothing, holds no
   loop, and doesn't change the variable or the limit) keeps its
-  count and limit on the evaluation stack and steps with
-  `INCBRLE` and friends: 2 to 3 ops of loop work per pass instead of
-  5 to 7 (section 11.2).
+  count and limit on the evaluation stack, and each pass is a step
+  (`ADDI`, or `INCR`) and a counted branch, `BRLT` or `BRGT`: 2 to 3
+  ops of loop work per pass instead of 5 to 7 (section 11.2).
 * `&&` and `||` in a condition use the VM's short-circuit branch ops
   (`BRAND`, `BROR`), which keep the left value when they decide.
 * `switch` is a `SEL` and a 4-bytes-per-case table, not a compare
@@ -1403,8 +1412,8 @@ easy:
 * `ccish -k` keeps the intermediate files (`.i`, `.nam`, `.ir`,
   `.obj`, `.syms`) so you can inspect any stage.
 * To count what the code does, run it traced: `plvm -t program`
-  prints every 6502 instruction, so the trace's length is the cycle
-  count.
+  prints every 6502 instruction, so the number of traced lines is the
+  number of instructions the program ran.
 
 The op-by-op costs are in [../doc/Bytecodes.md](../../doc/Bytecodes.md)
 and the cycle analyses in
@@ -1417,21 +1426,21 @@ where the advice below comes from.
 Loops are where programs spend their time, and ccish has a special
 optimization for the common count-up-and-down loop. When a loop's
 test and step have the counted shape, ccgen keeps the count and the
-limit on the evaluation stack for the life of the loop, and the per
-pass is a step and a counted branch, with the index refreshed in the
-body. The shape:
+limit on the evaluation stack for the life of the loop; each pass is
+a step and a counted branch, with the index refreshed in the body
+(the loop's exit, including a `break`, drops the two stack values).
+The shape:
 
 * `for (i = a; i < b; i++)` and the same with `<=`, `>` or `>=`, and
   the step `i--`, `i += k` or `i -= k` (a constant `k`),
 * `i` an `int` local, compared signed,
 * the limit a constant or another local (not a global, and not a
   pointer),
-* a body that makes no calls, has no `return` or `break` that jumps
-  out with the loop still open... (a `break` is fine; it drops the
-  loop's two stack values), no inner loop, and nothing that changes
-  `i` or the limit or takes their addresses.
+* a body that makes no calls, has no `return`, holds no inner loop,
+  and changes neither `i` nor the limit, and takes neither's address.
 
-`while` loops can't be counted (C's `while` has no step to check).
+`while` loops can't be counted (a counted loop needs a step to
+check).
 A `goto` loop is never counted. When a loop can't be counted, the
 test-at-the-bottom layout still applies (section 10.5).
 
@@ -1492,9 +1501,10 @@ approach.md section 20 (each measured against the VM's code):
   `int` is free, while an `unsigned` one costs extra only for
   `< > <= >=`, `/`, `%` and `>>`. `+ - *`, `==` and `!=` work the
   same for both. (The CMDSYS `isult`/`isuge`/`isugt`/`isule`
-  functions, section 5.3, do an unsigned compare in one call when
-  the inline flip would be more code, as in a betweenness test;
-  see `doc/betweenness.md`.)
+  functions, section 5.3, do an unsigned compare in one call; a
+  program can call them directly wherever the inline sign-bit flip
+  would be more code, as in a betweenness test; the analysis is in
+  `doc/betweenness.md`.)
 * **Test pointers with `==` and `!=`, not `< > <= >=`**
   (section 11.3). `while (p != end)`, not `while (p < end)`.
 * **A `char` index is a little faster than an `int` index.**
