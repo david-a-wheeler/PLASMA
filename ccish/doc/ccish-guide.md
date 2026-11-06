@@ -243,16 +243,16 @@ identifier.
 The supported keywords are:
 
 ```
-break    case     char     const    continue default do     else
-enum     extern   for      goto     if       int    long*
-return   sizeof   static   struct   switch   typedef union*
-unsigned void     volatile while    double*  float* auto*
-register* short*  signed
+break    const    continue default do     else     enum   extern
+for      goto     if       int    return   sizeof   static   struct
+switch   typedef  unsigned void     volatile while
 ```
 
-with `signed` (as in `signed int`, which is `int`). The starred ones
-(`long`, `union`, `double`, `float`, `auto`, `register`, `short`) are
-recognized so the error is clear, but not supported (section 9.1).
+plus `signed`, as in `signed int`, which is `int`. Seven more of
+C89's keywords are recognized so the error is clear, but not
+supported (section 9.1): `auto`, `double`, `float`, `long`,
+`register`, `short` and `union`.
+
 `enum tag` used as a type does not have to match a definition
 (section 1.1).
 
@@ -321,3 +321,228 @@ type `char *`. `pstr("text")` gives the address of the length byte
 instead, the PLASMA (length-prefixed) form that CMDSYS routines such
 as `puts` expect. `pstr()` accepts only a string literal, and its
 type is `char *` too.
+
+## 4. Types and values
+
+The arithmetic types are `int` (16 bits), `char` (8 bits, unsigned)
+and `unsigned` (16 bits); `void` names the absence of a value.
+Pointers are 16 bits. There is no `short`, no `long`, no floating
+point, and no `signed char` (section 9.1).
+
+All values live in 16-bit words on a little-endian 6502. Where C
+leaves a choice to the implementation, ccish's choices are the ones
+listed here.
+
+### 4.1 int: 16 bits, with wraparound
+
+`int` is a 16-bit signed integer, from -32768 to 32767, in two's
+complement.
+
+Integer arithmetic wraps around on overflow, and that is defined
+behavior: `32767 + 1` is `-32768`, and `-32768 - 1` is `32767`.
+Wraparound is not undefined behavior in ccish. (When you compile the
+same source with gcc or clang to compare, use `-fwrapv` so that they
+assume the same wraparound; their `int` will be a different size, so
+values must stay within -32768 to 32767 anyway, as the cross tests'
+contract in `inc/ptest.h` says.)
+
+`/` on signed values truncates toward zero (`-7 / 2` is `-3`), and
+`>>` on a negative value is an arithmetic shift (`-8 >> 1` is `-4`).
+Division by zero is undefined: a constant zero divisor is a compile
+error, and a run-time zero divisor is not checked (it hangs on most
+6502 targets, which is what the 6502 does on a divide by zero).
+
+Comparisons of `int`s are signed. `!`, `&&`, `||` and the relational
+and equality operators give 1 or 0, as in C (PLASMA's own
+comparisons give `$FFFF` for true; the compiler normalizes).
+
+### 4.2 char: 8 bits, unsigned
+
+`char` is one byte, unsigned, 0 to 255. `unsigned char` is the same
+type; ccish doesn't tell the two apart, so `unsigned char *` and
+`char *` mix freely. `signed char` is not supported yet.
+
+A value becomes a `char` by keeping its low byte when it is stored
+into a `char`, passed as a `char` parameter, returned from a `char`
+function, or cast to `char`. In expressions, a `char` is promoted to
+`int` first, as in C, so `char c = 200; c + 100` is the `int` 300,
+and storing it back keeps 44.
+
+Byte loads (`LB`, `LLB`, `LAB` in the VM) zero-extend, so an unsigned
+`char` costs nothing, which is why the choice was made (approach.md,
+issue 7). A signed `char` would need sign extension on every load.
+
+### 4.3 unsigned
+
+`unsigned` (`unsigned int`, `int unsigned`) is 16 bits, 0 to 65535.
+As in C, when an `int` meets an `unsigned` in an operator, the `int`
+becomes `unsigned` first (so `-1 < 1u` is 0: `-1` becomes 65535).
+An integer constant is `unsigned` if it has a `u` suffix, or is hex
+or octal and too big for an `int` (`0x8000`, section 3.3).
+
+Comparisons, `/`, `%` and `>>` on `unsigned` values are unsigned.
+`+ - *`, `==` and `!=` work the same for both. Unsigned
+comparisons cost a little extra code (a sign-bit flip of each side,
+or a call for some forms; see section 10.4).
+
+By a constant, `>>` (and `/` and `%` by a power of two) are done
+inline; otherwise they call small helper functions that the compiler
+adds to the module (one copy each, however many files use them).
+
+### 4.4 void
+
+`void` is the type of a function that returns no value, and of a
+pointer to unknown type. `void` can't be a variable's type. A `void`
+function returns no value; any other function returns exactly one.
+Casting to `(void)` discards a value. `void *` converts to and from
+any object pointer type without a cast; pointer arithmetic on a
+`void *` is an error.
+
+### 4.5 Pointers
+
+Pointers are 16 bits, as every address on the target is.
+
+* `&` takes the address of a variable (or of `*p`).
+* `*` reaches what a pointer points to, for reading or storing.
+* Pointer arithmetic counts in elements, as in C: `p + i`, `i + p`,
+  `p - i`, `p - q`, and `++`, `--`, `+=`, `-=`.
+* Pointers compare unsigned (`< > <= >= == !=`), since addresses at
+  or above `$8000` are normal. Test pointers with `==` and `!=`
+  rather than ordering (section 10.4).
+
+Types are checked strictly (GCC 14 does the same by default): mixing
+integers and pointers needs a cast, except for the constant 0, and
+pointer types must match unless one is `void *`. This applies to
+assignments, initializers, arguments, return values, comparisons and
+`?:`.
+
+Addresses at or above `$C000` are I/O, not memory (the speaker is
+`$C030`). A pointer to such an address is read and written directly
+with the VM's absolute ops: with
+`volatile char *const sp = (volatile char *)0xC030;`, `*sp = 65` is
+`SAB $C030 65`, and ccish never drops or reorders such accesses
+(`volatile`, section 4.10).
+
+### 4.6 Arrays
+
+An array is declared `int a[10]`, `char *names[4]`, `int m[3][4]`,
+`struct pt pts[8]`, and so on. The size is a constant expression.
+
+* `a[i]` is `*(a + i)`, as in C (so `i[a]` works too).
+* An array used as a value is a pointer to its first element.
+* An array can't be assigned to, and there is no array `+` or `-`
+  between arrays.
+* A local array must fit in the function's 255-byte frame, with the
+  other locals; a bigger one can be global or a `static` local
+  (section 5.5).
+* An array parameter is a pointer, as in C: `int a[]` and `int a[10]`
+  are `int *a`, and `int m[][4]` is a pointer to arrays of 4 ints.
+
+### 4.7 Structs
+
+A struct groups members, laid out in order with no padding (the 6502
+has no alignment rules), in the same order and at the same offsets as
+PLASMA's `struc` lays them out, so C can read PLASMA's data
+structures:
+
+```c
+struct pt { int x, y; };
+struct pt p;         /* 4 bytes: x at 0, y at 2 */
+```
+
+A member may have any complete type: another struct, an array, a
+pointer (to its own struct too, for a linked list:
+`struct node { int v; struct node *next; };`). A struct is declared
+`struct tag { ... };` at file scope or in a block. A tag can be
+declared first and defined later (`struct s;`), and a tag defined in a
+block is visible only until the block ends. A struct whose definition
+hasn't been seen yet is incomplete: a pointer to it is fine, but not
+a variable, `sizeof`, `->` or pointer arithmetic. Using a tag for the
+first time in a parameter list gives a warning, as in gcc, since it
+is visible only there.
+
+Access:
+
+* `s.m` is a member of a variable. It compiles like a variable:
+  `s.m` on a local is one load.
+* `p->m` is a member through a pointer: the pointer's value plus the
+  member's offset. `p->m` is a load of the pointer, the offset, an
+  add and a load (and just the pointer's load at offset 0). Through a
+  constant pointer, such as a block of I/O registers, the offset is
+  added at compile time.
+* `&s.m` gives a member's address, a pointer of the member's type.
+
+Assignment copies the struct (`a = b`, `*p = s`, `c = b = a`). The
+result is the struct assigned to, which isn't an lvalue, as in C.
+Between two variables it is a word move per member word when that is
+no bigger; otherwise, and always through a pointer, it calls
+`memcpy(dst, src, n)`: CMDSYS's, or the program's own if it declares
+one, which must take C's arguments. A struct with a `const` member
+can't be assigned as a whole. `==` on structs is an error, as in C.
+
+Passing and returning: a struct of up to 8 bytes can be passed and
+returned by value, as the words of its bytes (first word deepest). A
+parameter lands in the callee's frame in its own layout, with no
+copy, and a returned struct is a PLASMA multi-value return:
+`struct qr { int q, r; }` matches PLASMA's `divmod()#2`. A returned
+struct is stored straight into the variable it is assigned to, and
+passed or returned on with no code (`return swap(p);`); `f().x` saves
+it to a temporary first. Passing a struct needs a prototype. A bigger
+struct can't be passed or returned by value; that is an error (a
+deliberate limit, to keep the compiler small: pass a pointer
+instead).
+
+Initializers: for globals and `static` locals, a flat brace list over
+the struct's scalar members in order, with the same forms as an
+array's (section 5.6); a local may also be initialized from another
+struct (`struct pt b = a;`).
+
+### 4.8 enum
+
+```c
+enum color { RED, GREEN, BLUE = 5 };
+```
+
+Each constant is an `int` constant expression: it is one more than
+the one before unless given a value, and it must fit in an `int`. It
+works in `case` labels, array sizes and global initializers. An enum
+type is `int`: a variable of an enum type is an `int` variable, and
+the constants are `int` constants, not a new kind of value.
+
+`enum` constants have block scope, as in C: one declared in a block
+hides a variable of the same name declared outside it, and the other
+way around.
+
+### 4.9 typedef
+
+```c
+typedef struct node *NodeP;
+typedef int Vec[3];
+typedef const char *str;
+```
+
+A typedef name can be used wherever a built-in type can, with `*`s,
+array sizes and qualifiers. Typedefs of function types are not
+supported. Typedef names have block scope, as in C.
+
+### 4.10 const and volatile
+
+Both qualifiers go before or after the type (`const char`,
+`char const`), and after a `*` (`char *const p` is a const pointer,
+`const char *p` a pointer to const).
+
+* A `const` object can't be assigned to or incremented.
+* A pointer may gain `const` or `volatile` on what it points to
+  (`char *` to `const char *`), but losing one is a warning, as in
+  gcc; deeper levels must match (`char **` to `const char **` is an
+  error).
+* Reading a `const` variable (an `int`, `char` or pointer, not
+  `volatile`) whose initializer is a constant gives that value at
+  compile time: with `const int N = 10;`, `x < N` loads `x` and
+  compares with the constant 10, and `N * 2` is 20.
+  `&N` still works. As in C, `N` isn't a constant expression, so it
+  can't size an array or initialize a global, and a `const int`
+  holding 0 isn't a null pointer.
+* `volatile` changes no code: ccish never drops or merges memory
+  reads. It is checked as part of the type. Its use is the I/O
+  registers (section 4.5).
