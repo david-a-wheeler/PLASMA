@@ -610,6 +610,36 @@ int a, b = 1, *p = &a;
   whole function, parameters and all. A buffer too big for the frame
   can be a `static` local (section 5.5) or global.
 
+A local is not a slot on the evaluation stack; it has a fixed place
+in memory for the duration of the call. A function that has parameters
+or locals starts by reserving its own *frame*, and each parameter and
+local has a fixed offset in it. A call pushes the arguments' *values*
+(one word each, left to right) onto the evaluation stack, and the
+callee's first instruction moves them off that stack and into the
+callee's own frame. The callee's frame is reserved separately, in
+effect a stack of frames, so the caller's locals are not moved or
+overwritten while the callee runs; when the callee returns, the
+caller's frame is exactly as it was. (The VM opcodes are `ENTER` and
+`LEAVE`, with the frame pointed to by `IFP`; [../doc/Bytecodes.md](../../doc/Bytecodes.md),
+"Calls and frames".)
+
+Two consequences, both as in C:
+
+* Taking a local's address (`&a`, or an array's name) gives an address
+  that stays valid for as long as the call is in progress:
+
+  ```c
+  void bump(int *p) { *p = 7; }
+  int main(void) {
+    int a[5];
+    bump(&a[0]);      /* writes 7 into main's frame */
+  }
+  ```
+
+* Recursion works as expected: each call reserves its own frame, below
+  the previous one's, so each call's locals are separate. The depth is
+  limited only by the evaluation stack (section 9.3).
+
 ### 5.3 Calling CMDSYS
 
 A function that is called but not defined in any file linked into the
@@ -1530,3 +1560,26 @@ approach.md section 20 (each measured against the VM's code):
 The cycle cost of each op, with the 6502 line-by-line behind each
 number, is in [../doc/Bytecodes-cycles.md](../../doc/Bytecodes-cycles.md);
 when in doubt, compile it both ways and read the listing.
+
+### 11.5 Optimizations you can count on
+
+Here is a short list of some of the optimizations you can count on:
+
+* **Constant op constant.** Put constants next to each other in operations.
+  They'll be computing during compilation, not at runtime.
+* **A self tail call is a jump, not a call.** A function's own tail
+  call, whose result is the function's result (`return f(...);` in
+  `f`, or a final `f(...);` in a `void` function), compiles to the
+  arguments' stores into the function's own parameter slots, then a
+  jump back to the top of the function, instead of a call. The jump
+  reuses the current frame, so a tail recursion runs at any depth,
+  like a loop: the base case's return is the function's return. It
+  fires wherever the tail position appears (the end of the function,
+  an `if` arm, a loop body), and the arguments may be any type.
+  Anything else stays an ordinary call with a frame per level
+  (section 5.2): a call whose result is used (`return n * f(n - 1);`),
+  a call that is not the function's final action, and calls to
+  another function. (approach.md, decision 33; `tests/run/taildeep.c`
+  runs the tail form at depth 5000, and `tests/gen/gentail.c` pins
+  the form and the non-forms.)
+* **A "between" test of form (x >= c1 && x <= c2)** where c1 and c2 are constants.
