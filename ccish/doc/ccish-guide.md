@@ -741,3 +741,142 @@ stored in the module, so they cost no code. The forms:
 
 Local initializers may be any expression, and run when the
 declaration is reached.
+
+## 6. Expressions and operators
+
+Expressions have C's precedence and associativity. From strongest
+binding to weakest (operators on one line bind alike, left to right
+except where noted):
+
+```
+()  []  ->  .  postfix ++  postfix --           postfix
+!  ~  unary +  unary -  *  &  sizeof  (type)    unary, right to left
+*  /  %
++  -
+<<  >>
+<  <=  >  >=
+==  !=
+&
+^
+|
+&&
+||
+?:                                          right to left
+=  +=  -=  *=  /=  %=  &=  |=  ^=  <<=  >>=  right to left
+```
+
+The comma operator is not supported (section 9.1).
+
+### 6.1 Arithmetic
+
+`+ - * / % << >>` on integers.
+
+* `int` arithmetic wraps (section 4.1): there is no overflow trap and
+  none is needed.
+* `/` and `%` truncate toward zero, for both signs (`-7 / 2` is
+  `-3`, `-7 % 2` is `-1`). A constant zero divisor or a constant
+  shift count outside 0-15 is a compile error, except in code a
+  constant makes unreachable; a run-time zero divisor is not checked.
+* `>>` on a negative `int` is an arithmetic shift (it keeps the sign);
+  on `unsigned` it is logical.
+* `<<` shifts in zeros; the shift count is taken modulo nothing, it
+  must be 0-15.
+* Multiplying by 0, 1, 3 or a power of two needs no multiply
+  (section 10.3); the rest use the VM's `MUL`, a 16-step loop.
+
+The usual C rules for signed and unsigned operands apply: when an
+`int` meets an `unsigned` in `* / % + - << >> & ^ |`, the `int`
+becomes `unsigned` first (section 4.3).
+
+### 6.2 Comparisons and logic
+
+* `< > <= >= == !=` compare signed for `int`s, unsigned for
+  `unsigned` values and for pointers (section 4.5).
+* `!` is logical negation; `&&` and `||` are logical and/or, and they
+  evaluate only the operands C says they do: in `a && b`, `b` is
+  evaluated only if `a` is nonzero; in `a || b`, `b` only if `a` is
+  zero.
+* Comparisons, `!`, `&&` and `||` give 1 or 0, as in C.
+* `c ? a : b` evaluates only the branch taken; the two branches must
+  be the same type (or one can be `void`... not yet; they must
+  match, and a `void` branch is an error).
+
+### 6.3 Assignment and increment
+
+* `=` assigns; the left side must be an lvalue (a variable, `*p`,
+  `a[i]`, `s.m`, `p->m`), not a constant, a cast, or a function's
+  result.
+* The compound forms `+= -= *= /= %= &= |= ^= <<= >>=` are
+  supported, and assign to the same lvalues.
+* `++` and `--`, prefix and postfix: `++i`, `i++`, `--i`, `i--`, on
+  any lvalue (a `const` object is an error). The prefix form gives
+  the new value, the postfix the old one, as in C.
+
+A store through a computed address (`*p++ = x`, `*f() = x`,
+`a[i + 1] = x`) needs the value before the address is disturbed; the
+compiler moves the value's code ahead of the address's. A compound
+assignment or `++` that would need the address twice
+(`*p++ += x`, `(*f())++`, `a[i] += x` with a variable `i`) saves the
+address in a hidden local for that statement, which is 1 byte smaller
+than computing it twice and computes it once, as C requires.
+
+### 6.4 sizeof
+
+`sizeof expr` and `sizeof(type)`, where a type may have `*`s and
+array sizes (`sizeof(char *[4])`). The expression isn't run. The
+result is an `unsigned` (C's `size_t`), and is a constant, so it can
+size an array. An array gives its full size, a string literal its
+length plus 1 (the NUL), and an array parameter 2 (it is a pointer).
+`sizeof(void)` and the `sizeof` of an incomplete type are errors.
+
+### 6.5 Casts
+
+A cast converts between any of these types:
+
+```c
+int n = (int)p;            /* pointer to int: an error, not this */
+char c = (char)x;          /* keep the low byte */
+int *p = (int *)n;         /* int to pointer: needs the cast */
+const char *s = (const char *)p;
+```
+
+The direction matters:
+
+* integer to `char`: keep the low byte (section 4.2);
+* integer to pointer and pointer to integer: the address is re-typed
+  (a cast is needed to mix integer and pointer at all, except the
+  constant 0, which is a null pointer of any pointer type);
+* `int` to `unsigned` and back: the bits are unchanged;
+* to a pointer type: allowed from `void *`, from any pointer (with a
+  cast, or when one is `void *`), and from the constant 0.
+
+Casting to `(void)` discards a value. Casting an address to an
+integer in an initializer is an error (section 5.6), as is casting a
+struct (`struct` has no integer form).
+
+### 6.6 Constant folding
+
+Operations on constants are computed at compile time with these same
+rules (16-bit wrap, truncating division, and so on), so `-(1 << 4)`
+and the constant parts of `2 * x + 3 * 4` need no run-time work.
+Reading a `const` with a constant initializer folds too
+(section 4.10).
+
+Code that a constant makes unreachable is not compiled at all: the
+right side of `0 && f()`, the body of `if (0)` or `while (0)`, the
+untaken branch of a constant `?:`. A `for` loop with a constant-false
+test is the same. One exception: string literals in a statement that
+can never run (such as the body of `if (0)`) still take space in the
+data segment, since the strings are emitted as the source is read; in
+an expression that is never run (such as `0 && f("x")`) they don't.
+
+### 6.7 Evaluation order
+
+Within an expression, ccish follows C's rules for what must happen
+when (the side effects of `++`, assignments and calls in the
+sub-expressions, and the evaluation of `&&`, `||` and `?:`), but C
+leaves the order of evaluation of the operands of most binary
+operators unspecified, and ccish does not pick a particular order.
+As in C, don't rely on the order: in `f() + g()`, either may run
+first, and in `a[i++] = i`, the read of `i` for the index and the
+increment are not ordered against each other.
