@@ -1129,3 +1129,72 @@ macros before the first line.
 
 `#pragma` is ignored, for now. A `#` alone does nothing. Any other
 directive is an error.
+
+## 9. What ccish doesn't (yet) do
+
+### 9.1 Not implemented, expected soon
+
+* `short` (it would be `int` on this target, but isn't in yet)
+* `union`
+* `signed char`
+
+Each gives a "not supported yet" error that names the token.
+
+### 9.2 Out of scope
+
+These are deliberate limits, each a clear compile-time error:
+
+* The types `long`, `float` and `double` (no 32-bit or floating
+  arithmetic on the 6502, and no room for it in the compiler).
+* `auto` and `register` (locals are automatic anyway; there is no
+  register storage to name).
+* Function pointers, and any declarator in parentheses
+  (`int (*p)[4]`).
+* The comma operator.
+* Bitfields.
+* Variable argument lists (`...` in a function's parameters; the
+  preprocessor's `...`/`__VA_ARGS__` is separate, section 8.2).
+* Local function declarations (declare functions at file scope).
+* `main` with parameters, `extern` with an initializer, and
+  `extern` in a block.
+* Nested braces in initializers (`int m[2][3] = {{1,2,3},{4,5,6}};`
+  takes a flat list, section 5.6).
+* Typedefs of function types.
+* Structs over 8 bytes passed or returned by value (pass a pointer).
+* `==` and `!=` on structs (as in C).
+* Anything that needs more than 16 bits of address or 8 bits of
+  character, which is the target's shape, not the compiler's.
+
+### 9.3 Fixed limits
+
+The limits are fixed sizes, each a `#define` beside its table, set
+just above what ccish's own source needs, since every byte counts on
+a 64K machine. Going past one is a clear error.
+
+Per function:
+
+* 1280 bytes of bytecode, 128 calls and data references, 104 labels,
+  and 31 `return`s. Each `if`, loop, `&&`, `||` and `?:` uses one to
+  four labels.
+
+Per file:
+
+* 280 functions (declared, defined or called), 79 variables visible
+  at once (globals, plus the parameters and locals in scope), 401
+  parameter types in all, 40 distinct types, 6 struct tags (counting
+  those in blocks that have ended), 32 struct members in all, and 203
+  enum constants and typedef names visible at once.
+
+The preprocessor: 8432 bytes of distinct names and file names, 72
+macros, and source lines of 255 characters.
+
+Other: a string literal of 255 characters (after adjacent ones are
+joined); an identifier's first 31 significant characters; 32 operands
+on the back end's temporaries in one function; a file name of 127
+characters; and per link, 32 objects and 163 shared names.
+
+A few other limits: a local array must fit in the 255-byte frame
+with the other locals; globals are limited to 32767 bytes in the
+module file (more, if the heap provides them, section 5.4); and
+nothing checks evaluation-stack depth, so deeply nested calls can
+overflow the VM's 32-entry stack.
