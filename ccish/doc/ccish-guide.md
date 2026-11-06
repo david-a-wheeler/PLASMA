@@ -546,3 +546,198 @@ Both qualifiers go before or after the type (`const char`,
 * `volatile` changes no code: ccish never drops or merges memory
   reads. It is checked as part of the type. Its use is the I/O
   registers (section 4.5).
+
+## 5. Declarations and storage
+
+### 5.1 Functions
+
+A function is defined with its return type, name, parameters and a
+body:
+
+```c
+int add(int a, int b) { return a + b; }
+```
+
+A function must be declared (by a prototype, or its definition)
+before it is called; C89's implicit declarations are an error.
+Prototypes and definitions must agree on the return type and the
+parameters' types. For a function you call from another file, put the
+prototype in a `.h` file and `#include` it: the declaration must be
+exact, with the parameter types, so that a mismatch is caught at
+compile time instead of becoming a conversion problem at run time.
+
+A few specifics:
+
+* The return type can be any of these types but an array.
+* Parameters can be any type but `void`. An array parameter is a
+  pointer, as in C (section 4.6).
+* `main` takes no parameters (`int main(void)`), and its return value
+  is ignored.
+* A struct parameter or return value must be at most 8 bytes
+  (section 4.7). Passing a struct needs a prototype.
+* A function can call itself.
+* A function that is called but not defined in any file linked into
+  the module must be a CMDSYS function (section 5.3).
+
+### 5.2 Local variables
+
+Locals are declared anywhere in a block, with optional initializers:
+
+```c
+int a, b = 1, *p = &a;
+```
+
+* They have block scope, and an inner block may shadow an outer name
+  (as in C). A local or parameter may hide a global of the same name.
+* As in C99, the first clause of `for` may declare variables, which
+  are in scope only in the loop:
+  `for (int i = 0; i < n; i++)`.
+* A local's initializer runs each time the declaration is reached.
+  A local array's initializer takes the same forms as a global's
+  (section 5.6), but its elements may be any expressions
+  (`int v[2] = {x, f(x)};`).
+* Locals live in the function's frame, at most 255 bytes for the
+  whole function, parameters and all. A buffer too big for the frame
+  can be a `static` local (section 5.5) or global.
+
+### 5.3 Calling CMDSYS
+
+A function that is called but not defined in any file linked into the
+module must be a CMDSYS function; it is imported from CMDSYS, and a
+declaration must match its exact types (the compiler checks calls
+against them, so a mistake is caught at compile time and not at load
+time). The CMDSYS functions are declared already: a call with no
+declaration is auto-declared from the table in `src/parse.c`
+(`cmdsys_sigs[]`), or you may write the declaration yourself, as the
+test header `inc/ptest.h` does:
+
+```c
+extern void puti(int);
+extern void putc(char);
+extern void putln(void);
+extern void puts(const char *);
+```
+
+The common ones, with their C types:
+
+```c
+void putc(char c);        /* write one byte */
+void putln(void);         /* the line break */
+void puts(const char *s); /* write a PLASMA string */
+void puti(int n);         /* write a signed decimal integer */
+void putb(int n);         /* binary */
+void puth(int n);         /* hex */
+int  getc(void);          /* read a byte */
+int  heapavail(void);     /* the heap's free bytes */
+void *heapalloc(int n);   /* allocate n bytes */
+int  heaprelease(void *p);
+void *heapmark(void);
+void memset(void *p, int c, int n);  /* fill with a 16-bit pattern */
+void memcpy(void *d, const void *s, int n);
+char *strcpy(char *d, const char *s);
+char *strcat(char *d, const char *s);
+int  toupper(int c);
+int  sext(int v);         /* sign-extend the low byte */
+int  isult(int a, int b); /* unsigned a < b, as -1 or 0 */
+int  isuge(int a, int b);
+int  isugt(int a, int b);
+int  isule(int a, int b);
+```
+
+The full list and types are `cmdsys_sigs[]` in `src/parse.c`.
+
+These are PLASMA's functions with PLASMA's meanings, not C's. For
+example, `puts` takes a PLASMA string (length-prefixed, so build one
+with `pstr`) and adds no newline, and `memset` fills with a 16-bit
+pattern, so `memset(p, 'a', 4)` gives `a`, NUL, `a`, NUL (with 0, as
+ccish uses it, that makes no difference). A pointer that a function
+only reads is `const` (`puts`, the source of `strcpy`, `strcat` and
+`memcpy`), so passing a `const char *` needs no cast.
+
+A program may define its own function of a CMDSYS name, with the same
+type, and calls then go to it instead of the import.
+
+### 5.4 Globals
+
+Global variables are declared outside functions, anywhere before
+their first use:
+
+```c
+int count, *p, buf[1000];
+```
+
+They are private to the module (not exported), though shared by the
+files linked into it. A global can't share a name with a function or
+another global, but a local or parameter may hide it.
+
+A global without an initializer is zero. A large one without one
+(an array or struct of 256 bytes or more, whose address no
+initializer holds) isn't in the module file at all: the module takes
+it from the heap when it loads and zeroes it, so the file is smaller,
+and so is the memory needed to load it. It is reached through a
+pointer, a little slower (OBJECT.md, "Zero-filled globals"). If the
+heap can't hold such globals, the program prints `not enough memory`
+and doesn't run.
+
+### 5.5 extern and static
+
+`extern`, at file scope:
+
+```c
+extern int count;
+extern char buf[];
+```
+
+declares a global without giving it storage. A later definition in
+the same file (`int count = 1;`) gives it storage; otherwise it must
+be defined in another file linked with it (section 2.3), or it is an
+"undefined reference". One that is never used needn't be defined.
+`extern` on a function declaration changes nothing. An `extern` with
+an initializer, and `extern` in a block, aren't supported. `sizeof`
+an array of unknown size is an error.
+
+`static` has three uses:
+
+* A static local (`static int n = 10;`) keeps its value between
+  calls. It has block scope, like any local, but lives in the data
+  segment, like a global, so it takes no frame space: a buffer too
+  big for the frame can be a static local (`static char line[300];`).
+  Its initializer takes the forms a global's does, must be constant,
+  and is applied once, when the module loads. A `for` loop's
+  declaration can't be static, as in C.
+* On a global or a function, `static` makes it local to the file
+  (section 2.3). As in C, `static` after a declaration without it is
+  an error, and a later declaration without `static` (or with
+  `extern`) keeps it static.
+
+### 5.6 Initializers
+
+Global and static-local initializers are computed at compile time and
+stored in the module, so they cost no code. The forms:
+
+* Integers and `char`s: any constant expression
+  (`int n = 3 * 4;`, `int size = sizeof(int[10]);`).
+* Pointers: 0, or an address constant: a string literal or a global's
+  (or `static` local's) address, with any constant indexes and
+  members (`&m[1][2]`, `&s.y`, `&ps[1].x`), an array's name, casts to
+  pointer types, and `+` or `-` a constant (`buf + 10`, `2 + buf`,
+  `"abc" + 1`, `(char *)0xC030`). The expression parser folds these
+  in code too, so `buf + 10` is one address push. Casting an address
+  to an integer (`(int)&x`) gives "initializer is not a constant
+  ccish supports".
+* Arrays: a brace list, one level deep (`int t[5] = {1, 2, 3};`),
+  with the rest zero and an optional trailing comma. The size may come
+  from the list (`int t[] = {1, 2};`). A two-dimensional array takes
+  a flat list (`int m[2][3] = {1, 2, 3, 4, 5, 6};`); nested braces
+  aren't supported yet. A `char` array may be a string
+  (`char s[] = "hi";` has 3 elements), and so may each row of a
+  `char` array of arrays (`char kw[][6] = {"int", "char"};`).
+* Structs: a flat brace list over the struct's scalar members in
+  order (`struct pt p = {1, 2};`), and the same for arrays of structs
+  and structs holding arrays or structs, all as one flat list
+  (`struct pt ps[] = {1, 2, 3, 4};` is 2 points). A `char` array
+  member may be a string (`{"nut", 40}`).
+* A scalar may be in braces (`int x = {5};`).
+
+Local initializers may be any expression, and run when the
+declaration is reached.
