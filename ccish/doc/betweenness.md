@@ -636,12 +636,13 @@ the in-range fraction grows.
   range to be an aligned power-of-two block.
 * **`IS_BYTE_BETWEEN` (unaligned)** is next (10 bytes, 256.3) and covers
   unaligned power-of-two blocks. It still beats every general form on both
-  size and average time.
+  size and average time. It's even faster when the unaligned value is 1
+  (9 bytes, 248.3 cycles).
 * **A native unsigned compare** (not yet in the VM) would make the unsigned form
   the best *general* shape (9 bytes, 269.6), a good argument for adding one to
   the instruction set.
 * **`IS_BETWEEN` versus the obvious form**, for a general (non-byte) value:
-  `IS_BETWEEN` is 2 bytes smaller, but the obvious form bails early on
+  `IS_BETWEEN` is 2 bytes smaller. On the other hand, the obvious form bails early on
   `x < c1`, which under this workload (124 of 256 values below) nearly offsets
   `IS_BETWEEN`'s cheaper in-range and above-range cases. On average they are
   within a few cycles of each other (char: 321.7 versus 314.2; int: 326.7
@@ -650,10 +651,7 @@ the in-range fraction grows.
   where its early-out pays off more.
 * **`IS_BETWEEN_U` via the CMDSYS call** (11 bytes, 337.6 int / 332.6
   char) beats the signed-emulated unsigned form (368.6) on both size and
-  time and needs no compiler change: a `#define` that calls `isule`
-  (see "IS_BETWEEN_U via a CMDSYS call"). A native unsigned compare would
-  still beat it (9 bytes, 269.6); the call form is the best general shape
-  available today.
+  time.
 * **`IS_BETWEEN_U` (signed-emulated) is the worst** (368.6): the sign-bit flip
   (`CW`+`XOR`) costs two ops on every query. Use it only if an unsigned
   comparison is needed for correctness and the `isule` call is off the
@@ -745,7 +743,7 @@ Cons:
 * A small, local win: about two bytes for the general form, a little more for
   the byte form, per occurrence.
 
-### Recommendation
+### Implementation location
 
 If any of these transforms are to be done by the compiler,
 the **IR pass** is probably the best place for them:
