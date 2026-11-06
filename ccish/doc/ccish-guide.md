@@ -57,6 +57,12 @@ The working rule is:
   * `enum tag` isn't checked against a definition, so ccish accepts
     some wrong programs (a variable of an enum type never defined).
 
+CCish *does* have a quirk: if you pass strings to CMD routines like `puts`,
+you must send *PLASMA* strings. The special call
+`pstr(...)` converts constant C strings to PLASMA strings.
+This means you must say `puts(pstr("Hello"));` and not `puts("Hello");`.
+Omitting the `pstr()` will typically print garbage.
+
 ### 1.2 Self-hosting on the Apple II
 
 ccish is specifically designed to be able to self-host: the compiler
@@ -327,7 +333,8 @@ joining, so that every literal is a PLASMA string as well: it is
 stored as a length byte, the characters, then a NUL.
 
 In C the literal's value is the address of the first character, with
-type `char *`. `pstr("text")` gives the address of the length byte
+type `char *`. The special routine `pstr("text")` when given a
+C constant string gives the address of the length byte
 instead, the PLASMA (length-prefixed) form that CMDSYS routines such
 as `puts` expect. `pstr()` accepts only a string literal, and its
 type is `char *` too.
@@ -1391,6 +1398,10 @@ The layout choices, in one place:
   chain (within its limits, section 7.5).
 
 ## 11. Writing small and fast code
+
+Other than CMD routines like `puts` requiring `pstr(...)`,
+and various limits, this should "feel" like a normal C implementation,
+and most C optimizations apply. Here are some special tips for ccish.
 
 ### 11.1 Seeing the code you get
 
