@@ -229,3 +229,95 @@ blocks it moves; later, diagnostics that a valid program never
 triggers). `ccgen -i` is in both. So the small build should compile
 only code the full build (or gcc) has already accepted. It writes
 exactly the same objects and modules; the tests check that.
+
+## 3. Lexical conventions
+
+### 3.1 Identifiers
+
+An identifier is a letter or underscore, followed by letters, digits
+and underscores. Only the first 31 characters are significant; the
+rest are ignored (which is how ccish fits PLASMA's 16-character
+symbol world without its case folding). A keyword is not an
+identifier.
+
+The supported keywords are:
+
+```
+break    case     char     const    continue default do     else
+enum     extern   for      goto     if       int    long*
+return   sizeof   static   struct   switch   typedef union*
+unsigned void     volatile while    double*  float* auto*
+register* short*  signed
+```
+
+with `signed` (as in `signed int`, which is `int`). The starred ones
+(`long`, `union`, `double`, `float`, `auto`, `register`, `short`) are
+recognized so the error is clear, but not supported (section 9.1).
+`enum tag` used as a type does not have to match a definition
+(section 1.1).
+
+### 3.2 Comments and digraphs
+
+There are two kinds of comment:
+
+* `/* ... */` to the next `*/`. They do not nest.
+* `// ...` to the end of the line (this is not in C89).
+
+A comment is replaced by one space, so it separates tokens just as
+whitespace does. An unterminated `/*` comment to the end of the file
+is an error.
+
+The C95 digraphs are supported, for keyboards that lack the symbols:
+
+```
+<%  %>      {   }
+<:  :>      [   ]
+%:          #
+%:%:        ##
+```
+
+Trigraphs are not supported.
+
+A line ends with LF, CR or CRLF; all three are accepted in the same
+file.
+
+### 3.3 Integer and character constants
+
+Integer constants are decimal, octal (leading `0`) or hexadecimal
+(`0x`), each with optional `u` or `U` suffix. A constant must fit in
+16 bits ("number too big"), except:
+
+* a decimal constant over 32767 is the `int` with those bits (see
+  section 1.1; there is no `long` to widen to), and
+* a hex or octal constant that doesn't fit in an `int` is
+  `unsigned`, as in C: `0x8000` is `unsigned`.
+
+A constant is `unsigned` if it has a `u` suffix, or by the rule
+above; otherwise it is `int`.
+
+Character constants are `'a'`, `'\\'`, and the escapes:
+
+```
+\\   \'   \"   \?
+\a \b \f \n \r \t \v      the standard escapes
+\OOO   octal, up to three digits 0-7
+\xHH   hex, as many digits as fit, value kept to a byte
+```
+
+Any other `\` sequence is an "unknown escape sequence". A character
+constant has type `int` (the character's value, 0-255, since `char`
+is unsigned), as in C. Multi-character constants like `'ab'` are an
+error.
+
+### 3.4 String literals
+
+A string literal is `"..."` with the same escapes. Adjacent string
+literals are joined into one. Each has at most 255 characters after
+joining, so that every literal is a PLASMA string as well: it is
+stored as a length byte, the characters, then a NUL.
+
+In C the literal's value is the address of the first character, with
+type `char *`. `pstr("text")` gives the address of the length byte
+instead, the PLASMA (length-prefixed) form that CMDSYS routines such
+as `puts` expect. `pstr()` accepts only a string literal, and its
+type is `char *` too.
