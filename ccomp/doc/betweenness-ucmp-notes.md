@@ -192,3 +192,28 @@ programmer's Hacker's Delight macro with the sign-flip emulation
    flipped ISLE (46 CW + 48 XOR + 53/55 ISLE); the module gains no
    code of its own, but the program must run on a system with the
    CMDSYS library (true of every PLASMA target here).
+
+## Remaining steps (handoff)
+
+1. `doc/Bytecodes-cycles.md`: add a "System calls" section (after the
+   Calls section): the four pseudo-ops, the 6502 bodies with cycle
+   listings, the CALL=83/ICAL=79 correction (the $4C JMP (TMPL)
+   trampoline after JSR JMPTMP, plvm02.s:213-216/1393/1415), and the
+   totals 115/117/115/117. Update the CALL (77 to 83) and ICAL (73 to
+   79) entries there, flagged as a correction.
+2. `doc/Bytecodes.md`: add the four pseudo-op rows to the table (size
+   3, cycles 115/117/115/117) and fix the CALL/ICAL cycle entries the
+   same way.
+3. `ccomp/doc/betweenness.md`: new section "IS_BETWEEN_U via CMDSYS
+   call" with the listing (LLW 0 / SUBI 10 / CB 40 / CALL isule /
+   BRFLS), 11 bytes, 339/258/333, average 333.6 (char: 11 bytes, 334/
+   253/328, average 328.6); new row in the final table; the
+   implementation discussion (it beats the current unsigned lowering,
+   which is the naive 24-byte two-comparison form, and the 14-byte
+   sign-flipped macro form; the C macro needs no compiler change,
+   verified; the IR rewrite is the optional follow-up).
+4. The table convention, verified: every op at full size, the final
+   branch counted as 2, comparisons 55 true / 53 false, the last
+   BRFLS counted only when taken. Use it for the new row.
+5. Scratch test files are in ccomp/tests/out/bt/ (t3.c the current
+   unsigned output, t6.c the working isule call).
