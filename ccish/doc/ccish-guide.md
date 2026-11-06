@@ -1659,4 +1659,16 @@ Here is a short list of some of the optimizations you can count on:
   another function. (approach.md, decision 33; `tests/run/taildeep.c`
   runs the tail form at depth 5000, and `tests/gen/gentail.c` pins
   the form and the non-forms.)
-* **A "between" test of form (x >= c1 && x <= c2)** where c1 and c2 are constants.
+* **A "between" test of form (x >= c1 && x <= c2)** where c1 and c2
+  are constants. Where x is a `char` and the range is a power-of-two
+  block of bytes (its width, c2 - c1 + 1, is a power of two, and the
+  range lies within 0 to 255), ccish rewrites it to one load, the
+  misalignment r subtracted, the block's mask ANDed, and one compare
+  to the aligned base, smaller and faster than the two comparisons:
+  an aligned range (r of 0) emits no subtract, and an r of 1 is a
+  `DECR`. The comparison then meets its branch as a `BRNE` in the
+  peephole stage. A general `int` x, or a range that is not a
+  power-of-two block of bytes, keeps the two comparisons. (The
+  analysis is in `doc/betweenness.md`; `tests/gen/genbetween.c` pins
+  the forms and the non-forms, and `tests/xrun/xbetween.c` cross-checks
+  every byte case against the host compiler.)

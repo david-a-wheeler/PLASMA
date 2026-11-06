@@ -713,28 +713,33 @@ static void not_cmp(void)
   nbuf--;
 }
 
-/* The held tail is a betweenness: the same local loaded twice, each time
- * compared against a constant, x >= c1 (or >) and x <= c2 (or <), the two
- * fails both branching to the same label, nothing between that could change
- * the local (only the compare and its branch). Rewrite it to one load, one
- * add of (MAX - high), and one compare >= (MAX - high + low), where low and
- * high are the inclusive ends the two comparisons describe: > c1 means low
- * is c1 + 1, < c2 means high is c2 - 1. The add wraps past MAX for x below
- * low (and the compare fails) and wraps negative for x above high (and the
- * compare fails), so one compare covers the whole range. Signed only: an
- * unsigned compare is sign-bit flipped before it is held, so it never
- * reaches here as a signed op. */
+/* The held tail is a byte betweenness: the same char local loaded twice,
+ * each time compared against a constant, x >= c1 (or >) and x <= c2 (or
+ * <), the two fails both branching to the same label, nothing between that
+ * could change the local (only the compare and its branch), and the range
+ * a power-of-two block of bytes. Rewrite it to one load, the misalignment
+ * r subtracted, the block's mask ANDed, and one compare == (the aligned
+ * base), where low and high are the inclusive ends the two comparisons
+ * describe (> c1 means low is c1 + 1, < c2 means high is c2 - 1),
+ * w == high - low + 1 the block's width, r == low & (w - 1), and the mask
+ * 256 - w keeps the high bits: the block's low log2(w) bits are free, so a
+ * byte is in it exactly when those high bits, after shifting off r, are the
+ * base's. Emit the general unaligned shape and let the peephole stage make
+ * it best: an r of 0 drops the x - 0, an r of 1 is a DECR, and the
+ * compare's BRFALSE meets the ISEQ as a BRNE. Only a byte (a char local,
+ * 0 to 255 when loaded) matches: for a true word value the block's mask
+ * may have high bits set, and an ANDI could not keep them. Signed only:
+ * an unsigned compare is held under its own op, so it never reaches here
+ * as a signed one. */
 static void between_rewrite(void)
 {
   int n = nbuf;
-  int load, cmp1, cmp2, lab, low, high, cadd, ccmp, i;
+  int cmp1, cmp2, lab, low, high, w, r, i;
   if (n < 8)
     return;
-  load = buf_op[n - 8];
-  if (load != IR_LOCAL && load != IR_LOCALB)
-    return;
-  if (buf_op[n - 4] != load || buf_a[n - 8] != buf_a[n - 4])
-    return;                 /* the second load must be the same local */
+  if (buf_op[n - 8] != IR_LOCALB || buf_op[n - 4] != IR_LOCALB
+      || buf_a[n - 8] != buf_a[n - 4])
+    return;                 /* the same char local, loaded twice */
   if (buf_op[n - 7] != IR_CONST || buf_op[n - 3] != IR_CONST)
     return;
   cmp1 = buf_op[n - 6];
@@ -753,15 +758,20 @@ static void between_rewrite(void)
       return;
   low = buf_a[n - 7] + (cmp1 == IR_GT);
   high = buf_a[n - 3] - (cmp2 == IR_LT);
-  cadd = (0x7FFF - high) & 0xFFFF;
-  ccmp = (cadd + low) & 0xFFFF;
-  buf_op[n - 7] = IR_CONST;  buf_a[n - 7] = cadd;
-  buf_op[n - 6] = IR_ADD;    buf_a[n - 6] = 0;
-  buf_op[n - 5] = IR_CONST;  buf_a[n - 5] = ccmp;
-  buf_op[n - 4] = IR_GE;     buf_a[n - 4] = 0;
-  buf_op[n - 3] = IR_BRFALSE; buf_a[n - 3] = lab;
+  if (low < 0 || low > high || high > 255)
+    return;                 /* the block must be whole bytes */
+  w = high - low + 1;
+  if ((w & (w - 1)) != 0)
+    return;                 /* the block's width must be a power of two */
+  r = low & (w - 1);       /* the misalignment, 0 when aligned */
+  buf_op[n - 7] = IR_CONST;  buf_a[n - 7] = r;
+  buf_op[n - 6] = IR_SUB;    buf_a[n - 6] = 0;
+  buf_op[n - 5] = IR_CONST;  buf_a[n - 5] = 256 - w;
+  buf_op[n - 4] = IR_AND;    buf_a[n - 4] = 0;
+  buf_op[n - 3] = IR_CONST;  buf_a[n - 3] = low - r;
+  buf_op[n - 2] = IR_EQ;     buf_a[n - 2] = 0;
+  buf_op[n - 1] = IR_BRFALSE; buf_a[n - 1] = lab;
   buf_cnt[lab]--;           /* the dropped IR_BRFALSE no longer names lab */
-  nbuf = n - 2;
 }
 
 /* Rewrite unsigned op *op (IR_UDIV, IR_UMOD or IR_USHR) on a constant

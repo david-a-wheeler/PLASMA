@@ -1,0 +1,106 @@
+    ; aligned
+    ENTER 2 1
+    ; label 103
+    LLB 0
+    ANDI 240
+    CB 48
+    ISEQ
+    NEG
+    LEAVE 2
+
+    ; misone
+    ENTER 2 1
+    ; label 103
+    LLB 0
+    DECR
+    ANDI 248
+    CB 48
+    ISEQ
+    NEG
+    LEAVE 2
+
+    ; mistwo
+    ENTER 2 1
+    ; label 103
+    LLB 0
+    SUBI 2
+    ANDI 248
+    CB 48
+    ISEQ
+    NEG
+    LEAVE 2
+
+    ; branched
+    ENTER 2 1
+    ; label 103
+    LLB 0
+    ANDI 240
+    CB 48
+    BRNE 1
+    ; join 1 to 0
+    CN 1
+    LEAVE 2
+    ; label 0
+    CN 0
+    LEAVE 2
+
+    ; word
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CN 10
+    ISGE
+    BRFLS 0
+    LLW 0
+    CB 50
+    ISLE
+    BRFLS 0
+    CN 1
+    BRNCH 1
+    ; label 0
+    CN 0
+    ; label 1
+    LEAVE 2
+
+    ; notpow2
+    ENTER 2 1
+    ; label 103
+    LLB 0
+    CB 49
+    ISGE
+    BRFLS 0
+    LLB 0
+    CB 63
+    ISLE
+    BRFLS 0
+    CN 1
+    BRNCH 1
+    ; label 0
+    CN 0
+    ; label 1
+    LEAVE 2
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CB 53
+    CALL aligned
+    CB 53
+    CALL misone
+    ADD
+    CB 53
+    CALL mistwo
+    ADD
+    CB 53
+    CALL branched
+    ADD
+    CB 30
+    CALL word
+    ADD
+    CB 53
+    CALL notpow2
+    ADD
+    CN 6
+    ISEQ
+    NEG
+    LEAVE 0

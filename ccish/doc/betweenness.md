@@ -763,3 +763,23 @@ the **IR pass** is probably the best place for them:
 
 That ordering gets the automatic, always-correct win first and defers the one
 that needs a data-flow fact until the machinery for it is wanted.
+
+### What is implemented
+
+The IR pass (irin.c's between_rewrite) implements the byte form, and only
+the byte form. It matches the eight-op shape (the same char local loaded
+twice, each time compared against a constant, x >= c1 (or >) and x <= c2
+(or <), the two fails both branching to the same label), and fires only
+when the range is a power-of-two block of bytes (low and high within 0
+to 255, and the width a power of two). It emits the general unaligned
+shape, one load, the misalignment r subtracted, the block's mask ANDed,
+and one compare to the aligned base, and the peephole stage makes it best:
+an r of 0 drops the x - 0 (the aligned form), an r of 1 becomes a DECR,
+and the compare's BRFALSE meets the ISEQ as a BRNE. A general int, or a
+range that is not a power-of-two block of bytes, keeps the two
+comparisons: the general one-add form (IS_BETWEEN) was tried and removed
+again, because it is not much smaller than the obvious form, and the
+extra complexity is worth it only with a native unsigned compare, which
+the VM does not have. The transform's meaning is cross-tested against
+the host compiler (tests/xrun/xbetween.c), and the machine forms and
+non-forms are pinned by tests/gen/genbetween.c.
