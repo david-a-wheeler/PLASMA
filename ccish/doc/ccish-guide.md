@@ -1198,3 +1198,155 @@ with the other locals; globals are limited to 32767 bytes in the
 module file (more, if the heap provides them, section 5.4); and
 nothing checks evaluation-stack depth, so deeply nested calls can
 overflow the VM's 32-entry stack.
+
+## 10. How the compiler works
+
+ccish is a pipeline of four programs, each small enough to fit in the
+Apple II's memory on its own. On the host, `ccish` runs all four in
+one process; on the Apple II they run one at a time, each with nearly
+all of memory (approach.md, "B3" and 18.7). Each pass reads what the
+previous one wrote, and nothing else, through files of a simple
+documented format, so a pass can be replaced or run by itself.
+
+The pipeline:
+
+```
+source          ccpp          cccomp         ccgen           ccrel
+ .c, .h    -->  .i, .nam  -->  .ir      -->  .obj, .syms  -->  module
+```
+
+The design goal at every stage is to make the result small and fast:
+each pass optimizes what it can see, and passes what it can't decide
+yet to the next.
+
+### 10.1 ccpp: the preprocessor and lexer
+
+Reads the `.c` source and whatever it `#include`s (section 8).
+Writes two files:
+
+* `NAME.i`, the token stream: every token as a 16-bit code and value,
+  in order, with a line number before each line's first token.
+* `NAME.nam`, the name file: every identifier and file name as a
+  byte string, with an id number in order of first appearance.
+  Keywords and operators have fixed ids; a program's names get the
+  rest.
+
+The point of the name file is that no later pass has to store names:
+a token's value is an id, and a pass that needs to print a name
+spells it from the file as it writes it. The preprocessor also joins
+adjacent string literals and checks the directives' syntax.
+
+### 10.2 cccomp: the parser
+
+Reads the token stream and the name file. Writes the IR file
+`NAME.ir`: a stream of IR ops (each an op number and one or two
+16-bit operands), with the module's data and strings and a symbol
+summary in the same file (OBJECT.md).
+
+cccomp does not build an abstract syntax tree. Building an AST is the
+common way to compile C, but a tree costs the memory of the whole
+program at once, which a 64K machine doesn't have for a compiler.
+Instead cccomp streams: it emits IR ops as it parses, and uses small
+fixed structures where it has to look back:
+
+* an expression engine (a stack of pending operators, the classic
+  way to parse expressions without a tree),
+* a declaration engine (C declares inside-out, `int *a[3]`, and the
+  engine reverses it),
+* a fixup stack of the labels made so far, for the branches that
+  must jump forward,
+* a short IR buffer (64 ops) that holds code just long enough to
+  reorder it (a value moved ahead of an address it is stored
+  through), and to flush it in the right order.
+
+Where cccomp optimizes:
+
+* Constant folding: arithmetic, comparisons and the other operators
+  on constants are computed at compile time, with C's rules
+  (16-bit wrap, truncating division, error for a constant zero
+  divisor). This is needed anyway for array sizes, `case` values and
+  global initializers, and it removes the constant work from the
+  code.
+* Dead code from constants: code a constant makes unreachable is not
+  emitted (section 6.6).
+* Address constants: a constant expression over addresses
+  (`buf + 10`, `&m[1][2]`) is folded to one address push.
+* Delayed loads: a variable's load is not emitted until the value is
+  known to be needed, so `x = ...` needs no load of the old `x`.
+* Loop markers: the loop's parts are written as markers
+  (`LOOP`, `LOOPSTEP`, `LOOPBODY`, `LOOPEND`, IR.md) that ccgen
+  turns into the fast layout (section 10.3). cccomp is the program
+  that doesn't fit yet, so it only marks; the reordering goes into
+  ccgen, which has room.
+
+### 10.3 ccgen: the back end
+
+Reads the IR file and the name file. Writes the stream files
+(`NAME.obj`, the tagged stream of data, strings and functions, and
+`NAME.syms`, the symbol summary; OBJECT.md).
+
+ccgen works in stages over the IR stream:
+
+1. **Lowering** (IR ops to machine ops). It chooses the VM's ops with
+   knowledge of the types, which the IR's type-carrying ops make
+   possible: the immediate forms (`ADDI 5` for `CN 5 ADD`), the fused
+   memory forms (`LLW n ADD` to `ADDLW n`, the load and the add in
+   one op), direct forms for locals and globals (`LLW n`, `LAW g`),
+   and the absolute forms for constant addresses (reading the
+   speaker is `LAB $C030`). An unsigned comparison is lowered to the
+   signed form with both sides' sign bits flipped (or, for some
+   shapes, to the CMDSYS `isule`-family call; section 11.4).
+2. **Reordering.** The code for a store's value is moved ahead of the
+   code for its address, so `*p++ = x` and `a[i + 1] = x` work without
+   a hidden local. The loop's test and step are held and written
+   after the body, so the test sits at the bottom (section 10.5).
+3. **Optimization to PLASMA's forms.** A loop that can be counted
+   gets PLASMA's counted-loop opcodes (section 11.2), a `switch`
+   gets `SEL` and its case table, and a function with no parameters,
+   locals or temporaries gets no frame at all (no `ENTER`, and
+   `RET` where `LEAVE` would be).
+4. **The peephole optimizer.** A window of machine ops is rewritten
+   until nothing changes: unreachable code after a `RET` or branch is
+   dropped, a store followed by a load of the same variable is one
+   `DLW`, a duplicate load is a `DUP`, `+0` and friends are removed,
+   multiply by 0, 1, 3 or a power of two avoids `MUL`, and a test
+   followed by a branch becomes the single branch op
+   (`ISEQ BRFLS` to `BRNE`, `NOT BRFLS` to `BRTRU`). It runs to
+   completion across statements, with labels as the only barriers.
+5. **Encoding.** One function at a time, to bytes, with fixup chains
+   that fill in each branch's offset as its target is reached.
+
+### 10.4 ccrel: the final pass and linker
+
+Reads the stream files of one or more objects (section 2.3). Writes
+the REL module, and with `-l`, a listing of it.
+
+It lays the module out (header, the objects' data, their strings,
+their code, an init function), resolves the names (a name defined in
+two objects, or declared differently in two, is an error; a used name
+defined in none must be a CMDSYS import), writes the module's
+dependencies and its relocation table (the RLD, which tells the VM
+what to fix up at load), and adds the init code that moves the
+zero-filled globals to the heap when there are any
+(section 5.4). The module exports nothing and imports only CMDSYS
+functions, so C names never reach PLASMA's 16-character,
+case-insensitive symbol table.
+
+### 10.5 Where the speed comes from
+
+The layout choices, in one place:
+
+* Every `while` and `for` is written with its test at the bottom:
+  one branch per pass, and the entry jump once
+  (approach.md, "Loop design").
+* A loop whose test and step have the counted shape (an `int` local
+  stepped by a constant, compared signed with a constant or another
+  local, in a body that calls nothing, returns nothing, holds no
+  loop, and doesn't change the variable or the limit) keeps its
+  count and limit on the evaluation stack and steps with
+  `INCBRLE` and friends: 2 to 3 ops of loop work per pass instead of
+  5 to 7 (section 11.2).
+* `&&` and `||` in a condition use the VM's short-circuit branch ops
+  (`BRAND`, `BROR`), which keep the left value when they decide.
+* `switch` is a `SEL` and a 4-bytes-per-case table, not a compare
+  chain (within its limits, section 7.5).
