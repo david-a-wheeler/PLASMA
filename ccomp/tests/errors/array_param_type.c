@@ -1,4 +1,4 @@
-// expect: :6: error 48: incompatible pointer types in argument 1 of 'trace'
+
 int trace(int m[][3]);
 int main() {
   int m[3][4];

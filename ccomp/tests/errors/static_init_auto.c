@@ -1,4 +1,4 @@
-// expect: initializer is not a constant ccish supports
+
 /* A static local's initializer is applied when the module loads, so it
  * must be constant, as in C: not an automatic variable's value. */
 int main()

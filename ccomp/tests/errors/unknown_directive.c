@@ -1,2 +1,2 @@
-// expect: :2: error 234: unknown preprocessor directive: #foo
+
 #foo

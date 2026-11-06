@@ -8,10 +8,10 @@
  * whatever their targets' qualifiers. */
 // listing-has: CN 10
 // listing-has: CB 25
-// stderr-has: 'const' qualifier discarded from pointer target type in initialization
-// stderr-has: 'const' qualifier discarded from pointer target type in argument 1 of 'len'
-// stderr-has: 'volatile' qualifier discarded from pointer target type in initialization
-// stderr-has: 'const' qualifier discarded from pointer target type in assignment
+
+
+
+
 const int N = 10;
 const char LETTER = 'A';
 static const int ZERO = 0;

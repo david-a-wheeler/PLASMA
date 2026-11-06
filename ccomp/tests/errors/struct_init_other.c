@@ -1,4 +1,4 @@
-// expect: incompatible types in initialization
+
 /* A local struct initialized from a struct of another type. */
 struct a { int x; };
 struct b { int x; };

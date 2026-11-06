@@ -1,4 +1,4 @@
-// expect: declared in a parameter list, so not visible outside it: 'struct q'
+
 /* struct q first appears in f's prototype, so it is visible only there,
  * and the struct q defined later is a different type: gcc warns, and so
  * does ccish. The definition of f then conflicts with its prototype. */

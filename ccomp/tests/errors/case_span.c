@@ -1,4 +1,4 @@
-// expect: case values too far apart (more than 32767)
+
 /* SEL's case values must span at most 32767 on the 6502 VM
  * (approach.md, "M7 design"). */
 int main()

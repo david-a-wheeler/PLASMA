@@ -1,4 +1,4 @@
-// expect: 'continue' is not inside a loop
+
 /* continue in a switch goes to the loop around it, so it needs one. */
 int main()
 {

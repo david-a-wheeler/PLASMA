@@ -1,4 +1,4 @@
-// expect: :10: error 137: duplicate case value 2
+
 /* Each case value can appear once in a switch; the error is at the
  * second one. */
 int main()

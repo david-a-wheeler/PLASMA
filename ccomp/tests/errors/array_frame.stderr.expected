@@ -1,0 +1,1 @@
+:4: error 115: local array doesn't fit in the 255-byte frame (make it static or global): 'buf'

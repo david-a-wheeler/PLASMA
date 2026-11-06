@@ -1,4 +1,4 @@
-// expect: a case label must be an integer constant
+
 /* A case value must be known at compile time. */
 int main()
 {

@@ -1,4 +1,4 @@
-// expect: lvalue required as left operand of assignment
+
 /* The result of an assignment through a pointer is not an lvalue, even
  * while its store waits to be emitted. */
 int a[4];

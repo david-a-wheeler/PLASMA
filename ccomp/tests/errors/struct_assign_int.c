@@ -1,4 +1,4 @@
-// expect: incompatible types in assignment
+
 /* A struct can't be assigned an integer. */
 struct pt { int x, y; };
 

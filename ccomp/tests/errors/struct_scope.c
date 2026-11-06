@@ -1,4 +1,4 @@
-// expect: a variable can't have the incomplete type 'struct t'
+
 /* A tag declared in a block isn't visible after the block, so
  * struct t afterward is a new, incomplete struct. */
 int main()

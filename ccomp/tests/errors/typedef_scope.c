@@ -1,4 +1,4 @@
-// expect: undeclared identifier 'U'
+
 /* A typedef in a block is gone after the block. */
 int main()
 {

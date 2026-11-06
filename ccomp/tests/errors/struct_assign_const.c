@@ -1,4 +1,4 @@
-// expect: a struct with a 'const' member can't be the left operand of assignment
+
 /* A struct with a const member can't be assigned as a whole, even in
  * a struct inside it. */
 struct id { const int n; };

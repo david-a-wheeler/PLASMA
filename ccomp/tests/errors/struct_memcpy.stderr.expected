@@ -1,0 +1,1 @@
+a struct copy calls memcpy(dst, src, n), but this program declares memcpy differently

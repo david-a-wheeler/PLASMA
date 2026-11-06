@@ -102,22 +102,27 @@ files of the sessions so far, before a move to a new computer.)
 - **Every function has a comment directly above it** (1-2 lines, what
   it does), including one-line static helpers; with `#ifdef` versions,
   one directly above each. Each peephole pattern in peep.c has a
-  comment. `tests/check_comments.sh` checks the functions (`make test`
+  comment. `tests/spec/comments.sh` checks the functions (`make test`
   runs it).
 - Messages: every message text is in `ccish.msg` (NUMBER TEXT); code
-  writes `error(N /* "text" */, ...)`; `tests/check_msgs.sh` checks them.
+  writes `error(N /* "text" */, ...)`; `tests/spec/msgs.sh` checks them.
 - Prose in the docs: plain, direct sentences; numbers given.
 
 ## Testing
 
-- `make -C ccomp all small` builds both builds; `tests/run.sh` (or
-  `make test`) runs every test with both, and requires the small build
+- `make` (or `make test`) builds both builds, plvm and the cross-test
+  references, and runs every test that is stale, with both builds
+  (driven entirely by the Makefile: a wildcard finds each test's input,
+  a % rule runs it and writes a stamp that exists only while it passes,
+  and the stamp depends on the input, the expected result, the passes
+  and the scripts, so a change to any of those re-runs it; `make all`
+  and `make small` build without testing). It requires the small build
   to write byte-identical objects and modules.
 - **Expected outputs are worked out by hand from C semantics, never
   copied from the compiler's output.** (Watch 16-bit overflow: an int
   is 16 bits; 65432 prints as -104. Several of my expected values were
   wrong that way; the program was right.) The one exception: the
-  `.nam` checksum, which run.sh computes with awk.
+  `.nam` checksum, which the test scripts compute with awk.
 - Run tests (`tests/run/NAME.c` + `NAME.expected`) can check the
   listing: `// listing-has: TEXT`, `// listing-lacks: TEXT`,
   `// listing-count: N TEXT`. TEXT is a plain substring (`grep -F`), so
@@ -129,7 +134,12 @@ files of the sessions so far, before a move to a new computer.)
   differ if it went wrong.
 - Link tests: `tests/link/NAME/{a,b,...}.c` plus `expected` (run
   output) or `expect-error` (message text). Error tests:
-  `// expect: <message>` on line 1.
+  `tests/errors/NAME.c` plus `NAME.stderr.expected`, whose text the
+  compiler's stderr must contain. A run test may also have a
+  `NAME.stderr.expected`: the exact stderr, or none for silence. The
+  expected line numbers point into the source, so the blank lines where
+  the `// expect:`/`// stderr-has:` comments used to be keep the line
+  numbers right; don't tidy them away.
 - A function has at most 104 labels (`MAX_LABELS`), and every loop now
   takes 4: split a test with many loops into functions.
 

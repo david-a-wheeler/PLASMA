@@ -1,4 +1,4 @@
-// expect: :19: fatal 245: macro expansion nested too deeply
+
 #define A1 A2
 #define A2 A3
 #define A3 A4

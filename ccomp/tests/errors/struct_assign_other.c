@@ -1,4 +1,4 @@
-// expect: incompatible types in assignment
+
 /* Two structs with the same members are still different types. */
 struct a { int x; };
 struct b { int x; };

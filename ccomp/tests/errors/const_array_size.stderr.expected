@@ -1,0 +1,1 @@
+a const variable's value isn't a constant expression in C (an array size must be one)

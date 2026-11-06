@@ -1,4 +1,4 @@
-// expect: a cast to a struct type isn't allowed
+
 /* C has no casts to struct types. */
 struct pt { int x, y; };
 

@@ -1,0 +1,1 @@
+a const variable's value isn't a constant expression in C (an initializer here must be one)

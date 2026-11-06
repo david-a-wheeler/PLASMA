@@ -445,11 +445,11 @@ function returns exactly one.
 | `src/peep.c` | Stage 3: peephole optimizer |
 | `src/emit.c` | Stage 4: encoding one function at a time, writing the stream files |
 | `src/link.c` | Final pass and linker: stream files of one or more objects to a REL module, and the listing (see [OBJECT.md](OBJECT.md)) |
-| `tests/run/` | Programs, each with its expected output (`.expected`); comment lines can also check the generated code and the warnings; a program with no warning checks must compile silently |
-| `tests/errors/` | Programs that must fail; the first line gives the expected message |
+| `tests/run/` | Programs, each with its expected output (`.expected`) and, when it prints warnings, the exact stderr (`.stderr.expected`); comment lines can also check the generated code; a program with no `.stderr.expected` must compile silently |
+| `tests/errors/` | Programs that must fail; `.stderr.expected` holds the text the compiler's stderr must contain |
 | `tests/link/` | Programs of several files, linked in name order, each with its expected output (`expected`) or link error (`expect-error`) |
 | `tests/pp/` | Sources, each with the token stream (`.tok`, in hex) and name file (`.nam`) `ccpp` must write for it |
-| `tests/check_msgs.sh` | Checks `ccish.msg` against the message comments in the sources |
+| `tests/spec/msgs.sh` | Checks `ccish.msg` against the message comments in the sources |
 | `tools/measure.py` | `make measure`: compiles ccish's own source with ccish, ccpp preprocessing it (with workarounds for what it lacks), links the Apple II programs, and reports sizes and how full ccpp's tables got |
 | `tools/inc/`, `tools/libstub.c` | Stand-in C library headers and empty library functions for `measure.py` |
 
@@ -477,7 +477,7 @@ error(41 /* "lvalue required as" */, NULL);
 
 To add a message, give it the next unused number in `ccish.msg` and
 write the same text in both places. `make test` runs
-`tests/check_msgs.sh`, which checks that every comment matches the
+`tests/spec/msgs.sh`, which checks that every comment matches the
 file, that every number used is in the file and every number in the
 file is used, and that the file's numbers ascend.
 
@@ -485,7 +485,7 @@ Messages 262-307 aren't messages but the spellings of C's keywords and
 operators, which `cccomp` prints in a message ("expected an expression,
 not 'while'"), so that `cccomp` keeps none of them either. A comment
 in `src/tokin.c` declares the range ("messages 262-307"), which
-`check_msgs.sh` counts as used.
+`spec/msgs.sh` counts as used.
 
 ## Known limits
 

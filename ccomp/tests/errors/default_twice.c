@@ -1,4 +1,4 @@
-// expect: more than one 'default' in a switch
+
 /* A switch has at most one default. */
 int main()
 {

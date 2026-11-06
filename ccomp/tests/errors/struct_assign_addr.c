@@ -1,4 +1,4 @@
-// expect: lvalue required as unary '&' operand
+
 /* The result of a struct assignment has no address. */
 struct pt { int x, y; };
 

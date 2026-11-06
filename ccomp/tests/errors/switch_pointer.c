@@ -1,4 +1,4 @@
-// expect: a switch needs an integer value
+
 /* C switches only on integers. */
 int main()
 {

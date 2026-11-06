@@ -1,4 +1,4 @@
-// expect: '.' needs a struct
+
 /* '.' needs a struct on its left. */
 int main()
 {

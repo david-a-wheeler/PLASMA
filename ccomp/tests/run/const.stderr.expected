@@ -1,0 +1,4 @@
+tests/run/const.c:51: warning 49: 'const' qualifier discarded from pointer target type in initialization
+tests/run/const.c:59: warning 49: 'const' qualifier discarded from pointer target type in argument 1 of 'len'
+tests/run/const.c:68: warning 50: 'volatile' qualifier discarded from pointer target type in initialization
+tests/run/const.c:75: warning 49: 'const' qualifier discarded from pointer target type in assignment
