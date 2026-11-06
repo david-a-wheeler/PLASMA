@@ -1026,3 +1026,106 @@ the last statement isn't one, the compiler adds an implicit
 `return` of an undefined value rather than fall off the end. A
 `return` inside a loop drops the loop's state first
 (section 10.2).
+
+## 8. The preprocessor
+
+`ccpp` (section 2.2) carries out the directives and splits the source
+into tokens. A line that ends in a backslash is joined to the next
+before anything else, as in C.
+
+### 8.1 #include
+
+```c
+#include "file.h"     /* beside the including file, then the -I dirs */
+#include <file>       /* only the -I dirs */
+```
+
+Includes nest a few levels deep; the limit is message 236, which
+says the file is missing or too many files are open. Each file read
+gets its own name in the name file, so messages and `__FILE__`
+report the right file.
+
+### 8.2 #define and #undef
+
+```c
+#define N 10
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#undef N
+```
+
+`#define name tokens` defines an object-like macro;
+`#define name(params) tokens` a function-like one (the `(` must be
+right after the name, with no blank). The parameters are names, the
+last of which may be `...`, which the body uses as `__VA_ARGS__`.
+
+A macro may be defined again only with the same parameters and
+tokens. A macro's name is an identifier, or one of the keywords
+ccish doesn't support (`long`, say), which are names here too; a
+keyword ccish supports can't be a macro name.
+
+A function-like macro's name followed by `(` is a call (the `(` may
+be on a later line); otherwise the name stays as it is. Each
+argument is fully macro-expanded by itself before it is substituted,
+so `MAX(MAX(a, b), c)` works, except next to `#` or `##`, where it is
+used as written. The replacement is read again for more macros, with
+what follows it, but a macro isn't expanded again inside its own
+expansion.
+
+Two operators work on arguments:
+
+* `#param` makes a string of the argument's tokens, spelled again,
+  with one space where there were blanks between them. Numbers are
+  spelled in decimal (`0x10` as `16`), a string gets its escapes, and
+  unprintable bytes come out in octal.
+* `a ## b` joins two tokens into one, which must be a name, a
+  decimal number or an operator.
+
+`#undef name` undefines a macro.
+
+### 8.3 Conditional groups
+
+```c
+#ifdef CCISH
+#  define HAVE_CCISH 1
+#endif
+#if N > 10
+#  error "N too big"
+#elif N > 5
+#  define N 5
+#else
+#  define N 4
+#endif
+```
+
+`#if`, `#ifdef`, `#ifndef`, `#elif`, `#else` and `#endif` keep or
+skip groups of lines. A skipped group's lines aren't split into
+tokens, so they may hold anything, but its conditional directives
+still count, to find its end. Every group must end in the file it
+began in.
+
+`#if` and `#elif` take an integer expression, with its macros
+expanded and `defined(name)` (or `defined name`) 1 if `name` is a
+macro, else 0; any name left is 0. The expression has C's operators
+but not the assignments, `++`, `--` or the comma, and `&&`, `||` and
+`?:` don't evaluate what they skip (`0 && 1 / 0` is no error). An
+`#elif` after a branch was kept isn't evaluated at all. One
+difference from C: the arithmetic is 16-bit `int` and `unsigned` with
+C's usual conversions, not the widest types, so `0x7FFF + 1 < 0` is
+true here.
+
+`#error text` stops the compile, with the text.
+
+### 8.4 #line and the predefined macros
+
+`#line number` makes the next line that number, and
+`#line number "file"` also names the file; from there on, messages,
+`__FILE__` and the line records use the new values. This is how
+generated sources report their real origin.
+
+The predefined macros are `__LINE__` (the current line's number),
+`__FILE__` (the current file's name, as a string) and `__CCISH__`
+(1). `-D name[=text]` and `-U name` (section 2.1) define and undefine
+macros before the first line.
+
+`#pragma` is ignored, for now. A `#` alone does nothing. Any other
+directive is an error.
