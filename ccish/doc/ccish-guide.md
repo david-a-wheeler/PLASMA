@@ -12,7 +12,8 @@ A user guide to ccish, the C compiler for the PLASMA virtual machine.
 8. [The preprocessor](#8-the-preprocessor)
 9. [What ccish doesn't (yet) do](#9-what-ccish-doesnt-yet-do)
 10. [How the compiler works](#10-how-the-compiler-works)
-11. [Writing small and fast code](#11-writing-small-and-fast-code)
+11. [Calling built-in CMD library](#11-calling-built-in-cmd-library)
+12. [Writing small and fast code](#12-writing-small-and-fast-code)
 
 ## 1. What ccish is
 
@@ -20,7 +21,10 @@ ccish compiles a dialect of C into PLASMA REL modules that run on the
 6502, on any of PLASMA's targets (the Apple II through the PLEIDES VM,
 and the C VM `plvm` used for testing). The dialect and the compiler
 share the name: a program written in it is *C-ish*, and `ccish` is the
-compiler.
+compiler. It is intended to aggressively optimize its generated results.
+
+The ccish compiler can run on an Apple II, and can self-host,
+if the loading system can stream RLD values (work in progress).
 
 ### 1.1 A subset of C, not a standard
 
@@ -57,12 +61,6 @@ The working rule is:
   * `enum tag` isn't checked against a definition, so ccish accepts
     some wrong programs (a variable of an enum type never defined).
 
-CCish *does* have a quirk: if you pass strings to CMD routines like `puts`,
-you must send *PLASMA* strings. The special call
-`pstr(...)` converts constant C strings to PLASMA strings.
-This means you must say `puts(pstr("Hello"));` and not `puts("Hello");`.
-Omitting the `pstr()` will typically print garbage.
-
 ### 1.2 Self-hosting on the Apple II
 
 ccish is specifically designed to be able to self-host: the compiler
@@ -96,6 +94,19 @@ The design and the plan for growing the language are in
 [approach.md](../approach.md); the VM itself is described in
 [../doc/Bytecodes.md](../../doc/Bytecodes.md); the file formats in
 [CCPP.md](../CCPP.md) and [OBJECT.md](../OBJECT.md).
+
+### Quirks
+
+A few special quirks:
+
+* It doesn't have C's standard library, but the PLASMA CMD library for its platform
+  as noted below.
+* If you pass strings to CMD routines like `puts`,
+  you must send *PLASMA* strings. The special call
+  `pstr(...)` converts constant C strings to PLASMA strings.
+  This means you must say `puts(pstr("Hello"));` and not `puts("Hello");`.
+  Omitting the `pstr()` will typically print garbage.
+* The `int` type is a signed 16-bit that always wraps.
 
 ## 2. Using the compiler
 
@@ -400,7 +411,7 @@ or octal and too big for an `int` (`0x8000`, section 3.3).
 Comparisons, `/`, `%` and `>>` on `unsigned` values are unsigned.
 `+ - *`, `==` and `!=` work the same for both. Unsigned
 comparisons cost a little extra code (a sign-bit flip of each side,
-or a call for some forms; see section 11.4).
+or a call for some forms; see section 12.4).
 
 By a constant, `>>` (and `/` and `%` by a power of two) are done
 inline; otherwise they call small helper functions that the compiler
@@ -425,7 +436,7 @@ Pointers are 16 bits, as every address on the target is.
   `p - i`, `p - q`, and `++`, `--`, `+=`, `-=`.
 * Pointers compare unsigned (`< > <= >= == !=`), since addresses at
   or above `$8000` are normal. Test pointers with `==` and `!=`
-  rather than ordering (section 11.4).
+  rather than ordering (section 12.4).
 
 Types are checked strictly (GCC 14 does the same by default): mixing
 integers and pointers needs a cast, except for the constant 0, and
@@ -997,7 +1008,7 @@ for (init; cond; step) body;
 ccish reorders every `while` and `for` so the test sits at the bottom
 of the loop (one branch per pass instead of two, sections 10.2 and
 10.3), and some loops get PLASMA's counted-loop form, which is faster
-still (section 11.2). A `goto` loop is never counted (section 7.6).
+still (section 12.2). A `goto` loop is never counted (section 7.6).
 
 ### 7.5 switch
 
@@ -1070,7 +1081,7 @@ the return type). A non-`void` function should end in a `return`; if
 the last statement isn't one, the compiler adds an implicit
 `return` of an undefined value rather than fall off the end. A
 `return` inside a loop drops the loop's state first
-(section 11.2).
+(section 12.2).
 
 ## 8. The preprocessor
 
@@ -1210,6 +1221,9 @@ These are deliberate limits, each a clear compile-time error:
 * Anything that needs more than 16 bits of address or 8 bits of
   character, which is the target's shape, not the compiler's.
 
+We might later add some, e.g., `float`, and have them call libraries.
+However, that's a "later" task.
+
 ### 9.3 Fixed limits
 
 The limits are fixed sizes, each a `#define` beside its table, set
@@ -1278,8 +1292,9 @@ Writes two files:
 
 The point of the name file is that no later pass has to store names:
 a token's value is an id, and a pass that needs to print a name
-spells it from the file as it writes it. The preprocessor also joins
-adjacent string literals and checks the directives' syntax.
+spells it from the file as it writes it. That's important for self-hosting.
+The preprocessor also joins adjacent string literals and checks the
+directives' syntax.
 
 ### 10.2 cccomp: the parser
 
@@ -1341,23 +1356,24 @@ ccgen works in stages over the IR stream:
    speaker is `LAB $C030`). An unsigned comparison is lowered to the
    signed form with both sides' sign bits flipped (the CMDSYS
    `isule`-family calls are an alternative a program can use
-   directly; section 11.4).
+   directly; section 12.4).
 2. **Reordering.** The code for a store's value is moved ahead of the
    code for its address, so `*p++ = x` and `a[i + 1] = x` work without
    a hidden local. The loop's test and step are held and written
    after the body, so the test sits at the bottom (section 10.5).
 3. **Optimization to PLASMA's forms.** A loop that can be counted
-   gets PLASMA's counted-loop opcodes (section 11.2), a `switch`
+   gets PLASMA's counted-loop opcodes (section 12.2), a `switch`
    gets `SEL` and its case table, and a function with no parameters,
    locals or temporaries gets no frame at all (no `ENTER`, and
    `RET` where `LEAVE` would be).
-4. **The peephole optimizer.** A window of machine ops is rewritten
-   until nothing changes: unreachable code after a `RET` or branch is
+4. **The VM peephole optimizer.** A window of VM ops is repeatedly rewritten
+   to optimize it  until nothing changes. For example,
+   unreachable code after a `RET` or branch is
    dropped, a store followed by a load of the same variable is one
    `DLW`, a duplicate load is a `DUP`, `+0` and friends are removed,
-   multiply by 0, 1, 3 or a power of two avoids `MUL`, and a test
+   a multiply by 0, 1, 3 or a power of two avoids `MUL`, and a test
    followed by a branch becomes the single branch op
-   (`ISEQ BRFLS` to `BRNE`, `NOT BRFLS` to `BRTRU`). It runs to
+   (`ISEQ BRFLS` to `BRNE`, `NOT BRFLS` to `BRTRU`). This optimization runs to
    completion across statements, with labels as the only barriers.
 5. **Encoding.** One function at a time, to bytes, with fixup chains
    that fill in each branch's offset as its target is reached.
@@ -1391,19 +1407,65 @@ The layout choices, in one place:
   loop, and doesn't change the variable or the limit) keeps its
   count and limit on the evaluation stack, and each pass is a step
   (`ADDI`, or `INCR`) and a counted branch, `BRLT` or `BRGT`: 2 to 3
-  ops of loop work per pass instead of 5 to 7 (section 11.2).
+  ops of loop work per pass instead of 5 to 7 (section 12.2).
 * `&&` and `||` in a condition use the VM's short-circuit branch ops
   (`BRAND`, `BROR`), which keep the left value when they decide.
 * `switch` is a `SEL` and a 4-bytes-per-case table, not a compare
   chain (within its limits, section 7.5).
 
-## 11. Writing small and fast code
+## 11. Calling built-in CMD library
+
+A ccish module runs under PLASMA's command system, CMD, and can call
+a small built-in library of routines that CMD exports by name; the
+call is an ordinary import from CMDSYS, declared and checked as in
+section 5.3. There are only a few built-ins, and they vary somewhat
+depending on the platform, though many are available on all of them:
+the string, heap, memory and comparison routines are the same
+everywhere, and only the machine-specific ones (`syscall`, `call`,
+`MACHID`) differ in what they do. This section is a brief summary of
+the routines that can be called, as defined in the file
+`src/vmsrc/apple/cmd.pla`, the Apple II's CMD.
+
+The routines, with their ccish names, parameters and return types:
+
+| Routine | Parameters | Returns | What it does |
+|---|---|---|---|
+| `putc` | `char c` | `void` | Writes one character, uppercased on the machines that default to upper case. |
+| `putln` | none | `void` | Writes the line break (a carriage return). |
+| `puts` | `const char *s` | `void` | Writes a PLASMA string, no newline; build `s` with `pstr`. |
+| `puti` | `int n` | `void` | Writes a signed decimal integer. |
+| `putb` | `int n` | `void` | Writes a byte in hexadecimal. |
+| `puth` | `int n` | `void` | Writes a word in hexadecimal. |
+| `getc` | none | `int` | Reads one character from the keyboard. |
+| `gets` | `char p` | `char *` | Prints the prompt character, reads a line, and returns a pointer to the PLASMA string in the shared string-table buffer. |
+| `toupper` | `int c` | `int` | Uppercases a lowercase character, leaves any other character alone. |
+| `strcpy` | `char *d, const char *s` | `char *` | Copies a PLASMA string, length byte included, into `d`, and returns `d`. |
+| `strcat` | `char *d, const char *s` | `char *` | Appends the PLASMA string `s` to `d`, and returns `d`. |
+| `heapmark` | none | `void *` | Returns the current top of the heap, so a later release can discard everything since. |
+| `heapalloc` | `int n` | `void *` | Allocates `n` heap bytes, returning the address, or 0 if the heap can't hold them. |
+| `heapallocalign` | `int n, int pow2, void *freeaddr` | `void *` | Allocates `n` bytes on a `2^pow2` boundary, or 0; if `freeaddr` is not 0 it first stores the old top of the heap there. |
+| `heaprelease` | `void *p` | `int` | Puts the top of the heap back to `p`, releasing everything allocated since, and returns the bytes freed. |
+| `heapavail` | none | `int` | Returns the number of heap bytes still free. |
+| `memset` | `void *p, int c, int n` | `void` | Fills `n` bytes at `p` with the 16-bit pattern `c`. |
+| `memcpy` | `void *d, const void *s, int n` | `void` | Copies `n` bytes from `s` to `d`, correct even when they overlap. |
+| `isugt` | `int a, int b` | `int` | 0 or -1: is `a` greater than `b` as `unsigned`? |
+| `isuge` | `int a, int b` | `int` | 0 or -1: is `a` at least `b` as `unsigned`? |
+| `isult` | `int a, int b` | `int` | 0 or -1: is `a` less than `b` as `unsigned`? |
+| `isule` | `int a, int b` | `int` | 0 or -1: is `a` at most `b` as `unsigned`? |
+| `syscall` | `int cmd, void *params` | `int` | Runs a ProDOS system call with the command byte `cmd` and the parameter block at `params`, returning the error code (0 on success). |
+| `call` | `int addr, int a, int x, int y, int st` | `int` | Calls a 6502 routine at `addr` with `A`, `X`, `Y` and the status set, and returns a pointer to a four-byte block with the result in `A`, `X`, `Y` and the status. |
+
+The export table also holds `DIVMOD(a, b)` which divides `a` by `b` and returns two values, the
+quotient and the remainder. You'll need to assign that return value to a
+struct with the same shape (section 1.3).
+
+## 12. Writing small and fast code
 
 Other than CMD routines like `puts` requiring `pstr(...)`,
 and various limits, this should "feel" like a normal C implementation,
 and most C optimizations apply. Here are some special tips for ccish.
 
-### 11.1 Seeing the code you get
+### 12.1 Seeing the code you get
 
 The compiler's output is short enough to read, and the flags make it
 easy:
@@ -1462,7 +1524,7 @@ and the cycle analyses in
 machine's shape (16-bit words, `zp,X` stack ops, the eval stack) is
 where the advice below comes from.
 
-### 11.2 The counted loop
+### 12.2 The counted loop
 
 Loops are where programs spend their time, and ccish has a special
 optimization for the common count-up-and-down loop. When a loop's
@@ -1501,7 +1563,7 @@ differ for `unsigned` and pointers), and for a loop that can't be
 counted, `!=` is the cheaper test, since it is one op, `BRNE`, while
 `<` is a compare and a branch.
 
-### 11.3 Writing small code
+### 12.3 Writing small code
 
 * **Constants do the work at compile time.** Integer operations on
   constants, and reads of `const` variables with constant
@@ -1521,7 +1583,7 @@ counted, `!=` is the cheaper test, since it is one op, `BRNE`, while
   (section 4.7).
 * **Pointers compare with `==` and `!=`.** An ordering comparison of
   pointers adds a sign-bit flip (`CW $8000 XOR`) to each side
-  (section 11.4); equality adds nothing.
+  (section 12.4); equality adds nothing.
 * **Let the peephole work.** Store then load the same variable
   (becomes `DLW`), add or index a local by a constant (becomes the
   fused `ADDLW`/`IDXLB` and friends), and test then branch (becomes
@@ -1530,8 +1592,12 @@ counted, `!=` is the cheaper test, since it is one op, `BRNE`, while
 * **The helpers come once.** The unsigned `/`, `%` and `>>` helpers
   are added to the module once, however many files call them
   (section 4.3).
+* **Optimizations are per-function.** There's no iterprocedural analysis.
+  Each function is optimized, but nothing between functions, so
+  tight loops should be inside a single function and not call out.
+  Use `#define` if you want to inline code.
 
-### 11.4 Writing fast code
+### 12.4 Writing fast code
 
 The 6502 VM's ops are where the speed goes. The working rules, from
 approach.md section 20 (each measured against the VM's code):
@@ -1547,7 +1613,7 @@ approach.md section 20 (each measured against the VM's code):
   would be more code, as in a betweenness test; the analysis is in
   `doc/betweenness.md`.)
 * **Test pointers with `==` and `!=`, not `< > <= >=`**
-  (section 11.3). `while (p != end)`, not `while (p < end)`.
+  (section 12.3). `while (p != end)`, not `while (p < end)`.
 * **A `char` index is a little faster than an `int` index.**
   Reading a byte local skips the high byte (a byte load is about 5
   cycles faster than a word load, and the fused byte adds about 12
@@ -1563,7 +1629,7 @@ approach.md section 20 (each measured against the VM's code):
 * **Multiplying by a constant** is cheap for 0, 1, 2, 3 and powers
   of two (shifts and a doubled add); other constants use the VM's
   `MUL`, a 16-step loop. Dividing by a constant uses `DIV`.
-* **Pick the loop's test with care** (section 11.2): an `int`
+* **Pick the loop's test with care** (section 12.2): an `int`
   counter in a loop that can be counted takes `<` with a constant or
   local limit, with calls kept out of the body; otherwise, and for
   pointers and `unsigned` counters, `!=`.
@@ -1572,7 +1638,7 @@ The cycle cost of each op, with the 6502 line-by-line behind each
 number, is in [../doc/Bytecodes-cycles.md](../../doc/Bytecodes-cycles.md);
 when in doubt, compile it both ways and read the listing.
 
-### 11.5 Optimizations you can count on
+### 12.5 Optimizations you can count on
 
 Here is a short list of some of the optimizations you can count on:
 
