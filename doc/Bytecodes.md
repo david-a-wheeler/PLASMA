@@ -129,7 +129,7 @@ All take their operands from the stack and push one result, except DIVMOD.
 
 | Op | Name | Operands | Size | Cycles | Stack effect | Description |
 |----|------|----------|------|--------|--------------|-------------|
-| $82 | ADD | — | 1 | 50 | — | 1 | `( a b -- a+b )` | Add. The compiler also uses it to index byte arrays (IDXB). |
+| $82 | ADD | — | 1 | 50 | `( a b -- a+b )` | Add. The compiler also uses it to index byte arrays (IDXB). |
 | $84 | SUB | — | 1 | 50 | `( a b -- a-b )` | Subtract TOS from NOS. |
 | $86 | MUL | — | 1 | ~580* | `( a b -- a*b )` | Multiply (low 16 bits). |
 | $88 | DIV | — | 1 | ~700* | `( a b -- a/b )` | Signed divide, truncating toward zero. Division by zero is not trapped: the 6502 VMs return a garbage value, and the C VM crashes. |
@@ -335,8 +335,21 @@ value_n, rel_n
 
 | Op | Name | Operands | Size | Cycles | Stack effect | Description |
 |----|------|----------|------|--------|--------------|-------------|
-| $54 | CALL | addr | 3 | 77 | `( args… -- results… )` | Call the 6502-callable routine at `addr` with a 6502 `JSR`. Bytecode resumes after the operand when it returns. |
-| $56 | ICAL | — | 1 | 73 | `( args… addr -- results… )` | Indirect call: pop `addr` (TOS, pushed after the arguments), then call as `CALL`. Used for function pointers. |
+| $54 | CALL | addr | 3 | 83 | `( args… -- results… )` | Call the 6502-callable routine at `addr` with a 6502 `JSR`. Bytecode resumes after the operand when it returns. The count includes a 6-cycle trampoline (below); an earlier count of 77 missed it. |
+| $56 | ICAL | — | 1 | 79 | `( args… addr -- results… )` | Indirect call: pop `addr` (TOS, pushed after the arguments), then call as `CALL`. Used for function pointers. Same trampoline; an earlier count of 73 missed it. |
+| $54 | CALL `isult` | addr | 3 | 119 | `( a b -- a<b )` | Pseudo-op, not an opcode: a `CALL` to the CMDSYS `ISULT` native routine (unsigned less-than). The module holds only the 3-byte `CALL`; the 36-cycle body is in the library, so 83 + 36. |
+| $54 | CALL `isuge` | addr | 3 | 121 | `( a b -- a>=b )` | Pseudo-op: a `CALL` to the CMDSYS `ISUGE` routine (unsigned greater-or-equal). 83 + 38, the body in the library. |
+| $54 | CALL `isugt` | addr | 3 | 119 | `( a b -- a>b )` | Pseudo-op: a `CALL` to the CMDSYS `ISUGT` routine (unsigned greater-than). 83 + 36. |
+| $54 | CALL `isule` | addr | 3 | 121 | `( a b -- a<=b )` | Pseudo-op: a `CALL` to the CMDSYS `ISULE` routine (unsigned less-or-equal). 83 + 38. |
+
+The `CALL`/`ICAL` counts include a 6-cycle trampoline: the handler's
+`JSR JMPTMP` lands on a `JMP (TMPL)` instruction the VM installs at start
+(`plvm02.s:213-216`), which then jumps to the target. The four pseudo-op
+rows are calls to the CMDSYS library's unsigned compare routines (the VM
+has no unsigned compare opcodes); `Bytecodes-cycles.md`, "System calls",
+gives the 6502 bodies and the full counts. Each leaves `$FFFF` (true) or
+`0` (false) on the stack, the same shape the VM's own comparisons produce,
+so `BRFLS`/`BRTRU` work on the result without change.
 | $58 | ENTER | framesize, nparams | 3 | 46 + ~26/param* | `( p1 … pn -- )` | Allocate a local frame of `framesize` bytes, then pop `nparams` words into it: parameter *k* (1-based, left to right) goes to offset `2*(k-1)`. So the first parameter is at offset 0 and the last, which was TOS, at `2*(n-1)`. `framesize` includes the parameters (`framesize ≥ 2*nparams`). Other locals are **not** initialized. |
 | $5A | LEAVE | framesize | 2 | 23 / 29 | `( -- )` | Release the frame and return to the caller (6502 `RTS`). `framesize` must equal the one given to `ENTER`. |
 | $5C | RET | — | 1 | 6 | `( -- )` | Return to the caller without touching the frame. Only for functions that have no `ENTER`. |

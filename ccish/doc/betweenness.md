@@ -81,8 +81,9 @@ on ordinary C compilers alike.
 
 However, in our VM only signed integer comparisons are built in. ccish emulates
 the unsigned `<=` by flipping both sign bits and using a signed `<=`, which
-costs more than the native signed comparison that the next section turns into
-`IS_BETWEEN`. We could do it with a call, but a call more costly in time.
+costs more than the native signed comparison that the "General approach"
+section below turns into `IS_BETWEEN`. We could do it with a call to the
+CMDSYS `isule` routine, and the next section quantifies that call form.
 On a host compiler the unsigned `<=` is a single native instruction, but not in
 our VM (PLASMA) at this time.
 
@@ -133,6 +134,94 @@ CALL foo
 
 A native unsigned `<=` would make this the smallest general form (9 bytes)
 and beat `IS_BETWEEN` on time in every case.
+
+## IS_BETWEEN_U via a CMDSYS call
+
+The VM has no unsigned compare opcode, but every PLASMA target's CMDSYS
+library exports one as a callable function: `isule` (also `isult`, `isugt`,
+`isuge`), `int, int -> int`, leaving `$FFFF` (true) or `0` (false) on the
+stack, the same shape the VM's own comparisons produce, so `BRFLS`/`BRTRU`
+work on the result without change. The call form of `IS_BETWEEN_U` is
+therefore available today, with no compiler change.
+
+For `int x` with `c1 == 10`, `c2 == 50` (`char x` is identical except
+`LLB` replaces `LLW`):
+
+~~~~
+LLW 0
+SUBI 10
+CB 40           ; c2 - c1
+CALL isule      ; 3 bytes: the import, relocated at load
+BRFLS 0
+; true:
+CALL foo
+~~~~
+
+| x type | bytes | x &lt; c1 | c1 ≤ x ≤ c2 | x &gt; c2 |
+|--------|:-----:|:--------:|:-----------:|:--------:|
+| int    | 11    | 343      | 262         | 337      |
+| char   | 11    | 338      | 257         | 332      |
+
+The per-op costs are the ones from `Bytecodes-cycles.md`: `LLW` 59 / `LLB`
+54, `SUBI` 41 (47 when `x < c1` borrows), `CB` 41, the `CALL isule`
+pseudo-op 121 (83 for the `CALL`, trampoline included, plus the 38-cycle
+`uword_isle` body in the library, whose `RTS` returns into the handler),
+and `BRFLS` 75 counted only when taken, as in the other rows on this page.
+The body is unconditional, so the call costs the same whether the result
+is true or false; both `x < c1` and `x > c2` take the final branch.
+
+The bytes follow the page's convention: every op at full size, the final
+branch counted as 2. The in-range figures do not count the final `BRFLS`'
+not-taken cost, as in every int row on this page; the byte rows' in-range
+figures do include their final `BRNE`'s not-taken cost (55 cycles), a
+pre-existing inconsistency in the table.
+
+Averages, with the page's workload (8 of 256 values in, 124 below, 124
+above): int (8*262 + 124*343 + 124*337)/256 = 86416/256 = 337.6; char
+(8*257 + 124*338 + 124*332)/256 = 85136/256 = 332.6.
+
+### What it costs, and what it replaces
+
+* **No new declarations.** `isule` (and the other three) are already
+  CMDSYS names: a call auto-declares them from the library's signature
+  (`int (int, int)`), or a program may declare
+  `extern int isule(int, int);`, which is checked against it (a mismatch
+  is an error).
+* **No new link machinery.** The import/ESD/CMDSYS-dependency path exists
+  and is already used by every module (the init function the compiler
+  generates calls `isult` itself); the loader resolves the import against
+  the library's exports at load.
+* **It replaces the current unsigned lowering.** Today
+  `(unsigned)x >= c1 && (unsigned)x <= c2` compiles to the naive two
+  sign-flipped comparisons (25 bytes; 327/549/622 for the word case, where
+  the `x < c1` path bails after the first compare, so it is 16 cycles
+  *faster* than the call form on that one case; the in-range path takes no
+  final branch and `x > c2` takes it), and the Hacker's Delight macro
+  `IS_BETWEEN_U` compiles to the 14-byte sign-flipped form (374/295/368).
+  The call form is 11 bytes and 343/262/337: smaller than both, faster
+  than both on average (337.6 against 476.8 and 368.6), and faster in the
+  in-range and above-range cases; it loses only the naive form's early-out
+  `x < c1` case.
+* **The C macro needs no compiler change.** Replacing the emulated
+  unsigned `<=` with the call,
+  `#define IS_BETWEEN_U(x, c1, c2) isule((x) - (c1), (c2) - (c1))`,
+  compiles today to the op stream above. This was checked with ccish and
+  run under `plvm`: `isule(x - 10, 40)` agreed with
+  `(unsigned)x >= 10 && (unsigned)x <= 50` for every `x` in 0..80 and in
+  65525..65535 (the unsigned top, where `x - c1` wraps and must still read
+  as above `c2 - c1`).
+* **The IR rewrite is the optional follow-up.** As with the signed case
+  (which the IR pass already rewrites), the pass could recognize the
+  unsigned shape (load, sign-bit flip, constant, ISGE/ISLE, second load,
+  flip, constant, ISLE/ISGE, both branches to the same label) and emit
+  `LOAD, SUB c1, CONST c2-c1, CALL isule, BRFALSE`. The macro gives the
+  same op stream with zero compiler code, so the rewrite is not needed for
+  correctness or for the win; it is only automaticity.
+* **The trade against a native op.** The hypothetical native `ISULE`
+  (9 bytes, 275/196/269) would still beat the call form: the call pays the
+  83 cycles of `CALL` machinery and 2 extra bytes. The call form is the
+  best general shape the system can do today, and it is the demonstration
+  case for adding the unsigned compare opcode.
 
 ## Why the XOR sign-bit flip is sound
 
@@ -497,6 +586,8 @@ All the forms on one table, with an added `average` column.
 | `IS_BETWEEN`, int                      | 12 | 329 | 256 | 329 | 326.7 |
 | `IS_BETWEEN`, char                     | 12 | 324 | 251 | 324 | 321.7 |
 | `IS_BETWEEN_U` (signed-emulated), int  | 14 | 374 | 295 | 368 | 368.6 |
+| `IS_BETWEEN_U` via CMDSYS call, int    | 11 | 343 | 262 | 337 | 337.6 |
+| `IS_BETWEEN_U` via CMDSYS call, char   | 11 | 338 | 257 | 332 | 332.6 |
 | Native unsigned compare (hypothetical), int | 9 | 275 | 196 | 269 | 269.6 |
 | `IS_BYTE_BETWEEN` aligned, char        | 8  | 216 | 193 | 216 | 215.3 |
 | `IS_BYTE_BETWEEN` unaligned, char      | 10 | 257 | 234 | 257 | 256.3 |
@@ -557,14 +648,22 @@ the in-range fraction grows.
   versus 321.8). Prefer `IS_BETWEEN` for the 2 bytes saved; prefer the obvious
   form if the range is wide (more "in" values) or `x` is usually below `c1`,
   where its early-out pays off more.
+* **`IS_BETWEEN_U` via the CMDSYS call** (11 bytes, 337.6 int / 332.6
+  char) beats the signed-emulated unsigned form (368.6) on both size and
+  time and needs no compiler change: a `#define` that calls `isule`
+  (see "IS_BETWEEN_U via a CMDSYS call"). A native unsigned compare would
+  still beat it (9 bytes, 269.6); the call form is the best general shape
+  available today.
 * **`IS_BETWEEN_U` (signed-emulated) is the worst** (368.6): the sign-bit flip
   (`CW`+`XOR`) costs two ops on every query. Use it only if an unsigned
-  comparison is needed for correctness and no native unsigned compare exists.
+  comparison is needed for correctness and the `isule` call is off the
+  table (it is not, on any PLASMA target).
 
 Bottom line: when `x` is a byte, reach for `IS_BYTE_BETWEEN` (aligned if you
 can, unaligned otherwise). When `x` is a general integer, use `IS_BETWEEN`
 (it is smaller and within a few cycles of the obvious form on average).
-Avoid the signed-emulated unsigned form.
+When an unsigned comparison is needed for correctness, call `isule` (the
+CMDSYS form above) instead of the signed-emulated unsigned form.
 
 ## Implementing betweenness in the compiler
 
@@ -648,23 +747,16 @@ Cons:
 
 ### Recommendation
 
-Keep the macros for now; do not build the transform into the compiler. The
-macros total less code (none in the compiler), are checked as ordinary C, and
-already emit the same op stream the compiler would. The compiler's own source
-has only a handful of betweenness shapes, so a built-in transform would not
-pay for its size on the self-hosting target.
+If any of these transforms are to be done by the compiler,
+the **IR pass** is probably the best place for them:
 
-If you do want it built in, do the **general form first, in the IR pass**, and
-defer the byte form:
-
-* The IR pass is the right home, not the peephole: it is the IR-level
+* The IR pass is the right home, not the VM code peephole: it is the IR-level
   peephole, it already matches shapes across `BRFLS` and `JUMP` (the loop
   recognizer), and it knows the type as a type. The peephole could do it too
   (it reads the load's width and the constant's form), but it would be
   inferring the type from the op rather than using it.
 * Emit only the general `CW`+`ADD`+`CW`+`ISGE` shape at first. It is correct
-  for any int, needs no type beyond the load's width, and is the always-safe
-  win.
+  for any int, needs no type beyond the load's width, and is the always-safe win.
 * Add the byte `ANDI` form only if the general form proves its worth. It is
   the part that needs the data-flow fact (the value is a byte) and the
   power-of-two test, and it is the part most likely to misfire silently. In

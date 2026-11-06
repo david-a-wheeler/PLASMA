@@ -27,7 +27,10 @@ the op-specific subtotal, the ending dispatch, and the total.
 > `CN` 38->36, `MINUS1` 36->34, `CB` 43->41, `CFFB` 43->41) had arithmetic
 > slips in their "op-specific + 22" totals; `SAB`'s formula omitted the second
 > `INY`; and `IDXAB`'s overflow case is 84 (the `CLC` is in the overflow
-> path), not 83.
+> path), not 83. A later correction: `CALL` 77->83 and `ICAL` 73->79; the
+> line-by-line trace missed the 6-cycle trampoline, the `JMP (TMPL)` that
+> `JSR JMPTMP` lands on (the `$4C` byte the VM installs, `plvm02.s:213-216`;
+> see [System calls](#system-calls-the-cmdsys-unsigned-compares)).
 
 ## The counting convention
 
@@ -1007,7 +1010,16 @@ The `BRGT`/`BRLT` forms have no update (just the compare); `DECBRGE` uses a
 `JMP FETCHOP` (17). `LEAVE`/`RET` end with `RTS` (the return), so their counts
 include the `RTS`. `ENTER` copies the parameters with a per-parameter loop.
 
-### CALL — `$54` (77)
+### CALL — `$54` (83)
+
+**Correction of the reviewed 77.** The handler is traced below, but
+`JSR JMPTMP` does not jump straight to the target. The VM installs the byte
+`$4C` at `JMPTMP` at start (`plvm02.s:213-216`), and the memory layout
+(`JMPTMP`, then `TMPL`, `TMPH`, `plvmzp.inc:26-28`) makes those three bytes
+a `JMP (TMPL)` instruction: the `JSR` lands on it, and it jumps to the
+target address in `TMPL`/`TMPH`. Nothing else writes `JMPTMP` (only that one
+install), so every call pays the 6-cycle trampoline. A comment in
+`plvm01.s:1028` shows the same trick.
 
 ```
 CALL: INY                     ; 2
@@ -1024,6 +1036,7 @@ CALL: INY                     ; 2
       ADC     #$00            ; 2
       PHA                     ; 3
       JSR     JMPTMP          ; 6   the call
+      JMP     (TMPL)          ; 6   the trampoline (the bytes at JMPTMP)
       PLA                     ; 4   restore the IP
       STA     IPH             ; 3
       PLA                     ; 4
@@ -1032,13 +1045,15 @@ CALL: INY                     ; 2
       JMP     FETCHOP         ; 3
 ; FETCHOP               ; 14
 ```
-**77** (20 to read the address, 18 to save/restore the IP, 6 for the `JSR`,
-19 to dispatch).
+**83** (20 to read the address, 18 to save the IP, 6 for the `JSR`, 6 for
+the trampoline, 14 to restore the IP, 19 to dispatch).
 
-### ICAL — `$56` (73)
+### ICAL — `$56` (79)
 
-As CALL, but the address is popped from the stack (16 instead of 20 to get it):
-**73**.
+As CALL, but the address is popped from the stack (`LDA ESTKL,X`, `STA
+TMPL`, `LDA ESTKH,X`, `STA TMPH`, `INX`: 16 instead of 20) and the same
+trampoline applies: 16 + 18 + 6 + 6 + 14 + 2 + 3 + 14 = **79** (the
+reviewed 73 has the same missing 6).
 
 ### ENTER — `$58` (46 + ~26/param*)
 
@@ -1098,6 +1113,63 @@ NATV:  TYA                     ; 2
        JMP     (IP)            ; 6
 ```
 No carry: 2+2+3+3+2+6 = **18**; carry: **24**. (One-way: no return to bytecode.)
+
+## System calls: the CMDSYS unsigned compares
+
+The VM has no unsigned comparison opcodes, but every CMDSYS library exports
+four as native code: `ISULT`, `ISUGE`, `ISUGT`, `ISULE` (`uword_islt` and
+friends in `src/vmsrc/apple/cmd.pla`; `cmdsys.c` on the C VM). Each takes
+two words and leaves one: `$FFFF` if the relation holds, else `0`, the same
+shape the VM's own comparisons produce, so `BRFLS`/`BRTRU` work on the result
+without change. Bytecode calls them with an ordinary `CALL` (the module
+holds only the 3-byte `CALL` and a relocation to the import; the loader
+resolves the name against the library's exports), so the cost of a call is
+the `CALL` (83, trampoline included) plus the body, whose `RTS` returns into
+the `CALL` handler and so adds nothing else.
+
+The bodies are unconditional (no branches): the same cycles for a true or a
+false result. All stack accesses are `zp,X` (4); the result is stored over
+the first argument's slot, `INX` pops the second, and `RTS` returns.
+
+`uword_islt(a,b)`, the `a - b` shape, 36 cycles, 18 bytes:
+
+```
+        LDA     ESTKL+1,X     ; 4   a low (a is the first arg, one deep)
+        CMP     ESTKL,X       ; 4   b low
+        LDA     ESTKH+1,X     ; 4   a high
+        SBC     ESTKH,X       ; 4   C iff a >= b (unsigned)
+        LDA     #$FF          ; 2
+        ADC     #$00          ; 2   A = C ? $00 : $FFFF
+        STA     ESTKL+1,X     ; 4   over a low
+        STA     ESTKH+1,X     ; 4   over a high
+        INX                   ; 2   pop b; a's slot now holds the result
+        RTS                   ; 6   returns into the CALL handler
+```
+
+The other three are the same shape with two independent knobs: the compare
+direction (which operand is loaded first) and an `EOR #$FF` after the `ADC`
+that inverts the carry:
+
+| body | computes | carry is | EOR | result | cycles | bytes |
+|------|----------|----------|-----|--------|--------|-------|
+| `uword_islt` | a - b | a >= b | no | a < b | 36 | 18 |
+| `uword_isgt` | b - a | b >= a | no | a > b | 36 | 18 |
+| `uword_isge` | a - b | a >= b | yes | a >= b | 38 | 20 |
+| `uword_isle` | b - a | b >= a | yes | a <= b | 38 | 20 |
+
+Pseudo-op totals (one `CALL` op executing the routine; the bodies live in
+the library, so the module's cost is the 3-byte `CALL` each time):
+
+| pseudo-op | stack effect | module size | cycles |
+|-----------|--------------|-------------|--------|
+| `isult(a,b)` | `( a b -- a<b )` | 3 (the CALL) | 83 + 36 = 119 |
+| `isuge(a,b)` | `( a b -- a>=b )` | 3 | 83 + 38 = 121 |
+| `isugt(a,b)` | `( a b -- a>b )` | 3 | 83 + 36 = 119 |
+| `isule(a,b)` | `( a b -- a<=b )` | 3 | 83 + 38 = 121 |
+
+A call (119/121) is dearer than a VM comparison (~54) but much cheaper than
+emulating the same compare in bytecode with a sign-bit flip (`CW` 46 + `XOR`
+48 + `CW` 46 + signed `ISLE` ~54 = ~194).
 
 ## Notes (caveats, outside the tables)
 
