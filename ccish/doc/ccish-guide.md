@@ -54,7 +54,7 @@ everything:
 * The compiler is written in valid, portable C, so it compiles under
   gcc and clang as well as under ccish itself. The host build is the
   test oracle for the Apple II build.
-* The compiler runs as a pipeline of small programs (section 7), so
+* The compiler runs as a pipeline of small programs (section 10), so
   on the Apple II each pass runs separately and has nearly all of
   memory to itself.
 * Every table is a fixed size set just above what ccish's own source
@@ -117,7 +117,7 @@ Hello5
 ```
 
 `puts` and the rest of the CMDSYS functions are declared already
-(section 5.4); for your own functions, each must be declared before
+(section 5.3); for your own functions, each must be declared before
 it is called.
 
 ### 2.2 The four passes
@@ -177,7 +177,7 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   type hash) and a global's size ("conflicting types for"). This
   holds even for a declaration nothing uses.
 * A function that no object defines must be a CMDSYS function, which
-  is imported (section 5.4); a program may define its own function of
+  is imported (section 5.3); a program may define its own function of
   a CMDSYS name, with the same type, and calls then go to it.
   Anything else used and not defined is an "undefined reference".
 * `main` (not `static`) in any object is the entry point.
@@ -383,7 +383,7 @@ or octal and too big for an `int` (`0x8000`, section 3.3).
 Comparisons, `/`, `%` and `>>` on `unsigned` values are unsigned.
 `+ - *`, `==` and `!=` work the same for both. Unsigned
 comparisons cost a little extra code (a sign-bit flip of each side,
-or a call for some forms; see section 10.4).
+or a call for some forms; see section 11.4).
 
 By a constant, `>>` (and `/` and `%` by a power of two) are done
 inline; otherwise they call small helper functions that the compiler
@@ -408,7 +408,7 @@ Pointers are 16 bits, as every address on the target is.
   `p - i`, `p - q`, and `++`, `--`, `+=`, `-=`.
 * Pointers compare unsigned (`< > <= >= == !=`), since addresses at
   or above `$8000` are normal. Test pointers with `==` and `!=`
-  rather than ordering (section 10.4).
+  rather than ordering (section 11.4).
 
 Types are checked strictly (GCC 14 does the same by default): mixing
 integers and pointers needs a cast, except for the constant 0, and
@@ -798,8 +798,7 @@ becomes `unsigned` first (section 4.3).
   zero.
 * Comparisons, `!`, `&&` and `||` give 1 or 0, as in C.
 * `c ? a : b` evaluates only the branch taken; the two branches must
-  be the same type (or one can be `void`... not yet; they must
-  match, and a `void` branch is an error).
+  be the same type (a `void` branch is an error).
 
 ### 6.3 Assignment and increment
 
@@ -834,10 +833,10 @@ length plus 1 (the NUL), and an array parameter 2 (it is a pointer).
 A cast converts between any of these types:
 
 ```c
-int n = (int)p;            /* pointer to int: an error, not this */
 char c = (char)x;          /* keep the low byte */
 int *p = (int *)n;         /* int to pointer: needs the cast */
 const char *s = (const char *)p;
+(void)g();                 /* discard a value */
 ```
 
 The direction matters:
@@ -880,3 +879,150 @@ operators unspecified, and ccish does not pick a particular order.
 As in C, don't rely on the order: in `f() + g()`, either may run
 first, and in `a[i++] = i`, the read of `i` for the index and the
 increment are not ordered against each other.
+
+## 7. Statements
+
+Every statement, except the block itself, is terminated by a
+semicolon. The statements are: expression statements, empty
+statements, labeled statements, blocks, `if`, `switch`, `while`,
+`do` and `for`, and the jumps `break`, `continue` and `return`
+(`goto` is a labeled statement, section 7.6).
+
+### 7.1 Expression statements
+
+Any expression may be a statement, followed by its semicolon:
+
+```c
+x = x + 1;
+count++;
+putc('a');
+*p = 0;
+```
+
+An expression statement is evaluated for its side effects. A value
+that is computed and not used is simply dropped. The empty statement
+is a bare `;`.
+
+### 7.2 Blocks
+
+A block is a `{ ... }` of declarations and statements. Blocks nest.
+A name declared in a block (a local, an enum constant, a typedef, a
+struct tag) is visible from its declaration to the end of the block,
+and an inner block may shadow an outer name of the same kind
+(sections 4.8, 4.9, 5.2).
+
+### 7.3 if and else
+
+```c
+if (c) a();
+if (c) a(); else b();
+if (c) a();
+else if (d) b();
+else c();
+```
+
+The condition is any expression; it is true when nonzero. An `else`
+belongs to the nearest unmatched `if`. The code of an `if` whose
+condition is a constant false is not compiled at all
+(section 6.6). An `if` whose condition is void (a function call that
+returns nothing, written where a value is needed) is an error.
+
+### 7.4 while, do-while and for
+
+```c
+while (c) body;
+do body; while (c);
+for (init; cond; step) body;
+```
+
+* `while` tests before the body; the body may run zero times.
+* `do` runs the body first, then tests; the body runs at least once.
+  The `while (c);` at the end is part of the statement.
+* `for` runs `init` once, then `cond`, the body, and `step`, in that
+  order, until `cond` is false. Any of the three clauses may be
+  empty (`for (;;)`, `for (i = 0; ; i++)`, `for (; i < n; )`).
+  `init` may declare variables, in scope only in the loop
+  (section 5.2).
+* `break` leaves the innermost `while`, `do` or `for` (or a
+  `switch`, section 7.5). `continue` goes to the test: in a `for`
+  with a step, it runs the step first; in a `while` or `do`, it tests
+  again. `break` and `continue` outside a loop (and `continue` in a
+  `switch`) are errors.
+
+ccish reorders every `while` and `for` so the test sits at the bottom
+of the loop (one branch per pass instead of two, section 10.2), and
+some loops get PLASMA's counted-loop form, which is faster still
+(section 11.2). A `goto` loop is never counted (section 7.6).
+
+### 7.5 switch
+
+```c
+switch (e) {
+case 1: a();
+case 2:
+case 3: b();
+        break;
+default: c();
+}
+```
+
+`e` is an integer expression; each `case` value is an integer
+constant expression (`'a'`, `2 + sizeof(int)`; a `const` variable
+isn't one, as in C). Control enters at the matching `case`, or at
+`default` if none matches, and falls through until a `break` or the
+end of the `switch`. `case` and `default` labels may be anywhere in
+the body, even inside nested blocks and loops (Duff's device), and
+the cases may be in any order. Duplicate case values, a `case`
+outside a `switch`, and a second `default` are errors.
+
+A `switch` compiles to the VM's `SEL` opcode and a case table after
+the body, sorted by value, 4 bytes per case. Two limits: the case
+values in one `switch` may span at most 32767 (a 6502 VM rule for
+`SEL`; "case values too far apart"), and at most 36 cases may be in
+the switches open at once.
+
+### 7.6 goto and labels
+
+A label is an identifier followed by `:`, in front of a statement
+(with `case` and `default` labels in a `switch`):
+
+```c
+int i = 5, sum = 0;
+top:
+  if (i < 1)
+    goto done;
+  sum += i;
+  i = i - 1;
+  goto top;
+done:
+  puti(sum);
+```
+
+`goto label` jumps to the label. A label is visible throughout its
+function, forward and back, but not outside it. You can't `goto`
+into the middle of an expression or into a scope where a variable
+with an initializer would be skipped; in practice, put labels at
+statement boundaries, which is where C puts them too.
+
+A label's own line needs no semicolon; the statement after it is
+terminated as usual. `case` labels are a different kind of label
+(section 7.5) and don't count as `goto` targets.
+
+`goto` is the tool for state machines and loops whose shape doesn't
+fit `for`: the test programs in `tests/run/gotoloop.c` and
+`tests/xrun/xgoto.c` are a goto loop and a three-state machine driven
+by a chain of gotos.
+
+### 7.7 return
+
+```c
+return;        /* in a void function */
+return e;      /* e has the function's return type */
+```
+
+`return` leaves the function, with `e` as its value (converted to
+the return type). A non-`void` function should end in a `return`; if
+the last statement isn't one, the compiler adds an implicit
+`return` of an undefined value rather than fall off the end. A
+`return` inside a loop drops the loop's state first
+(section 10.2).
