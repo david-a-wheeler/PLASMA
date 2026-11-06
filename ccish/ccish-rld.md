@@ -1,6 +1,6 @@
 # What cccomp's RLD is made of
 
-A companion to `ccomp-size-options.md`, section 7: why the RLD has the
+A companion to `ccish-size-options.md`, section 7: why the RLD has the
 entries it does, and whether it can come down. All numbers are
 measured on this tree's small build (`tools/measure.py`'s
 `tools/out/cccomp`, 42,613 bytes; the RLD is 3,082 four-byte entries
@@ -45,7 +45,7 @@ Check: 1,712 + 5 + 6 + 627 + 327 + 12 + 58 + 36 + 299 = 3,082, and
 the objects' records plus the R records (2,729 + 36) plus the init
 (18) plus the definitions (299) give the same total. The question
 "does a relative branch need an entry?" is answered by the count:
-ccomp's own code has 1,397 branch words (BRFLS 489, BRNCH 327, BRNE
+ccish's own code has 1,397 branch words (BRFLS 489, BRNCH 327, BRNE
 249, BRTRU 203, BREQ 104, SEL 15, the counted loops) and they take
 **0** of the 3,082 -- branch_word() in emit.c writes the final
 relative offset and adds no record, so the current design is already
@@ -101,7 +101,7 @@ order:
 - The 46 imports and the 18 init words are the program's interface
   to the VM; not a lever.
 
-Against the 40K goal, `ccomp-size-options.md` section 7 remains the
+Against the 40K goal, `ccish-size-options.md` section 7 remains the
 better first move: streaming the RLD at the load (the VM reads the
 four-byte entries one at a time instead of holding them) removes the
 whole 12,398 from the load peak without changing cccomp at all,

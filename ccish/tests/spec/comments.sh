@@ -1,6 +1,6 @@
 #!/bin/sh
 # Check that every function definition in src/*.c has a comment right
-# above it (AGENTS.md, "Code style"). Run from the ccomp directory;
+# above it (AGENTS.md, "Code style"). Run from the ccish directory;
 # prints each function without one and exits non-zero if there are
 # any. A definition is a line that starts with a letter and holds a
 # "(", followed by a line that is just "{"; its comment must end on the

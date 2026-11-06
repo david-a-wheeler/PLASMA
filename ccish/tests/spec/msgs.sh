@@ -1,6 +1,6 @@
 #!/bin/sh
 # Check the message file ccish.msg against the sources (approach.md,
-# "C2 design"). Run from the ccomp directory; prints each problem and
+# "C2 design"). Run from the ccish directory; prints each problem and
 # exits non-zero if there are any.
 #   - Each line of ccish.msg is a number, a space and a text, and the
 #     numbers are in ascending order (so each is used once).

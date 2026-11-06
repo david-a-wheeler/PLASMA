@@ -11,7 +11,7 @@ files of the sessions so far, before a move to a new computer.)
 
 - ccish is a compiler for C-ish (a growing subset of C) that emits
   PLASMA VM modules. PLASMA VM runs on 6502 8-bit computers.
-  The compiler lives in `ccomp/`, currently on the git branch `c-compiler`.
+  The compiler lives in `ccish/`, currently on the git branch `c-compiler`.
 - **The real goal: self-host on a 64K Apple II**, with 2 to 4 floppy
   drives of 140K, beside ProDOS, the VM, the zero page, the stacks and
   the text screen. "32K per program" was only a proxy for that.
@@ -155,7 +155,7 @@ files of the sessions so far, before a move to a new computer.)
   short path (ccish's output names are limited to 128 characters, and
   the scratchpad path is too long): `git worktree add --detach
   /tmp/claude-1000/wb HEAD`, build it, measure both, remove it after.
-- **Op counts:** `tools/opcount.py BASE` (BASE: a built ccomp
+- **Op counts:** `tools/opcount.py BASE` (BASE: a built ccish
   directory, such as the worktree above) builds a copy of plvm that
   counts each op it runs, compiles every run test with BASE's ccish and
   this tree's, and prints each test whose count changed, any whose

@@ -18,7 +18,7 @@ dead stores (section 3): fully designed, all in ccgen, allowed by
 the cost policy; the only remaining compiler-side lever (B2 is in,
 B4 and A3 checked off as non-levers, section 5). Then, only if the
 40K goal is still the aim, the VM-side work in section 7 (streaming
-the RLD at the load) or the levers in `ccomp-rld.md` (a relative
+the RLD at the load) or the levers in `ccish-rld.md` (a relative
 CALL, or base-plus-indexed table access).
 
 - **B1, the next step.** Design in section 3 (defer the plain frame
@@ -41,7 +41,7 @@ CALL, or base-plus-indexed table access).
   temp files: `mkdir -p .tmpbuild; export TMPDIR=$PWD/.tmpbuild`
   before any make.
 - **Where things are.** This file: the levers, the cost policy, the
-  order. `ccomp-rld.md`: the RLD breakdown, by kind, and why it is
+  order. `ccish-rld.md`: the RLD breakdown, by kind, and why it is
   what it is. `.scratch-b1/b1.py`: the B1 evidence (run it after
   tests/run.sh; it reads tests/out/*.lst). `../.wt-base`: the
   baseline worktree.
@@ -156,7 +156,7 @@ emits 34 as a constant), and the text is read from ccish.msg at run
 time (diag.c's msg_text() fopens the file and scans for the number,
 falling back to the bare number if it is missing). There is no LA of
 the message per site and no RLD entry per site -- the doc's original
-premise was wrong (ccomp-rld.md, "What is not in there"). Merging
+premise was wrong (ccish-rld.md, "What is not in there"). Merging
 messages would touch the .msg file, which is not part of the module,
 and the immediates: nothing in the module file or the RLD. It
 remains a readability idea for the diagnostics, not a size lever.
@@ -423,7 +423,7 @@ runs is a module that loads and runs, and the tests run every module
 they build.
 
 **What the RLD is made of** (full analysis, the breakdown by kind,
-the cross-checks and the levers, in `ccomp-rld.md`; measured on the
+the cross-checks and the levers, in `ccish-rld.md`; measured on the
 small cccomp): 3,082 entries -- 2,737 internal 16-bit fixups
 (0x81), 299 function definition entries (0x02), 46 imports (0x91).
 Relative branches
@@ -431,7 +431,7 @@ already take none: emit.c's branch_word() writes the final relative
 offset at compile time (label placed: `code_word(label_word[n] -
 nfbuf)`) and adds no relocation, and link.c writes RLD entries only
 for the function definitions and the absolute references -- so
-ccomp's 1,397 branch words (BRFLS 489, BRNCH 327, BRNE 249, BRTRU
+ccish's 1,397 branch words (BRFLS 489, BRNCH 327, BRNE 249, BRTRU
 203, BREQ 104, SEL 15, the counted loops) consume 0 of the 3,082.
 That is the right shape, with no size or time cost: branch and
 target move together at the load, so the offset stays correct with

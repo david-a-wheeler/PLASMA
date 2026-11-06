@@ -3,16 +3,16 @@
 
 Usage: tools/opcount.py BASE [-v]
 
-BASE is another ccomp directory, already built (make all): usually a git
+BASE is another ccish directory, already built (make all): usually a git
 worktree of an earlier commit, at a short path, since ccish's output
 names are limited to 128 characters, e.g.
 
     git worktree add --detach /tmp/wb HEAD
-    make -C /tmp/wb/ccomp all
-    tools/opcount.py /tmp/wb/ccomp
+    make -C /tmp/wb/ccish all
+    tools/opcount.py /tmp/wb/ccish
     git worktree remove --force /tmp/wb
 
-Run from this ccomp directory, after make all. It builds a copy of plvm
+Run from this ccish directory, after make all. It builds a copy of plvm
 that counts each opcode it dispatches (tools/out/cvm/plvmc: the VM's
 sources from ../src/vmsrc, patched, never changed in place), compiles
 each tests/run/*.c with BASE's ccish and with this tree's, runs both

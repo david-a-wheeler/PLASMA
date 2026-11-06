@@ -1,6 +1,6 @@
 # Improving enum subset handling
 
-We have some larger enums in the C compiler code (ccomp/) in which there
+We have some larger enums in the C compiler code (ccish/) in which there
 are important subsets. Size and speed are important for this compiler.
 
 We should order the enums defined in various .h files, and add #defines in
