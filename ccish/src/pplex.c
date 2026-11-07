@@ -448,16 +448,22 @@ static const char *const keywords[] = {
   "goto",
   /* the rest of C89's keywords: recognized so the error is clear */
   "auto", "double",
-  "float", "long", "register", "short", "union",
+  "float", "long", "register", "union",
   NULL
 };
 
 /* The code of the word (an identifier or keyword) of n characters at
  * word, NUL-terminated: a supported keyword's, or TC_ID or TC_KEYWORD
- * with its id in pt_val (and in pt_macro whether it names a macro). */
+ * with its id in pt_val (and in pt_macro whether it names a macro).
+ * `short` is a synonym for `int`: ccish has one word type, and the
+ * standard C distinction between the two is not worth implementing in
+ * the memory ccish runs in, so the word gets int's code, and the
+ * compiler never sees a short. */
 int pp_word(const char *word, int n)
 {
   int i;
+  if (!strcmp(word, "short"))
+    return TC_KEYWORDS;      /* int */
   for (i = 0; keywords[i]; i++)
     if (!strcmp(keywords[i], word)) {
       if (i < NKEYWORDS)

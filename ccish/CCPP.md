@@ -195,6 +195,11 @@ Keywords and operators have separate ranges so that adding a keyword
 (`union`, `long`) doesn't renumber the operators. Adding or
 reordering either changes the format version.
 
+`short` is a synonym for `int` (ccish has one word type, and the
+standard C distinction between the two is not worth implementing): the
+preprocessor writes it as the `int` token ($80), so no short token of
+its own exists, and the compiler never sees the word.
+
 **Digraphs** (`<: :> <% %>`) are written as the tokens they stand for
 (`[ ] { }`). A character constant is a number (`$05`): its value is
 the character's code.

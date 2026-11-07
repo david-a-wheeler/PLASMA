@@ -1,0 +1,120 @@
+    ; f
+    ENTER 4 2
+    ; label 103
+    LLW 0
+    ADDLW 2
+    LEAVE 4
+
+    ; fs
+    ENTER 4 2
+    ; label 103
+    LLW 0
+    ADDLW 2
+    LEAVE 4
+
+    ; g
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LW
+    INCR
+    LLW 0
+    SW
+    LLW 0
+    LW
+    LEAVE 2
+
+    ; gs
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LW
+    INCR
+    LLW 0
+    SW
+    LLW 0
+    LW
+    LEAVE 2
+
+    ; h
+    ENTER 4 1
+    ; label 103
+    LLW 0
+    LLW 0
+    SUB
+    LEAVE 4
+
+    ; hs
+    ENTER 4 1
+    ; label 103
+    LLW 0
+    LLW 0
+    SUB
+    LEAVE 4
+
+    ; si
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LW
+    LLW 0
+    ADDI 2
+    LW
+    ADD
+    LEAVE 2
+
+    ; ss
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LW
+    LLW 0
+    ADDI 2
+    LW
+    ADD
+    LEAVE 2
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CN 1
+    SAW data +4
+    CN 2
+    SAW data +6
+    CN 3
+    SAW data +8
+    CN 4
+    SAW data +10
+    CN 1
+    CN 2
+    CALL f
+    CN 1
+    CN 2
+    CALL fs
+    ADD
+    LA data +0
+    CALL g
+    ADD
+    LA data +2
+    CALL gs
+    ADD
+    ADDAW data +0
+    ADDAW data +2
+    LA data +4
+    CALL si
+    ADD
+    LA data +8
+    CALL ss
+    ADD
+    CN 3
+    CALL h
+    ADD
+    CN 3
+    CALL hs
+    ADD
+    CB 42
+    ISEQ
+    NEG
+    NOT
+    ANDI 1
+    LEAVE 0
