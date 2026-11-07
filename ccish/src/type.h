@@ -59,6 +59,8 @@ void tag_hide(int depth);   /* hide the tags declared deeper */
 int tag_name(int tag);
 int tag_size(int tag);
 void tag_set_size(int tag, int size);
+void tag_mark_union(int tag);   /* the tag is a union's, not a struct's */
+int tag_is_union(int tag);
 int member_add(int tag, int name, int type, int off);
 int member_find(int tag, int name);     /* a member, or -1 */
 int member_next(int tag, int m);        /* the next member, in order */

@@ -1,1 +1,1 @@
-'->' needs a pointer to a struct
+'->' needs a pointer to a struct or union

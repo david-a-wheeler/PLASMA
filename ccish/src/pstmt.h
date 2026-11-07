@@ -29,6 +29,7 @@ void set_known(int s, int v);
 /* Parse a parameter list starting at '('. Returns the parameter count,
  * or -1 for "()" (unspecified in a prototype, none in a definition). */
 int  parse_struct(void);
+int  parse_union(void);
 int  parse_enum(void);
 
 int  parse_params(void);

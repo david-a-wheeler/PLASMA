@@ -147,7 +147,7 @@ All words are 16-bit little-endian. The file is written once, in
 order, through a 512-byte block buffer (`src/bio.c`).
 
 **The header**: the 3 bytes `CTK`, then the format version, a byte:
-**3**. The source file's name is not here: it is file 1 in
+**4**. The source file's name is not here: it is file 1 in
 `NAME.nam`.
 
 **Then the tokens**, each a code byte, followed by its operands:
@@ -161,9 +161,9 @@ order, through a 512-byte block buffer (`src/bio.c`).
 | `$04` | an identifier | its id (word) |
 | `$05` | a number, `int` | its value (word) |
 | `$06` | a number, `unsigned` (a `u` suffix, or a hex or octal constant over `$7FFF`) | its value (word) |
-| `$07` | a C keyword ccish doesn't support (`float`, `union`, ...) | its id (word), for the message's spelling |
+| `$07` | a C keyword ccish doesn't support (`float`, `long`, ...) | its id (word), for the message's spelling |
 | `$08` | a string literal | its length (byte, 0-255), then its bytes |
-| `$09` | a struct tag: an identifier right after `struct` (no other identifier is written so) | its id (word); the hash *h* of its spelling, from 0, for each byte *b*: *h* = (*h* × 31 + *b*) mod 65536 (word); and 31^*n* mod 65536, for its *n* bytes (word) |
+| `$09` | a struct or union tag: an identifier right after `struct` or `union` (no other identifier is written so) | its id (word); the hash *h* of its spelling, from 0, for each byte *b*: *h* = (*h* × 31 + *b*) mod 65536 (word); and 31^*n* mod 65536, for its *n* bytes (word) |
 | `$20`-`$7E` | a one-character token, as itself: one of `! % & ( ) * + , - . / : ; < = > ? [ ] ^ { \| } ~` | none |
 | `$80`-`$BF` | a supported keyword (table below) | none |
 | `$C0`-`$DF` | an operator of more than one character (table below) | none |
@@ -171,7 +171,7 @@ order, through a 512-byte block buffer (`src/bio.c`).
 Any other code is a damaged file.
 
 **The keywords**, `$80` up, in this order (the order of `T_INT` to
-`T_GOTO` in `cccomp`, and of `keywords[]` in `src/pplex.c`). The
+`T_UNION` in `cccomp`, and of `keywords[]` in `src/pplex.c`). The
 type-name keywords come first, in the groups the parser tests: the
 int-type specifiers, then `void`, the qualifiers, the tagged types
 (approach.md, decision 26):
@@ -181,7 +181,7 @@ int-type specifiers, then `void`, the qualifiers, the tagged types
 | `$80` | `int` | `char` | `signed` | `unsigned` | `void` | `const` | `volatile` | `struct` |
 | `$88` | `enum` | `return` | `if` | `else` | `while` | `do` | `for` | `break` |
 | `$90` | `continue` | `sizeof` | `static` | `extern` | `switch` | `case` | `default` | `typedef` |
-| `$98` | `goto` | | | | | | | |
+| `$98` | `goto` | `union` | | | | | | |
 
 **The operators**, `$C0` up (the order of `T_EQ` to `T_ELLIPSIS`):
 
@@ -192,8 +192,8 @@ int-type specifiers, then `void`, the qualifiers, the tagged types
 | `$D0` | `\|=` | `^=` | `<<=` | `>>=` | `->` | `...` | | |
 
 Keywords and operators have separate ranges so that adding a keyword
-(`union`, `long`) doesn't renumber the operators. Adding or
-reordering either changes the format version.
+(`long`) doesn't renumber the operators. Adding or reordering either
+changes the format version.
 
 `short` is a synonym for `int` (ccish has one word type, and the
 standard C distinction between the two is not worth implementing): the
@@ -324,7 +324,7 @@ For `t.c` holding the one line `int main() { return 0; }`, `ccpp`
 writes `t.i`:
 
 ```
-43 54 4B 03    "CTK", version 3
+43 54 4B 04    "CTK", version 4
 80             int
 04 1A 00       an identifier: id 26, main
 28 29 7B       ( ) {

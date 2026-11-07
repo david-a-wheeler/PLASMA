@@ -143,7 +143,8 @@ static void flush_str(void)
  * string, its n bytes at s. A string is joined to one held before it;
  * the line is brought up to date before the held string is written, so
  * that a string's line is that of the token after it. An identifier
- * after "struct" is a tag, with its spelling's hash (CCPP.md, TC_TAG). */
+ * after "struct" or "union" is a tag, with its spelling's hash
+ * (CCPP.md, TC_TAG). */
 void pp_out(int code, int val, const unsigned char *s, int n)
 {
   int i, mul, hash;
@@ -166,7 +167,7 @@ void pp_out(int code, int val, const unsigned char *s, int n)
     return;
   }
 #endif
-  if (code == TC_ID && last == TC_STRUCT) {
+  if (code == TC_ID && (last == TC_STRUCT || last == TC_UNION)) {
     hash = pp_name_hash(val, &mul);
     bputc(&out, TC_TAG);
     bputw(&out, val);

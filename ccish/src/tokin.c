@@ -117,8 +117,10 @@ void next(void)
   case TC_ID:
   case TC_KEYWORD:
   case TC_TAG:
-    /* A struct's tag, and only that, has its spelling's hash. */
-    if ((c == TC_TAG) != (tok == T_STRUCT && c != TC_KEYWORD))
+    /* A struct's or union's tag, and only that, has its spelling's
+     * hash. */
+    if ((c == TC_TAG)
+        != ((tok == T_STRUCT || tok == T_UNION) && c != TC_KEYWORD))
       damaged();
     tok = c == TC_KEYWORD ? T_KEYWORD : T_ID;
     tok_val = get_word();
@@ -181,11 +183,11 @@ int next_is_colon(void)
 
 /* The spellings of the supported keywords and the multi-character
  * operators, for messages, are in the message file, as messages' texts
- * are, not in cccomp (approach.md, "C2 design"): messages 262-286 are
- * the keywords, in T_INT's order, and messages 287-308 the operators,
+ * are, not in cccomp (approach.md, "C2 design"): messages 262-287 are
+ * the keywords, in T_INT's order, and messages 288-309 the operators,
  * in T_EQ's. */
 #define MSG_KEYWORDS 262
-#define MSG_OPS      287
+#define MSG_OPS      288
 
 /* Describe the current token for an error message, e.g. "'while'" or
  * "a number". The result is in a static buffer. Without the message

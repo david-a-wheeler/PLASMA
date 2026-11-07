@@ -99,12 +99,14 @@ int parse_var_type(int type, int may_omit)
   return type;
 }
 
-/* Parse a struct's member list, from '{' to '}', and complete tag's
- * struct: each member is at the next byte, with no padding, since the
- * 6502 has no alignment rules (approach.md, "M6 design"). While the
- * list is parsed, the tag's size is -2, so a nested redefinition of
- * the same tag is caught. */
-static void parse_members(int tag)
+/* Parse a struct's or union's member list, from '{' to '}', and
+ * complete tag's aggregate: a struct's members are at the next byte,
+ * with no padding, since the 6502 has no alignment rules (approach.md,
+ * "M6 design"), while a union's all start at byte 0, with the union's
+ * size the largest member's (is_union). While the list is parsed, the
+ * tag's size is -2, so a nested redefinition of the same tag is
+ * caught. */
+static void parse_members(int tag, int is_union)
 {
   int name, off = 0, base, t;
 
@@ -112,34 +114,39 @@ static void parse_members(int tag)
   tag_set_size(tag, -2);
   next();                         /* '{' */
   if (tok == '}')
-    error(95 /* "a struct needs at least one member" */, NULL);
+    error(95 /* "a struct or union needs at least one member" */, NULL);
   while (tok != '}') {
     if (tok == T_KEYWORD)
       not_yet();
     if (!is_type_start())
-      error(96 /* "expected a struct member, not" */, tok_desc());
+      error(96 /* "expected a struct or union member, not" */,
+            tok_desc());
     base = parse_base_type();
     for (;;) {
       t = parse_declarator(base, &name);
       if (tok == '(')
-        error(97 /* "a struct member can't be a function:" */,
+        error(97 /* "a struct or union member can't be a function:" */,
               quote(name));
       t = parse_dims(t, 0);
       if (unqual(t) == TY_VOID)
-        error(98 /* "a struct member can't have type void" */, NULL);
-      need_complete(t, 208 /* "a struct member can't have the"
+        error(98 /* "a struct or union member can't have type void" */,
+              NULL);
+      need_complete(t, 208 /* "a struct or union member can't have the"
                               " incomplete type" */);
       if (member_find(tag, name) >= 0)
-        error(99 /* "duplicate struct member" */, quote(name));
+        error(99 /* "duplicate struct or union member" */, quote(name));
       if (off > MAX_OBJECT - type_size(t))
-        error(100 /* "struct too large (over 32767 bytes)" */, NULL);
-      member_add(tag, name, t, off);
-      off += type_size(t);
+        error(100 /* "struct or union too large (over 32767 bytes)" */,
+              NULL);
+      member_add(tag, name, t, is_union ? 0 : off);
+      off = is_union
+          ? (type_size(t) > off ? type_size(t) : off) : off + type_size(t);
       if (tok != ',')
         break;
       next();
     }
-    expect(';', 101 /* "expected ';' after a struct member, not" */);
+    expect(';', 101 /* "expected ';' after a struct or union member, "
+                       "not" */);
   }
   next();
   tag_set_size(tag, off);
@@ -170,6 +177,8 @@ int parse_struct(void)
     hmul = tok_hmul;
     next();
     tag = tag_find(name, tok == '{' || tok == ';' ? depth : -1);
+    if (tag >= 0 && tag_is_union(tag))
+      error(104 /* "redefinition of" */, tag_desc(tag));
   } else if (tok != '{') {
     error(102 /* "expected a struct name or '{' after 'struct', not" */,
           tok_desc());
@@ -183,7 +192,50 @@ int parse_struct(void)
   if (tok == '{') {
     if (tag_size(tag) != -1)
       error(104 /* "redefinition of" */, tag_desc(tag));
-    parse_members(tag);
+    parse_members(tag, 0);
+  }
+  return struct_type(tag);
+}
+
+/*
+ * Parse a union type after "union", and return it: a tag, a member
+ * list, or both, as parse_struct(), but with the union layout: every
+ * member starts at byte 0, and the union is the largest member (see
+ * parse_members()). A union is stored like a struct: the same
+ * TK_STRUCT type, with its tag marked a union's (type.h), so every
+ * mechanism that works on a struct's members and size works on a
+ * union's. Struct and union tags share a name space, so a name can't
+ * be both, which the standard C allows (a known difference, as with
+ * enum).
+ */
+int parse_union(void)
+{
+  int name = -1, tag = -1, hsum = 0, hmul = 1;
+
+  next();                         /* union */
+  if (tok == T_ID) {
+    name = tok_val;
+    hsum = tok_hsum;
+    hmul = tok_hmul;
+    next();
+    tag = tag_find(name, tok == '{' || tok == ';' ? depth : -1);
+    if (tag >= 0 && !tag_is_union(tag))
+      error(104 /* "redefinition of" */, tag_desc(tag));
+  } else if (tok != '{') {
+    error(318 /* "expected a union name or '{' after 'union', not" */,
+          tok_desc());
+  }
+  if (tag < 0) {
+    tag = tag_new(name, depth, hsum, hmul);
+    if (in_params && name >= 0)
+      warning(103 /* "declared in a parameter list, so not visible "
+                     "outside it:" */, tag_desc(tag));
+  }
+  tag_mark_union(tag);
+  if (tok == '{') {
+    if (tag_size(tag) != -1)
+      error(104 /* "redefinition of" */, tag_desc(tag));
+    parse_members(tag, 1);
   }
   return struct_type(tag);
 }
@@ -591,7 +643,7 @@ static void parse_label(void)
 {
   int l = define_goto_label(tok_val);
   next();                         /* the id */
-  expect(':', 314 /* "expected ':' after a label, not" */);
+  expect(':', 315 /* "expected ':' after a label, not" */);
   place_label(l);
   parse_statement();              /* the statement it labels */
 }
@@ -605,11 +657,11 @@ static void parse_goto(void)
   int l;
   next();                         /* 'goto' */
   if (tok != T_ID)
-    error(315 /* "expected a label after 'goto', not" */, tok_desc());
+    error(316 /* "expected a label after 'goto', not" */, tok_desc());
   l = reserve_goto_label(tok_val);
   next();                         /* the label */
   branch(IR_JUMP, l);
-  expect(';', 316 /* "expected ';' after 'goto', not" */);
+  expect(';', 317 /* "expected ';' after 'goto', not" */);
 }
 
 /*
@@ -834,6 +886,7 @@ static void parse_statement(void)
   case T_VOLATILE:
   case T_STRUCT:
   case T_ENUM:
+  case T_UNION:
     parse_declaration(0);
     return;
   case T_TYPEDEF:

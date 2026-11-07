@@ -20,7 +20,10 @@
  * unsigned: the 0-means-none idiom, as in irin.c's lab_depth), and its
  * name's hash, tg_hsum[i] and
  * tg_hmul[i], for type hashes (ccpp gives them, since cccomp has no
- * spellings). Member i
+ * spellings), and tg_union[i], set when the tag is a union's, not a
+ * struct's: a union's members all start at byte 0, and its size is the
+ * largest member's (the layout the parser records, so every mechanism
+ * that works on a struct's members and size works on a union's). Member i
  * belongs to tag mb_tag[i], and has name mb_name[i], type mb_type[i]
  * and byte offset mb_off[i]. A struct's members are in order, but not
  * always next to each other, since a struct may be defined inside
@@ -46,6 +49,7 @@ static int ntypes = 4;
 static int tg_name[MAX_TAGS];
 static int tg_size[MAX_TAGS];
 static char tg_depth[MAX_TAGS];
+static char tg_union[MAX_TAGS];
 static unsigned tg_hsum[MAX_TAGS];
 static unsigned tg_hmul[MAX_TAGS];
 static int ntags;
@@ -189,8 +193,12 @@ int type_hash(int t, int h)
   }
   /* The name's bytes, added one at a time with hash_byte(), would give
    * h * 31^n + the name's own hash from 0: ccpp gives both parts
-   * (CCPP.md, TC_TAG). */
-  h = hash_byte(h, 's');
+   * (CCPP.md, TC_TAG). A union's tag gets a different marker than a
+   * struct's, so that a struct and a union of the same name (which
+   * the standard C allows to coexist, and ccish's shared tag
+   * namespace doesn't) hash different in another module's function
+   * signatures. */
+  h = hash_byte(h, tag_is_union(struct_tag(t)) ? 'U' : 's');
   tag = struct_tag(t);
   if (tg_name[tag] >= 0)
     h = (int)(((unsigned)h * tg_hmul[tag] + tg_hsum[tag]) & 0xFFFFu);
@@ -269,6 +277,19 @@ int tag_size(int tag)
 void tag_set_size(int tag, int size)
 {
   tg_size[tag] = size;
+}
+
+/* Mark tag as a union's: its members all start at byte 0, and its
+ * size is the largest member's. */
+void tag_mark_union(int tag)
+{
+  tg_union[tag] = 1;
+}
+
+/* Is tag a union's, not a struct's? */
+int tag_is_union(int tag)
+{
+  return tg_union[tag];
 }
 
 /* Add a member to tag's struct, at byte offset off, and return it. The

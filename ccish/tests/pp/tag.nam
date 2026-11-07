@@ -32,6 +32,8 @@ defined
 s
 p
 ab
+u
+q
 @tests/pp/tag.c
 
-=1 0022 ssss
+=1 0024 ssss

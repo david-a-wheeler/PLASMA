@@ -356,8 +356,13 @@ static void init_flat(int t, int off)
   } else if (is_struct(t)) {
     tag = struct_tag(t);
     for (m = member_next(tag, -1); m >= 0 && !init_done;
-         m = member_next(tag, m))
+         m = member_next(tag, m)) {
       init_flat(member_type(m), off + member_off(m));
+      if (tag_is_union(tag))
+        break;   /* as in C, a union is initialized by its first
+                   * member only; a further initializer hits the
+                   * "too many" error below */
+    }
   } else {
     if (tok == '{')
       error(158 /* "nested braces in initializers are not supported "

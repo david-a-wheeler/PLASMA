@@ -67,8 +67,8 @@
 69 subscripted value is neither array nor pointer
 70 array subscript is not an integer
 71 internal error: unexpected array index
-72 '->' needs a pointer to a struct
-73 '.' needs a struct
+72 '->' needs a pointer to a struct or union
+73 '.' needs a struct or union
 74 expected a member name, not
 75 member access into the incomplete type
 76 pointer operand to unary
@@ -90,13 +90,13 @@
 92 declarators in parentheses are not supported yet
 93 expected a name, not
 94 a variable can't have type void
-95 a struct needs at least one member
-96 expected a struct member, not
-97 a struct member can't be a function:
-98 a struct member can't have type void
-99 duplicate struct member
-100 struct too large (over 32767 bytes)
-101 expected ';' after a struct member, not
+95 a struct or union needs at least one member
+96 expected a struct or union member, not
+97 a struct or union member can't be a function:
+98 a struct or union member can't have type void
+99 duplicate struct or union member
+100 struct or union too large (over 32767 bytes)
+101 expected ';' after a struct or union member, not
 102 expected a struct name or '{' after 'struct', not
 103 declared in a parameter list, so not visible outside it:
 104 redefinition of
@@ -202,7 +202,7 @@
 205 (an initializer here must be one)
 206 initializer is not a constant ccish supports
 207 a variable can't have the incomplete type
-208 a struct member can't have the incomplete type
+208 a struct or union member can't have the incomplete type
 209 an array element can't have the incomplete type
 210 a parameter can't have the incomplete type
 211 a return value can't have the incomplete type
@@ -278,33 +278,35 @@
 284 default
 285 typedef
 286 goto
-287 ==
-288 !=
-289 <=
-290 >=
-291 <<
-292 >>
-293 &&
-294 ||
-295 ++
-296 --
-297 +=
-298 -=
-299 *=
-300 /=
-301 %=
-302 &=
-303 |=
-304 ^=
-305 <<=
-306 >>=
-307 ->
-308 ...
-309 too many large globals to move to the heap
-310 too much data to move to the heap
-311 too many goto labels in
-312 duplicate label
-313 undefined label
-314 expected ':' after a label, not
-315 expected a label after 'goto', not
-316 expected ';' after 'goto', not
+287 union
+288 ==
+289 !=
+290 <=
+291 >=
+292 <<
+293 >>
+294 &&
+295 ||
+296 ++
+297 --
+298 +=
+299 -=
+300 *=
+301 /=
+302 %=
+303 &=
+304 |=
+305 ^=
+306 <<=
+307 >>=
+308 ->
+309 ...
+310 too many large globals to move to the heap
+311 too much data to move to the heap
+312 too many goto labels in
+313 duplicate label
+314 undefined label
+315 expected ':' after a label, not
+316 expected a label after 'goto', not
+317 expected ';' after 'goto', not
+318 expected a union name or '{' after 'union', not

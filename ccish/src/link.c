@@ -444,9 +444,9 @@ static int place_zero(const char *name, int size, int indata)
     return zstay - size;
   }
   if (nmoved >= MAX_MOVED)
-    fatal(309 /* "too many large globals to move to the heap" */, NULL);
+    fatal(310 /* "too many large globals to move to the heap" */, NULL);
   if ((unsigned)size > 0xFFFFu - HEAP_SPARE - mv_total)
-    fatal(310 /* "too much data to move to the heap" */, NULL);
+    fatal(311 /* "too much data to move to the heap" */, NULL);
   mv_total += size;
   mv_size[nmoved] = size;
 #ifdef CCISH_LISTING

@@ -1,6 +1,7 @@
-# A struct tag (CCPP.md, $09): an identifier after "struct", with its
-# spelling's hash h (each byte b: h = h * 31 + b, from 0) and 31^length.
-43 54 4b 03     # "CTK", version 3
+# A struct or union tag (CCPP.md, $09): an identifier after "struct"
+# or "union", with its spelling's hash h (each byte b: h = h * 31 + b,
+# from 0) and 31^length.
+43 54 4b 04     # "CTK", version 4
 87              # struct
 09 20 00 73 00 1f 00    # s: id 32, h = 's' = 115, 31^1 = 31
 2a
@@ -12,4 +13,10 @@
 09 22 00 21 0c c1 03    # ab: id 34, h = 97 * 31 + 98 = 3105, 31^2 = 961
 3b
 01
-00 22 00 ss ss  # the end: 34 ids, the checksum
+99              # union
+09 23 00 75 00 1f 00    # u: id 35, h = 'u' = 117, 31^1 = 31
+2a
+04 24 00        # q: id 36, not a tag
+3b
+01
+00 24 00 ss ss  # the end: 36 ids, the checksum

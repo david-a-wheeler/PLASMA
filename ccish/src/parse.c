@@ -408,14 +408,14 @@ int is_type_start(void)
          || (tok == T_ID && typedef_type(tok_val) >= 0);
 }
 
-/* Describe tag for a message: 'struct name', or an unnamed struct. The
- * result may be in a static buffer. */
+/* Describe tag for a message: 'struct name' or 'union name', or an
+ * unnamed struct or union. The result may be in a static buffer. */
 const char *tag_desc(int tag)
 {
   static char buf[MAX_NAME + 10];
   if (tag_name(tag) < 0)
-    return "an unnamed struct";
-  strcpy(buf, "'struct ");
+    return tag_is_union(tag) ? "an unnamed union" : "an unnamed struct";
+  strcpy(buf, tag_is_union(tag) ? "'union " : "'struct ");
   strcat(buf, nam_name(tag_name(tag)));
   strcat(buf, "'");
   return buf;
@@ -483,6 +483,8 @@ int parse_base_type(void)
   int tagged = T_IS_TAGGED(tok);  /* after the quals */
   if (tok == T_STRUCT) {
     t = parse_struct();
+  } else if (tok == T_UNION) {
+    t = parse_union();
   } else if (tok == T_ENUM) {
     t = parse_enum();
   } else if (T_IS_INT_TYPE(tok)) {
@@ -761,7 +763,7 @@ static int new_goto_label(void)
 {
   int n = GOTO_LABEL_BASE + ngoto_labels;
   if (ngoto_labels >= GOTO_LABELS)
-    error(311 /* "too many goto labels in" */, quote(fn_name[cur_fn]));
+    error(312 /* "too many goto labels in" */, quote(fn_name[cur_fn]));
   label_used[n] = 0;
   ngoto_labels++;
   return n;
@@ -807,7 +809,7 @@ int define_goto_label(int id)
   for (i = 0; i < nlbls; i++)
     if (lbl_id[i] == id) {
       if (lbl_def[i])
-        error(312 /* "duplicate label" */, quote(id));
+        error(313 /* "duplicate label" */, quote(id));
       lbl_def[i] = 1;
       return lbl_num[i];
     }
@@ -825,7 +827,7 @@ void check_goto_labels(void)
   int i;
   for (i = 0; i < nlbls; i++)
     if (!lbl_def[i])
-      error(313 /* "undefined label" */, quote(lbl_id[i]));
+      error(314 /* "undefined label" */, quote(lbl_id[i]));
 }
 
 /* Emit branch op (IR_JUMP, IR_BRFALSE, ...) to label n. */

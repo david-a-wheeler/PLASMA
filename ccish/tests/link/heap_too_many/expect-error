@@ -1,1 +1,1 @@
-fatal 309: too many large globals to move to the heap
+fatal 310: too many large globals to move to the heap

@@ -30,10 +30,11 @@ enum {
   T_SWITCH, T_CASE, T_DEFAULT,
   T_TYPEDEF,
   T_GOTO,
-  /* spare supported-keyword codes, so a new keyword takes one instead
-   * of renumbering T_KEYWORD and the operators (ccpp never writes a
-   * spare: NKEYWORDS stops below them) */
-  T_KW_SPARE1, T_KW_SPARE2, T_KW_SPARE3,
+  /* union takes the first spare supported-keyword code, so a new
+   * keyword takes one of the rest instead of renumbering T_KEYWORD
+   * and the operators (ccpp never writes a spare: NKEYWORDS stops
+   * below them) */
+  T_UNION, T_KW_SPARE1, T_KW_SPARE2,
   /* any other C keyword: reported as "not supported yet" */
   T_KEYWORD,
   /* multi-character operators (not all are supported by the parser yet) */
@@ -43,11 +44,12 @@ enum {
 };
 
 /* The sets of tokens the parser tests, each a range in the order
- * above. A new token joins a group by taking a place in it. */
-#define T_IS_TYPE_START(t)  ((t) >= T_INT && (t) <= T_ENUM)
+ * above. A new token joins a group by taking a place in it; union,
+ * whose stream code fixed its place past the ranges, joins by name. */
+#define T_IS_TYPE_START(t)  (((t) >= T_INT && (t) <= T_ENUM) || (t) == T_UNION)
 #define T_IS_INT_TYPE(t)    ((t) >= T_INT && (t) <= T_UNSIGNED)
 #define T_IS_QUAL(t)        ((t) >= T_CONST && (t) <= T_VOLATILE)
-#define T_IS_TAGGED(t)      ((t) >= T_STRUCT && (t) <= T_ENUM)
+#define T_IS_TAGGED(t)      (((t) >= T_STRUCT && (t) <= T_ENUM) || (t) == T_UNION)
 #define T_IS_STORAGE(t)     ((t) >= T_STATIC && (t) <= T_EXTERN)
 #define T_IS_CASE_LABEL(t)  ((t) >= T_CASE && (t) <= T_DEFAULT)
 

@@ -1,0 +1,50 @@
+    ; mi
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LW
+    LEAVE 2
+
+    ; mc
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LB
+    LEAVE 2
+
+    ; sm
+    ENTER 2 1
+    ; label 103
+    LLB 0
+    ADDLB 0
+    LEAVE 2
+
+    ; main
+    ENTER 5 0
+    ; label 103
+    CN 1
+    SLW 0
+    CN 2
+    SLB 0
+    LLW 0
+    SLW 3
+    CN 3
+    SLB 2
+    CN 4
+    SLB 2
+    LLA 0
+    CALL mi
+    LLA 0
+    CALL mc
+    ADD
+    ADDLW 3
+    LLB 2
+    CALL sm
+    ADD
+    ADDLW 3
+    CB 18
+    ISEQ
+    NEG
+    NOT
+    ANDI 1
+    LEAVE 5

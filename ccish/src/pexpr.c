@@ -693,9 +693,9 @@ static void parse_member(Operand *o, int arrow)
 
   next();                         /* '.' or '->' */
   if (arrow && !(is_pointer(t) && is_struct(type_sub(t))))
-    error(72 /* "'->' needs a pointer to a struct" */, NULL);
+    error(72 /* "'->' needs a pointer to a struct or union" */, NULL);
   if (!arrow && !is_struct(t))
-    error(73 /* "'.' needs a struct" */, NULL);
+    error(73 /* "'.' needs a struct or union" */, NULL);
   if (!arrow && o->kind == K_VALUE)
     materialize(o);             /* f().x */
   tag = struct_tag(arrow ? type_sub(t) : t);
