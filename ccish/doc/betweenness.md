@@ -575,6 +575,247 @@ The unaligned arm adds one `SUBI` over the aligned arm (2 bytes, ~41
 cycles), but is still smaller and faster than the general `IS_BETWEEN`
 (12 bytes, 251/324 cycles) for an `int`-sized value known to be a byte.
 
+## Extended IS_BYTE_BETWEEN for int
+
+Here is the analysis of the impact of extending IS_BYTE_BETWEEN for int
+when the range's width, c2 - c1 + 1, is a power of two.
+
+### When it applies
+
+The byte form needs x to be 0 to 255. For a true int x, the same mask
+form works whenever the width w == high - low + 1 (the inclusive ends the
+comparisons describe: > c1 means low is c1 + 1, < c2 means high is c2 - 1)
+is a power of two from 1 to 65536, with one check the byte case can skip:
+low <= high *signed*, the range is not empty. The byte case can never be
+empty (its low is required to be >= 0), but the word case can be: x > 32767
+&& x <= 32767 is always false, yet its ends, low == 32768 and high ==
+32767, describe the whole word as a mod-65536 interval (width "65536"),
+which the mask form would emit as always true. Note that c1 == 32767 with >
+makes low 32768, which overflows 16 bits, so w, r, base and M must be
+computed with & 0xFFFF (unsigned 16-bit) arithmetic; after the non-empty
+check low is at most 32767, so w is 1 to 65536 and fits in an int.
+
+### Why it works
+
+Same argument as the byte case, with a 16-bit mask. Let k == log2(w),
+r == low mod w (== low & (w - 1), 16-bit), base == low - r (16-bit), and
+M == 65536 - w. The mask keeps the high 16 - k bits: the block's low k bits
+are free, so after shifting off the misalignment r, x is in the interval
+exactly when the kept high bits are base's:
+
+~~~~
+low <= x <= high        if and only if        ((x - r) & M) == base
+~~~~
+
+all mod 65536. A signed inclusive interval with low <= high is exactly one
+wrapping mod-65536 interval, so the mod arithmetic and the signed test
+agree for every 16-bit x. This was checked exhaustively with a host
+program, not by hand: every 16-bit x against every signed power-of-two
+interval (about 64 billion checks); the two sides agreed everywhere.
+
+Two examples, with the decomposition the rewrite computes:
+
+| range | w | r | base | M |
+|-------|:---------:|:---------:|:---------:|:---------:|
+| x >= -8 && x <= 7 | 16 | 8 | 65520 | 65520 |
+| x >= -16384 && x <= 16383 | 32768 | 16384 | 32768 | 32768 |
+
+The first is the one to get right: -8's low four bits are 1000, so the
+misalignment r is 8, not 0; the aligned base below the range is 65520,
+not 65528. (With r of 0 and base 65528 the test (x & 65520) == 65528 could
+never be true: the mask clears the low four bits, and 65528's are 1000.)
+
+### Why the AND is longer than the byte ANDI
+
+For a byte, the mask M == 256 - w is a byte, so the mask is one ANDI (two
+bytes). For a word, the mask has 1 bits above the low eight: M == 65536 -
+w is at least 0xFF00 for every w <= 256, so an ANDI could not keep those
+high bits, and the mask is a word AND with a two- or three-byte constant:
+
+* MINUS1 (one byte) for w == 1 (M is 0xFFFF);
+* CFFB (two bytes) for 2 <= w <= 256 (M is 0xFF00 to 0xFFFE);
+* CW (three bytes) for 512 <= w <= 32768 (M is 0x8000 to 0xFE00);
+* CN 0 (one byte, meeting the AND as an ANDI 0 in the peephole) for the
+  whole-word w == 65536 (M is 0).
+
+The compare's constant is likewise often a CW (three) where a byte base
+was a CB (two). That is the word form's extra one to two bytes over the
+byte form; it is still one to six bytes under the two-comparison obvious
+form, as the next section shows.
+
+### The machine form, and its size
+
+The rewrite emits one load, the misalignment r subtracted, the mask ANDed,
+and one compare to the aligned base; the peephole stage makes it best: an r
+of 0 drops the x - 0, an r of 1 is a DECR, an r of 2 to 255 is a SUBI, an r
+above 255 (only for w >= 512) is a CW and a SUB, a constant AND becomes an
+ANDI when the mask is 0 to 255 (only the whole-word case), and the compare's
+BRFALSE meets the ISEQ as a BRNE. These are the verified listings (ccish
+-d, the page's byte convention: every op at full size, the final branch
+counted as 2), against the obvious two-comparison form:
+
+| range | w, r | machine form | bytes | obvious | saved |
+|-------|:----:|--------------|:-----:|:-------:|:-----:|
+| [16, 31] | 16, 0 | LLW CFFB 240 AND CB 16 ISEQ BRNE | 10 | 15 | 5 |
+| [17, 32] | 16, 1 | LLW DECR CFFB 240 AND CB 16 ISEQ BRNE | 11 | 15 | 4 |
+| [10, 25] | 16, 10 | LLW SUBI 10 CFFB 240 AND CN 0 ISEQ BRNE | 11 | 14 | 3 |
+| [-8, 7] | 16, 8 | LLW SUBI 8 CFFB 240 AND CFFB 240 ISEQ BRNE | 12 | 14 | 2 |
+| [200, 200] | 1, 0 | LLW MINUS1 AND CB 200 ISEQ BRNE | 9 | 15 | 6 |
+| [32752, 32767] | 16, 0 | LLW CFFB 240 AND CW 32752 ISEQ BRNE | 11 | 17 | 6 |
+| [800, 1311] | 512, 288 | LLW CW 288 SUB CW 65024 AND CW 512 ISEQ BRNE | 16 | 17 | 1 |
+| [-16384, 16383] | 32768, 16384 | LLW CW 16384 SUB CW 32768 AND CW 32768 ISEQ BRNE | 16 | 17 | 1 |
+| [-32768, 32767] | 65536, 32768 | LLW CW 32768 SUB ANDI 0 CN 0 ISEQ BRNE | 12 | 17 | 5 |
+
+Smaller in every case: five to six bytes for small aligned ranges, two to
+four for unaligned narrow ones, one for the wide unaligned ones (where the
+CW + SUB r eats the win). The whole-word row is a tautology, always true;
+the rewrite emits the always-true mask form (x - r & 0 is 0), which the
+peephole could fold further but does not, and it still saves five bytes.
+
+### The machine form, and its time
+
+Per-case cycle counts from the op costs in Bytecodes-cycles.md (LLW 59,
+DECR 33, SUBI 41, CW 46, SUB 50, CFFB/CB 41, CN 36, MINUS1 34, AND 48,
+ANDI 43, ISEQ true 54 / false 45 when the low bytes differ, 55 when only
+the high bytes differ; BRNE not-taken 55, taken 78 / 88 the same way;
+ISGE/ISLE 53 false / 55 true; BRFLS 41 not-taken / 75 taken). For w <= 256
+the out-of-range value usually differs in the low byte (the 45/78 path); a
+value that differs only in the high byte costs 20 more. For w >= 512 both
+(x - r) & M and the base have a zero low byte (the mask clears at least the
+low nine bits, and the base is a multiple of w), so the 55/88 path is the
+only one, and the out-of-range cost is exactly flat.
+
+| range | AND form: out of range | AND form: in range |
+|-------|:----------------------:|:------------------:|
+| [16, 31] | 312 | 298 |
+| [17, 32] | 345 | 331 |
+| [10, 25] | 348 | 334 |
+| [-8, 7] | 353 | 339 |
+| [800, 1311] | 438 | 404 |
+| [-16384, 16383] | 438 | 404 |
+| [-32768, 32767] | (all values in range) | 343 |
+
+| range | obvious: x < c1 | obvious: in | obvious: x > c2 |
+|-------|:---------------:|:-----------:|:---------------:|
+| [16, 31] | 228 | 351 | 424 |
+| [17, 32] | 228 | 351 | 424 |
+| [10, 25] | 223 | 346 | 419 |
+| [-8, 7] | 228 | 346 | 419 |
+| [800, 1311] | 233 | 361 | 434 |
+| [-16384, 16383] | 233 | 361 | 434 |
+| [-32768, 32767] | (never) | 361 | (never) |
+
+The AND form is flat: no early out, the same cost either side of the
+range. The obvious form bails early below c1 (cheap) but pays full price
+above c2 (two loads, two compares, a taken branch). Which wins on average
+depends on where x usually is:
+
+* **The page's estimator** (the 8/124/124 workload of "How the average is
+  computed"), which for a narrow range is just the uniform 16-bit signed
+  average (half the space is below c1, half above):
+
+  | range | obvious | AND form |
+  |-------|:-------:|:--------:|
+  | [16, 31] | 326.8 | 311.6 |
+  | [17, 32] | 326.8 | 344.6 |
+  | [10, 25] | 321.8 | 347.6 |
+  | [-8, 7] | 324.2 | 352.6 |
+  | [800, 1311] | 334.4 | 436.9 |
+  | [-16384, 16383] | 334.4 | 436.9 |
+  | [-32768, 32767] | 361.0 | 343.0 |
+
+* **x uniform over the full signed 16-bit space** (the natural model for a
+  general int): the same picture, to within a cycle for the narrow ranges
+  (aligned 312.0 vs 325.9; r 1 345.0 vs 325.9; r 10 348.0 vs 321.0;
+  -8..7 353.0 vs 323.5; the wide rows 437.7/421.0 vs 330.5/347.2).
+
+* **x usually a byte (0 to 255)** - this page's stated workload guess, and
+  the one the narrow-range forms target (character classes, small-set
+  tests). For a range in or near the byte space almost every byte value is
+  *above* c2, where the obvious form is worst, and the AND form wins
+  every narrow case by 60 to 96 cycles (311.1 vs 407.2 for [16, 31];
+  344.1 vs 406.4 for [17, 32]; 347.1 vs 406.8 for [10, 25]; 352.6 vs
+  416.7 for [-8, 7]).
+
+The sums were done with a small program, not by hand.
+
+### The verdict
+
+* **Shorter, always.** One to six bytes under the obvious form for every
+  power-of-two word range; five to six for small aligned ranges, two to
+  four for unaligned narrow ones, one for the wide unaligned ones.
+* **Faster on average when x is concentrated in the low part of the
+  space** (the page's "x is usually a byte" guess): 60 to 96 cycles for
+  every narrow range, aligned or not, negative or not.
+* **Faster on average even for a uniform 16-bit x when the range is
+  aligned** (15 cycles under the page's estimator, 14 under the uniform
+  model) or is the whole word (18).
+* **Slower on average for a uniform 16-bit x when the range is unaligned**
+  (18 to 30 cycles: the misalignment subtract the obvious form avoids) or
+  wide (74 to 107: the CW + SUB r, and the obvious form's early out covers
+  a real fraction of the space). Those are also the ranges where the size
+  win is smallest (one byte).
+
+Since size is the live 64K constraint, the size win is unconditional, and
+the time win holds for the narrow-range, low-x workload this page targets
+and for aligned ranges under any workload, the net is a win: extend the
+rewrite.
+
+### Forcing it: the (char) cast on an int
+
+A user can force the byte form on an int by casting: (char)x >= c1 &&
+(char)x <= c2. The front end spells the (char) cast as the load, a CONST
+255, and an AND, so the held tail is the twelve-op shape
+
+~~~~
+LOCAL n   CONST 255   AND   CONST c1   GE/GT   BRFALSE L
+LOCAL n   CONST 255   AND   CONST c2   LE/LT   BRFALSE L
+~~~~
+
+which the rewrite also matches (the same int local loaded twice, each load
+masked to its low byte, the same two comparisons, both fails to the same
+label), when the range is a power-of-two block of bytes. It emits the
+byte form on the word load, the same eight-op tail the char case emits
+with the load left as the int's LOCAL: (x - r) & M with M and base below
+256 keeps only the low byte of x - r, which is the low byte of (x & 255)
+- r, so the test is exactly the cast's (checked exhaustively as above).
+The explicit cast op never needs to be emitted: the mask AND already
+clears the high byte. The machine form is the byte form with LLW for
+LLB - the same size (both loads are two bytes), five cycles slower on the
+load - and it is what the IS_BYTE_BETWEEN macro produces by hand today
+(the macro's (char) cast emits an ANDI 255 that the peephole merges into
+the mask ANDI). A (char) on a char local emits no cast at all (the value
+is already a byte), so it takes the existing eight-op shape.
+
+### How the rewrite changes
+
+In between_rewrite() (irin.c), the match and the emit:
+
+* the load is accepted as IR_LOCALB (the char case, unchanged) or IR_LOCAL
+  (the word case), both loads the same local;
+* the range check becomes: reject low > high (signed, the empty case);
+  for a char local, keep 0 <= low <= high <= 255 (the block must be whole
+  bytes); for a word local, w == high - low + 1 must be a power of two
+  ((w & (w - 1)) == 0, with w in 1 to 65536 covering the whole word);
+* r == (low & 0xFFFF) & (w - 1), M == (65536 - w) & 0xFFFF, base == (low -
+  r) & 0xFFFF (the byte case's 256 - w and low - r are the same formulas
+  with the 16-bit mask a no-op);
+* the same eight-op tail is emitted, so nbuf is untouched and no peephole
+  changes are needed (its existing folds do all the finishing, as listed
+  in "The machine form, and its size");
+* the twelve-op (char)-cast shape is matched as well, and its tail is
+  replaced by the same eight-op byte form on the int's LOCAL, which is
+  four ops shorter: the tail is rewritten in place, nbuf is set back four,
+  the dropped BRFALSE's label count is decremented as in the eight-op
+case, and the held buffer is lowered, as the truth runs' run_do does
+  after a length-changing rewrite, so a later IR_SWAP whose counted block
+  covered the tail falls back to the value exchange (which needs no
+  lengths) instead of trusting the parser's stale count.
+
+Everything downstream (lowering, peephole, truth runs, joins) is
+unaffected: the byte form is the special case where M and base are below
+256.
+
 ## Final comparison
 
 All the forms on one table, with an added `average` column.
