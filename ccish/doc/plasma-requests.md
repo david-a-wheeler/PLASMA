@@ -118,7 +118,26 @@ already does the right thing: cmd.pla's `lookupextern` prints
 **The fix.** In plvm, do what cmd.pla does: report the name and fail
 the load (`pfail`).
 
-## 5. plvm: a way to unwind (exit from deep in a call)
+## 5. plvm: stop on an eval stack overflow or underflow
+
+**What it does.** Before each op, plvm's interpreter (`vm_interp` in
+src/vmsrc/plvm.c) checks the eval stack pointer. If it's out of range
+it prints `Eval stack over/underflow! - $addr: $op [n]` to stdout,
+resets the stack to empty, and keeps going; the `exit(-1)` after it is
+commented out.
+
+**Why it's a problem.** Unbalanced code (a compiler bug, usually) runs
+on with a wrong stack, and the process still exits normally, so a
+test that doesn't compare the output passes (ccish's gen tests check
+the listing and the exit status, not the output). The message also lands in the
+program's stdout rather than stderr. The 6502 VMs don't check at all
+(the stack is in zero page, and an overflow silently corrupts it), so
+plvm is the one place such a bug can be caught.
+
+**The fix.** Print the message to stderr and stop with a nonzero
+status, the commented-out `exit(-1)`, so the bug can't be missed.
+
+## 6. plvm: a way to unwind (exit from deep in a call)
 
 **What it does.** plvm runs each bytecode call as a C recursion
 (`CALL` -> `M6502_exec` -> `vm_interp`). PLASMA's except/throw
@@ -135,7 +154,7 @@ with a 6502 `BRK`, which plvm reports as an error and exits 255.
 flushes output and exits with a status. The first is more general and
 keeps PLASMA programs portable between plvm and the 6502 VMs.
 
-## 6. plvm: FILEIO fidelity
+## 7. plvm: FILEIO fidelity
 
 plvm's native FILEIO (src/vmsrc/sysio.c) works, but differs from the
 Apple II's in ways that hide bugs (all tested 2026-11-07):
@@ -150,7 +169,7 @@ Apple II's in ways that hide bugs (all tested 2026-11-07):
 - `geteof`, `seteof`, `getfileinfo`, `setfileinfo`, `getpfx`,
   `setpfx` and `online` only print "unimplemented".
 
-## 7. plvm: CMDSYS's `call` and `syscall`
+## 8. plvm: CMDSYS's `call` and `syscall`
 
 plvm exports `CALL` as `syscall6502`, an empty stub that prints
 "SYSCALL6502 unimplemented!". On an Apple II, CMDSYS's
@@ -160,7 +179,7 @@ jumps to $FF10, which has no handler. So `CALL` should run 6502 code
 as the Apple II's does, and `SYSCALL` should either emulate the
 common MLI calls on host files or fail with a clear message.
 
-## 8. plvm and the 6502 VMs disagree
+## 9. plvm and the 6502 VMs disagree
 
 doc/Bytecodes.md ("Significant discrepancies") has the details; checked
 against the source 2026-11-07:
@@ -184,7 +203,7 @@ closing sentence still says to avoid `NOT` for kept values.
 These are best fixed in plvm, since the 6502 VMs define the
 behavior on real machines.
 
-## 9. Smaller ones
+## 10. Smaller ones
 
 - **xplasm `-O`** folds constant comparisons and `not` to 1 instead
   of $FFFF (a bug in the cross-compiler's optimizer).
