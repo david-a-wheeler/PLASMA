@@ -95,9 +95,9 @@ static const unsigned char lw_op[IR_NOPS] = {
   0, 0, 0, 0
 };
 
-/* Write s, then n in decimal, to standard output, for -i. No printf:
- * the small build has none. */
-static void out_num(const char *s, int n)
+/* Write s, then n in decimal, to standard output, for the -i and -d
+ * dumps. No printf: the small build has none. */
+void out_num(const char *s, int n)
 {
   fputs(s, stdout);
   fputs(num_text(n), stdout);

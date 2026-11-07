@@ -298,17 +298,20 @@ Until then, the shim is in the stage script: check that every expected
 output exists, isn't empty, and that the pass printed nothing, and
 treat `timeout`'s status as a failure.
 
-### R9. No six-argument `printf`
+### R9. No six-argument `printf` (done)
 
 The first attempt made `printf` take exactly six arguments, padded
 every call with zeros, and silenced gcc with `-Wno-format-extra-args`.
-That's a nonstandard `printf` that's hard to keep honest. Only emit.c
-(24 calls, the `-d` dump) and link.c (23, the listing) use it.
-approach.md already decided that, until varargs, "the runtime use[s]
-fixed-argument output functions instead of `printf`": a handful of
-helpers (a string, a decimal, a hex number of n digits) in diag.c,
-writing to a `FILE *`. Then drop the padding and the CFLAGS flag. A
-real `printf` waits for varargs (approach.md, `...` with a prototype).
+That's a nonstandard `printf` that's hard to keep honest, and
+approach.md already decided that until varargs, "the runtime use[s]
+fixed-argument output functions instead of `printf`". The compiler
+already had the pattern (`num_text()` in diag.c, `out_num()` in
+lower.c for `-i`), so emit.c's 24 calls (the `-d` dump) now use
+lower.c's `out_num()` and `fputs()`; the gen tests confirm the output
+is unchanged. link.c's 23 calls stay: they're all under
+`CCISH_LISTING`, which the small build (the one the bootstrap
+compiles) leaves out. A real `printf` waits for varargs (approach.md,
+`...` with a prototype).
 
 ### R10. The command-line budget
 
@@ -385,9 +388,12 @@ globals plus its locals exceed cccomp's 79 visible variables. Options:
 split the function, or raise the limit; cccomp is the program that
 doesn't fit, so splitting is probably cheaper.
 
-**B4. A switch in src/emit.c overruns MAX_CASES** (36 case labels open
-at once, the opcode dispatch at emit.c:391). Restructure the switch
-(a table may also be smaller) or raise the limit, again in cccomp.
+**B4. emit.c's `mnem()` overruns cccomp's limits.** The first sweep
+stopped at its switch's case labels (MAX_CASES, 36 open at once); on
+2026-11-07 tools/measure.py stops at its returns ("error 179: too many
+returns in mnem", emit.c:353), so ccgen can't be measured. A table of
+names instead of a 70-way switch of returns is probably smaller as
+well; otherwise raise the limits, at a cost in cccomp's data.
 
 **B5. ccrel's shared-name table.** MAX_GSYMS 163 and MAX_GNAMES 1427
 (src/link.c) are exceeded by irout's summary, because a header's
@@ -427,9 +433,8 @@ building on it.
    the old bootstrap.sh (the library and the new script replace
    them); until the new script exists, `make bootstrap` says so and
    fails.
-3. Replace `printf` in emit.c and link.c with fixed-arity helpers
-   (R9), so ccish can compile them. Measure ccgen and ccrel
-   before and after.
+3. Replace `printf` in emit.c with `out_num()` and `fputs()` (R9).
+   Done; ccgen can't be measured until B4 is past.
 
 **Phase 1: test feedback (needs the R8 decision; mostly PLASMA-side).**
 4. plvm exits with the negation of a negative init result, and its
