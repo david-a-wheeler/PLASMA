@@ -29,5 +29,7 @@ int main(void)
   z = u.a;      /* and back through the int */
   s.c = 3;
   s.d = 4;
-  return mi(&u) + mc(&u) + z + sm(s) + z == 18 ? 0 : 1;
+  /* 2 + 2 + 2 + (4 + 4) + 2: u.b's 2 overwrote u.a's low byte, s.d's 4
+   * overwrote s.c's 3 (gcc gives 16 too) */
+  return mi(&u) + mc(&u) + z + sm(s) + z == 16 ? 0 : 1;
 }

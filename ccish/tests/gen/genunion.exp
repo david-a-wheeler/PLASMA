@@ -42,7 +42,7 @@
     CALL sm
     ADD
     ADDLW 3
-    CB 18
+    CB 16
     ISEQ
     NEG
     NOT
