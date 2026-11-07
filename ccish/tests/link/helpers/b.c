@@ -8,9 +8,9 @@ unsigned div_b(unsigned n, unsigned d)
 
 int main()
 {
-  puti(div_a(60000u, 7));
-  putc(' ');
-  puti(div_b(50000u, 9));
-  putln();
+  __puti(div_a(60000u, 7));
+  __putc(' ');
+  __puti(div_b(50000u, 9));
+  __putln();
   return 0;
 }

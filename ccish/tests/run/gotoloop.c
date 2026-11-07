@@ -12,7 +12,7 @@ top:
   i = i - 1;
   goto top;
 done:
-  puti(sum);
-  putln();
+  __puti(sum);
+  __putln();
   return 0;
 }

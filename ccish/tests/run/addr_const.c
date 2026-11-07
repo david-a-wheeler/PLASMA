@@ -19,16 +19,16 @@ int *p7 = m[1] + 2;
 void show(char *t)
 {
   while (*t)
-    putc(*t++);
-  putc(' ');
+    __putc(*t++);
+  __putc(' ');
 }
 
 int main()
 {
   char *q = buf + 4;
-  show(p1); puti(*p2); putc(' '); puti(*p3); putc(' ');
-  puti(*p5); putc(' '); show(p6); puti(*p7); putc(' ');
-  show(q); puti(*(&m[0][0] + 4));
-  putln();
+  show(p1); __puti(*p2); __putc(' '); __puti(*p3); __putc(' ');
+  __puti(*p5); __putc(' '); show(p6); __puti(*p7); __putc(' ');
+  show(q); __puti(*(&m[0][0] + 4));
+  __putln();
   return 0;
 }

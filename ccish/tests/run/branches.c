@@ -16,8 +16,8 @@
 // listing-lacks: BRFLS
 void show(int n)
 {
-  puti(n);
-  putc(' ');
+  __puti(n);
+  __putc(' ');
 }
 
 int is_zero(int x)
@@ -52,6 +52,6 @@ int main()
 {
   show(is_zero(0)); show(is_zero(3)); show(differ(1, 2));
   show(differ(2, 2)); show(is_not(0)); show(is_not(5)); show(up_to(1, 4));
-  putln();
+  __putln();
   return 0;
 }

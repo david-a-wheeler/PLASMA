@@ -17,13 +17,13 @@ int main()
 {
   int i;
   LOOP a[i] = i * 10;
-  puti(TWICE_SIZE * 2); putc(' ');      /* 3 + 3 * 2: no parentheses */
-  puti(a[2]); putc(' ');
-  puts(pstr(GREETING " there"));
-  putln();
+  __puti(TWICE_SIZE * 2); __putc(' ');      /* 3 + 3 * 2: no parentheses */
+  __puti(a[2]); __putc(' ');
+  __puts(pstr(GREETING " there"));
+  __putln();
 #undef SIZE
 #define SIZE 7
-  puti(SIZE);
-  putln();
+  __puti(SIZE);
+  __putln();
   return 0;
 }

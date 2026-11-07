@@ -16,8 +16,8 @@ int tab[4] = {1, 2, 3, 4};
 
 void show(int n)
 {
-  puti(n);
-  putc(' ');
+  __puti(n);
+  __putc(' ');
 }
 
 /* x is never read: its store, and a * 3, go. */
@@ -70,7 +70,7 @@ int byte(int a)
 }
 
 /* A call between: the store stays (the scan stops at a call). */
-int call(int a)
+int __call(int a)
 {
   int x;
   x = a;
@@ -97,9 +97,9 @@ int main()
   show(global(5));
   show(g);
   show(byte(300));
-  show(call(5));
+  show(__call(5));
   show(find(3));
   show(find(9));
-  putln();
+  __putln();
   return 0;
 }

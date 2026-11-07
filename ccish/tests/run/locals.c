@@ -10,14 +10,14 @@ int f(int n)
   b = a * 2;
   {
     int x = 100;
-    puti(x + a); putc(' ');
+    __puti(x + a); __putc(' ');
   }
   {
     int y = 1, z = 2;
     int a = 1000;               /* shadows the outer a */
-    puti(a + y + z); putc(' ');
+    __puti(a + y + z); __putc(' ');
   }
-  puti(a); putc(' ');             /* the outer a again */
+  __puti(a); __putc(' ');             /* the outer a again */
   return b;
 }
 
@@ -25,23 +25,23 @@ int main()
 {
   int r;
   r = f(4);
-  puti(r); putln();
+  __puti(r); __putln();
   {
     int u, v, w;
     u = v = w = 7;              /* right-associative */
-    puti(u + v + w); putc(' ');
-    u += 3;  puti(u); putc(' ');
-    u -= 4;  puti(u); putc(' ');
-    u *= 5;  puti(u); putc(' ');
-    u /= 4;  puti(u); putc(' ');
-    u %= 4;  puti(u); putc(' ');
-    u <<= 3; puti(u); putc(' ');
-    u >>= 1; puti(u); putc(' ');
-    u &= 10; puti(u); putc(' ');
-    u |= 3;  puti(u); putc(' ');
-    u ^= 15; puti(u); putc(' ');
-    puti(v = 3); putc(' ');     /* an assignment's value */
-    puti((w) = v + 1); putln(); /* a parenthesized variable */
+    __puti(u + v + w); __putc(' ');
+    u += 3;  __puti(u); __putc(' ');
+    u -= 4;  __puti(u); __putc(' ');
+    u *= 5;  __puti(u); __putc(' ');
+    u /= 4;  __puti(u); __putc(' ');
+    u %= 4;  __puti(u); __putc(' ');
+    u <<= 3; __puti(u); __putc(' ');
+    u >>= 1; __puti(u); __putc(' ');
+    u &= 10; __puti(u); __putc(' ');
+    u |= 3;  __puti(u); __putc(' ');
+    u ^= 15; __puti(u); __putc(' ');
+    __puti(v = 3); __putc(' ');     /* an assignment's value */
+    __puti((w) = v + 1); __putln(); /* a parenthesized variable */
   }
   return 0;
 }

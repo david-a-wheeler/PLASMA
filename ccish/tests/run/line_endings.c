@@ -1,5 +1,7 @@
 /* Line endings: CRLF, CR and LF. */
 int main()
-{  puti(5);  putln();
+{
+  __puti(5);
+  __putln();
   return 0;
 }

@@ -20,8 +20,8 @@ char *cp;
 
 void show(int n)
 {
-  puti(n);
-  putc(' ');
+  __puti(n);
+  __putc(' ');
 }
 
 int next(int v)
@@ -78,6 +78,6 @@ int main()
   i = 3;
   *gp += i * 2;
   show(g[0]);
-  putln();
+  __putln();
   return 0;
 }

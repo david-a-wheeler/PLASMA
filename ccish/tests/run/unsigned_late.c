@@ -12,23 +12,23 @@ int a[4];
 int main()
 {
   int x = 1, *p = a;
-  puti(p < a + (x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
+  __puti(p < a + (x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
       + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
       + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
       + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
       + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
       + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
       + x - 99));
-  putc(' ');
-  puti(p >= a + (x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
+  __putc(' ');
+  __puti(p >= a + (x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
       + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
       + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
       + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
       + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
       + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
       + x - 99));
-  putc(' ');
-  puti(a + 2 > p);
-  putln();
+  __putc(' ');
+  __puti(a + 2 > p);
+  __putln();
   return 0;
 }

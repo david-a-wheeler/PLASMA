@@ -13,8 +13,8 @@ int a[4];
 
 void show(int n)
 {
-  puti(n);
-  putc(' ');
+  __puti(n);
+  __putc(' ');
 }
 
 int *pick(int i)
@@ -45,6 +45,6 @@ int main()
       + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
       + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x
       + x + x + x + x + x + x + x + x + x + x + x + x + x + x + x - 99) + p));
-  putln();
+  __putln();
   return 0;
 }

@@ -44,56 +44,56 @@ int main()
   lp = &l;
   lp->a = 1000;
   lp->c = 300;                    /* a char keeps the low byte: 44 */
-  puti(l.a); putc(' ');
-  puti(l.c); putc(' ');
-  puti(sizeof(struct later)); putc(' ');
-  puti(local_tag()); putc(' ');
-  puti(sizeof(struct later)); putln();
+  __puti(l.a); __putc(' ');
+  __puti(l.c); __putc(' ');
+  __puti(sizeof(struct later)); __putc(' ');
+  __puti(local_tag()); __putc(' ');
+  __puti(sizeof(struct later)); __putln();
 
   solo.x = 2;
   o.in.x = 3;
   o.in.tag = 'T';
   o.z = 4;
-  puti(sizeof solo); putc(' ');
-  puti(sizeof(struct outer)); putc(' ');
-  puti((char *)&o.z - (char *)&o); putc(' ');
-  puti(solo.x + o.in.x + o.z); putc(' ');
-  putc(cp->in.tag); putln();
+  __puti(sizeof solo); __putc(' ');
+  __puti(sizeof(struct outer)); __putc(' ');
+  __puti((char *)&o.z - (char *)&o); __putc(' ');
+  __puti(solo.x + o.in.x + o.z); __putc(' ');
+  __putc(cp->in.tag); __putln();
 
   anon.u = 6;
   anon.v = anon.u * 7;
-  puti(anon.v); putc(' ');
-  puti(sizeof anon); putln();
+  __puti(anon.v); __putc(' ');
+  __puti(sizeof anon); __putln();
 
   /* through a call: its address is on the stack */
   get()->z = 10;
-  puti((*get()).z); putc(' ');
+  __puti((*get()).z); __putc(' ');
   get()->arr[i] = 20;
-  puti(get()->arr[1] + get()->in.x); putc(' ');
-  puti(calls); putln();
+  __puti(get()->arr[1] + get()->in.x); __putc(' ');
+  __puti(calls); __putln();
 
   /* array members, through a variable and a pointer */
   o.arr[0] = 1;
   o.arr[2] = 3;
   p->arr[i] += 5;
   for (i = 0; i < 3; i++) {
-    puti(p->arr[i]); putc(' ');
+    __puti(p->arr[i]); __putc(' ');
   }
-  puti(p[0].arr[2]); putln();
+  __puti(p[0].arr[2]); __putln();
 
   /* ++, -- and op= on members */
   p->z++;
   ++p->z;
   o.in.x--;
   p->in.x *= 10;
-  puti(o.z); putc(' ');
-  puti(o.in.x); putc(' ');
-  puti(p->z++ + 1); putc(' ');
-  puti(o.z); putc(' ');
-  puti(*&p->z); putc(' ');
-  puti(&p->arr[2] - &o.arr[0]); putln();
+  __puti(o.z); __putc(' ');
+  __puti(o.in.x); __putc(' ');
+  __puti(p->z++ + 1); __putc(' ');
+  __puti(o.z); __putc(' ');
+  __puti(*&p->z); __putc(' ');
+  __puti(&p->arr[2] - &o.arr[0]); __putln();
   for (struct later *q = &l; q; q = 0)
-    puti(q->a);
-  putln();
+    __puti(q->a);
+  __putln();
   return 0;
 }

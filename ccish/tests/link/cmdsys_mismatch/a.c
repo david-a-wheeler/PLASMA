@@ -1,3 +1,3 @@
 /* A CMDSYS name declared differently, and defined nowhere. */
-int toupper(char *s);
-int main() { return toupper("x"); }
+int __toupper(char *s);
+int main() { return __toupper("x"); }

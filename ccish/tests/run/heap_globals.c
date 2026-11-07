@@ -4,8 +4,8 @@
  * struct's members; an array whose address is in an initializer, which
  * stays in data; and a static one. The init function takes the block
  * from heapalloc and zeroes it with memset. */
-// listing-has: heapalloc (import)
-// listing-has: memset (import)
+// listing-has: __heapalloc (import)
+// listing-has: __memset (import)
 // listing-has: CS (18 chars)
 // listing-count: 4 DAW
 struct big {
@@ -24,8 +24,8 @@ char small[255];
 
 void show(int n)
 {
-  puti(n);
-  putc(' ');
+  __puti(n);
+  __putc(' ');
 }
 
 int main()
@@ -36,7 +36,7 @@ int main()
   show(s);
   show(text[255]);
   show(rec.a + rec.b + hidden[399] + kept[149] + small[254]);
-  putln();
+  __putln();
   nums[0] = 5;
   nums[199] = 7;
   for (i = 1; i < 199; i++)
@@ -48,9 +48,9 @@ int main()
   text[255] = 'z';
   text[0] = 'a';
   i = 255;
-  putc(text[0]);
-  putc(text[i]);
-  putc(' ');
+  __putc(text[0]);
+  __putc(text[i]);
+  __putc(' ');
   rec.a = 100;
   rec.b = 23;
   rec.pad[299] = 9;
@@ -61,6 +61,6 @@ int main()
   show(kept[3]);
   small[254] = 1;
   show(small[254]);
-  putln();
+  __putln();
   return 0;
 }

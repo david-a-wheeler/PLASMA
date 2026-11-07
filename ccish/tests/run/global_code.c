@@ -21,9 +21,9 @@ int main()
   a[i] = g;
   a[3] = 1;
   c = 'A';
-  puti(a[2] + a[3] + h);
-  putc(' ');
-  putc(c);
-  putln();
+  __puti(a[2] + a[3] + h);
+  __putc(' ');
+  __putc(c);
+  __putln();
   return 0;
 }

@@ -24,8 +24,8 @@ int main()
   int v;
   l.b = 5;
   g.c = 6;
-  puti(l.b + g.c + get(&g));
-  putln();
+  __puti(l.b + g.c + get(&g));
+  __putln();
   v = ((struct s *)0x300)->c;
   return v - v;
 }

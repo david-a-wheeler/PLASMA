@@ -1,15 +1,15 @@
 /* The other half of main_second: see a.c. */
-// listing-lacks: toupper (import)
-// listing-has: ; toupper
-int toupper(int c);
+// listing-lacks: __toupper (import)
+// listing-has: ; __toupper
+int __toupper(int c);
 int bump();
 extern int count;
 
 int main()
 {
-  putc(toupper('a')); putc(' ');
-  puti(bump(5)); putc(' ');
-  puti(count);
-  putln();
+  __putc(__toupper('a')); __putc(' ');
+  __puti(bump(5)); __putc(' ');
+  __puti(count);
+  __putln();
   return 0;
 }

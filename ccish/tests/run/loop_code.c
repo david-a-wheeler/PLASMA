@@ -36,11 +36,11 @@ int first_over(int n)
 
 int main()
 {
-  puti(sum(5));
-  putc(' ');
-  puti(halve(40));
-  putc(' ');
-  puti(first_over(50));
-  putln();
+  __puti(sum(5));
+  __putc(' ');
+  __puti(halve(40));
+  __putc(' ');
+  __puti(first_over(50));
+  __putln();
   return 0;
 }

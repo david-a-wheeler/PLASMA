@@ -22,15 +22,15 @@ int f(int n)
 /* Print the trace and a space, and clear it. */
 void show(void)
 {
-  puti(trace);
-  putc(' ');
+  __puti(trace);
+  __putc(' ');
   trace = 0;
 }
 
 /* Print Y if c is true, else N. */
 void yn(int c)
 {
-  putc(c ? 'Y' : 'N');
+  __putc(c ? 'Y' : 'N');
 }
 
 /* a && b, returned as a value. */
@@ -45,17 +45,17 @@ int main()
   char ch;
 
   /* if: short-circuiting and order. */
-  if (f(1) && t(2)) putc('Y'); else putc('N');
+  if (f(1) && t(2)) __putc('Y'); else __putc('N');
   show();
-  if (t(1) || t(2)) putc('Y'); else putc('N');
+  if (t(1) || t(2)) __putc('Y'); else __putc('N');
   show();
-  if (f(1) || t(2) && f(3) || t(4)) putc('Y'); else putc('N');
+  if (f(1) || t(2) && f(3) || t(4)) __putc('Y'); else __putc('N');
   show();
-  if (t(1) && (f(2) || t(3)) && t(4)) putc('Y'); else putc('N');
+  if (t(1) && (f(2) || t(3)) && t(4)) __putc('Y'); else __putc('N');
   show();
-  if (!(t(1) && f(2)) && !(f(3) || f(4))) putc('Y'); else putc('N');
+  if (!(t(1) && f(2)) && !(f(3) || f(4))) __putc('Y'); else __putc('N');
   show();
-  putln();
+  __putln();
 
   /* As expression statements: only the side effects remain. */
   t(1) && t(2);
@@ -64,57 +64,57 @@ int main()
   f(1) || t(2);
   t(3) || t(4);
   show();
-  putln();
+  __putln();
 
   /* Loops. */
   i = 0;
   while (i < 10 && i * i < 30)
     i++;
-  puti(i); putc(' ');
+  __puti(i); __putc(' ');
   i = 0;
   do
     i++;
   while (i < 3 || i == 3);
-  puti(i); putc(' ');
+  __puti(i); __putc(' ');
   for (i = 0; i < 10 && !(i > 2 && i % 2 == 1); i++)
     ;
-  puti(i); putc(' ');
+  __puti(i); __putc(' ');
   n = 0;
   for (i = 0; i < 5 || n < 8; i++)
     n = n + 2;
-  puti(i); putc(' ');
-  puti(n); putc(' ');
+  __puti(i); __putc(' ');
+  __puti(n); __putc(' ');
   i = 0;
   while (!(i >= 4 || i == 2 && 0))
     i++;
-  puti(i); putc(' ');
-  putln();
+  __puti(i); __putc(' ');
+  __putln();
 
   /* ?: with a && or || condition. */
-  puti(t(1) && f(2) ? 10 : 20); putc(' ');
+  __puti(t(1) && f(2) ? 10 : 20); __putc(' ');
   show();
-  puti(f(1) || t(2) ? 30 : 40); putc(' ');
+  __puti(f(1) || t(2) ? 30 : 40); __putc(' ');
   show();
-  putln();
+  __putln();
 
   /* As values: always 1 or 0. */
   x = t(3) && t(4);
-  puti(x); putc(' ');
+  __puti(x); __putc(' ');
   show();
   x = f(0) || t(5);
-  puti(x); putc(' ');
+  __puti(x); __putc(' ');
   show();
   x = !(t(1) || t(2));
-  puti(x); putc(' ');
+  __puti(x); __putc(' ');
   show();
-  puti((t(1) && t(2)) + 2); putc(' ');
+  __puti((t(1) && t(2)) + 2); __putc(' ');
   show();
   ch = t(1) || f(2);
-  puti(ch); putc(' ');
+  __puti(ch); __putc(' ');
   show();
-  puti(both(5, 6)); putc(' ');
-  puti(both(5, 0)); putc(' ');
-  putln();
+  __puti(both(5, 6)); __putc(' ');
+  __puti(both(5, 0)); __putc(' ');
+  __putln();
 
   /* Constant operands; a constant side that decides the result. */
   yn(1 && t(1));
@@ -122,14 +122,14 @@ int main()
   yn(0 || t(3));
   yn(t(4) || 0);
   show();
-  if (t(1) && 0) putc('Y'); else putc('N');
-  if (f(2) || 1) putc('Y'); else putc('N');
+  if (t(1) && 0) __putc('Y'); else __putc('N');
+  if (f(2) || 1) __putc('Y'); else __putc('N');
   show();
-  if (0 && t(9)) putc('Y'); else putc('N');
-  if (1 || t(9)) putc('Y'); else putc('N');
+  if (0 && t(9)) __putc('Y'); else __putc('N');
+  if (1 || t(9)) __putc('Y'); else __putc('N');
   show();
-  puti(sizeof(t(1) && t(2))); putc(' ');
+  __puti(sizeof(t(1) && t(2))); __putc(' ');
   show();
-  putln();
+  __putln();
   return 0;
 }

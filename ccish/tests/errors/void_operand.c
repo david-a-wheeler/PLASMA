@@ -1,2 +1,2 @@
 
-int main() { return 1 + putln(); }
+int main() { return 1 + __putln(); }

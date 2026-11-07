@@ -1,2 +1,2 @@
 
-int main() { puti(putln()); return 0; }
+int main() { __puti(__putln()); return 0; }

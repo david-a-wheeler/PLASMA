@@ -215,7 +215,7 @@ static void init_byte(int off, int v)
   held_at = at;
 }
 
-/* The CMDSYS function memset, declared from the CMDSYS table if the
+/* The CMDSYS function __memset, declared from the CMDSYS table if the
  * program hasn't used it yet; or -1 if the program has its own. */
 static int cmdsys_memset(void)
 {

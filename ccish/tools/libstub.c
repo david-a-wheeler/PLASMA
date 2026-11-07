@@ -40,4 +40,7 @@ size_t strlen(const char *s) { return 0; }
 char *strchr(const char *s, int c) { return NULL; }
 char *strrchr(const char *s, int c) { return NULL; }
 void *memmove(void *d, const void *s, size_t n) { return d; }
-/* memcpy, memset, strcpy and strcat come from CMDSYS. */
+void *memcpy(void *d, const void *s, size_t n) { return d; }
+void *memset(void *d, int c, size_t n) { return d; }
+char *strcpy(char *d, const char *s) { return d; }
+char *strcat(char *d, const char *s) { return d; }

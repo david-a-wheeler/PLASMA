@@ -27,8 +27,8 @@ int a[6] = {1, 2, 3, 4, 5, 6};
 
 void show(int n)
 {
-  puti(n);
-  putc(' ');
+  __puti(n);
+  __putc(' ');
 }
 
 /* Pointer loops, up and down. */
@@ -119,10 +119,10 @@ void stores(void)
     s += i;
   show(s);
   for (c = 97; c != 101; c++)
-    putc(c);
+    __putc(c);
   for (c = 'w'; c != 'z'; c = c + 1)
-    putc(c);
-  putc(' ');
+    __putc(c);
+  __putc(' ');
 }
 
 /* Left alone: the variable second in the test (n > i); it must still
@@ -137,18 +137,18 @@ void alone(void)
 int main()
 {
   ptrs();
-  putln();
+  __putln();
   uns();
-  putln();
+  __putln();
   calls();
-  putln();
+  __putln();
   flow();
-  putln();
+  __putln();
   never();
-  putln();
+  __putln();
   stores();
-  putln();
+  __putln();
   alone();
-  putln();
+  __putln();
   return 0;
 }

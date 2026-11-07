@@ -194,10 +194,11 @@ void set_nparams(int f, int n)
  * parameter's type, as v (void), i (int), c (char), s (char *),
  * S (const char *), p (void *) or P (const void *). A pointer the
  * function only reads is const, so that passing a const char * needs
- * no cast. Their names and meanings are PLASMA's, not C's: puts()
- * takes a PLASMA (length-prefixed) string and adds no newline, and
- * strcpy() copies PLASMA strings. divmod() returns two values and is
- * left out.
+ * no cast. Their meanings are PLASMA's, not C's, so their C names are
+ * PLASMA's with "__" in front (ppname.c's fixed ids), leaving the
+ * standard names to C's own functions: __puts() takes a PLASMA
+ * (length-prefixed) string and adds no newline, and __strcpy() copies
+ * PLASMA strings. divmod() returns two values and is left out.
  */
 static const char *const cmdsys_sigs[NCMDSYS] = {
   "vc", "v", "vS", "vi",                /* putc putln puts puti */

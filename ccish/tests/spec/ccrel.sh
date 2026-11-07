@@ -120,8 +120,8 @@ cat >>"$OUT/link/many_b.c" <<'EOF'
 int a_first(void); int a_last(void);
 int main()
 {
-  puti(a_first()); putc(' '); puti(a_last()); putc(' ');
-  puti(b_first()); putc(' '); puti(b_last()); putc(10);
+  __puti(a_first()); __putc(' '); __puti(a_last()); __putc(' ');
+  __puti(b_first()); __putc(' '); __puti(b_last()); __putc(10);
   return 0;
 }
 EOF
@@ -157,7 +157,7 @@ rm -f "$OUT"/link/many_[ab].obj "$OUT"/link/many_[ab].syms
     done
     echo 'int main()'
     echo '{'
-    echo '  f1(); puti(g); putc(32); f25(); puti(g); putc(10);'
+    echo '  f1(); __puti(g); __putc(32); f25(); __puti(g); __putc(10);'
     echo '  return 0;'
     echo '}'
 } >"$OUT/link/relocs.c"
@@ -183,17 +183,20 @@ gen_long() {
         i=$((i + 1))
     done >"$1"
 }
+# The 43 names of 31 characters, main, the 27-character caller, and
+# __puti and __putc take 1423 of the 1427 name bytes, too few for the
+# static name's 32.
 gen_long "$OUT/link/nofit_a.c" 1 22
 gen_long "$OUT/link/nofit_b.c" 23 43
 cat >>"$OUT/link/nofit_b.c" <<'EOF'
 static int static_padded_to_thirty_one_chr(void) { return 7; }
-int caller_padded_to_thirty_one_chr(void)
+int caller_padded_to_27_chars_x(void)
 {
   return static_padded_to_thirty_one_chr();
 }
 int main()
 {
-  puti(caller_padded_to_thirty_one_chr()); putc(10);
+  __puti(caller_padded_to_27_chars_x()); __putc(10);
   return 0;
 }
 EOF

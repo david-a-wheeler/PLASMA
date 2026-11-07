@@ -8,19 +8,19 @@
  * CW $6261, 'a' and 'b'), and long runs of zeros use memset (roomy and
  * big). */
 // listing-has: CW $6261
-// listing-count: 2 ; memset (import)
+// listing-count: 2 ; __memset (import)
 void show(int n)
 {
-  puti(n);
-  putc(' ');
+  __puti(n);
+  __putc(' ');
 }
 
 /* Print the C string s, then a space. */
 void say(char *s)
 {
   while (*s)
-    putc(*s++);
-  putc(' ');
+    __putc(*s++);
+  __putc(' ');
 }
 
 int sum(int a[], int n)
@@ -51,16 +51,16 @@ int main()
     show(t[i]);
   show(sizeof sq / sizeof sq[0]);
   show(sq[3]);
-  putln();
+  __putln();
 
   say(word);
-  putc(exact[0]);
-  putc(exact[2]);
-  putc(' ');
+  __putc(exact[0]);
+  __putc(exact[2]);
+  __putc(' ');
   say(roomy);
   show(roomy[19]);
   show(sizeof roomy);
-  putln();
+  __putln();
 
   show(m[1][2]);
   show(sizeof flat);
@@ -69,7 +69,7 @@ int main()
   say(kw[0]);
   say(kw[1]);
   show(kw[1][5]);
-  putln();
+  __putln();
 
   show(x);
   show(y);
@@ -80,7 +80,7 @@ int main()
   show(big[0]);
   show(big[29]);
   show(sum(big, 30));
-  putln();
+  __putln();
 
   /* initialized again each time the block is entered */
   for (i = 0; i < 2; i++) {
@@ -88,6 +88,6 @@ int main()
     show(c[0] + c[2]);
     c[2] = 9;
   }
-  putln();
+  __putln();
   return 0;
 }

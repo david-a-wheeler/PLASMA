@@ -12,7 +12,7 @@
 #define FRAME_TEMP(k) (-2 - (k))
 #define HELPER_FN(k) (MAX_FUNCS + (k))
 #define MAX_FUNCS 302
-#define puti_twice(x) puti(x); puti(x)
+#define puti_twice(x) __puti(x); __puti(x)
 
 int sum3(int a, int b, int c) { return a + b + c; }
 
@@ -20,15 +20,15 @@ int main()
 {
   int VAR(one) = 1, VAR(two) = 2;
   int SQUARE = 5;               /* no '(' after it: just a name */
-  puti(MAX(MAX(3, 7), 5)); putc(' ');
-  puti(SQUARE(var_one + var_two)); putc(' ');
-  puts(pstr(STR(TEN))); putc(' ');
-  puts(pstr(XSTR(TEN))); putc(' ');
-  puti(SUM(1, 2, 3)); putc(' ');
-  puti(SQUARE); putc(' ');
-  puti(FRAME_TEMP(1)); putc(' ');
-  puti(HELPER_FN(2)); putc(' ');
+  __puti(MAX(MAX(3, 7), 5)); __putc(' ');
+  __puti(SQUARE(var_one + var_two)); __putc(' ');
+  __puts(pstr(STR(TEN))); __putc(' ');
+  __puts(pstr(XSTR(TEN))); __putc(' ');
+  __puti(SUM(1, 2, 3)); __putc(' ');
+  __puti(SQUARE); __putc(' ');
+  __puti(FRAME_TEMP(1)); __putc(' ');
+  __puti(HELPER_FN(2)); __putc(' ');
   puti_twice(4);
-  putln();
+  __putln();
   return 0;
 }

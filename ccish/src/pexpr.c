@@ -1285,9 +1285,9 @@ static void push_place_addr(Operand *o)
     push_address(o);
 }
 
-/* The function a struct copy calls: memcpy(dst, src, n), from CMDSYS
- * unless the program declares its own, which must take C's arguments
- * in C's order. A value it returns is dropped. */
+/* The function a struct copy calls: __memcpy(dst, src, n), from CMDSYS
+ * unless the program defines its own, which must take C's arguments in
+ * C's order. A value it returns is dropped. */
 static int copy_func(void)
 {
   int f = find_func(ID_MEMCPY);

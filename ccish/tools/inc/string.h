@@ -10,9 +10,9 @@ size_t strlen(const char *s);
 char *strchr(const char *s, int c);
 char *strrchr(const char *s, int c);
 void *memmove(void *d, const void *s, size_t n);
-/* As CMDSYS has them, returning nothing: ccish's own struct copies and
- * array zeroing call these, so the standard void * versions would
- * conflict at link time. ccish's source never uses their results. */
-void memcpy(void *d, const void *s, size_t n);
-void memset(void *d, int c, size_t n);
+/* The standard ones: ccish's own struct copies and array zeroing call
+ * CMDSYS's __memcpy and __memset, a different name, so these don't
+ * conflict with them (approach.md decision 35). */
+void *memcpy(void *d, const void *s, size_t n);
+void *memset(void *d, int c, size_t n);
 #endif

@@ -1,1 +1,1 @@
-error 173: declaration doesn't match the CMDSYS function 'puti'
+error 173: declaration doesn't match the CMDSYS function '__puti'

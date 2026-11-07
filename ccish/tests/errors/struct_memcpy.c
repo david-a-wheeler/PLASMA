@@ -3,7 +3,7 @@
  * take C's arguments. */
 struct big { int v[10]; };
 
-void memcpy(int n);
+void __memcpy(int n);
 
 int main()
 {

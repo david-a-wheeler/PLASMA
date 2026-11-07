@@ -1,6 +1,6 @@
 
 int main() {
-  puts(pstr("a"
+  __puts(pstr("a"
             "b"));
   return y;
 }

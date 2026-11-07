@@ -1,1 +1,1 @@
-:4: error 55: wrong number of arguments in call to 'puts'
+:4: error 55: wrong number of arguments in call to '__puts'

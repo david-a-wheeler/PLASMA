@@ -6,8 +6,9 @@
  *
  * It uses none of the compiler's tables (fn_name[] and so on), only the
  * files, so it is a program of its own, ccrel (approach.md, "B3").
- * The module exports nothing and imports only CMDSYS functions, so C
- * names never meet PLASMA's symbol table (approach.md issue 11).
+ * The module exports nothing and imports only CMDSYS functions, by their
+ * PLASMA names (__puts imports PUTS), so other C names never meet
+ * PLASMA's symbol table (approach.md issue 11, decision 35).
  *
  * The files are read in order, with no seeking, and only one at a time
  * (approach.md 18.6 B6a):
@@ -508,11 +509,11 @@ static void resolve(void)
       g_off[g] = place_zero(gnames + g_name[g], g_count[g],
                             g_flags[g] & G_INDATA);
   if (nmoved > 0) {
-    use_cmdsys("heapavail");
-    use_cmdsys("isult");
-    use_cmdsys("heapalloc");
-    use_cmdsys("memset");
-    use_cmdsys("puts");
+    use_cmdsys("__heapavail");
+    use_cmdsys("__isult");
+    use_cmdsys("__heapalloc");
+    use_cmdsys("__memset");
+    use_cmdsys("__puts");
   }
   for (g = 0; g < MAX_GSYMS; g++) {
     const char *name;
@@ -1228,21 +1229,21 @@ static int init_code(void)
   int n = 0, i, pw = data_base + obj_data[nobjs] + zstay;
   nir = 0;
   if (nmoved > 0) {
-    init_op(&n, OP_CALL, 0, gsym_find("heapavail"));
+    init_op(&n, OP_CALL, 0, gsym_find("__heapavail"));
     init_word(&n, OP_CW, (int)mv_total + HEAP_SPARE);
-    init_op(&n, OP_CALL, 0, gsym_find("isult"));
+    init_op(&n, OP_CALL, 0, gsym_find("__isult"));
     /* To ok: past this word, the CS, CALL, MINUS1 and RET. */
     init_word(&n, OP_BRFLS, 2 + (1 + sizeof(no_memory)) + 3 + 1 + 1);
     fbuf[n++] = OP_CS;
     fbuf[n++] = sizeof(no_memory) - 1;
     for (i = 0; no_memory[i]; i++)
       fbuf[n++] = no_memory[i];
-    init_op(&n, OP_CALL, 0, gsym_find("puts"));
+    init_op(&n, OP_CALL, 0, gsym_find("__puts"));
     fbuf[n++] = OP_MINUS1;
     fbuf[n++] = OP_RET;
     /* ok: */
     init_word(&n, OP_CW, (int)mv_total);
-    init_op(&n, OP_CALL, 0, gsym_find("heapalloc"));
+    init_op(&n, OP_CALL, 0, gsym_find("__heapalloc"));
     init_op(&n, OP_DAW, pw, -1);
     for (i = 1; i < nmoved; i++) {
       init_word(&n, OP_CW, mv_size[i - 1]);
@@ -1253,7 +1254,7 @@ static int init_code(void)
     init_op(&n, OP_LAW, pw, -1);
     fbuf[n++] = OP_CN;
     init_word(&n, OP_CW, (int)mv_total);
-    init_op(&n, OP_CALL, 0, gsym_find("memset"));
+    init_op(&n, OP_CALL, 0, gsym_find("__memset"));
   }
   init_op(&n, OP_CALL, 0, main_sym);
   if (g_flags[main_sym] & G_RETURNS) {
@@ -1393,10 +1394,13 @@ void link_module(int n, const char **bases, const char *path)
     init_entries(init_off);
   bputc(&out, 0);
 
-  /* ESD: imports, in import order (slot order). */
+  /* ESD: imports, in import order (slot order). Each is a CMDSYS
+   * function, whose C name is its PLASMA name with "__" in front
+   * (__puts for PUTS), so the "__" goes. */
   for (i = 0; i < MAX_GSYMS; i++)
     if (g_name[i] >= 0 && (g_flags[i] & G_IMPORT)) {
-      out_dci(gnames + g_name[i]);
+      const char *name = gnames + g_name[i];
+      out_dci(name[0] == '_' && name[1] == '_' ? name + 2 : name);
       bputc(&out, 0x10);
       bputw(&out, g_off[i]);
     }

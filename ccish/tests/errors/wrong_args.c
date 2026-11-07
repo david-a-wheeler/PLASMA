@@ -1,6 +1,6 @@
 
 int main()
 {
-  puts(pstr("a"), 2);
+  __puts(pstr("a"), 2);
   return 0;
 }

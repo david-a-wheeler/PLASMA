@@ -9,10 +9,10 @@ int f108189(int n) { return n - f108198; }
 
 int main()
 {
-  puti(f108188(1)); putc(' ');
-  puti(f108284); putc(' ');
-  puti(f108296(3)); putc(' ');
-  puti(f108189(10));
-  putln();
+  __puti(f108188(1)); __putc(' ');
+  __puti(f108284); __putc(' ');
+  __puti(f108296(3)); __putc(' ');
+  __puti(f108189(10));
+  __putln();
   return 0;
 }

@@ -4,6 +4,6 @@ extern int tab[];
 int *pt = tab + 2;
 int main()
 {
-  puti(*pt); putc(32); puti(*(tab + 3)); putln();
+  __puti(*pt); __putc(32); __puti(*(tab + 3)); __putln();
   return 0;
 }

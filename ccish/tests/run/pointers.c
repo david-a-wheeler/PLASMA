@@ -9,8 +9,8 @@
 // listing-has: LW
 void show(int n)
 {
-  puti(n);
-  putc(' ');
+  __puti(n);
+  __putc(' ');
 }
 
 void swap(int *a, int *b)
@@ -63,7 +63,7 @@ int main()
   show(&*p == p);
   show(*pick(&x, &y, 1));
   show(*pick(&x, &y, 0));
-  putln();
+  __putln();
 
   /* chars through a pointer */
   *cp = 300;
@@ -78,10 +78,10 @@ int main()
   show(c);
   show(len("hello"));
   show(len(""));
-  putln();
+  __putln();
 
   /* arithmetic on a heap block of 5 ints */
-  v = heapalloc(10);
+  v = __heapalloc(10);
   w = v;
   fill(w, 5, 100);
   show(*w);
@@ -102,7 +102,7 @@ int main()
   *(w + y) += 10;
   show(*(w + 1));
   show(*(y + w));
-  putln();
+  __putln();
 
   /* comparisons */
   s = "hello";
@@ -119,10 +119,10 @@ int main()
   show(!p);
   show(p ? 1 : 2);
   show(v == w);
-  putln();
+  __putln();
 
   (void)*w;
-  putc('!');
-  putln();
+  __putc('!');
+  __putln();
   return 0;
 }

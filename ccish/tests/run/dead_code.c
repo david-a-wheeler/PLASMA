@@ -9,15 +9,15 @@ int one() { return 1; }
 
 void two()
 {
-  putc('2');
+  __putc('2');
   return;
-  putc('X');
+  __putc('X');
 }
 
 int main()
 {
-  puti(one());
+  __puti(one());
   two();
-  putln();
+  __putln();
   return 0;
 }

@@ -34,12 +34,17 @@ static int nids;                /* identifiers in the pool */
 
 /* The names every file has, in id order from 1 (CCPP.md, "The fixed
  * ids"): the CMDSYS functions in cmdsys_sigs[]'s order (parse.c), main
- * and pstr, then the names ccpp itself gives a meaning. */
+ * and pstr, then the names ccpp itself gives a meaning. A CMDSYS
+ * function's C name is its PLASMA name with "__" in front (__puts for
+ * PUTS), a name C reserves to the implementation, so the standard names
+ * (puts, memset, ...) stay free for a C library with C's meanings; ccrel
+ * drops the "__" in the import (approach.md issue 22, decision 35). */
 static const char *const fixed[NFIXED] = {
-  "putc", "putln", "puts", "puti", "putb", "puth", "getc", "gets",
-  "call", "syscall", "heapmark", "heapallocalign", "heapalloc",
-  "heaprelease", "heapavail", "memset", "memcpy", "strcpy", "strcat",
-  "toupper", "sext", "isugt", "isuge", "isult", "isule", "main", "pstr",
+  "__putc", "__putln", "__puts", "__puti", "__putb", "__puth", "__getc",
+  "__gets", "__call", "__syscall", "__heapmark", "__heapallocalign",
+  "__heapalloc", "__heaprelease", "__heapavail", "__memset", "__memcpy",
+  "__strcpy", "__strcat", "__toupper", "__sext", "__isugt", "__isuge",
+  "__isult", "__isule", "main", "pstr",
   "__CCISH__", "__FILE__", "__LINE__", "defined"
 };
 

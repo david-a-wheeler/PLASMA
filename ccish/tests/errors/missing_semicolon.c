@@ -1,3 +1,3 @@
 
-int main() { putln()
+int main() { __putln()
 }

@@ -40,14 +40,14 @@ nam_edit nam_lost '3d'
 nam_damaged_test nam_lost "with a line lost"
 nam_edit nam_count 's/^=1 \(....\)/=1 FFFF/'
 nam_damaged_test nam_count "with a wrong count"
-nam_edit nam_sum 's/^putc$/putd/'
+nam_edit nam_sum 's/^__putc$/__putd/'
 nam_damaged_test nam_sum "with a wrong checksum"
 nam_edit nam_after '$a\
 x'
 nam_damaged_test nam_after "with a line after the stamp"
 nam_edit nam_version 's/^=1 /=2 /'
 nam_damaged_test nam_version "of another version"
-nam_edit nam_long "s/^putc\$/$(printf 'n%031d' 0)/"
+nam_edit nam_long "s/^__putc\$/$(printf 'n%031d' 0)/"
 nam_damaged_test nam_long "with a name over 31 characters"
 ./ccpp -o "$OUT/nam_stale" tests/run/hello.c
 cp tests/run/hello.c "$OUT/nam_other.c"
@@ -111,7 +111,7 @@ limit_test() {
     fi
 }
 limit_test too_large "x = 1000;" 900 "function too large: main"
-limit_test too_many_relocs "puti(1);" 300 \
+limit_test too_many_relocs "__puti(1);" 300 \
     "too many calls and data references in main"
 
 # The passes as programs of their own (approach.md, "B3", and 18.7):

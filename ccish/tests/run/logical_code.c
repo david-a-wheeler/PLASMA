@@ -85,22 +85,22 @@ int g7(int a, int b, int c)
 
 int main()
 {
-  puti(g1(6, 0, 0)); puti(g1(6, 1, 0)); puti(g1(6, 1, 1));
-  puti(g1(5, 0, 1));
-  putln();
-  puti(g2(1, 1, 0)); puti(g2(1, 0, 0)); puti(g2(0, 1, 1));
-  puti(g2(0, 0, 0));
-  putln();
-  puti(g3(1, 1)); puti(g3(1, 0)); puti(g3(0, 1));
-  putln();
-  puti(g4(2, 2)); puti(g4(3, 3)); puti(g4(2, 3));
-  putln();
-  puti(g5(0, 0)); puti(g5(1, 0)); puti(g5(0, 2));
-  putln();
-  puti(g6(3, 9)); puti(g6(2, 3)); puti(g6(2, 2));
-  putln();
-  puti(g7(0, 1, 1)); puti(g7(1, 0, 0)); puti(g7(1, 1, 0));
-  puti(g7(1, 0, 1));
-  putln();
+  __puti(g1(6, 0, 0)); __puti(g1(6, 1, 0)); __puti(g1(6, 1, 1));
+  __puti(g1(5, 0, 1));
+  __putln();
+  __puti(g2(1, 1, 0)); __puti(g2(1, 0, 0)); __puti(g2(0, 1, 1));
+  __puti(g2(0, 0, 0));
+  __putln();
+  __puti(g3(1, 1)); __puti(g3(1, 0)); __puti(g3(0, 1));
+  __putln();
+  __puti(g4(2, 2)); __puti(g4(3, 3)); __puti(g4(2, 3));
+  __putln();
+  __puti(g5(0, 0)); __puti(g5(1, 0)); __puti(g5(0, 2));
+  __putln();
+  __puti(g6(3, 9)); __puti(g6(2, 3)); __puti(g6(2, 2));
+  __putln();
+  __puti(g7(0, 1, 1)); __puti(g7(1, 0, 0)); __puti(g7(1, 1, 0));
+  __puti(g7(1, 0, 1));
+  __putln();
   return 0;
 }

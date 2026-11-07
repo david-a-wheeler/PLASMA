@@ -5,8 +5,8 @@
 // listing-has: IDXW
 void show(int n)
 {
-  puti(n);
-  putc(' ');
+  __puti(n);
+  __putc(' ');
 }
 
 int sum(int a[], int n)
@@ -78,7 +78,7 @@ int main()
   show(a[0]);
   show(a[4]);
   show(a[1] + a[3]);
-  putln();
+  __putln();
 
   /* variable indexes, compound assignment, ++ and -- */
   for (i = 0; i < 5; i++)
@@ -94,22 +94,22 @@ int main()
   show(--a[i]);
   show(a[i] = 7);
   show(a[2]);
-  putln();
+  __putln();
 
   /* char arrays and char indexes */
   for (c = 0; c < 7; c++)
     s[c] = 'a' + c;
   s[7] = 0;
   c = 3;
-  putc(s[c]);
+  __putc(s[c]);
   s[c] = 'D';
   for (i = 0; s[i]; i++)
-    putc(s[i]);
-  putc(' ');
+    __putc(s[i]);
+  __putc(' ');
   show(s[c] + 1);
   s[0] = 300;                 /* a char keeps the low byte */
   show(s[0]);
-  putln();
+  __putln();
 
   /* arrays as pointers */
   p = a;
@@ -132,7 +132,7 @@ int main()
   show(a[3]);
   show(a == &a[0]);
   show(p > a);
-  putln();
+  __putln();
 
   /* functions taking arrays */
   show(sum(a, 5));
@@ -145,7 +145,7 @@ int main()
   sort(t, 6);
   for (i = 0; i < 6; i++)
     show(t[i]);
-  putln();
+  __putln();
 
   /* two-dimensional arrays */
   for (i = 0; i < 3; i++)
@@ -169,20 +169,20 @@ int main()
   show(get(m, 1));
   bump(m, 0);
   show(m[1][0]);
-  putln();
+  __putln();
 
   /* arrays of pointers */
   names[0] = "zero";
   names[1] = "one";
   names[2] = "two";
   for (i = 0; i < 3; i++)
-    putc(names[i][0]);
-  putc(' ');
+    __putc(names[i][0]);
+  __putc(' ');
   copy(s, names[2]);
   for (i = 0; s[i]; i++)
-    putc(s[i]);
-  putc(' ');
+    __putc(s[i]);
+  __putc(' ');
   show(names[1][2]);
-  putln();
+  __putln();
   return 0;
 }

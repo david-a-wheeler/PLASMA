@@ -38,12 +38,12 @@ int main()
     a = i & 4 ? 7 : 0;
     b = i & 2 ? -1 : 0;
     c = i & 1 ? 2 : 0;
-    puti(a != 0); putc(' ');
-    puti(b != 0); putc(' ');
-    puti(c != 0); putc(' ');
-    puti(as_cond(a, b, c)); putc(' ');
-    puti(as_value(a, b, c));
-    putln();
+    __puti(a != 0); __putc(' ');
+    __puti(b != 0); __putc(' ');
+    __puti(c != 0); __putc(' ');
+    __puti(as_cond(a, b, c)); __putc(' ');
+    __puti(as_value(a, b, c));
+    __putln();
   }
   return 0;
 }

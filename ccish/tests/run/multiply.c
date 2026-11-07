@@ -9,13 +9,13 @@
 // listing-count: 2 DUP
 void show(int n)
 {
-  puti(n);
-  putc(' ');
+  __puti(n);
+  __putc(' ');
 }
 
 int g()
 {
-  putc('g');
+  __putc('g');
   return 5;
 }
 
@@ -34,10 +34,10 @@ void f(int x)
 int main()
 {
   f(3);
-  putln();
+  __putln();
   f(-7);
-  putln();
+  __putln();
   show(g() * 0);
-  putln();
+  __putln();
   return 0;
 }

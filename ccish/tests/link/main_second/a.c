@@ -4,7 +4,7 @@
 int count;
 
 /* This program's own toupper, with CMDSYS's type. */
-int toupper(int c)
+int __toupper(int c)
 {
   count++;
   return c + 1;

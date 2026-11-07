@@ -1,2 +1,2 @@
 
-int main() { puts(pstr("\xg")); return 0; }
+int main() { __puts(pstr("\xg")); return 0; }

@@ -13,8 +13,8 @@
 // listing-lacks: BRGT
 void show(int n)
 {
-  puti(n);
-  putc(' ');
+  __puti(n);
+  __putc(' ');
 }
 
 /* The first i whose square is at least n (a loop that isn't counted,
@@ -61,7 +61,7 @@ void not_counted(void)
   }
   show(s);
   show(i);
-  putln();
+  __putln();
 }
 
 /* The variable's address taken later in an outer loop, before the
@@ -80,7 +80,7 @@ void later(void)
   }
   show(s);
   show(t);
-  putln();
+  __putln();
 }
 
 /* != loops: never counted (never made a <), so exact for signed and
@@ -107,7 +107,7 @@ void not_equal(void)
   for (u = 32760u; u != 32770u; u++)
     s++;
   show(s);
-  putln();
+  __putln();
 }
 
 int gl = 5;
@@ -170,7 +170,7 @@ void limits(void)
     s++;
   show(s);
   show(i);
-  putln();
+  __putln();
 }
 
 int main()

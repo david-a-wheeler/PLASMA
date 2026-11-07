@@ -8,78 +8,78 @@
 int main()
 {
 #if 1 + 2 * 3 == 7
-  puti(1);
+  __puti(1);
 #else
-  puti(0);
+  __puti(0);
 #endif
 #if defined(TWO) && defined TWO && !defined(THREE)
-  puti(1);
+  __puti(1);
 #else
-  puti(0);
+  __puti(0);
 #endif
 #if F(TWO) == 6 && UNDEFINED == 0
-  puti(1);
+  __puti(1);
 #else
-  puti(0);
+  __puti(0);
 #endif
 #if -1 < 0
-  puti(1);
+  __puti(1);
 #else
-  puti(0);
+  __puti(0);
 #endif
 #if -1 < 0u
-  puti(0);
+  __puti(0);
 #else
-  puti(1);
+  __puti(1);
 #endif
 #if 0x7FFF + 1 < 0        /* 16 bits: it wraps (a documented difference) */
-  puti(1);
+  __puti(1);
 #else
-  puti(0);
+  __puti(0);
 #endif
 #if 10 / 3 == 3 && 10 % 3 == 1 && -7 / 2 == -3 && -7 % 2 == -1
-  puti(1);
+  __puti(1);
 #else
-  puti(0);
+  __puti(0);
 #endif
 #if (1 ? 2 : 3) == 2 && (0 ? 1 / 0 : 4) == 4 && (0 && 1 / 0) == 0 \
     && (1 || 1 / 0)
-  puti(1);
+  __puti(1);
 #else
-  puti(0);
+  __puti(0);
 #endif
 #if (1 << 4) == 16 && (-16 >> 2) == -4 && (0xFFFFu >> 12) == 15 \
     && 'A' == 65
-  puti(1);
+  __puti(1);
 #else
-  puti(0);
+  __puti(0);
 #endif
 #if (5 & 3) == 1 && (5 | 3) == 7 && (5 ^ 3) == 6 && ~0 == -1
-  puti(1);
+  __puti(1);
 #else
-  puti(0);
+  __puti(0);
 #endif
 #if 0
-  puti(9);
+  __puti(9);
 #elif TWO == 3
-  puti(9);
+  __puti(9);
 #elif TWO == 2
-  puti(1);
+  __puti(1);
 #elif 1 / 0
-  puti(9);
+  __puti(9);
 #else
-  puti(9);
+  __puti(9);
 #endif
 #ifdef TWO
 #elif 1 / 0
 #endif
-  putc(' ');
-  puti(__LINE__);
-  putc(' ');
+  __putc(' ');
+  __puti(__LINE__);
+  __putc(' ');
 #line 100
-  puti(__LINE__);
-  putln();
-  puts(pstr(__FILE__));
-  putln();
+  __puti(__LINE__);
+  __putln();
+  __puts(pstr(__FILE__));
+  __putln();
   return 0;
 }

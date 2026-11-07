@@ -21,8 +21,8 @@ int other;
 
 void show(int n)
 {
-  puti(n);
-  putc(' ');
+  __puti(n);
+  __putc(' ');
 }
 
 int main()
@@ -71,6 +71,6 @@ int main()
     s += i;
   show(s);
   show(i);
-  putln();
+  __putln();
   return 0;
 }

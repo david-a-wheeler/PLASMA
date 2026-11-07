@@ -74,31 +74,31 @@ int main()
   T * x;                          /* declares x: T is a type */
   int i = 7;
 
-  puti(T_EOF); putc(' '); puti(T_STR); putc(' ');
-  puti(K_A); putc(','); puti(K_C); putc(','); puti(K_E); putc(' ');
-  puti(NCOLORS); putc(' '); puti(sizeof counts); putc(' ');
-  puti(start); putc(' '); puti(fav + c); putln();
+  __puti(T_EOF); __putc(' '); __puti(T_STR); __putc(' ');
+  __puti(K_A); __putc(','); __puti(K_C); __putc(','); __puti(K_E); __putc(' ');
+  __puti(NCOLORS); __putc(' '); __puti(sizeof counts); __putc(' ');
+  __puti(start); __putc(' '); __puti(fav + c); __putln();
 
   for (i = 255; i <= 258; i++) {
-    puts(pstr(" "));
+    __puts(pstr(" "));
     x = (T *)token_name(i);     /* a cast to a typedef */
-    puts((str)x - 1);           /* the PLASMA form, one byte before */
+    __puts((str)x - 1);           /* the PLASMA form, one byte before */
   }
-  putln();
+  __putln();
 
   m.op = 5;
   q = p;
   q->a = m.op * 2;
-  puti(q->a); putc(' ');
-  puti(sum(v) + sum(cv)); putc(' ');
-  puti(sizeof(Vec) + sizeof(Mop) + sizeof(Sym)); putc(' ');
+  __puti(q->a); __putc(' ');
+  __puti(sum(v) + sum(cv)); __putc(' ');
+  __puti(sizeof(Vec) + sizeof(Mop) + sizeof(Sym)); __putc(' ');
   table[0].kind = T_ID;
   table[0].next = &table[1];
   table[1].kind = T_NUM;
   s = table;
-  puti(s->next->kind - s->kind); putln();
+  __puti(s->next->kind - s->kind); __putln();
 
-  puti(scopes());
-  putln();
+  __puti(scopes());
+  __putln();
   return 0;
 }

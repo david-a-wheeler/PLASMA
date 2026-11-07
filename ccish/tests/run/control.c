@@ -3,8 +3,8 @@
 // listing-lacks: CB 98
 void show(int n)
 {
-  puti(n);
-  putc(' ');
+  __puti(n);
+  __putc(' ');
 }
 
 int sign(int x)
@@ -38,9 +38,9 @@ int main()
 {
   int i, sum;
   show(sign(-5)); show(sign(0)); show(sign(7));
-  putln();
+  __putln();
   show(fact(5)); show(fact(7)); show(fact(0));
-  putln();
+  __putln();
   /* for with continue: the odd numbers below 10 */
   sum = 0;
   for (i = 0; i < 10; i++) {
@@ -68,18 +68,18 @@ int main()
   } while (i < 10);
   show(sum);
   show(first_multiple(20, 7));
-  putln();
+  __putln();
   /* nested loops, a declaration in for, break from the inner loop */
   for (int j = 1; j <= 3; j++) {
     int k;
     for (k = 1; ; k++) {
       if (k > j)
         break;
-      puti(k);
+      __puti(k);
     }
-    putc(' ');
+    __putc(' ');
   }
-  putln();
+  __putln();
   /* a dangling else belongs to the inner if */
   i = 0;
   if (i == 0)
@@ -101,6 +101,6 @@ int main()
       break;
   }
   show(i);
-  putln();
+  __putln();
   return 0;
 }

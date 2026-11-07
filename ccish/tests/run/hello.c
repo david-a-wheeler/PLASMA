@@ -3,8 +3,8 @@ int add(int a, int b) { return a + b; }
 
 int main()
 {
-  puts(pstr("Hello"));
-  puti(add(2, 3));
-  putln();
+  __puts(pstr("Hello"));
+  __puti(add(2, 3));
+  __putln();
   return 0;
 }

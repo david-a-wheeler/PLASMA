@@ -9,8 +9,8 @@
 // listing-count: 1 ENTER 4,0
 void show(int n)
 {
-  puti(n);
-  putc(' ');
+  __puti(n);
+  __putc(' ');
 }
 
 void param(char c)
@@ -58,13 +58,13 @@ int main()
   show(c);
   c = 250;
   show(c += 10);
-  putln();
+  __putln();
 
   c = -1;
   show(c);
   show(c > 0);
   show(-c);
-  putln();
+  __putln();
 
   param(300);
   param(-1);
@@ -72,7 +72,7 @@ int main()
   show(low(-2));
   show(konst());
   show(is_a('A' + 256));
-  putln();
+  __putln();
 
   i = -1;
   show((char)300);
@@ -83,14 +83,14 @@ int main()
   show((char)i + 1);
   (void)low(1);
   (void)i;
-  putln();
+  __putln();
 
   count = 0;
   for (c = 250; c != 4; c++)
     count++;
   show(count);
   show(frame());
-  putc(c + 'a');
-  putln();
+  __putc(c + 'a');
+  __putln();
   return 0;
 }
