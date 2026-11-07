@@ -4163,9 +4163,12 @@ issue. In summary:
     22). ccrel's init returns `-(status & 255)` of `main`'s result,
     PLASMA's own error convention, which can't be read as "keep the
     module". The host gets it, per run and without changing plvm,
-    through the ccstat driver module and `tools/ccrun`; the run, gen
-    and xrun tests check it (a test's expected status is in
-    `NAME.status`, else 0).
+    through the ccstat driver module and `tools/ccrun`. Every test that
+    runs a module checks it: run, gen and link tests against an
+    expected status (`NAME.status`, or a link test's `status`, else
+    0), xrun tests require 0, and the spec scripts use `run_module`
+    (tests/lib.sh). Checking found one wrong test: genunion's expected
+    sum was 18, but C (and gcc) gives 16.
 
 
 ## Milestones

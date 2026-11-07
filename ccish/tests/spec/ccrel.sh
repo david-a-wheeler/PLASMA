@@ -129,8 +129,8 @@ if cc_obj "" "$OUT/link/many_a" "$OUT/link/many_a.c" \
    && cc_obj "" "$OUT/link/many_b" "$OUT/link/many_b.c" \
    && ./ccrel -o "$OUT/link/many" "$OUT/link/many_a" "$OUT/link/many_b" \
       2>"$OUT/link/many.err" \
-   && [ "$(cd "$OUT/link" && timeout 10 "$PLVM" many 2>&1 | tr -d '\r')" \
-        = "1 160 161 320" ]; then
+   && out=$(run_module "$OUT/link" many) \
+   && [ "$out" = "1 160 161 320" ]; then
     :
 else
     echo "FAIL ccrel: 324 functions in two objects don't link and run"
@@ -164,8 +164,8 @@ rm -f "$OUT"/link/many_[ab].obj "$OUT"/link/many_[ab].syms
 if cc_obj "" "$OUT/link/relocs" "$OUT/link/relocs.c" \
       2>"$OUT/link/relocs.err" \
    && ./ccrel "$OUT/link/relocs" 2>>"$OUT/link/relocs.err" \
-   && [ "$(cd "$OUT/link" && timeout 10 "$PLVM" relocs 2>&1 | tr -d '\r')" \
-        = "1100 25100" ]; then
+   && out=$(run_module "$OUT/link" relocs) \
+   && [ "$out" = "1100 25100" ]; then
     :
 else
     echo "FAIL ccrel: 2500 relocations don't link and run"
@@ -208,8 +208,8 @@ if cc_obj "" "$OUT/link/nofit_a" "$OUT/link/nofit_a.c" \
    && grep -q '^static@\$[0-9A-F]\{4\}:$' "$OUT/link/nofit.lst" \
    && grep -qF '; static@$' "$OUT/link/nofit.lst" \
    && ! grep -qF "static_padded" "$OUT/link/nofit.lst" \
-   && [ "$(cd "$OUT/link" && timeout 10 "$PLVM" nofit 2>&1 | tr -d '\r')" \
-        = "7" ]; then
+   && out=$(run_module "$OUT/link" nofit) \
+   && [ "$out" = "7" ]; then
     :
 else
     echo "FAIL ccrel: a static name that doesn't fit isn't listed by address"

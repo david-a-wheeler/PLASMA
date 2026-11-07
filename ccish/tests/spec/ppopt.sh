@@ -27,8 +27,8 @@ int main()
 EOF
 if ./ccish -o "$OUT/ppopt/t" -D SEVEN=7 -DTWO=2 -DONE -D GONE -U GONE \
         -I "$OUT/ppopt/inc" "$OUT/ppopt/t.c" 2>"$OUT/ppopt/t.err" \
-   && [ "$(cd "$OUT/ppopt" && timeout 10 "$PLVM" t 2>&1 | tr -d '\r')" \
-        = "7 2 1 0 1" ] \
+   && out=$(run_module "$OUT/ppopt" t) \
+   && [ "$out" = "7 2 1 0 1" ] \
    && ./ccpp -o "$OUT/ppopt/u" -I"$OUT/ppopt/inc" -DSEVEN=7 -DTWO -DONE \
         "$OUT/ppopt/t.c" 2>>"$OUT/ppopt/t.err"; then
     :

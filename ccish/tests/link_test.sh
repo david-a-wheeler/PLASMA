@@ -1,8 +1,9 @@
 #!/bin/sh
 # The link test for tests/link/$1/: compile its .c files (name order), link
 # them, and either run the module under plvm and compare its output to
-# "expected", or, with "expect-error", require the link to fail with a
-# message equal to that file and leave no module behind.
+# "expected" and its exit status to "status" (0 if there is none), or,
+# with "expect-error", require the link to fail with a message equal to
+# that file and leave no module behind.
 . "$(dirname "$0")/lib.sh"
 name=$1
 dir=tests/link/$name/
@@ -30,7 +31,12 @@ else
     if ! ./ccrel -l -o "$OUT/link/$mod" $objs >"$OUT/link/$name.lst" 2>"$lerr"; then
         echo "FAIL $dir: link error:"; sed 's/^/    /' "$lerr"; exit 1
     fi
-    (cd "$OUT/link" && timeout 10 "$PLVM" "$mod" 2>&1 | tr -d '\r' >"$name.actual")
+    run_module "$OUT/link" "$mod" >"$OUT/link/$name.actual"
+    got=$?
+    want=$(cat "$dir/status" 2>/dev/null || echo 0)
+    if [ "$got" != "$want" ]; then
+        echo "FAIL $dir: exit status $got, expected $want"; exit 1
+    fi
     if ! diff -q "$OUT/link/$name.actual" "$dir/expected" >/dev/null; then
         echo "FAIL $dir: output differs (expected, then actual):"
         sed 's/^/    /' "$dir/expected"; echo "    ---"; sed 's/^/    /' "$OUT/link/$name.actual"; exit 1

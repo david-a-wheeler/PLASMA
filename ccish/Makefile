@@ -120,16 +120,18 @@ $(OUT)/run/%.stamp: tests/run/%.c tests/run/%.expected \
 	@touch $@
 
 # gen: ccish -d (machine ops after the peephole stage) must equal the
-# .exp, and the module must run under plvm (through tools/ccrun, so a
-# crash or timeout fails; the exit status is the program's business).
+# .exp, and the module must run under plvm (through tools/ccrun) and
+# exit with the status in .status (or 0 if there is none).
 GEN := $(wildcard tests/gen/*.c)
-$(OUT)/gen/%.stamp: tests/gen/%.c tests/gen/%.exp $(PASSES)
+$(OUT)/gen/%.stamp: tests/gen/%.c tests/gen/%.exp \
+                    $(wildcard tests/gen/*.status) $(PASSES)
 	@mkdir -p $(dir $@)
 	@./ccish -d -o $(dir $@)$* tests/gen/$*.c >$@.actual 2>$@.err
 	@test ! -s $@.err || { echo "gen: unexpected messages"; cat $@.err; exit 1; }
 	@diff -u tests/gen/$*.exp $@.actual
-	@(cd $(dir $@) && $(CCRUN) -t 10 $(notdir $*) >/dev/null 2>&1; s=$$?; \
-	  [ $$s -lt 124 ] || { echo "gen $*: plvm status $$s"; exit 1; })
+	@(cd $(dir $@) && $(CCRUN) -t 10 $(notdir $*) >/dev/null 2>&1; echo $$? > $(notdir $*).status)
+	@want=$$(cat tests/gen/$*.status 2>/dev/null || echo 0); got=$$(cat $(dir $@)$*.status); \
+	 [ "$$got" = "$$want" ] || { echo "gen $*: exit status $$got, expected $$want"; exit 1; }
 	@touch $@
 
 # xrun: the same source must print the same under ccish+plvm as under
@@ -165,12 +167,14 @@ $(OUT)/pp/%.stamp: tests/pp/%.c tests/pp/%.nam tests/pp/%.tok \
 	@mkdir -p $(dir $@) && tests/pp_test.sh $* && touch $@
 
 # link: compile the directory's .c files (name order) and link them;
-# with "expected" the module's output must equal it, with "expect-error"
+# with "expected" the module's output must equal it, and its exit status
+# the number in "status" (or 0 if there is none); with "expect-error"
 # the link must fail with its message.
 LINK_TESTS := $(wildcard tests/link/*/expected tests/link/*/expect-error)
 LINK_STAMPS := $(patsubst tests/link/%/expected,$(OUT)/link/%.stamp,$(LINK_TESTS)) \
                $(patsubst tests/link/%/expect-error,$(OUT)/link/%.stamp,$(LINK_TESTS))
-$(OUT)/link/%.stamp: $(wildcard tests/link/*/*.c) $(LINK_TESTS) $(PASSES) \
+$(OUT)/link/%.stamp: $(wildcard tests/link/*/*.c) $(LINK_TESTS) \
+                     $(wildcard tests/link/*/status) $(PASSES) \
                      tests/link_test.sh tests/lib.sh tests/check_listing.sh
 	@mkdir -p $(dir $@) && tests/link_test.sh $* && touch $@
 

@@ -223,8 +223,13 @@ files of the sessions so far, before a move to a new computer.)
   both, for the ccstat driver (tests/out/ccstat).
 - Exit status: plvm always exits 0. `tools/ccrun [-t secs] name args`
   runs a module (from its directory) through ccstat and exits with
-  `main`'s status; the run, gen and xrun tests use it, and a run test's
-  expected status is in `tests/run/NAME.status` (else 0).
+  `main`'s status. Every test that runs a module checks it: the run
+  and gen tests against `NAME.status` (else 0), the link tests against
+  `tests/link/NAME/status` (else 0), xrun tests require 0, and the
+  spec scripts run modules with `run_module` (tests/lib.sh), which
+  fails on a nonzero status. Work an expected status out by hand (or
+  with gcc), as for outputs; a gen test that returns `x == k` exits 1
+  when it's right.
 - No Apple II emulator is installed: measuring free memory on a real
   64K Apple II (approach.md 18.6 E1) is still to do. The user owns Apple
   IIs and prefers an Apple II+ or IIe.

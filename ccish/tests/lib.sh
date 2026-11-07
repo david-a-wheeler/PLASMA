@@ -4,7 +4,23 @@
 set -u
 CCISH=./ccish
 PLVM=$(cd ../src && pwd)/plvm
+CCRUN=$(pwd)/tools/ccrun
 OUT=tests/out
+
+# Run module $2 from directory $1 under plvm, through tools/ccrun (with
+# a 10-second timeout), and print its output, stdout and stderr, with
+# the CRs taken out. Its status is ccrun's: main's exit status, or
+# nonzero for a crash or a timeout. (The output goes to a file first,
+# so that the status isn't lost in a pipe.) Use it as
+# out=$(run_module dir mod) && [ "$out" = ... ], so a failing status
+# fails the test.
+run_module() {
+    (cd "$1" && PLVM="$PLVM" "$CCRUN" -t 10 "$2" >"$2.run" 2>&1)
+    set -- "$1" "$2" $?
+    tr -d '\r' <"$1/$2.run"
+    rm -f "$1/$2.run"
+    return "$3"
+}
 
 # Compile source $3 into the object of output name $2 (its .obj and
 # .syms) with ccpp, cccomp, then ccgen; $1 is "" for the full build or
