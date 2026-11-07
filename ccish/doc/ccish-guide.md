@@ -60,6 +60,8 @@ The working rule is:
     `-Wsign-compare` would).
   * `enum tag` isn't checked against a definition, so ccish accepts
     some wrong programs (a variable of an enum type never defined).
+  * `struct W` and `union W` share one tag name space, so a name
+    can't be both (the standard C lets them coexist; section 4.11).
 
 ### 1.2 Self-hosting on the Apple II
 
@@ -272,13 +274,14 @@ The supported keywords are:
 ```
 break    const    continue default do     else     enum   extern
 for      goto     if       int    return   sizeof   short    static
-struct   switch   typedef  unsigned void     volatile while
+struct   switch   typedef  union    unsigned void     volatile while
 ```
 
 plus `signed`, as in `signed int`, which is `int`, and `short`, a
-synonym for `int` (section 4.1). Six more of C89's keywords are
-recognized so the error is clear, but not supported (section 9.1):
-`auto`, `double`, `float`, `long`, `register` and `union`.
+synonym for `int` (section 4.1). A `union` is a tagged type as `struct`
+is (section 4.11). Five more of C89's keywords are recognized so the
+error is clear, but not supported (section 9.1): `auto`, `double`,
+`float`, `long` and `register`.
 
 `enum tag` used as a type does not have to match a definition
 (section 1.1).
@@ -354,7 +357,8 @@ type is `char *` too.
 
 The arithmetic types are `int` (16 bits), `char` (8 bits, unsigned)
 and `unsigned` (16 bits); `void` names the absence of a value.
-Pointers are 16 bits. `short` is a synonym for `int` (section 4.1);
+Pointers are 16 bits. The aggregates are `struct` (section 4.7) and
+`union` (section 4.11). `short` is a synonym for `int` (section 4.1);
 there is no `long`, no floating point, and no `signed char`
 (section 9.1).
 
@@ -588,6 +592,36 @@ Both qualifiers go before or after the type (`const char`,
 * `volatile` changes no code: ccish never drops or merges memory
   reads. It is checked as part of the type. Its use is the I/O
   registers (section 4.5).
+
+### 4.11 Unions
+
+A union is a struct-like aggregate whose members all start at byte
+0, with the union's size the largest member's: the members overlap.
+
+```c
+union W { int a; char b; };    /* 2 bytes, the int's */
+union W u;
+u.a = 0x1234;
+u.b;                           /* 0x34, the int's low byte */
+u.b = 99;
+u.a;                           /* 0x1263, the high byte stands */
+```
+
+A union is declared and used as a struct: `union tag { ... };`,
+`u.m`, `p->m`, `&u.m`, a pointer to it, an array of them, a member
+of a struct, and passing and returning by value (up to 8 bytes, as
+a struct, section 4.7). A union's tag has a struct's rules: it can
+be declared first and defined later, it has block scope, and it is
+incomplete until its definition is seen. Struct and union tags share
+a name space, so a name can't be both (the standard C lets them
+coexist; a known difference, as with enum, section 1.1).
+
+Initialization is by the first member only, as in C:
+`union W u = { 5 };` sets `u.a`, and `u.b` with it, and a second
+initializer is an error. Reading a member other than the one last
+written gives the value the shared bytes hold; for this subset of
+members (ints and chars, little-endian) ccish and the host compiler
+agree on it.
 
 ## 5. Declarations and storage
 
@@ -1204,10 +1238,9 @@ directive is an error.
 
 ### 9.1 Not implemented, expected soon
 
-* `union`
 * `signed char`
 
-Each gives a "not supported yet" error that names the token.
+It gives a "not supported yet" error that names the token.
 
 ### 9.2 Out of scope
 
