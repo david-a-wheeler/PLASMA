@@ -579,9 +579,10 @@ Answer: Agree, A.
     4(b).
   - `>>`: shift, then mask.
   - `/` and `%`: a runtime routine.
-- Avoid `DIVMOD` and `NATV`, and never use a `NOT`'s raw value, because
-  of the differences between the C and 6502 VMs (see
-  `../doc/Bytecodes.md`). `NOT ANDI 1` is safe (issue 17).
+- Avoid `DIVMOD` and `NATV`, because of the differences between the C
+  and 6502 VMs (see `../doc/Bytecodes.md`). `NOT` used to differ too
+  (1 on the C VM), but both give $FFFF now (checked 2026-11-07); C's
+  `!` still needs `NOT ANDI 1`, since it must give 1 (issue 17).
 
 ### 8. Strings and calling PLASMA routines
 
@@ -1377,7 +1378,9 @@ returned **small struct** as a multi-value return.
 5. **Costs that C semantics impose and PLASMA avoids:**
    - comparisons used as values must be 0/1, not 0/`$FFFF` (free in
      conditions);
-   - `!` can't use `NOT` (the C VM discrepancy);
+   - `!` can't use `NOT` alone (C's `!` gives 1; the C VM's `NOT`
+     also used to differ, giving 1, but now matches the 6502's
+     `$FFFF`);
    - `signed char` needs sign extension;
    - `unsigned` needs extra code.
 
@@ -1472,9 +1475,10 @@ into one of our pipeline stages:
 
 **PLASMA rules that are *wrong* for C, and must not be copied as is:**
 
-1. **`CN 0 ISEQ` → `NOT` (P15).** The C VM's `NOT` returns 1, not
-   `$FFFF` (see `../doc/Bytecodes.md`). A `NOT` is still safe in two
-   cases:
+1. **`CN 0 ISEQ` → `NOT` (P15).** The C VM's `NOT` used to return 1,
+   not `$FFFF` (see `../doc/Bytecodes.md`); it now returns `$FFFF`
+   like the 6502 VMs (checked 2026-11-07), but C's value is still 1.
+   A `NOT` is safe in two cases:
    - fused into a branch (P13: `NOT BRFLS` → `BRTRU`);
    - masked to C's 0/1 with `ANDI 1`, which gives the same result on
      every VM.
@@ -3506,8 +3510,10 @@ measuring).
 
 **How to decide:** count spills and sign flips in real code, such as
 the compiler's own source at M12, compiled both ways. If VM changes are
-on the table anyway, fixing the C VM's `NOT` and `DIVMOD` discrepancies
-(`doc/Bytecodes.md`) would be worth doing at the same time.
+on the table anyway, fixing the C VM's `DIVMOD` discrepancy
+(`doc/Bytecodes.md`) would be worth doing at the same time. (Its `NOT`
+discrepancy, 1 against `$FFFF`, was true when this was written; the C
+VM now matches.)
 
 ### 22. Calling other PLASMA modules, and the C library's names
 

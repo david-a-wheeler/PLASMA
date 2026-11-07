@@ -435,9 +435,10 @@ Frame handling also differs internally between the VMs (see
 [Frames](#frames)), but bytecode can't see the difference as long as it
 follows the `ENTER`/`LEAVE` rules.
 
-A compiler that avoids `NOT` for kept values, never emits `DIVMOD` or
-`NATV`, keeps `SEL` tables sorted and within the 32767 span, and guards
-against division by zero produces code that behaves the same on both.
+A compiler that never emits `DIVMOD` or `NATV`, keeps `SEL` tables
+sorted and within the 32767 span, and guards against division by zero
+produces code that behaves the same on both. (`NOT` used to differ as
+well, 1 on the C VM against `$FFFF`; the C VM now matches.)
 
 ### Cross-compiler optimizer: folded comparisons (now fixed)
 
@@ -464,8 +465,10 @@ with `xplasm` and `plvm`:
 | `3 < 4` | -1 | **1** |
 | `x == 3` with `x` = 3 (not constant, so not folded) | -1 | -1 |
 
-On a 6502 VM, `not 0` likewise gives -1 without `-O` and 1 with it.
-Under `plvm` both print 1, because of the C VM's own `NOT` difference.
+On a 6502 VM, `not 0` likewise gives -1 without `-O` and 1 with it,
+and so does `plvm` now (checked 2026-11-07). Under older `plvm` builds
+both printed 1, because the C VM's `NOT` used to push 1; it was changed
+to push `$FFFF` like the 6502 VMs (commit 40aa3885).
 
 The self-hosted compiler doesn't have this problem. Its optimizer,
 `src/toolsrc/codeopt.pla`, folds with PLASMA's own operators and
@@ -792,4 +795,6 @@ Where they disagree, the 6502 VM (`plvm02.s`) was taken as authoritative.
 * Verification: both examples were compiled with `src/xplasm -AMO`,
   assembled with `acme --setpc 4094`, and the resulting bytes and offsets
   checked against this document. Both modules were run under `src/plvm`,
-  as was a test of `NOT` that confirmed the C VM's `1` result.
+  as was a test of `NOT` that confirmed the C VM's `1` result at the
+  time. (The C VM's `NOT` has since been changed to push `$FFFF`, like
+  the 6502 VMs; commit 40aa3885.)

@@ -52,8 +52,8 @@ reasons:
    until the function ends, because C can declare locals in any block.
    PLASMA's `ENTER` and `LEAVE` need it as an operand.
 4. **C semantics differ from PLASMA's.** For example, C comparisons
-   give 1, PLASMA's give `$FFFF`. The C VM's `NOT` differs from the
-   6502 VMs. Pointer arithmetic scales by element size. C-specific
+   give 1, PLASMA's give `$FFFF`. (The C VM's `NOT` used to differ
+   from the 6502 VMs', giving 1; now all give `$FFFF`.) Pointer arithmetic scales by element size. C-specific
    meanings stay in the IR, so the parser never has to work around VM
    quirks. Lowering maps them safely (approach.md, issues 7 and 17).
    `IR_NOT` is the first such op.
@@ -461,11 +461,11 @@ Negate, or complement the bits of, the top value.
 C's logical not: 1 if the top value is 0, otherwise 0.
 
 - **Stack:** `( x -- !x )`.
-- **Now:** `NOT` then `ANDI 1`. PLASMA's `NOT` gives `$FFFF` for true on
-  the 6502 VMs but 1 on the C VM. Masking with 1 gives C's 1 on every
-  VM, in two ops.
-- **Why it differs from `NOT`:** C's result is 1, not `$FFFF`, and the
-  VMs disagree (reason 4).
+- **Now:** `NOT` then `ANDI 1`. PLASMA's `NOT` gives `$FFFF` for true
+  on every VM (the C VM's used to give 1). Masking with 1 gives C's 1,
+  in two ops.
+- **Why it differs from `NOT`:** C's result is 1, not `$FFFF` (the VMs
+  also used to disagree; reason 4).
 - **Now in the peephole stage:** when the result only feeds a branch,
   no mask is needed: `NOT ANDI 1 BRFLS` becomes `BRTRU`. That is safe
   because the VMs agree on which values are zero.

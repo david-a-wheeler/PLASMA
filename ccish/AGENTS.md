@@ -175,11 +175,12 @@ files of the sessions so far, before a move to a new computer.)
 
 ## Verified PLASMA VM facts that shape the code
 
-- **C VM (plvm) and 6502 VMs differ:** `NOT` gives 1 on the C VM and
-  $FFFF on the 6502 (use `NOT ANDI 1`); DIVMOD's results come in
+- **C VM (plvm) and 6502 VMs differ:** DIVMOD's results come in
   opposite orders (never emit it); NATV isn't in the C VM; the C VM's
   SEL searches linearly, the 6502 needs a sorted table; division by
-  zero crashes the C VM.
+  zero traps on an x86 host (SIGFPE) and gives 0 on an ARM64 one.
+  `NOT` gives $FFFF on both now (checked 2026-11-07, plvm.c); it once
+  gave 1 on the C VM. C's `!x` still needs `NOT ANDI 1`, for 1.
 - **No SWAP.** Stores are `( value address -- )`, address on top.
 - DIV truncates toward zero, MOD takes the dividend's sign, SHR is
   arithmetic: right for signed int, so x/2^n is never SHR for signed.
