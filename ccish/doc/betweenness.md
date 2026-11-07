@@ -640,7 +640,7 @@ high bits, and the mask is a word AND with a two- or three-byte constant:
 
 The compare's constant is likewise often a CW (three) where a byte base
 was a CB (two). That is the word form's extra one to two bytes over the
-byte form; it is still one to six bytes under the two-comparison obvious
+byte form; it is still two to seven bytes under the two-comparison obvious
 form, as the next section shows.
 
 ### The machine form, and its size
@@ -649,117 +649,126 @@ The rewrite emits one load, the misalignment r subtracted, the mask ANDed,
 and one compare to the aligned base; the peephole stage makes it best: an r
 of 0 drops the x - 0, an r of 1 is a DECR, an r of 2 to 255 is a SUBI, an r
 above 255 (only for w >= 512) is a CW and a SUB, a constant AND becomes an
-ANDI when the mask is 0 to 255 (only the whole-word case), and the compare's
-BRFALSE meets the ISEQ as a BRNE. These are the verified listings (ccish
--d, the page's byte convention: every op at full size, the final branch
-counted as 2), against the obvious two-comparison form:
+ANDI when the mask is 0 to 255 (only the whole-word case), the compare's
+BRFALSE meets the ISEQ as a BRNE (the fused compare-branch, so no separate
+ISEQ is emitted), and a zero aligned base (the [10, 25] and whole-word
+rows) meets it as a zero test, BRTRU or BRFLS, that drops the constant
+entirely. These are the verified listings (ccish -d, the page's byte
+convention: every op at full size, the final branch counted as 2), against
+the obvious two-comparison form:
 
 | range | w, r | machine form | bytes | obvious | saved |
 |-------|:----:|--------------|:-----:|:-------:|:-----:|
-| [16, 31] | 16, 0 | LLW CFFB 240 AND CB 16 ISEQ BRNE | 10 | 15 | 5 |
-| [17, 32] | 16, 1 | LLW DECR CFFB 240 AND CB 16 ISEQ BRNE | 11 | 15 | 4 |
-| [10, 25] | 16, 10 | LLW SUBI 10 CFFB 240 AND CN 0 ISEQ BRNE | 11 | 14 | 3 |
-| [-8, 7] | 16, 8 | LLW SUBI 8 CFFB 240 AND CFFB 240 ISEQ BRNE | 12 | 14 | 2 |
-| [200, 200] | 1, 0 | LLW MINUS1 AND CB 200 ISEQ BRNE | 9 | 15 | 6 |
-| [32752, 32767] | 16, 0 | LLW CFFB 240 AND CW 32752 ISEQ BRNE | 11 | 17 | 6 |
-| [800, 1311] | 512, 288 | LLW CW 288 SUB CW 65024 AND CW 512 ISEQ BRNE | 16 | 17 | 1 |
-| [-16384, 16383] | 32768, 16384 | LLW CW 16384 SUB CW 32768 AND CW 32768 ISEQ BRNE | 16 | 17 | 1 |
-| [-32768, 32767] | 65536, 32768 | LLW CW 32768 SUB ANDI 0 CN 0 ISEQ BRNE | 12 | 17 | 5 |
+| [16, 31] | 16, 0 | LLW CFFB 240 AND CB 16 BRNE | 9 | 15 | 6 |
+| [17, 32] | 16, 1 | LLW DECR CFFB 240 AND CB 16 BRNE | 10 | 15 | 5 |
+| [10, 25] | 16, 10 | LLW SUBI 10 CFFB 240 AND BRTRU | 9 | 14 | 5 |
+| [-8, 7] | 16, 8 | LLW SUBI 8 CFFB 240 AND CFFB 240 BRNE | 11 | 14 | 3 |
+| [200, 200] | 1, 0 | LLW MINUS1 AND CB 200 BRNE | 8 | 15 | 7 |
+| [32752, 32767] | 16, 0 | LLW CFFB 240 AND CW 32752 BRNE | 10 | 17 | 7 |
+| [800, 1311] | 512, 288 | LLW CW 288 SUB CW 65024 AND CW 512 BRNE | 15 | 17 | 2 |
+| [-16384, 16383] | 32768, 16384 | LLW CW 16384 SUB CW 32768 AND CW 32768 BRNE | 15 | 17 | 2 |
+| [-32768, 32767] | 65536, 32768 | LLW CW 32768 SUB ANDI 0 BRTRU | 10 | 17 | 7 |
 
-Smaller in every case: five to six bytes for small aligned ranges, two to
-four for unaligned narrow ones, one for the wide unaligned ones (where the
-CW + SUB r eats the win). The whole-word row is a tautology, always true;
-the rewrite emits the always-true mask form (x - r & 0 is 0), which the
-peephole could fold further but does not, and it still saves five bytes.
+Smaller in every case: six to seven bytes for the small aligned ranges and
+the whole-word tautology, three to five for the unaligned narrow ones, two
+for the wide unaligned ones (where the CW + SUB r eats the win). The
+whole-word row is a tautology, always true; the rewrite emits the
+always-true mask form (x - r & 0 is 0), which the peephole could fold
+further but does not, and it still saves seven bytes.
 
 ### The machine form, and its time
 
-Per-case cycle counts from the op costs in Bytecodes-cycles.md (LLW 59,
-DECR 33, SUBI 41, CW 46, SUB 50, CFFB/CB 41, CN 36, MINUS1 34, AND 48,
-ANDI 43, ISEQ true 54 / false 45 when the low bytes differ, 55 when only
-the high bytes differ; BRNE not-taken 55, taken 78 / 88 the same way;
-ISGE/ISLE 53 false / 55 true; BRFLS 41 not-taken / 75 taken). For w <= 256
-the out-of-range value usually differs in the low byte (the 45/78 path); a
-value that differs only in the high byte costs 20 more. For w >= 512 both
-(x - r) & M and the base have a zero low byte (the mask clears at least the
-low nine bits, and the base is a multiple of w), so the 55/88 path is the
-only one, and the out-of-range cost is exactly flat.
+Per-case cycle counts traced from the op costs in Bytecodes-cycles.md (LLW
+59, DECR 33, SUBI 41, CW 46, SUB 50, CFFB/CB 41, CN 36, MINUS1 34, AND 48,
+ANDI 43, BRNE not-taken 55, taken 78 when the low bytes differ, 88 when
+only the high bytes differ, BRTRU not-taken 40, taken 76, ISGE/ISLE 55
+true / 53 false, BRFLS 41 not-taken / 75 taken). The fused BRNE includes
+the compare: the separate ISEQ the obvious form's in-range path pays is
+gone. For w <= 256 an out-of-range value usually differs from the block in
+the low byte (the 78 path); the 255w/65536 fraction that differs only in
+the high byte costs 10 more, so the weighted out-of-range figure is about
+a half cycle above the listed one for w 16, negligible for w 1. For
+w >= 512 both (x - r) & M and the base have a zero low byte (the mask
+clears at least the low nine bits, and the base is a multiple of w), so
+the 88 path is the only one and the out-of-range cost is exactly flat.
 
 | range | AND form: out of range | AND form: in range |
 |-------|:----------------------:|:------------------:|
-| [16, 31] | 312 | 298 |
-| [17, 32] | 345 | 331 |
-| [10, 25] | 348 | 334 |
-| [-8, 7] | 353 | 339 |
-| [800, 1311] | 438 | 404 |
-| [-16384, 16383] | 438 | 404 |
-| [-32768, 32767] | (all values in range) | 343 |
+| [16, 31] | 267 | 244 |
+| [17, 32] | 300 | 277 |
+| [10, 25] | 265 | 229 |
+| [-8, 7] | 308 | 285 |
+| [200, 200] | 260 | 237 |
+| [32752, 32767] | 272 | 249 |
+| [800, 1311] | 383 | 350 |
+| [-16384, 16383] | 383 | 350 |
+| [-32768, 32767] | (all values in range) | 238 |
 
 | range | obvious: x < c1 | obvious: in | obvious: x > c2 |
 |-------|:---------------:|:-----------:|:---------------:|
-| [16, 31] | 228 | 351 | 424 |
-| [17, 32] | 228 | 351 | 424 |
-| [10, 25] | 223 | 346 | 419 |
-| [-8, 7] | 228 | 346 | 419 |
-| [800, 1311] | 233 | 361 | 434 |
-| [-16384, 16383] | 233 | 361 | 434 |
-| [-32768, 32767] | (never) | 361 | (never) |
+| [16, 31] | 228 | 392 | 424 |
+| [17, 32] | 228 | 392 | 424 |
+| [10, 25] | 223 | 387 | 419 |
+| [-8, 7] | 228 | 387 | 419 |
+| [200, 200] | 228 | 392 | 424 |
+| [32752, 32767] | 233 | 402 | 434 |
+| [800, 1311] | 233 | 402 | 434 |
+| [-16384, 16383] | 233 | 402 | 434 |
+| [-32768, 32767] | (never) | 402 | (never) |
+
+The obvious form's constants are the range's ends as the compiler emits
+them (CN 0, 32, for 0, a CN of 36 for 1 to 15, a CB of 41 for -32768 to
+-1 and 16 to 255, a CW of 46 for 256 to 32767); the in-range figure
+includes both loads, both constants, both compares, and both not-taken
+branches, and the above figure the taken second branch.
 
 The AND form is flat: no early out, the same cost either side of the
 range. The obvious form bails early below c1 (cheap) but pays full price
 above c2 (two loads, two compares, a taken branch). Which wins on average
-depends on where x usually is:
+depends on where x usually is. Two workload models, x uniform over the
+256 byte values (this page's stated guess, generalized to the range's
+width: w values in, c1 below, 255 - c2 above, for a range in the byte
+space) and x uniform over the full signed 16-bit space (the natural model
+for a general int):
 
-* **The page's estimator** (the 8/124/124 workload of "How the average is
-  computed"), which for a narrow range is just the uniform 16-bit signed
-  average (half the space is below c1, half above):
-
-  | range | obvious | AND form |
-  |-------|:-------:|:--------:|
-  | [16, 31] | 326.8 | 311.6 |
-  | [17, 32] | 326.8 | 344.6 |
-  | [10, 25] | 321.8 | 347.6 |
-  | [-8, 7] | 324.2 | 352.6 |
-  | [800, 1311] | 334.4 | 436.9 |
-  | [-16384, 16383] | 334.4 | 436.9 |
-  | [-32768, 32767] | 361.0 | 343.0 |
-
-* **x uniform over the full signed 16-bit space** (the natural model for a
-  general int): the same picture, to within a cycle for the narrow ranges
-  (aligned 312.0 vs 325.9; r 1 345.0 vs 325.9; r 10 348.0 vs 321.0;
-  -8..7 353.0 vs 323.5; the wide rows 437.7/421.0 vs 330.5/347.2).
-
-* **x usually a byte (0 to 255)** - this page's stated workload guess, and
-  the one the narrow-range forms target (character classes, small-set
-  tests). For a range in or near the byte space almost every byte value is
-  *above* c2, where the obvious form is worst, and the AND form wins
-  every narrow case by 60 to 96 cycles (311.1 vs 407.2 for [16, 31];
-  344.1 vs 406.4 for [17, 32]; 347.1 vs 406.8 for [10, 25]; 352.6 vs
-  416.7 for [-8, 7]).
+| range | AND form: byte | obvious: byte | AND form: uniform 16-bit | obvious: uniform 16-bit |
+|-------|:--------------:|:-------------:|:------------------------:|:-----------------------:|
+| [16, 31] | 266.1 | 409.8 | 267.6 | 325.9 |
+| [17, 32] | 299.1 | 409.0 | 300.6 | 325.9 |
+| [10, 25] | 263.3 | 409.3 | 265.6 | 321.0 |
+| [-8, 7] | 307.9 | 418.0 | 308.6 | 323.5 |
+| [200, 200] | 259.9 | 270.8 | 260.0 | 325.4 |
+| [32752, 32767] | 272.6 | 233.0 | 272.6 | 233.0 |
+| [800, 1311] | 383.0 | 233.0 | 382.7 | 330.8 |
+| [-16384, 16383] | 350.0 | 402.0 | 366.5 | 367.8 |
+| [-32768, 32767] | 238.0 | 402.0 | 238.0 | 402.0 |
 
 The sums were done with a small program, not by hand.
 
 ### The verdict
 
-* **Shorter, always.** One to six bytes under the obvious form for every
-  power-of-two word range; five to six for small aligned ranges, two to
-  four for unaligned narrow ones, one for the wide unaligned ones.
-* **Faster on average when x is concentrated in the low part of the
-  space** (the page's "x is usually a byte" guess): 60 to 96 cycles for
-  every narrow range, aligned or not, negative or not.
-* **Faster on average even for a uniform 16-bit x when the range is
-  aligned** (15 cycles under the page's estimator, 14 under the uniform
-  model) or is the whole word (18).
-* **Slower on average for a uniform 16-bit x when the range is unaligned**
-  (18 to 30 cycles: the misalignment subtract the obvious form avoids) or
-  wide (74 to 107: the CW + SUB r, and the obvious form's early out covers
-  a real fraction of the space). Those are also the ranges where the size
-  win is smallest (one byte).
+* **Shorter, always.** Two to seven bytes under the obvious form for every
+  power-of-two word range: six to seven for the small aligned ranges and
+  the whole-word tautology, three to five for the unaligned narrow ones,
+  two for the wide unaligned ones.
+* **Faster on average for every narrow range (w <= 256) that sits in the
+  low part of the space** - aligned or not, negative or not: 11 to 146
+  cycles when x is usually a byte (the character-class, small-set workload
+  this page targets), 15 to 65 when x is uniform 16-bit.
+* **Faster for the whole-word tautology** (164 cycles under either model)
+  and for the centered half-word range (1.3 under the uniform model, 52
+  under the byte model).
+* **Slower only for ranges that sit high in the space** - [32752, 32767],
+  39.6 slower under either model - **and for wide mid-space ranges** -
+  [800, 1311], 51.9 slower under the uniform model and 150 under the byte
+  model, where every byte is below the range: the obvious form's early out
+  on x < c1 covers most of the space there. Those are also the ranges
+  where the size win is smallest (two bytes).
 
 Since size is the live 64K constraint, the size win is unconditional, and
 the time win holds for the narrow-range, low-x workload this page targets
-and for aligned ranges under any workload, the net is a win: extend the
-rewrite.
+and for every narrow range under a uniform 16-bit x, the net is a win:
+extend the rewrite.
 
 ### Forcing it: the (char) cast on an int
 
@@ -902,7 +911,11 @@ Bottom line: when `x` is a byte, reach for `IS_BYTE_BETWEEN` (aligned if you
 can, unaligned otherwise). When `x` is a general integer, use `IS_BETWEEN`
 (it is smaller and within a few cycles of the obvious form on average).
 When an unsigned comparison is needed for correctness, call `isule` (the
-CMDSYS form above) instead of the signed-emulated unsigned form.
+CMDSYS form above) instead of the signed-emulated unsigned form. (ccish
+itself now emits the byte and word mask forms for power-of-two ranges,
+as the next section describes, so the macros are what you write for the
+ranges it does not cover, and the cast form is a way to force the byte
+form on an int whose range is a power-of-two block of bytes.)
 
 ## Implementing betweenness in the compiler
 
@@ -1007,20 +1020,34 @@ that needs a data-flow fact until the machinery for it is wanted.
 
 ### What is implemented
 
-The IR pass (irin.c's between_rewrite) implements the byte form, and only
-the byte form. It matches the eight-op shape (the same char local loaded
+The IR pass (irin.c's between_rewrite) implements the byte form and its
+word extension, as analyzed in "Extended IS_BYTE_BETWEEN for int". It
+matches the held tail in two shapes: the plain one, the same local loaded
 twice, each time compared against a constant, x >= c1 (or >) and x <= c2
-(or <), the two fails both branching to the same label), and fires only
-when the range is a power-of-two block of bytes (low and high within 0
-to 255, and the width a power of two). It emits the general unaligned
-shape, one load, the misalignment r subtracted, the block's mask ANDed,
-and one compare to the aligned base, and the peephole stage makes it best:
-an r of 0 drops the x - 0 (the aligned form), an r of 1 becomes a DECR,
-and the compare's BRFALSE meets the ISEQ as a BRNE. A general int, or a
-range that is not a power-of-two block of bytes, keeps the two
-comparisons: the general one-add form (IS_BETWEEN) was tried and removed
-again, because it is not much smaller than the obvious form, and the
-extra complexity is worth it only with a native unsigned compare, which
-the VM does not have. The transform's meaning is cross-tested against
-the host compiler (tests/xrun/xbetween.c), and the machine forms and
-non-forms are pinned by tests/gen/genbetween.c.
+(or <), the two fails both branching to the same label, for a char local
+(IR_LOCALB) or an int local (IR_LOCAL); and the (char) cast on an int,
+the same tail with each load masked to its low byte (load, CONST 255,
+AND), which is four ops longer. It fires when the range is a power-of-two
+block: for a char local (or the cast) a block of bytes, low and high
+within 0 to 255; for a word local a block of words, low <= high signed
+(the range is not empty) and the width a power of two from 1 to 65536.
+It emits the general unaligned shape, one load, the misalignment r
+subtracted, the block's mask ANDed (256 - w for a byte, 65536 - w for a
+word), and one compare to the aligned base, and the peephole stage makes
+it best: an r of 0 drops the x - 0 (the aligned form), an r of 1 becomes
+a DECR, a constant AND becomes an ANDI when the mask is a byte, a zero
+aligned base folds to a BRTRU or BRFLS that drops the constant, and the
+compare's BRFALSE meets the ISEQ as a BRNE. The (char) cast's twelve-op
+tail is shortened to the same eight-op byte form on the word load, and
+the held buffer is lowered, as the truth runs' run_do does after a
+length-changing rewrite, so a later IR_SWAP whose counted block covered
+the tail falls back to the value exchange instead of trusting the
+parser's stale count. A general int whose range is not a power-of-two
+block of words, or a range that is empty or wider than a word, keeps the
+two comparisons: the general one-add form (IS_BETWEEN) was tried and
+removed again, because it is not much smaller than the obvious form, and
+the extra complexity is worth it only with a native unsigned compare,
+which the VM does not have. The transform's meaning is cross-tested
+against the host compiler over the whole 16-bit space (tests/xrun/
+xbetween.c), and the machine forms and non-forms are pinned by
+tests/gen/genbetween.c.

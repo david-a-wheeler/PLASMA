@@ -713,65 +713,115 @@ static void not_cmp(void)
   nbuf--;
 }
 
-/* The held tail is a byte betweenness: the same char local loaded twice,
- * each time compared against a constant, x >= c1 (or >) and x <= c2 (or
- * <), the two fails both branching to the same label, nothing between that
- * could change the local (only the compare and its branch), and the range
- * a power-of-two block of bytes. Rewrite it to one load, the misalignment
- * r subtracted, the block's mask ANDed, and one compare == (the aligned
- * base), where low and high are the inclusive ends the two comparisons
- * describe (> c1 means low is c1 + 1, < c2 means high is c2 - 1),
- * w == high - low + 1 the block's width, r == low & (w - 1), and the mask
- * 256 - w keeps the high bits: the block's low log2(w) bits are free, so a
- * byte is in it exactly when those high bits, after shifting off r, are the
- * base's. Emit the general unaligned shape and let the peephole stage make
- * it best: an r of 0 drops the x - 0, an r of 1 is a DECR, and the
- * compare's BRFALSE meets the ISEQ as a BRNE. Only a byte (a char local,
- * 0 to 255 when loaded) matches: for a true word value the block's mask
- * may have high bits set, and an ANDI could not keep them. Signed only:
- * an unsigned compare is held under its own op, so it never reaches here
- * as a signed one. */
+/* The held tail is a betweenness: the same local loaded twice, each time
+ * compared against a constant, x >= c1 (or >) and x <= c2 (or <), the two
+ * fails both branching to the same label, nothing between that could change
+ * the local (only the compare and its branch). A char local (0 to 255 when
+ * loaded) matches with the range a power-of-two block of bytes, within 0
+ * to 255; an int local matches with the range a power-of-two block of
+ * words (low <= high signed, so the range is not empty, and the width a
+ * power of two from 1 to 65536), or when each load is masked to its low
+ * byte (the (char) cast, or an x & 255: load, CONST 255, AND), which is a
+ * byte again. Rewrite it to one load, the misalignment r subtracted, the
+ * block's mask ANDed, and one compare == (the aligned base), where low and
+ * high are the inclusive ends the two comparisons describe (> c1 means low
+ * is c1 + 1, < c2 means high is c2 - 1), w == high - low + 1 the block's
+ * width, r == (low & 0xFFFF) & (w - 1), and the mask mod - w (256 - w for
+ * a byte, 65536 - w for a word) keeps the high bits: the block's low
+ * log2(w) bits are free, so a value is in it exactly when those high bits,
+ * after shifting off r, are the base's. Emit the general unaligned shape
+ * and let the peephole stage make it best: an r of 0 drops the x - 0, an r
+ * of 1 is a DECR, an r of 2 to 255 a SUBI, an r above 255 (only for a word)
+ * a CW and a SUB, a constant AND an ANDI when the mask is a byte, and the
+ * compare's BRFALSE meets the ISEQ as a BRNE. The (char) cast's tail is
+ * four ops longer than the plain one; the rewrite shortens it, and the
+ * held buffer is lowered as run_do does after a length-changing rewrite,
+ * so a later IR_SWAP whose counted block covered the tail falls back to
+ * the value exchange, which needs no lengths. Signed only: an unsigned
+ * compare is held under its own op, so it never reaches here as a signed
+ * one. */
 static void between_rewrite(void)
 {
   int n = nbuf;
-  int cmp1, cmp2, lab, low, high, w, r, i;
+  int load, p, k, cmp1, cmp2, lab, low, high, w, r, mod, i;
   if (n < 8)
     return;
-  if (buf_op[n - 8] != IR_LOCALB || buf_op[n - 4] != IR_LOCALB
-      || buf_a[n - 8] != buf_a[n - 4])
-    return;                 /* the same char local, loaded twice */
-  if (buf_op[n - 7] != IR_CONST || buf_op[n - 3] != IR_CONST)
+  /* Two shapes, from p: the plain one, load const cmp BRFALSE load const
+   * cmp BRFALSE, eight ops, for a char local (IR_LOCALB) or an int local
+   * (IR_LOCAL); and the (char) cast on an int, load CONST 255 AND const
+   * cmp BRFALSE, repeated, twelve ops. In both the same local is tested
+   * twice, each fail to the same label; k is the cast's four extra ops,
+   * so the plain's first fail is at n - 5, the cast's at n - 7. */
+  if (buf_op[n - 8] == IR_LOCALB || buf_op[n - 8] == IR_LOCAL) {
+    load = buf_op[n - 8];
+    p = n - 8;
+    k = 0;
+    if (buf_op[n - 4] != load || buf_a[n - 8] != buf_a[n - 4]
+        || buf_op[n - 7] != IR_CONST || buf_op[n - 3] != IR_CONST
+        || buf_op[n - 5] != IR_BRFALSE || buf_op[n - 1] != IR_BRFALSE)
+      return;               /* the same local, loaded twice */
+    cmp1 = buf_op[n - 6];
+    cmp2 = buf_op[n - 2];
+    low = buf_a[n - 7] + (cmp1 == IR_GT);
+    high = buf_a[n - 3] - (cmp2 == IR_LT);
+    lab = buf_a[n - 5];
+  } else if (n >= 12 && buf_op[n - 12] == IR_LOCAL && buf_op[n - 6] == IR_LOCAL
+             && buf_a[n - 12] == buf_a[n - 6]
+             && buf_op[n - 11] == IR_CONST && buf_a[n - 11] == 0xFF
+             && buf_op[n - 10] == IR_AND
+             && buf_op[n - 5] == IR_CONST && buf_a[n - 5] == 0xFF
+             && buf_op[n - 4] == IR_AND
+             && buf_op[n - 9] == IR_CONST && buf_op[n - 3] == IR_CONST
+             && buf_op[n - 7] == IR_BRFALSE && buf_op[n - 1] == IR_BRFALSE) {
+    load = IR_LOCAL;
+    p = n - 12;
+    k = 4;
+    cmp1 = buf_op[n - 8];
+    cmp2 = buf_op[n - 2];
+    low = buf_a[n - 9] + (cmp1 == IR_GT);
+    high = buf_a[n - 3] - (cmp2 == IR_LT);
+    lab = buf_a[n - 7];
+  } else
     return;
-  cmp1 = buf_op[n - 6];
-  cmp2 = buf_op[n - 2];
   if (cmp1 != IR_GE && cmp1 != IR_GT)
     return;
   if (cmp2 != IR_LE && cmp2 != IR_LT)
     return;
-  if (buf_op[n - 5] != IR_BRFALSE || buf_op[n - 1] != IR_BRFALSE)
-    return;
-  lab = buf_a[n - 5];
   if (buf_a[n - 1] != lab)
     return;                 /* both fails must go to the same label */
-  for (i = n - 8; i < n; i++)          /* no pending flip or stash in the tail */
+  for (i = p; i < n; i++)           /* no pending flip or stash in the tail */
     if (buf_pre[i])
       return;
-  low = buf_a[n - 7] + (cmp1 == IR_GT);
-  high = buf_a[n - 3] - (cmp2 == IR_LT);
-  if (low < 0 || low > high || high > 255)
-    return;                 /* the block must be whole bytes */
+  if (low > high)
+    return;  /* signed empty, e.g. x > 32767 && x <= 32767, which the mod
+              * arithmetic would read as the whole word, always true */
+  if (load == IR_LOCALB || k) {
+    if (low < 0 || high > 255)
+      return;               /* the byte block must be whole bytes */
+    mod = 256;
+  } else
+    mod = 65536;
   w = high - low + 1;
   if ((w & (w - 1)) != 0)
     return;                 /* the block's width must be a power of two */
-  r = low & (w - 1);       /* the misalignment, 0 when aligned */
-  buf_op[n - 7] = IR_CONST;  buf_a[n - 7] = r;
-  buf_op[n - 6] = IR_SUB;    buf_a[n - 6] = 0;
-  buf_op[n - 5] = IR_CONST;  buf_a[n - 5] = 256 - w;
-  buf_op[n - 4] = IR_AND;    buf_a[n - 4] = 0;
-  buf_op[n - 3] = IR_CONST;  buf_a[n - 3] = low - r;
-  buf_op[n - 2] = IR_EQ;     buf_a[n - 2] = 0;
-  buf_op[n - 1] = IR_BRFALSE; buf_a[n - 1] = lab;
+  r = (low & 0xFFFF) & (w - 1);      /* the misalignment, 0 when aligned */
+  /* The tail from p: the load (already there), CONST r, SUB, CONST the
+   * mask, AND, CONST the aligned base, EQ, BRFALSE lab. For the plain
+   * shape that is the eight ops in place; for the cast, four of its
+   * twelve, the rest dropped. All the ops take no f, and the scan above
+   * left no pre bits, so only the op and the a need setting. */
+  buf_op[p + 1] = IR_CONST;  buf_a[p + 1] = r;
+  buf_op[p + 2] = IR_SUB;    buf_a[p + 2] = 0;
+  buf_op[p + 3] = IR_CONST;  buf_a[p + 3] = (mod - w) & 0xFFFF;
+  buf_op[p + 4] = IR_AND;    buf_a[p + 4] = 0;
+  buf_op[p + 5] = IR_CONST;  buf_a[p + 5] = (low - r) & 0xFFFF;
+  buf_op[p + 6] = IR_EQ;     buf_a[p + 6] = 0;
+  buf_op[p + 7] = IR_BRFALSE; buf_a[p + 7] = lab;
   buf_cnt[lab]--;           /* the dropped IR_BRFALSE no longer names lab */
+  if (k) {
+    nbuf = n - 4;
+    lower_held(nbuf);       /* no parser length may name the tail now */
+  }
 }
 
 /* Rewrite unsigned op *op (IR_UDIV, IR_UMOD or IR_USHR) on a constant

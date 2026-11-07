@@ -80,6 +80,112 @@
     ; label 1
     LEAVE 2
 
+    ; waligned
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CFFB 240
+    AND
+    CB 16
+    ISEQ
+    NEG
+    LEAVE 2
+
+    ; wmisone
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    DECR
+    CFFB 240
+    AND
+    CB 16
+    ISEQ
+    NEG
+    LEAVE 2
+
+    ; wneg
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    SUBI 8
+    CFFB 240
+    AND
+    CFFB 240
+    ISEQ
+    NEG
+    LEAVE 2
+
+    ; wbig
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CW 16384
+    SUB
+    CW 32768
+    AND
+    CW 32768
+    ISEQ
+    NEG
+    LEAVE 2
+
+    ; wwhole
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CW 32768
+    SUB
+    ANDI 0
+    CN 0
+    ISEQ
+    NEG
+    LEAVE 2
+
+    ; wempty
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CW 32767
+    ISGT
+    BRFLS 0
+    LLW 0
+    CW 32767
+    ISLE
+    BRFLS 0
+    CN 1
+    BRNCH 1
+    ; label 0
+    CN 0
+    ; label 1
+    LEAVE 2
+
+    ; wcast
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    ANDI 240
+    CB 48
+    BRNE 0
+    CN 1
+    BRNCH 1
+    ; label 0
+    CN 0
+    ; label 1
+    LEAVE 2
+
+    ; wcastmis
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    SUBI 10
+    ANDI 240
+    BRTRU 0
+    CN 1
+    BRNCH 1
+    ; label 0
+    CN 0
+    ; label 1
+    LEAVE 2
+
     ; main
     ENTER 0 0
     ; label 103
@@ -100,7 +206,34 @@
     CB 53
     CALL notpow2
     ADD
-    CN 6
+    CB 20
+    CALL waligned
+    ADD
+    CB 20
+    CALL wmisone
+    ADD
+    CN 0
+    CALL wneg
+    ADD
+    CW 49152
+    CALL wbig
+    ADD
+    CW 16383
+    CALL wbig
+    ADD
+    CW 12345
+    CALL wwhole
+    ADD
+    CN 5
+    CALL wempty
+    ADD
+    CB 53
+    CALL wcast
+    ADD
+    CB 30
+    CALL wcastmis
+    ADD
+    CN 11
     ISEQ
     NEG
     LEAVE 0

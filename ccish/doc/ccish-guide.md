@@ -1662,13 +1662,17 @@ Here is a short list of some of the optimizations you can count on:
 * **A "between" test of form (x >= c1 && x <= c2)** where c1 and c2
   are constants. Where x is a `char` and the range is a power-of-two
   block of bytes (its width, c2 - c1 + 1, is a power of two, and the
-  range lies within 0 to 255), ccish rewrites it to one load, the
-  misalignment r subtracted, the block's mask ANDed, and one compare
-  to the aligned base, smaller and faster than the two comparisons:
-  an aligned range (r of 0) emits no subtract, and an r of 1 is a
-  `DECR`. The comparison then meets its branch as a `BRNE` in the
-  peephole stage. A general `int` x, or a range that is not a
-  power-of-two block of bytes, keeps the two comparisons. (The
-  analysis is in `doc/betweenness.md`; `tests/gen/genbetween.c` pins
-  the forms and the non-forms, and `tests/xrun/xbetween.c` cross-checks
-  every byte case against the host compiler.)
+  range lies within 0 to 255), or where x is an `int` and the range is
+  a power-of-two block of words (the width a power of two, and the
+  range not empty), ccish rewrites it to one load, the misalignment r
+  subtracted, the block's mask ANDed, and one compare to the aligned
+  base, smaller and faster than the two comparisons: an aligned range
+  (r of 0) emits no subtract, an r of 1 is a `DECR`, and the
+  comparison meets its branch as a `BRNE` in the peephole stage. A
+  `(char)` cast on an `int` ((char)x >= c1 && (char)x <= c2) takes
+  the byte form on the word load, with the cast's own mask folded
+  into the block's. A range that is neither a block of bytes nor a
+  block of words keeps the two comparisons. (The analysis is in
+  `doc/betweenness.md`; `tests/gen/genbetween.c` pins the forms and
+  the non-forms, and `tests/xrun/xbetween.c` cross-checks every case
+  against the host compiler over the whole 16-bit space.)
