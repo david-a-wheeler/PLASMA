@@ -83,7 +83,7 @@ Example:
 ```
 $ cat hello.c
 int add(int a, int b) { return a + b; }
-int main() { puts(pstr("Hello")); puti(add(2, 3)); putln(); return 0; }
+int main() { __puts(pstr("Hello")); __puti(add(2, 3)); __putln(); return 0; }
 $ ./ccish hello.c && ../src/plvm hello
 Hello5
 ```
@@ -170,7 +170,7 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   any expressions (`int v[2] = {x, f(x)};`), and it runs each time the
   declaration is reached. It compiles to stores into the frame; two
   neighboring `char` constants are stored as one word, and trailing
-  zeros use CMDSYS `memset` when that is shorter.
+  zeros use CMDSYS `__memset` when that is shorter.
   Array sizes are constant expressions. They have block scope, and
   an inner block may shadow an outer name. As in C99, the first clause
   of `for` may declare variables, which are in scope only in the loop.
@@ -256,8 +256,8 @@ $ ./ccrel -o prog main util && ../src/plvm prog
     result is the struct assigned to, which isn't an lvalue, as in C.
     Between two variables it is a word move per member word when that
     is no bigger (`LLW b SLW a ...`); otherwise, and always through a
-    pointer, it calls `memcpy(dst, src, n)`: CMDSYS's, or the program's
-    own if it declares one, which must take C's arguments. A struct
+    pointer, it calls `__memcpy(dst, src, n)`: CMDSYS's, or the
+    program's own if it defines one, with CMDSYS's type. A struct
     with a `const` member can't be assigned as a whole.
   - Initializers: a flat brace list over the scalar members, as for an
     array (below), and a local may also be initialized from another
@@ -390,27 +390,29 @@ A string literal is stored as a length byte, the characters, then a
 NUL. Its value in C is the address of the first character, as usual,
 with type `char *`. `pstr("text")` gives the address of the length
 byte instead. That is the PLASMA (length-prefixed) form, which CMDSYS
-routines such as `puts` expect. `pstr()` only accepts a string
+routines such as `__puts` expect. `pstr()` only accepts a string
 literal, and its type is `char *` too. Every string literal has at
 most 255 characters, so that each is a PLASMA string as well.
 
 ### Calling CMDSYS
 
 A function that is called but not defined in any file linked into the
-module must be one of the CMDSYS functions in `cmdsys_funcs[]` in
+module must be one of the CMDSYS functions in `cmdsys_sigs[]` in
 `src/parse.c` (otherwise the final pass reports an "undefined
-reference"), such as
-`putc`, `puts`, `puti`, `putln` or `heapalloc`. It is imported from
-CMDSYS. These are PLASMA's functions with PLASMA's meanings, not C's.
-For example, `puts` takes a PLASMA string and adds no newline, and
-`memset` fills with a 16-bit pattern, so `memset(p, 'a', 4)` gives
-`a`, NUL, `a`, NUL (with 0, as ccish uses it, that makes no
-difference). The
-table gives each one C types, such as `void puts(const char *)` and
-`void *heapalloc(int)`, and the compiler checks calls against them, so
-a mistake is caught at compile time and not at load time. A pointer
-that a function only reads is `const` (`puts`, the source of `strcpy`,
-`strcat` and `memcpy`), so passing a `const char *` needs no cast.
+reference"). Each has its PLASMA name with `__` in front, such as
+`__putc`, `__puts`, `__puti`, `__putln` or `__heapalloc`, so the
+standard names stay free for C's own functions (approach.md decision
+35). It is imported from CMDSYS by its PLASMA name (`PUTS`). These
+are PLASMA's functions with PLASMA's meanings, not C's. For example,
+`__puts` takes a PLASMA string and adds no newline, and `__memset`
+fills with a 16-bit pattern, so `__memset(p, 'a', 4)` gives `a`, NUL,
+`a`, NUL (with 0, as ccish uses it, that makes no difference). The
+table gives each one C types, such as `void __puts(const char *)` and
+`void *__heapalloc(int)`, and the compiler checks calls against them,
+so a mistake is caught at compile time and not at load time. A
+pointer that a function only reads is `const` (`__puts`, the source
+of `__strcpy`, `__strcat` and `__memcpy`), so passing a `const char *`
+needs no cast.
 
 As in PLASMA, a `void` function returns no value, and any other
 function returns exactly one.

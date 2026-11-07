@@ -4159,6 +4159,13 @@ issue. In summary:
     pass programs, one source file per invocation, with a separate
     ccrel link (doc/bootstrap-test.md, R1); the in-process
     multi-file `ccish` is not needed.
+    The `__` prefix is done (2026-11-07): the fixed ids are spelled
+    `__putc` and so on (ids unchanged, so token streams are too), the
+    ESD writes the PLASMA name (`PUTS`), a plain `puts` is an ordinary
+    name, and inc/ptest.h maps `puti`, `putc`, `putln` and `puts` to
+    the CMDSYS ones for the cross tests. Cost: ccpp +61 bytes (the
+    fixed names' spellings), cccomp +3, ccrel +50 (its init's names,
+    and stripping the `__`).
 36. **The exit status** (decided in discussion, 2026-11-07; issue
     22). ccrel's init returns `-(status & 255)` of `main`'s result,
     PLASMA's own error convention, which can't be read as "keep the

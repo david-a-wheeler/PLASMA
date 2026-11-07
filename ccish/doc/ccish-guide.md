@@ -86,7 +86,8 @@ everything:
 ccish's output is a PLASMA module. It runs under `plvm` on the host
 for testing, and under PLASMA's 6502 VMs on the Apple II, Apple 1,
 C64 and the JIT target. A ccish program may use CMDSYS functions
-(`puts`, `putc`, `puti`, `heapalloc`, and the rest, section 5.3), and
+(`__puts`, `__putc`, `__puti`, `__heapalloc`, and the rest, section
+5.3), and
 it can share data with PLASMA: a ccish `struct` has the same layout
 as PLASMA's `struc` (members in order, no padding), and a struct
 returned by value is PLASMA's multi-value return, so
@@ -101,13 +102,17 @@ The design and the plan for growing the language are in
 
 A few special quirks:
 
-* It doesn't have C's standard library, but the PLASMA CMD library for its platform
-  as noted below.
-* If you pass strings to CMD routines like `puts`,
+* It doesn't have C's standard library yet, but it can call the
+  PLASMA CMD library for its platform, as noted below. Those routines
+  have their PLASMA names with `__` in front (`__puts` for PLASMA's
+  `puts`), so the standard names (`puts`, `memset`, ...) are free for
+  C's own functions (section 5.3).
+* If you pass strings to CMD routines like `__puts`,
   you must send *PLASMA* strings. The special call
   `pstr(...)` converts constant C strings to PLASMA strings.
-  This means you must say `puts(pstr("Hello"));` and not `puts("Hello");`.
-  Omitting the `pstr()` will typically print garbage.
+  This means you must say `__puts(pstr("Hello"));` and not
+  `__puts("Hello");`. Omitting the `pstr()` will typically print
+  garbage.
 * The `int` type is a signed 16-bit that always wraps.
 
 ## 2. Using the compiler
@@ -142,12 +147,12 @@ Example:
 ```
 $ cat hello.c
 int add(int a, int b) { return a + b; }
-int main(void) { puts(pstr("Hello")); puti(add(2, 3)); putln(); return 0; }
+int main(void) { __puts(pstr("Hello")); __puti(add(2, 3)); __putln(); return 0; }
 $ ./ccish hello.c && ../src/plvm hello
 Hello5
 ```
 
-`puts` and the rest of the CMDSYS functions are declared already
+`__puts` and the rest of the CMDSYS functions are declared already
 (section 5.3); for your own functions, each must be declared before
 it is called.
 
@@ -207,14 +212,16 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   parameter count, whether it returns a value, the types (through a
   type hash) and a global's size ("conflicting types for"). This
   holds even for a declaration nothing uses.
-* A function that no object defines must be a CMDSYS function, which
-  is imported (section 5.3); a program may define its own function of
-  a CMDSYS name, with the same type, and calls then go to it.
-  Anything else used and not defined is an "undefined reference".
+* A function that no object defines must be a CMDSYS function
+  (`__puts` and the rest), which is imported (section 5.3); a program
+  may define its own function of a CMDSYS name, with the same type,
+  and calls then go to it. Anything else used and not defined,
+  including a plain `puts` or `memset`, is an "undefined reference".
 * `main` (not `static`) in any object is the entry point.
-* The module exports nothing, and imports only CMDSYS functions, so C
-  names are matched in full, with their case, and never reach
-  PLASMA's case-insensitive, 16-character symbol table.
+* The module exports nothing, and imports only CMDSYS functions, by
+  their PLASMA names (`__puts` imports `PUTS`), so other C names are
+  matched in full, with their case, and never reach PLASMA's
+  case-insensitive, 16-character symbol table.
 
 ### 2.4 Messages
 
@@ -350,7 +357,7 @@ In C the literal's value is the address of the first character, with
 type `char *`. The special routine `pstr("text")` when given a
 C constant string gives the address of the length byte
 instead, the PLASMA (length-prefixed) form that CMDSYS routines such
-as `puts` expect. `pstr()` accepts only a string literal, and its
+as `__puts` expect. `pstr()` accepts only a string literal, and its
 type is `char *` too.
 
 ## 4. Types and values
@@ -522,9 +529,10 @@ Assignment copies the struct (`a = b`, `*p = s`, `c = b = a`). The
 result is the struct assigned to, which isn't an lvalue, as in C.
 Between two variables it is a word move per member word when that is
 no bigger; otherwise, and always through a pointer, it calls
-`memcpy(dst, src, n)`: CMDSYS's, or the program's own if it declares
-one, which must take C's arguments. A struct with a `const` member
-can't be assigned as a whole. `==` on structs is an error, as in C.
+`__memcpy(dst, src, n)`: CMDSYS's, or the program's own if it defines
+one, with CMDSYS's type. (A program's own `memcpy` is unrelated.) A
+struct with a `const` member can't be assigned as a whole. `==` on
+structs is an error, as in C.
 
 Passing and returning: a struct of up to 8 bytes can be passed and
 returned by value, as the words of its bytes (first word deepest). A
@@ -711,6 +719,15 @@ Two consequences, both as in C:
 
 ### 5.3 Calling CMDSYS
 
+CMDSYS's functions have their PLASMA names with `__` in front:
+`__puts` is PLASMA's `puts`, `__memset` its `memset`, and so on. C
+reserves names that start with `__` to the implementation (C11
+7.1.3), so they can't collide with a program's own names, and the
+standard names (`puts`, `memset`, `strcpy`, ...) stay free for
+functions with C's meanings (approach.md decision 35). The linker
+drops the `__` when it writes the import, so the module imports
+PLASMA's `PUTS`.
+
 A function that is called but not defined in any file linked into the
 module must be a CMDSYS function; it is imported from CMDSYS, and a
 declaration must match its exact types (the compiler checks calls
@@ -721,50 +738,73 @@ declaration is auto-declared from the table in `src/parse.c`
 test header `inc/ptest.h` does:
 
 ```c
-extern void puti(int);
-extern void putc(char);
-extern void putln(void);
-extern void puts(const char *);
+extern void __puti(int);
+extern void __putc(char);
+extern void __putln(void);
+extern void __puts(const char *);
 ```
+
+(ptest.h then `#define`s `puti` as `__puti` and so on, so that its
+tests use the same names under ccish and under gcc.) A plain name is
+not a CMDSYS function: calling `puts` with no declaration is an error
+("function called without a declaration").
 
 The common ones, with their C types:
 
 ```c
-void putc(char c);        /* write one byte */
-void putln(void);         /* the line break */
-void puts(const char *s); /* write a PLASMA string */
-void puti(int n);         /* write a signed decimal integer */
-void putb(int n);         /* binary */
-void puth(int n);         /* hex */
-int  getc(void);          /* read a byte */
-int  heapavail(void);     /* the heap's free bytes */
-void *heapalloc(int n);   /* allocate n bytes */
-int  heaprelease(void *p);
-void *heapmark(void);
-void memset(void *p, int c, int n);  /* fill with a 16-bit pattern */
-void memcpy(void *d, const void *s, int n);
-char *strcpy(char *d, const char *s);
-char *strcat(char *d, const char *s);
-int  toupper(int c);
-int  sext(int v);         /* sign-extend the low byte */
-int  isult(int a, int b); /* unsigned a < b, as -1 or 0 */
-int  isuge(int a, int b);
-int  isugt(int a, int b);
-int  isule(int a, int b);
+void __putc(char c);        /* write one byte */
+void __putln(void);         /* the line break */
+void __puts(const char *s); /* write a PLASMA string */
+void __puti(int n);         /* write a signed decimal integer */
+void __putb(int n);         /* binary */
+void __puth(int n);         /* hex */
+int  __getc(void);          /* read a byte */
+int  __heapavail(void);     /* the heap's free bytes */
+void *__heapalloc(int n);   /* allocate n bytes */
+int  __heaprelease(void *p);
+void *__heapmark(void);
+void __memset(void *p, int c, int n);  /* fill with a 16-bit pattern */
+void __memcpy(void *d, const void *s, int n);
+char *__strcpy(char *d, const char *s);
+char *__strcat(char *d, const char *s);
+int  __toupper(int c);
+int  __sext(int v);         /* sign-extend the low byte */
+int  __isult(int a, int b); /* unsigned a < b, as -1 or 0 */
+int  __isuge(int a, int b);
+int  __isugt(int a, int b);
+int  __isule(int a, int b);
 ```
 
 The full list and types are `cmdsys_sigs[]` in `src/parse.c`.
 
 These are PLASMA's functions with PLASMA's meanings, not C's. For
-example, `puts` takes a PLASMA string (length-prefixed, so build one
-with `pstr`) and adds no newline, and `memset` fills with a 16-bit
-pattern, so `memset(p, 'a', 4)` gives `a`, NUL, `a`, NUL (with 0, as
-ccish uses it, that makes no difference). A pointer that a function
-only reads is `const` (`puts`, the source of `strcpy`, `strcat` and
-`memcpy`), so passing a `const char *` needs no cast.
+example, `__puts` takes a PLASMA string (length-prefixed, so build one
+with `pstr`) and adds no newline, and `__memset` fills with a 16-bit
+pattern, so `__memset(p, 'a', 4)` gives `a`, NUL, `a`, NUL (with 0,
+as ccish uses it, that makes no difference). A pointer that a function
+only reads is `const` (`__puts`, the source of `__strcpy`, `__strcat`
+and `__memcpy`), so passing a `const char *` needs no cast.
 
-A program may define its own function of a CMDSYS name, with the same
-type, and calls then go to it instead of the import.
+For C's meaning, use the standard name: ccish has no C library yet,
+so for now you define it yourself, as an ordinary function, which may
+call the CMDSYS one. tests/run/c_names.c defines `puts` (C's: a C
+string, then a newline) and `memset` (C's: a byte fill) beside
+`__puts`:
+
+```c
+int puts(const char *s)
+{
+  while (*s)
+    __putc(*s++);
+  __putc('\n');
+  return 0;
+}
+```
+
+A program may also define its own function of a CMDSYS name, with
+the same type, and calls then go to it instead of the import. The
+compiler's own calls use these names too: a struct copy calls
+`__memcpy` (section 4.7).
 
 ### 5.4 Globals
 
@@ -1002,7 +1042,7 @@ Any expression may be a statement, followed by its semicolon:
 ```c
 x = x + 1;
 count++;
-putc('a');
+__putc('a');
 *p = 0;
 ```
 
@@ -1102,7 +1142,7 @@ top:
   i = i - 1;
   goto top;
 done:
-  puti(sum);
+  __puti(sum);
 ```
 
 `goto label` jumps to the label. A label is visible throughout its
@@ -1404,7 +1444,7 @@ ccgen works in stages over the IR stream:
    and the absolute forms for constant addresses (reading the
    speaker is `LAB $C030`). An unsigned comparison is lowered to the
    signed form with both sides' sign bits flipped (the CMDSYS
-   `isule`-family calls are an alternative a program can use
+   `__isule`-family calls are an alternative a program can use
    directly; section 12.4).
 2. **Reordering.** The code for a store's value is moved ahead of the
    code for its address, so `*p++ = x` and `a[i + 1] = x` work without
@@ -1467,10 +1507,11 @@ The layout choices, in one place:
 A ccish module runs under PLASMA's command system, CMD, and can call
 a small built-in library of routines that CMD exports by name; the
 call is an ordinary import from CMDSYS, declared and checked as in
-section 5.3. There are only a few built-ins, and they vary somewhat
+section 5.3. In ccish each name has `__` in front: `__puts` calls
+CMD's `PUTS`. There are only a few built-ins, and they vary somewhat
 depending on the platform, though many are available on all of them:
 the string, heap, memory and comparison routines are the same
-everywhere, and only the machine-specific ones (`syscall`, `call`,
+everywhere, and only the machine-specific ones (`__syscall`, `__call`,
 `MACHID`) differ in what they do. This section is a brief summary of
 the routines that can be called, as defined in the file
 `src/vmsrc/apple/cmd.pla`, the Apple II's CMD.
@@ -1479,30 +1520,30 @@ The routines, with their ccish names, parameters and return types:
 
 | Routine | Parameters | Returns | What it does |
 |---|---|---|---|
-| `putc` | `char c` | `void` | Writes one character, uppercased on the machines that default to upper case. |
-| `putln` | none | `void` | Writes the line break (a carriage return). |
-| `puts` | `const char *s` | `void` | Writes a PLASMA string, no newline; build `s` with `pstr`. |
-| `puti` | `int n` | `void` | Writes a signed decimal integer. |
-| `putb` | `int n` | `void` | Writes a byte in hexadecimal. |
-| `puth` | `int n` | `void` | Writes a word in hexadecimal. |
-| `getc` | none | `int` | Reads one character from the keyboard. |
-| `gets` | `char p` | `char *` | Prints the prompt character, reads a line, and returns a pointer to the PLASMA string in the shared string-table buffer. |
-| `toupper` | `int c` | `int` | Uppercases a lowercase character, leaves any other character alone. |
-| `strcpy` | `char *d, const char *s` | `char *` | Copies a PLASMA string, length byte included, into `d`, and returns `d`. |
-| `strcat` | `char *d, const char *s` | `char *` | Appends the PLASMA string `s` to `d`, and returns `d`. |
-| `heapmark` | none | `void *` | Returns the current top of the heap, so a later release can discard everything since. |
-| `heapalloc` | `int n` | `void *` | Allocates `n` heap bytes, returning the address, or 0 if the heap can't hold them. |
-| `heapallocalign` | `int n, int pow2, void *freeaddr` | `void *` | Allocates `n` bytes on a `2^pow2` boundary, or 0; if `freeaddr` is not 0 it first stores the old top of the heap there. |
-| `heaprelease` | `void *p` | `int` | Puts the top of the heap back to `p`, releasing everything allocated since, and returns the bytes freed. |
-| `heapavail` | none | `int` | Returns the number of heap bytes still free. |
-| `memset` | `void *p, int c, int n` | `void` | Fills `n` bytes at `p` with the 16-bit pattern `c`. |
-| `memcpy` | `void *d, const void *s, int n` | `void` | Copies `n` bytes from `s` to `d`, correct even when they overlap. |
-| `isugt` | `int a, int b` | `int` | 0 or -1: is `a` greater than `b` as `unsigned`? |
-| `isuge` | `int a, int b` | `int` | 0 or -1: is `a` at least `b` as `unsigned`? |
-| `isult` | `int a, int b` | `int` | 0 or -1: is `a` less than `b` as `unsigned`? |
-| `isule` | `int a, int b` | `int` | 0 or -1: is `a` at most `b` as `unsigned`? |
-| `syscall` | `int cmd, void *params` | `int` | Runs a ProDOS system call with the command byte `cmd` and the parameter block at `params`, returning the error code (0 on success). |
-| `call` | `int addr, int a, int x, int y, int st` | `int` | Calls a 6502 routine at `addr` with `A`, `X`, `Y` and the status set, and returns a pointer to a four-byte block with the result in `A`, `X`, `Y` and the status. |
+| `__putc` | `char c` | `void` | Writes one character, uppercased on the machines that default to upper case. |
+| `__putln` | none | `void` | Writes the line break (a carriage return). |
+| `__puts` | `const char *s` | `void` | Writes a PLASMA string, no newline; build `s` with `pstr`. |
+| `__puti` | `int n` | `void` | Writes a signed decimal integer. |
+| `__putb` | `int n` | `void` | Writes a byte in hexadecimal. |
+| `__puth` | `int n` | `void` | Writes a word in hexadecimal. |
+| `__getc` | none | `int` | Reads one character from the keyboard. |
+| `__gets` | `char p` | `char *` | Prints the prompt character, reads a line, and returns a pointer to the PLASMA string in the shared string-table buffer. |
+| `__toupper` | `int c` | `int` | Uppercases a lowercase character, leaves any other character alone. |
+| `__strcpy` | `char *d, const char *s` | `char *` | Copies a PLASMA string, length byte included, into `d`, and returns `d`. |
+| `__strcat` | `char *d, const char *s` | `char *` | Appends the PLASMA string `s` to `d`, and returns `d`. |
+| `__heapmark` | none | `void *` | Returns the current top of the heap, so a later release can discard everything since. |
+| `__heapalloc` | `int n` | `void *` | Allocates `n` heap bytes, returning the address, or 0 if the heap can't hold them. |
+| `__heapallocalign` | `int n, int pow2, void *freeaddr` | `void *` | Allocates `n` bytes on a `2^pow2` boundary, or 0; if `freeaddr` is not 0 it first stores the old top of the heap there. |
+| `__heaprelease` | `void *p` | `int` | Puts the top of the heap back to `p`, releasing everything allocated since, and returns the bytes freed. |
+| `__heapavail` | none | `int` | Returns the number of heap bytes still free. |
+| `__memset` | `void *p, int c, int n` | `void` | Fills `n` bytes at `p` with the 16-bit pattern `c`. |
+| `__memcpy` | `void *d, const void *s, int n` | `void` | Copies `n` bytes from `s` to `d`, correct even when they overlap. |
+| `__isugt` | `int a, int b` | `int` | 0 or -1: is `a` greater than `b` as `unsigned`? |
+| `__isuge` | `int a, int b` | `int` | 0 or -1: is `a` at least `b` as `unsigned`? |
+| `__isult` | `int a, int b` | `int` | 0 or -1: is `a` less than `b` as `unsigned`? |
+| `__isule` | `int a, int b` | `int` | 0 or -1: is `a` at most `b` as `unsigned`? |
+| `__syscall` | `int cmd, void *params` | `int` | Runs a ProDOS system call with the command byte `cmd` and the parameter block at `params`, returning the error code (0 on success). |
+| `__call` | `int addr, int a, int x, int y, int st` | `int` | Calls a 6502 routine at `addr` with `A`, `X`, `Y` and the status set, and returns a pointer to a four-byte block with the result in `A`, `X`, `Y` and the status. |
 
 The export table also holds `DIVMOD(a, b)` which divides `a` by `b` and returns two values, the
 quotient and the remainder. You'll need to assign that return value to a
@@ -1510,7 +1551,7 @@ struct with the same shape (section 1.3).
 
 ## 12. Writing small and fast code
 
-Other than CMD routines like `puts` requiring `pstr(...)`,
+Other than CMD routines like `__puts` requiring `pstr(...)`,
 and various limits, this should "feel" like a normal C implementation,
 and most C optimizations apply. Here are some special tips for ccish.
 
@@ -1627,7 +1668,7 @@ counted, `!=` is the cheaper test, since it is one op, `BRNE`, while
   space, and a global over 256 bytes without an initializer is not
   in the module file at all (section 5.4).
 * **Small structs by value, big ones by pointer.** A struct of up to
-  8 bytes moves as a word or two; bigger, every copy is a `memcpy`
+  8 bytes moves as a word or two; bigger, every copy is a `__memcpy`
   call, and passing or returning one by value isn't allowed
   (section 4.7).
 * **Pointers compare with `==` and `!=`.** An ordering comparison of
@@ -1656,7 +1697,7 @@ approach.md section 20 (each measured against the VM's code):
   ordering compares, `DIV`, `MOD` and `SHR` are signed, so a signed
   `int` is free, while an `unsigned` one costs extra only for
   `< > <= >=`, `/`, `%` and `>>`. `+ - *`, `==` and `!=` work the
-  same for both. (The CMDSYS `isult`/`isuge`/`isugt`/`isule`
+  same for both. (The CMDSYS `__isult`/`__isuge`/`__isugt`/`__isule`
   functions, section 5.3, do an unsigned compare in one call; a
   program can call them directly wherever the inline sign-bit flip
   would be more code, as in a betweenness test; the analysis is in

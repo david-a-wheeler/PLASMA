@@ -170,7 +170,7 @@ file with gcc, with ccish on the host, and with ccish on the Apple II.
   copies beside the sources go away. It also removes the hazard of a
   file named `stdio.h` landing next to a source.
 
-### R3. CMDSYS names get a `__` prefix (decided, decision 35)
+### R3. CMDSYS names get a `__` prefix (done, decision 35)
 
 Today the CMDSYS names are fixed ids 1 to NCMDSYS with PLASMA's
 semantics (`cmdsys_sigs`, src/parse.c): `puts` takes a length-prefixed
@@ -434,10 +434,12 @@ building on it.
    status itself, rejecting an unresolved import) are requests in
    doc/plasma-requests.md, not part of this plan.
 
-**Phase 2: names.**
-5. The `__` prefix on the CMDSYS fixed ids (R3): parse.c, link.c,
-   inc/ptest.h, the tests, the guide. Mechanical, and done before the
-   library so the library is written once, against its final names.
+**Phase 2: names (done).**
+5. The `__` prefix on the CMDSYS fixed ids (R3): ppname.c's fixed
+   names, link.c (the ESD drops the `__`; its init calls `__memset`
+   and the rest), inc/ptest.h (maps `puti` and friends to `__puti`),
+   the tests, and the docs. Cost: ccpp +61 bytes (the longer fixed
+   names), cccomp +3, ccrel +50.
 
 **Phase 3: function pointers.**
 6. Declarations, `&f` and plain `f` as values, assignment, calls

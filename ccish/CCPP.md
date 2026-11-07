@@ -237,10 +237,10 @@ identifier can't contain a newline, and nor can a ProDOS path, so
 nothing is escaped.
 
 ```
-putc            id 1: the fixed ids, 1-31, in every file
-putln           id 2
+__putc          id 1: the fixed ids, 1-31, in every file
+__putln         id 2
 ...
-isule           id 25
+__isule         id 25
 main            id 26
 pstr            id 27
 ...
@@ -264,11 +264,13 @@ name has at most 31 characters (`MAX_NAME`); `ccpp` keeps only the
 first 31, so readers may rely on that.
 
 **The fixed ids** come first, in every file, in this order: the 25
-CMDSYS functions `cccomp` knows (`putc`, `putln`, `puts`, `puti`,
-`putb`, `puth`, `getc`, `gets`, `call`, `syscall`, `heapmark`,
-`heapallocalign`, `heapalloc`, `heaprelease`, `heapavail`, `memset`,
-`memcpy`, `strcpy`, `strcat`, `toupper`, `sext`, `isugt`, `isuge`,
-`isult`, `isule`: ids 1-25), then `main` (26) and `pstr` (27): every
+CMDSYS functions `cccomp` knows, each its PLASMA name with `__` in
+front (`__putc`, `__putln`, `__puts`, `__puti`, `__putb`, `__puth`,
+`__getc`, `__gets`, `__call`, `__syscall`, `__heapmark`,
+`__heapallocalign`, `__heapalloc`, `__heaprelease`, `__heapavail`,
+`__memset`, `__memcpy`, `__strcpy`, `__strcat`, `__toupper`, `__sext`,
+`__isugt`, `__isuge`, `__isult`, `__isule`: ids 1-25; approach.md
+decision 35), then `main` (26) and `pstr` (27): every
 name C-ish gives a meaning of its own; then `__CCISH__` (28),
 `__FILE__` (29), `__LINE__` (30) and `defined` (31), which `ccpp`
 gives one. So `cccomp` and `ccpp` know them by number (`src/fixed.h`),
