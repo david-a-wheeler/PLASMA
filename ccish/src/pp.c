@@ -10,8 +10,8 @@
  * taken yet), C_DONE (skipped, a branch was taken) or C_DEAD (skipped,
  * since the group around it is), with C_ELSE once its #else is seen.
  */
-#include "stdio.h"
-#include "string.h"
+#include <stdio.h>
+#include <string.h>
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"

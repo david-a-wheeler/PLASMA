@@ -12,7 +12,7 @@
  * signed (sx()) where that matters, so that the same code is right in a
  * 32-bit int (the host) and a 16-bit one (ccish).
  */
-#include "stdio.h"
+#include <stdio.h>
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"

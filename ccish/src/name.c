@@ -8,7 +8,7 @@
  * no pool of their own: cccomp keeps no spellings (approach.md, "ccpp
  * design").
  */
-#include "stddef.h"
+#include <stddef.h>
 #include "build.h"
 #include "diag.h"
 #include "name.h"

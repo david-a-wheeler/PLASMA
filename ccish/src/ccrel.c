@@ -11,9 +11,9 @@
  *   -l      print a listing of the module's bytecode
  *   -o      module name (default: output, if there is only one)
  */
-#include "stdio.h"
-#include "stdlib.h"
-#include "string.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "build.h"
 #include "diag.h"
 #include "link.h"

@@ -16,11 +16,7 @@
 # under tests/spec/.
 
 CC ?= cc
-# -Wno-format-extra-args: a build by ccish itself has no variadic
-# arguments, so the source's printf calls all pass the most a call
-# uses, six (src/std/stdio.h); on the host the extras are unused and
-# would only warn.
-CFLAGS ?= -std=c89 -pedantic -Wall -Wextra -O2 -Wno-format-extra-args
+CFLAGS ?= -std=c89 -pedantic -Wall -Wextra -O2
 # The host C compiler that writes the cross tests' references (make xref).
 XCC ?= $(shell command -v gcc 2>/dev/null || command -v clang 2>/dev/null)
 XREF_FLAGS = -Wall -Wextra -Werror -funsigned-char -fwrapv -O2
@@ -173,10 +169,10 @@ $(OUT)/spec/msgs.stamp: ccish.msg
 # compiles the compiler's source into a VM module (stage 1); stage 1,
 # run under $(BOOTSTRAP_VM), compiles the same source into stage 2;
 # stage 2 does it again into stage 3; and the test is that stage 2 and
-# stage 3 are byte-for-byte the same module. It is its own target for
-# now, not in the regular suite (full-test runs both), because it is
-# slow and still depends on VM work that is not done (see
-# doc/bootstrap-test.md).
+# stage 3 are byte-for-byte the same module. It's its own target, not
+# in the regular suite (full-test runs both), because it's slow. The
+# script is being rewritten (doc/bootstrap-test.md, R1); until then it
+# fails.
 $(OUT)/spec/bootstrap.stamp: tests/spec/bootstrap.sh $(PASSES) tests/lib.sh
 	@mkdir -p $(dir $@) && BOOTSTRAP_VM="$(BOOTSTRAP_VM)" sh $< && touch $@
 

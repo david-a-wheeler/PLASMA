@@ -21,8 +21,8 @@
  * it is written. Memory use doesn't depend on the size of the program.
  * The final pass (link.c) turns the files into a module.
  */
-#include "stdio.h"
-#include "string.h"
+#include <stdio.h>
+#include <string.h>
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
@@ -436,19 +436,19 @@ static const char *mnem(int op)
 static void list_word(Mop *m)
 {
   if (m->fix == FIX_NONE) {
-    printf(" %d", m->a, 0, 0, 0, 0);
+    printf(" %d", m->a);
   } else if (m->fix == FIX_FUNC) {
-    printf(" %s", func_name(m->fn), 0, 0, 0, 0);
+    printf(" %s", func_name(m->fn));
   } else if (m->fix == FIX_HELPER) {
-    printf(" %s", helper_name(m->fn), 0, 0, 0, 0);
+    printf(" %s", helper_name(m->fn));
   } else if (m->fix == FIX_DSYM || m->fix == FIX_HEAP) {
-    printf(" var %d", m->fn, 0, 0, 0, 0);
+    printf(" var %d", m->fn);
     if (m->a)
-      printf(" +%d", m->a, 0, 0, 0, 0);
+      printf(" +%d", m->a);
   } else if (m->fix == FIX_DATA) {
-    printf(" data +%d", m->a, 0, 0, 0, 0);
+    printf(" data +%d", m->a);
   } else {
-    printf(" str +%d", m->a, 0, 0, 0, 0);
+    printf(" str +%d", m->a);
   }
 }
 
@@ -458,39 +458,39 @@ static void list_op(Mop *m, int frame)
   int v;
   switch (m->op) {
   case OP_LABEL:
-    printf("    ; label %d\n", m->a, 0, 0, 0, 0);
+    printf("    ; label %d\n", m->a);
     return;
   case OP_JOIN:
-    printf("    ; join %d to %d\n", m->a, m->fn, 0, 0, 0);
+    printf("    ; join %d to %d\n", m->a, m->fn);
     return;
   case OP_CASES:
-    printf("    ; cases %d\n", m->a, 0, 0, 0, 0);
+    printf("    ; cases %d\n", m->a);
     return;
   case OP_CASEVAL:
-    printf("    ; case %d", m->a, 0, 0, 0, 0);
+    printf("    ; case %d", m->a);
     return;
   case OP_CASETO:
-    printf(" -> %d\n", m->a, 0, 0, 0, 0);
+    printf(" -> %d\n", m->a);
     return;
   }
   if (m->op < 0x20 && !(m->op & 1)) {
-    printf("    CN %d\n", m->op / 2, 0, 0, 0, 0);
+    printf("    CN %d\n", m->op / 2);
     return;
   }
-  printf("    %s", mnem(m->op), 0, 0, 0, 0);
+  printf("    %s", mnem(m->op));
   switch (m->op) {
   case OP_ENTER:
-    printf(" %d %d\n", m->a == FRAME_LATER ? frame : m->a, m->fn, 0, 0, 0);
+    printf(" %d %d\n", m->a == FRAME_LATER ? frame : m->a, m->fn);
     return;
   case OP_LEAVE:
-    printf(" %d\n", m->a == FRAME_LATER ? frame : m->a, 0, 0, 0, 0);
+    printf(" %d\n", m->a == FRAME_LATER ? frame : m->a);
     return;
   case OP_CB: case OP_CFFB: case OP_ANDI: case OP_ADDI: case OP_SUBI:
-    printf(" %d\n", m->a, 0, 0, 0, 0);
+    printf(" %d\n", m->a);
     return;
   case OP_LLA: case OP_LLB: case OP_LLW: case OP_DLB: case OP_DLW:
   case OP_SLB: case OP_SLW:
-    printf(" %d\n", m->a, 0, 0, 0, 0);
+    printf(" %d\n", m->a);
     return;
   case OP_CW: case OP_LA: case OP_CALL: case OP_LAB: case OP_LAW:
   case OP_SAB: case OP_SAW: case OP_DAB: case OP_DAW:
@@ -499,18 +499,18 @@ static void list_op(Mop *m, int frame)
   case OP_BRNCH: case OP_BRFLS: case OP_BRTRU: case OP_BREQ:
   case OP_BRNE: case OP_SEL: case OP_BRGT: case OP_BRLT:
   case OP_INCBRLE: case OP_ADDBRLE: case OP_DECBRGE: case OP_SUBBRGE:
-    printf(" %d", m->a, 0, 0, 0, 0);
+    printf(" %d", m->a);
     break;
   default:
     if (m->op >= OP_ADDLB && m->op <= OP_IDXAW) {
       if (m->op & 4)      /* the absolute-address form */
         list_word(m);
       else
-        printf(" %d", m->a, 0, 0, 0, 0);
+        printf(" %d", m->a);
     } else if (m->fix == FIX_NONE && mop_const_value(m, &v))
-      printf(" %d", v, 0, 0, 0, 0);
+      printf(" %d", v);
   }
-  printf("\n", 0, 0, 0, 0, 0);
+  printf("\n");
 }
 
 /* Print the listing of the function just ended: its name, then its
@@ -519,8 +519,8 @@ static void list_fn(int frame)
 {
   int i;
   if (nlisted++)
-    printf("\n", 0, 0, 0, 0, 0);
-  printf("    ; %s\n", func_name(fn), 0, 0, 0, 0);
+    printf("\n");
+  printf("    ; %s\n", func_name(fn));
   for (i = 0; i < nlbuf; i++)
     list_op(&lbuf[i], frame);
   nlbuf = 0;

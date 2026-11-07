@@ -4,8 +4,8 @@
  * Apple II each system call moves a whole block and not a byte
  * (approach.md 18.1). On the host it sits on top of stdio.
  */
-#include "stdio.h"
-#include "string.h"
+#include <stdio.h>
+#include <string.h>
 #include "build.h"
 #include "diag.h"
 #include "bio.h"

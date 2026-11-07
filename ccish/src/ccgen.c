@@ -14,9 +14,9 @@
  *   -k      keep the IR file and name file, and the stream files even
  *           after an error
  */
-#include "stdio.h"
-#include "stdlib.h"
-#include "string.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "build.h"
 #include "diag.h"
 #include "token.h"

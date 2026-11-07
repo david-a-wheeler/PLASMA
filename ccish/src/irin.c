@@ -12,8 +12,8 @@
  * The file is read once, in order, and every record is checked, so that
  * a damaged file is reported rather than compiled.
  */
-#include "stdio.h"
-#include "string.h"
+#include <stdio.h>
+#include <string.h>
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"

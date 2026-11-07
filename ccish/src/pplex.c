@@ -15,8 +15,8 @@
  * passed over without being split into tokens (so "don't" isn't an
  * unterminated literal there).
  */
-#include "stdio.h"
-#include "string.h"
+#include <stdio.h>
+#include <string.h>
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"

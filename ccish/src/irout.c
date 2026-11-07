@@ -14,8 +14,8 @@
  * ops written (ir_here()), and puts IR_SWAP with the lengths of the two
  * blocks to exchange, which ccgen does (approach.md 18.7, A).
  */
-#include "stdio.h"
-#include "string.h"
+#include <stdio.h>
+#include <string.h>
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"

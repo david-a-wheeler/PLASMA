@@ -37,8 +37,8 @@
  * fills in the pointer words, before it calls main. Otherwise it stays
  * in the module, as zeros after every object's data.
  */
-#include "stdio.h"
-#include "string.h"
+#include <stdio.h>
+#include <string.h>
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
@@ -451,7 +451,7 @@ static int place_zero(const char *name, int size, int indata)
   mv_size[nmoved] = size;
 #ifdef CCISH_LISTING
   if (opt_list)
-    printf("; heap global %d: %s, %d bytes\n", nmoved, name, size, 0, 0);
+    printf("; heap global %d: %s, %d bytes\n", nmoved, name, size);
 #else
   (void)name;
 #endif
@@ -699,12 +699,12 @@ static const char *reloc_note(int at)
 static int list_table(int pc, int start)
 {
   int n = fbuf[pc], i, at, w;
-  printf("  %04X  %02X        CASES %d\n", subseg + start + pc, n, n, 0, 0);
+  printf("  %04X  %02X        CASES %d\n", subseg + start + pc, n, n);
   for (i = 0; i < n; i++) {
     at = pc + 1 + 4 * i;
     w = (short)(fbuf[at] | (fbuf[at + 1] << 8));
     printf("  %04X  %02X %02X     CASE %d\n", subseg + start + at,
-           fbuf[at], fbuf[at + 1], w, 0);
+           fbuf[at], fbuf[at + 1], w);
     at += 2;
     w = (short)(fbuf[at] | (fbuf[at + 1] << 8));
     printf("  %04X  %02X %02X     TO %+d  ; to %04X\n",
@@ -722,7 +722,7 @@ static int list_table(int pc, int start)
 static void list_code(const char *label, int len, int start)
 {
   int pc = 0, i, tables[MAX_SEL_TABLES], ntables = 0;
-  printf("%s:\n", label, 0, 0, 0, 0);
+  printf("%s:\n", label);
   while (pc < len) {
     int op = fbuf[pc], n = 1, fmt;
     for (i = 0; i < ntables && tables[i] != pc; i++)
@@ -733,7 +733,7 @@ static void list_code(const char *label, int len, int start)
       continue;
     }
     if (op & 1 || op >= 0xC6) {
-      printf("  %04X  %02X        ???\n", subseg + start + pc, op, 0, 0, 0);
+      printf("  %04X  %02X        ???\n", subseg + start + pc, op);
       pc++;
       continue;
     }
@@ -744,41 +744,41 @@ static void list_code(const char *label, int len, int start)
       n = 3;
     else if (fmt == F_STR)
       n = 2 + fbuf[pc + 1];
-    printf("  %04X  ", subseg + start + pc, 0, 0, 0, 0);
+    printf("  %04X  ", subseg + start + pc);
     for (i = 0; i < 3; i++)
       if (i < n)
-        printf("%02X ", fbuf[pc + i], 0, 0, 0, 0);
+        printf("%02X ", fbuf[pc + i]);
       else
-        printf("   ", 0, 0, 0, 0, 0);
-    printf("%s", opinfo[op / 2].name, 0, 0, 0, 0);
+        printf("   ");
+    printf("%s", opinfo[op / 2].name);
     switch (fmt) {
     case F_NONE:
       if (op < 0x20)
-        printf(" %d", op / 2, 0, 0, 0, 0);
+        printf(" %d", op / 2);
       break;
     case F_BYTE:
-      printf(" %d", fbuf[pc + 1], 0, 0, 0, 0);
+      printf(" %d", fbuf[pc + 1]);
       break;
     case F_WORD:
       printf(" $%04X%s", fbuf[pc + 1] | (fbuf[pc + 2] << 8),
-             reloc_note(subseg + start + pc + 1), 0, 0, 0);
+             reloc_note(subseg + start + pc + 1));
       break;
     case F_REL: {
       /* The offset is relative to the offset word itself. */
       int off = (short)(fbuf[pc + 1] | (fbuf[pc + 2] << 8));
-      printf(" %+d  ; to %04X", off, subseg + start + pc + 1 + off, 0, 0, 0);
+      printf(" %+d  ; to %04X", off, subseg + start + pc + 1 + off);
       if (op == OP_SEL && ntables < MAX_SEL_TABLES)
         tables[ntables++] = pc + 1 + off;
       break;
     }
     case F_ENTER:
-      printf(" %d,%d", fbuf[pc + 1], fbuf[pc + 2], 0, 0, 0);
+      printf(" %d,%d", fbuf[pc + 1], fbuf[pc + 2]);
       break;
     case F_STR:
-      printf(" (%d chars)", fbuf[pc + 1], 0, 0, 0, 0);
+      printf(" (%d chars)", fbuf[pc + 1]);
       break;
     }
-    printf("\n", 0, 0, 0, 0, 0);
+    printf("\n");
     pc += n;
   }
 }
@@ -999,7 +999,7 @@ static void copy_code(int k)
   map_object(k);
 #ifdef CCISH_LISTING
   if (opt_list && nobjs > 1)
-    printf("object %s:\n", obj_name[k], 0, 0, 0, 0);
+    printf("object %s:\n", obj_name[k]);
 #endif
   open_obj(k);
   while (next_record(func_tags) != EOF) {
@@ -1403,6 +1403,6 @@ void link_module(int n, const char **bases, const char *path)
   /* How full the shared-name table is, to see a limit coming. */
   if (opt_list)
     printf("; shared names: %d of %d slots, %d of %d name bytes\n",
-           ngsyms, MAX_GSYMS, gnames_len, MAX_GNAMES, 0);
+           ngsyms, MAX_GSYMS, gnames_len, MAX_GNAMES);
 #endif
 }

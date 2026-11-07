@@ -5,9 +5,9 @@
  * supplies clean_up(), which closes and removes its partial output
  * after an error.
  */
-#include "stdio.h"
-#include "stdlib.h"
-#include "string.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"

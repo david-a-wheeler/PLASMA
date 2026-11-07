@@ -14,7 +14,7 @@
  * of it is in the CCISH_TEXT parts below, so that it can be put in the
  * small build too by defining CCISH_TEXT there.
  */
-#include "stdio.h"
+#include <stdio.h>
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
