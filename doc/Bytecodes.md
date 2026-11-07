@@ -132,7 +132,7 @@ All take their operands from the stack and push one result, except DIVMOD.
 | $82 | ADD | — | 1 | 50 | `( a b -- a+b )` | Add. The compiler also uses it to index byte arrays (IDXB). |
 | $84 | SUB | — | 1 | 50 | `( a b -- a-b )` | Subtract TOS from NOS. |
 | $86 | MUL | — | 1 | ~580* | `( a b -- a*b )` | Multiply (low 16 bits). |
-| $88 | DIV | — | 1 | ~700* | `( a b -- a/b )` | Signed divide, truncating toward zero. Division by zero is not trapped: the 6502 VMs return a garbage value, and the C VM crashes. |
+| $88 | DIV | — | 1 | ~700* | `( a b -- a/b )` | Signed divide, truncating toward zero. Division by zero is not trapped: the 6502 VMs return a garbage value. The C VM uses C's `/` and `%`, whose result for a zero divisor is undefined, so it depends on the host: an x86 host's process crashes (SIGFPE), and an ARM64 host's goes on, with `a/0` = 0 and `a%0` = `a` (tested 2026-11-07). |
 | $8A | MOD | — | 1 | ~700* | `( a b -- a%b )` | Signed remainder; its sign follows the dividend `a`. Division by zero as for DIV. |
 | $36 | DIVMOD | — | 1 | ~700* | `( a b -- a/b a%b )` | Quotient and remainder; **remainder is TOS**. Not emitted by the current compilers. The C VM pushes them in the opposite order; see [Significant discrepancies](#significant-discrepancies). |
 | $8C | INCR | — | 1 | 29 / 35 | `( a -- a+1 )` | Increment. |
@@ -429,7 +429,7 @@ the differences found when the two were compared opcode by opcode:
 | `$36` DIVMOD | `( a b -- a/b a%b )`: **remainder** is TOS | `( a b -- a%b a/b )`: **quotient** is TOS | Don't emit `DIVMOD`; use `DIV` and `MOD` separately. The current PLASMA compilers never emit it either. |
 | `$C0` NATV | Jumps to native code after the opcode | Not implemented: reported as an illegal opcode, and the VM exits | Don't emit `NATV`. Put native code in a separate `asm` function and `CALL` it. (`NATV` also can't work where bytecode runs from auxiliary or extended memory.) |
 | `$52` SEL | Table must be sorted ascending (signed); the search stops early, and the values must span ≤ 32767 | Linear search: unsorted or wide tables still work | Always sort, and keep the span ≤ 32767. Code that works on the C VM can fail on real hardware. |
-| `$88` DIV, `$8A` MOD, `$36` DIVMOD, by zero | Garbage result, execution continues | Host process crashes (SIGFPE) | Check the divisor first if it might be zero. |
+| `$88` DIV, `$8A` MOD, `$36` DIVMOD, by zero | Garbage result, execution continues | Depends on the host (C's `/` and `%` by zero are undefined): crashes with SIGFPE on x86; on ARM64, `a/0` = 0 and `a%0` = `a`, and execution continues | Check the divisor first if it might be zero. |
 
 Frame handling also differs internally between the VMs (see
 [Frames](#frames)), but bytecode can't see the difference as long as it

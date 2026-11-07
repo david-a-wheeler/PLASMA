@@ -171,8 +171,11 @@ against the source 2026-11-07:
 - `SEL` searches linearly on plvm but needs a sorted table on the
   6502, so code that only runs under plvm won't catch an unsorted
   one.
-- Division by zero depends on plvm's host: it traps (SIGFPE) on x86
-  and gives 0 on ARM64, where the 6502 VMs give garbage and go on.
+- Division by zero depends on plvm's host, since plvm uses C's `/`
+  and `%`, which are undefined for a zero divisor: it traps (SIGFPE)
+  on x86, and on ARM64 gives `a/0` = 0 and `a%0` = `a`. The 6502 VMs
+  give garbage and go on. Defining a result in plvm would make it
+  the same on every host.
 
 `NOT` no longer differs: plvm gives $FFFF (-1), like the 6502 VMs
 (plvm.c, `TOS = TOS ? 0 : -1`). Bytecodes.md's table agrees, but its

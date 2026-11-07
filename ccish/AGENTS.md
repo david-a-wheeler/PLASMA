@@ -178,7 +178,8 @@ files of the sessions so far, before a move to a new computer.)
 - **C VM (plvm) and 6502 VMs differ:** DIVMOD's results come in
   opposite orders (never emit it); NATV isn't in the C VM; the C VM's
   SEL searches linearly, the 6502 needs a sorted table; division by
-  zero traps on an x86 host (SIGFPE) and gives 0 on an ARM64 one.
+  zero traps on an x86 host (SIGFPE); on an ARM64 one, `a/0` is 0 and
+  `a%0` is `a`, and it goes on.
   `NOT` gives $FFFF on both now (checked 2026-11-07, plvm.c); it once
   gave 1 on the C VM. C's `!x` still needs `NOT ANDI 1`, for 1.
 - **No SWAP.** Stores are `( value address -- )`, address on top.
