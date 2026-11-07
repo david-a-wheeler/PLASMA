@@ -1230,11 +1230,14 @@ Existing programs need at least parts of `stdio.h` (`printf`, `fopen`,
 `getc`, `putc`), `string.h`, `stdlib.h` (`malloc`, `atoi`, `exit`) and
 `ctype.h`. Write them in C-ish on top of CMDSYS and FILEIO.
 
-- `plvm` implements FILEIO open, read, write, get/set mark and close.
-  That's enough to test file-based programs, including the
-  self-hosting compiler, under Linux.
+- `plvm` implements FILEIO open, read, write, create, destroy,
+  rename, newline, get/set mark and close (tested 2026-11-07, issue
+  22). That's enough to test file-based programs, including the
+  self-hosting compiler, under Linux. The library reaches FILEIO's
+  table through function pointers and module imports (decision 35).
 - `exit()` from a nested call needs a way to unwind, perhaps the
-  existing `longjmp.pla` library.
+  existing `longjmp.pla` library on a 6502 VM; plvm needs its own
+  (issue 22).
 
 **`malloc` (sketch, discussed 2026-10-29; for M9).** ccish has no
 `malloc` yet. What exists:
@@ -3506,6 +3509,99 @@ the compiler's own source at M12, compiled both ways. If VM changes are
 on the table anyway, fixing the C VM's `NOT` and `DIVMOD` discrepancies
 (`doc/Bytecodes.md`) would be worth doing at the same time.
 
+### 22. Calling other PLASMA modules, and the C library's names
+
+Raised in discussion (2026-11-07), while reviewing the first bootstrap
+attempt (doc/bootstrap-test.md). Three related questions: how C code
+names PLASMA routines whose names and meanings clash with C's, how it
+reaches modules other than CMDSYS, and how the C library does file
+I/O.
+
+**The clash.** The CMDSYS functions are fixed ids with PLASMA's
+meanings (`cmdsys_sigs`, src/parse.c): `puts` takes a length-prefixed
+string and adds no newline, `getc()` takes no stream, `memset` fills
+a 16-bit pattern, `strcpy` copies PLASMA strings. Today a program can
+replace one only with a definition of exactly the same type, so a C
+library can't define C's `getc(FILE *)` or `puts`, and `memset` with
+a nonzero byte silently differs from C. Answer: rename the fixed ids
+with a `__` prefix (`__puts`, `__memset`, `__call`, `__syscall`, ...);
+the linker strips the prefix when it writes the import. Names starting
+with `__` are reserved to the implementation (C11 7.1.3), so no
+conforming program collides, and the standard names are free for a C
+library with C's meanings. The library may still call the CMDSYS
+routine where it's faster (`memset(p, c, n)` as `__memset(p, c | c
+<< 8, n)`). CMDSYS stays built in rather than declared in a header:
+it's always loaded, the table is small, and no program needs a header
+just to call `__puts`.
+
+**Other modules.** PLASMA links through one flat symbol table: an
+import names only a symbol (uppercase, 16 significant characters), and
+the module header separately lists the modules to load first. Some
+modules export functions as symbols; others (FILEIO, CONIO) export one
+data symbol, a table of function pointers (`struc t_fileio`).
+
+- **A. A naming convention**, `__MODULE_ENTRY` (say `__fileio_open`).
+  - Pros: no new syntax.
+  - Cons: ambiguous, since both PLASMA and C names contain
+    underscores (`__dgr_lib_plot`); it doesn't fit how PLASMA links,
+    since the module is a dependency to load, not a qualifier for the
+    lookup; it can't express a table interface, because FILEIO exports
+    no `OPEN` symbol at all; it still needs a C declaration for the
+    types and the return count; and C's case-sensitive names don't map
+    one to one onto PLASMA's.
+- **B. An asm label, a pragma, and structs of function pointers.**
+  - `extern char syserr __asm__("PERR");` gives the PLASMA symbol for
+    a C name, the gcc and clang extension for the same job. Without a
+    label the symbol is the uppercased C name, and two names that
+    collide once uppercased and cut to 16 characters are an error.
+  - `#pragma plasma import FILEIO` names a dependency for the externs
+    declared after it (C11 6.10.6: pragmas are implementation-defined,
+    and compilers that don't know one ignore it). The dependency is
+    written into the module only if one of those externs is used, so
+    a header that mentions FILEIO doesn't make every program load it.
+  - A table module is a struct of function pointers, as PLASMA itself
+    declares it: `extern const struct t_fileio fileio
+    __asm__("FILEIO");`, called as `fileio.open(p)` (a load from the
+    table, then ICAL). A function pointer's type carries its parameter
+    count and whether it returns a value, because PLASMA calls must
+    pass exactly the callee's count and get exactly its #n results.
+    FILEIO's `geteof` and `getmark` return two values (#2), which C
+    can't express; their slots get a placeholder type and aren't
+    called.
+  - Pros: no ambiguity; C names stay C names; covers functions, data
+    and tables; the same mechanism reaches any PLASMA library
+    (`conio`, `memmgr`, `longjmp`) and later C code calling PLASMA
+    modules in general.
+  - Cons: function pointers are new work in cccomp, the program that
+    doesn't fit yet; ccrel must write dependency names and imports
+    beyond CMDSYS. These declarations live only in ccish's own headers
+    (behind `#ifdef __CCISH__` where a header is shared), so gcc
+    portability doesn't matter.
+
+Answer: B (decision 35).
+
+**File I/O.** Raw MLI calls (`__syscall` with parameter blocks) work
+on an Apple II but not under plvm, whose `syscall6502` is an empty
+stub, and C code that builds MLI blocks is bigger than calls through
+FILEIO. plvm implements FILEIO natively (src/vmsrc/sysio.c), and its
+loader treats a dependency on FILEIO as met. Tested 2026-11-07 with
+PLASMA modules under plvm: open, read, create, write, close, destroy
+and newline work; the quirks are in doc/bootstrap-test.md. Answer:
+the C library's stdio sits on FILEIO.
+
+**The exit status (possible, not committed).** ccrel's init discards
+`main`'s result, and plvm discards init's. Proposed: init returns 0,
+or `-(status & 0xFF)` (-1 when that's 0) for a nonzero status, since a
+positive init result means "keep the module"; plvm exits with the
+negation of a negative init result. On an Apple II, CMD already
+reports a negative init result through `perr`. An `exit()` from deep
+in a call must unwind, and the VMs need different mechanisms
+(longjmp.pla's except/throw is 6502 code, and I believe it can't
+unwind plvm's C-recursive interpreter); one option is a small runtime
+module (`CCRT`) that plvm provides natively and an Apple II loads as a
+PLASMA module. The compiler calls `exit` only on failure, so this can
+follow the first stage 2 run.
+
 ## Decisions so far
 
 The first round of answers is recorded inline as "Answer:" under each
@@ -4016,6 +4112,21 @@ issue. In summary:
     tests/xrun/xgoto.c, a three-state machine driven by a chain of
     gotos, cross-checked against gcc and clang (18 9 3 for 30
     ticks). The error test that goto is unsupported is dropped.
+35. **PLASMA names and other modules** (decided in discussion,
+    2026-11-07; issue 22). The CMDSYS fixed ids get a `__` prefix
+    (`__puts`, `__memset`, ...), which the linker strips in the
+    import, so a C library can define the standard names with C's
+    meanings. No name-mangling convention for other modules: a C
+    name's PLASMA symbol comes from an asm label (`__asm__("PERR")`,
+    else the uppercased C name), `#pragma plasma import MODULE` names
+    a dependency (written only if used), and table modules such as
+    FILEIO are structs of function pointers. Function pointers are
+    to be implemented for this (and wanted anyway). The C library's
+    stdio sits on FILEIO, not raw MLI. The bootstrap builds the four
+    pass programs, one source file per invocation, with a separate
+    ccrel link (doc/bootstrap-test.md, R1); the in-process
+    multi-file `ccish` is not needed. The exit status (issue 22) is
+    proposed, not yet decided.
 
 
 ## Milestones

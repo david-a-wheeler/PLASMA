@@ -1,292 +1,484 @@
 # The compiler bootstrap test
 
 The compiler compiles itself, twice, under the VM, and the two results
-must be byte-for-byte the same module. This file is the working record
-of where that stands, what is built, and what blocks it.
+must be byte-for-byte the same. This file is the working record of
+where that stands, what we recommend doing next and why, and what
+blocks it. (Revised 2026-11-07 after reviewing the first attempt,
+commits 7d986620 and 42cc5148.)
 
-## The stages
+## Summary
 
-The VM simulates one execution at a time, and on a real system (say
-ProDOS) a batch file would invoke the compiler per file. So each
-stage is a sequence of invocations, not one big run, and the stage
-script plays the batch file's role. The same sequence of commands
-runs at every stage; only the executor changes.
+The first attempt got useful data (the per-file sweep and the
+capacity blockers below), but several of its choices work against
+where ccish is going. In short, we recommend:
 
-```
-for each source file f, in link order:
-    cc -c -o <base> f.c         compile f into base.obj and base.syms
-ccrel -o cc <bases...>          link the objects into the module cc
-```
+1. **Bootstrap the four pass programs, one source file per
+   invocation**, not the all-in-one `ccish` driver. That's the Apple II
+   design already (AGENTS.md, approach.md 18.5), it's the only one that
+   can fit 64K, and it makes the in-process multi-file mode (and B1)
+   unnecessary.
+2. **`#include <stdio.h>` everywhere.** gcc uses the system headers;
+   ccish, on the host or under the VM, uses ccish's own headers, found
+   through an include directory we control.
+3. **Prefix the CMDSYS names with `__`** (`__puts`, `__memset`, ...),
+   so the standard names are free for a real C library with C's
+   semantics.
+4. **Write a real ccish C library** in its own directory, not
+   compiler-specific glue in `src/vmsys.c`.
+5. **Do file I/O through PLASMA's FILEIO module.** plvm already
+   implements it natively; the first attempt's raw-MLI path doesn't
+   work anywhere (see "Verified VM facts").
+6. **Implement function pointers** (wanted anyway) and imports from
+   other modules (asm labels and `#pragma plasma import`, not a naming
+   convention), so the library can call FILEIO's table.
 
-- **Stage 1, the seed.** The host builds, `$(CC)`'s ccish and ccrel,
-  run the sequence over the compiler's source, producing the stage 1
-  modules: `bootstrap/s1/cc`, the compiler (the whole source,
-  one file per invocation), and `bootstrap/s1/ccrel`, the linker
-  (the ccrel subset of the source: ccrel, link, diag, bio, vmsys).
-- **Stage 2.** plvm (`$(BOOTSTRAP_VM)`, default the PLVMBIN,
-  `../src/plvm`) runs `s1/cc` per file and `s1/ccrel` for the link,
-  producing `s2/cc` and `s2/ccrel`.
-- **Stage 3.** The same with the stage 2 modules, producing
-  `s3/cc` and `s3/ccrel`.
-- **The test.** `s2/cc` and `s3/cc` are byte-for-byte identical
-  (and, as a bonus check, `s2/ccrel` and `s3/ccrel`).
+Items 1, 3, 5 and 6 were decided in discussion on 2026-11-07
+(approach.md issue 22, decision 35); 7 is proposed, not committed.
+7. **Get an exit status out:** `main`'s return value through the
+   module's init to plvm's process status, and an `exit()` that
+   unwinds.
+8. **Drop the six-argument `printf`;** use a few fixed-arity output
+   functions until varargs exist (approach.md already decided this).
 
-`make bootstrap` runs it; `make full-test` runs the regular suite
-and then this. It is deliberately not in the regular `make test`
-suite (it is slow, and the stages after 1 depend on VM work that is
-not done). The Makefile entry is a spec stamp,
-`tests/out/spec/bootstrap.stamp`, like the other spec tests, but
-`tests/spec/bootstrap.sh` is filtered out of `SPEC`.
+## Verified VM facts (2026-11-07, from the source)
 
-**The command-line budget.** plvm's command line holds at most 127
-characters (the 128-byte `cmdline` buffer in vmsrc/cmdsys.c, a space
-after each word, length at `CMDLINE_STR` 0x01FF, text at
-`CMDLINE_BUF` 0x0200). The per-file lines are short. The link line
-carries every base, so the bases are one-letter, `a` through `y`:
-`ccrel -o cc a b ... y` is 56 characters. The sources keep their
-real names; the one-letter names are output bases only.
+These correct what the first attempt assumed. I checked them by
+reading the code, and then ran small PLASMA modules (xplasm, acme)
+under plvm that import FILEIO: open, read, create, write, close,
+destroy and newline all worked on host files.
 
-## What exists, and what the batch design changes
+- **plvm implements FILEIO.** `export_sysio` (src/vmsrc/sysio.c)
+  registers a `FILEIO` symbol whose 20-entry table matches `t_fileio`
+  (src/inc/fileio.plh). open, close, read, write, create, destroy,
+  rename, newline, getmark and setmark work on host files; getpfx,
+  setpfx, get/setfileinfo, get/seteof, online and the block calls only
+  print "unimplemented". On an Apple II, the same table comes from
+  src/libsrc/apple/fileio.pla, which wraps ProDOS MLI. So a module
+  that uses FILEIO works on both.
+- **plvm's loader satisfies a dependency on FILEIO.** `load_mod`
+  (src/vmsrc/cmdsys.c) skips loading a dependency whose symbol already
+  exists, so a module listing `FILEIO` binds to the built-in one under
+  plvm and loads `FILEIO` from the system directory on an Apple II.
+- **plvm does not emulate raw MLI.** `syscall6502`, behind the
+  `CALL` export, is an empty stub, and the `SYSCALL` export jumps to
+  $FF10, which has no callback.
+- **The first attempt called the wrong CMDSYS function.** CMDSYS
+  `call(addr, a, x, y, status)` runs machine code at `addr` (on an
+  Apple II, `call(0xC8, ...)` jumps into zero page). The MLI entry is
+  `syscall(cmd, params)`. plvm muddles this by exporting
+  `syscall6502` as `CALL`.
+- **The command numbers are ProDOS MLI's,** and $C7 is GET_PREFIX,
+  not an "OPENIN". There's one OPEN ($C8); you CREATE ($C0) a file
+  before writing it, and DESTROY or SET_EOF to truncate one. MLI paths
+  are length-prefixed, and OPEN needs a 1K page-aligned I/O buffer,
+  which FILEIO manages for you.
+- **plvm FILEIO quirks (tested):** `open` of a missing file returns
+  0; `open` uses `O_RDWR` without `O_CREAT`, so you create first (as
+  on ProDOS); `create`, `destroy` and `rename` return the stale
+  `errno` even on success (2 after an earlier failed open); `create`
+  of an existing file truncates it, where ProDOS returns an error
+  ($47); writing over a longer file doesn't truncate it (`AB` over
+  `0123456789` gave `AB23456789`); LF becomes CR only in newline
+  mode. So the library should judge success by `open`'s refnum and the
+  byte counts, not by `create`'s or `destroy`'s result, ccpp should
+  accept CR, LF, or CR LF as a line end, and `fopen(path, "wb")`
+  should do destroy, create, open.
+- **plvm doesn't export FILEIO's `perr`.** fileio.plh imports `byte
+  perr`; plvm has no `PERR` symbol, and its loader resolves an unknown
+  import to address 0 without complaint, so the test read 0 after a
+  failed open. plvm keeps the error in CMDSYS's `syserr` (t_cmdsys
+  offset 16) instead. Portable code shouldn't depend on either.
+- **The CMDSYS write slot is empty on the Apple II.** cmd.pla's
+  t_cmdsys has `@open, @close, @read, 0`, so `sysopen` and friends
+  aren't a substitute for FILEIO.
+- **The command line includes the module name** in plvm (main in
+  src/vmsrc/cmdsys.c joins argv from the module name on), and
+  PLASMA's own `argFirst`/`argNext` skip it the same way. Its address
+  is in `t_cmdsys.cmdline`; don't hardcode $01FF.
+- **plvm discards init's result.** `main` in cmdsys.c ignores
+  `load_mod`'s return and returns 0. On the Apple II, a negative init
+  result sets `perr` to its negation, and CMD reports it as an error.
+- **PLASMA's except/throw (src/libsrc/longjmp.pla) is 6502 code** that
+  saves and restores the hardware stack and zero page. That works on a
+  6502 VM, but I believe it can't unwind plvm, whose interpreter
+  recurses on the C stack (`vm_interp`).
 
-The Makefile constructs stand: `BOOTSTRAP_VM ?= $(PLVMBIN)`, the
-bootstrap stamp (which passes `BOOTSTRAP_VM` to the script), the
-`bootstrap` and `full-test` targets, and `clean` removing the
-working directory.
+## Recommendations, and why
 
-The committed script and driver follow the older one-big-invocation
-design (all 25 files on one command line, one in-process run) and
-need reworking to the batched stages above:
+### R1. Bootstrap the four passes, one file per invocation
 
-- `tests/spec/bootstrap.sh`: rebuild as the per-file loop plus the
-  ccrel link, per stage, for both source sets (the compiler and the
-  linker). Real source names; one-letter output bases.
-- `src/main.c`: the current `run()` compiles N files in one process
-  and links them. That in-process multi-file mode is broken without
-  the per-pass resets (B1, demoted below) and is no longer needed:
-  replace it with single-file compilation plus a compile-only mode
-  (the `-c` of the stage lines; exact spelling to decide), keeping
-  the test suite's single-file-to-module behavior. The
-  `input_base`/`link_base` tables go away with it.
-- `-DSMALL` (src/build.h): added to fit the old 127-character
-  mega-line. The per-file lines fit with `-DCCISH_SMALL`, so the
-  alias is a candidate for removal.
-- The one-letter *source* names (`a.c` through `y.c`) in the stage
-  directories: superseded by real source names plus one-letter
-  output bases.
-
-The rest of the committed changes are unaffected by the batch design
-and stand: the `src/std` headers, `src/vmsys.c`, the six-argument
-printf, `getc_f`, `memset`/`memcpy` as CMDSYS imports, `mod = 0` in
-src/irin.c, and the CFLAGS flag.
-
-## Decisions already made (recorded so they are not relitigated)
-
-- **printf takes six arguments.** ccish has no variadic arguments
-  (guide section 9.2), and calls are arity-checked even against
-  old-style declarations. So `src/std/stdio.h` declares
-  `printf(fmt, a1..a5)`, every call in the source passes exactly
-  six (padded with zeros), and the host build compiles the padding
-  quietly via `-Wno-format-extra-args` in CFLAGS. The VM's printf
-  (vmsys.c) formats `%d`, `%+d`, `%s`, `%02X`, `%04X`, `%%`, the
-  full set the source uses.
-- **`getc` is renamed.** `getc` is a CMDSYS fixed id with a
-  different signature (src/parse.c `cmdsys_sigs`); `src/std/stdio.h`
-  does `#define getc getc_f`, and vmsys.c provides `getc_f(FILE *)`.
-- **`memset` and `memcpy` are CMDSYS imports, not local functions.**
-  Their declarations in `src/std/string.h` must match
-  `cmdsys_sigs` (`vpii`, `vpPi`), and a call in a module is an
-  import. vmsys.c does not define them.
-- **`mod = 0` means modulo 65536** in `between_rewrite`
-  (src/irin.c): the old `mod = 65536` constant does not fit in a
-  16-bit int, and `(0 - w) & 0xFFFF` is the same mask. Host output
-  is unchanged; the code-generation tests still pass.
-- **The VM file calls follow the PLASMA source's own protocol**
-  (libsrc/apple/fileio.pla): through CMDSYS's 6502 syscall natv,
-  exported as `CALL`, with the parameter block's byte 0 the count
-  and its words the values. OPENIN `$C7` / OPENOUT `$C8` take
-  `[3, path, iobuf, 0]` and return the refnum in the block's byte 5
-  (as `a2open` reads it); READ `$CA` / WRITE `$CB` take
-  `[4, refnum, buf, len, count]` and return the byte count in word 4
-  (as `a23read`/`a2write` read it); CLOSE `$CC` takes `[1, refnum]`;
-  DESTROY `$C1` takes `[1, path]` (as `a23destroy`). The C side
-  calls `call(cmd, count, block, 0, 0)`; `cmdsys_sigs` gives
-  `call` five int parameters, the two beyond the block's address
-  unused.
-- **`src/std` is not `inc`.** The std headers for a ccish build
-  live in `src/std`, so the host oracle builds (`make xref`, which
-  compiles the test programs with `-Iinc`) never see them.
-
-## Where it stands
-
-The regular suite is green (379 tests) with all of the above in
-place. The committed script's one-big-invocation stage 1 stops at
-file 2's front end colliding with file 1's state (`obj.h:27:
-error 27: redeclaration of 'REC_DATA'`, B1 as originally framed);
-under the batched stages that failure does not occur, because each
-invocation starts in zeroed memory. The per-file sweep below is the
-state of the sources themselves, and it holds under either design.
-
-A per-file sweep (each source compiled alone by the host ccish,
-small build) shows where every file stands. The `undefined
-reference` rows are expected for a single object: those names live
-in other objects (the vmsys library, the other passes) and resolve
-only in the full link.
+On the Apple II, ccish is four programs (ccpp, cccomp, ccgen, ccrel),
+each with nearly all of memory. The all-in-one `ccish` is a host
+convenience; it can't fit (cccomp alone is 42,743 bytes of module file
+today). So the bootstrap builds the modules `ccpp`, `cccomp`, `ccgen`
+and `ccrel` from the same groups of files the Makefile uses (COMMON,
+PP, NAM, FRONT, BACK, LINK), and each stage is a batch of short
+invocations:
 
 ```
-a.c (main)     link: fatal 222, too many names shared (B5)
-b.c (diag)     link: undefined fopen (expected alone)
-c.c (bio)      link: undefined fopen (expected alone)
-d.c (ppname)   link: undefined strlen (expected alone)
-e.c (pplex)    link: undefined pp_macro_flag (expected alone)
-f.c (ppmac)    link: undefined pp_id_spelling (expected alone)
-g.c (ppif)     link: undefined pp_next_raw (expected alone)
-h.c (ppout)    link: undefined error (expected alone)
-i.c (pp)       link: undefined pp_out (expected alone)
-j.c (nam)      link: undefined fopen (expected alone)
-k.c (tokin)    link: undefined nam_open (expected alone)
-l.c (name)     link: undefined fatal (expected alone)
-m.c (type)     link: undefined error (expected alone)
-n.c (parse)    ccpp: fatal 244, too many macros (B2)
-o.c (pexpr)    ccpp: fatal 244 (B2)
-p.c (pstmt)    ccpp: fatal 244 (B2)
-q.c (ptop)     ccpp: fatal 244 (B2)
-r.c (irout)    link: fatal 222 (B5)
-s.c (irin)     fatal 28, too many variables (B3)
-t.c (lower)    link: undefined num_text (expected alone)
-u.c (peep)     link: undefined emit_put (expected alone)
-v.c (emit)     fatal 138, too many case labels (B4)
-w.c (helper)   link: undefined lower_op (expected alone)
-x.c (link)     link: undefined strcmp (expected alone)
-y.c (vmsys)    compiles and links its own object clean
+for each source file f of the compiler:
+    ccpp f.c        -> f.i, f.nam
+    cccomp f        -> f.ir
+    ccgen f         -> f.obj, f.syms
+for each program p in ccpp, cccomp, ccgen, ccrel:
+    ccrel -o p @p.lst     (p's objects, then the library's)
 ```
 
-## The include style question (to re-investigate)
+- Stage 1 runs that with the host-built passes; stage 2 runs it under
+  plvm with stage 1's modules; stage 3 with stage 2's. The test: stage
+  2's and stage 3's modules (and, as a bonus, their objects) are
+  byte-for-byte identical. The script is the batch file; only the
+  executor changes.
+- Why: it's what you'd do on the real machine, each process starts
+  with clean memory (so the passes need no per-file reset, and B1
+  drops out), and a stage 2 versus stage 3 difference shows up in the
+  first object that differs, file by file.
+- So `src/main.c` should go back to its single-file form (commit
+  7d986620 made it compile N files in one process, which breaks on
+  file 2, and added `input_base`/`link_base`). ccish doesn't need a
+  `-c` for the bootstrap, since ccpp/cccomp/ccgen already stop at the
+  object; add one later only if it helps on the host.
+- tools/measure.py already does most of this (it compiles every
+  source with the passes and links each program, with stand-in
+  headers in tools/inc and a stub library). The bootstrap script
+  should share that preparation rather than grow a second copy, and
+  its workarounds (no `long`, `main_args`) should shrink as ccish
+  catches up.
 
-As committed, the sources' 32 std includes are quoted
-(`#include "stdio.h"`), and the stage script copies the std headers
-flat beside each stage's sources, found by the "beside the
-including file" rule (src/pp.c `do_include`).
+### R2. Standard includes through a directory we control
 
-The alternative is to keep `#include <stdio.h>` and control the
-include path instead, which is possible on both sides:
+You should be able to write `#include <stdio.h>` and build the same
+file with gcc, with ccish on the host, and with ccish on the Apple II.
 
-- the host side: gcc's include list is ours to set in the Makefile
-  (`-Iinc` already steers the test oracles); the compiler's own
-  host build uses the system headers and is untouched;
-- the ccish side: angle-bracket includes search only the `-I`
-  directories, and the stage script can pass `-Istd`, with `src/
-  std` copied as a subdirectory of each stage rather than flat.
+- **gcc:** the system headers, untouched; the host build of the
+  compiler stays an ordinary C89 program.
+- **ccish on the host:** ccpp searches `-I` directories for `<...>`
+  (src/pp.c `do_include`), then a default directory, compiled in as
+  the absolute path of the library's include directory (say
+  `ccish/lib/include`). A `-I` placed first can override it.
+- **ccish under plvm or on the Apple II:** the default is derived from
+  CMDSYS's `syspath`, e.g. `<syspath>CCINC/`. plvm sets `syspath` to
+  the current directory plus `sys/`, so the stage script makes
+  `sys/ccinc` (and `sys/cclib`, R4) in each stage directory, a copy of
+  or link to the library. That's the "control the library directory"
+  trick, and it's the same layout an Apple II disk would use. ProDOS
+  names (15 characters, letters, digits and periods, no case) are fine
+  for `STDIO.H` and the like.
+- So the 32 include lines the first attempt changed to quotes go back
+  to angle brackets, `src/std` moves into the library, and the flat
+  copies beside the sources go away. It also removes the hazard of a
+  file named `stdio.h` landing next to a source.
 
-The angle-bracket form is the more conventional style (system-style
-headers as `<...>`, local headers as `"...", which is how the
-source was before), it keeps one directory from mixing std headers
-and project headers, and it removes the shadowing hazard of a file
-named `stdio.h` ever landing beside a source. What would change:
-the 32 include lines revert, the script copies the directory and
-passes `-Istd`, and the Makefile's host builds are untouched.
-Verdict: probably better; settle it with the script and main.c
-rework.
+### R3. CMDSYS names get a `__` prefix (decided, decision 35)
 
-## The blockers, in order
+Today the CMDSYS names are fixed ids 1 to NCMDSYS with PLASMA's
+semantics (`cmdsys_sigs`, src/parse.c): `puts` takes a length-prefixed
+string and adds no newline, `getc()` takes no stream, `memset` fills a
+16-bit pattern, `strcpy` copies PLASMA strings. A program can only
+override one with a definition of exactly the same type, which is why
+the first attempt needed `#define getc getc_f` and why `memset` with a
+nonzero byte silently differs from C.
 
-**B6. The VM has no file I/O yet (the gate).** Every invocation
-reads a source and writes objects, so no stage can run until plvm's
-syscall6502, the body behind CMDSYS's CALL export, exists (it
-prints "SYSCALL6502 unimplemented!"). The file calls the modules
-make are the SOS protocol recorded above. A way to provide them, in
-plvm (PLASMA-side work, not ccish-side): an option that maps these
-calls onto ordinary host files in a directory of the emulator, i.e.
-a minimal ProDOS of open/read/write/close over a host directory,
-with refnums into a small table.
+- Rename the fixed ids `__putc`, `__puts`, `__getc`, `__memset`,
+  `__strcpy`, `__call`, `__syscall`, `__heapalloc`, and so on. The
+  linker strips `__` when it writes the import (`PUTS`). Names
+  beginning with `__` are reserved to the implementation (C11
+  7.1.3), so no conforming program collides with them.
+- The standard names are then ordinary functions the library defines
+  with C's semantics. Where a CMDSYS routine is faster, the library
+  calls it: `memset(p, c, n)` can be `__memset(p, c | c << 8, n)`.
+- The tests' `inc/ptest.h` can `#define puts __puts` and so on, so the
+  suite changes little. The guide's "same type" override rule (2.3,
+  5.3) goes away.
 
-**B2. ccpp's macro limits are sized for one file of the compiler,
-not four.** `MAX_MACROS 72` and `MAX_MACRO_BYTES 512` (src/ppmac.c,
-commented as sized at 62 macros / 274 bytes for parse.c) are
-exceeded by the parse/pexpr/pstmt/ptop translations (the error hits
-at the IR_REFS_LABEL definition, ir.h:151). Batching does not help:
-these are per-translation limits. Raising them costs preprocessor
-table memory in the module's 64K; measure first.
+### R4. A ccish C library, in its own directory
 
-**B3. `counted_loop` (src/irin.c) overruns MAX_VARS.** The front
-end's limit of 79 variables visible at once (src/parse.c, obj.h) is
-exceeded by irin.c's globals plus counted_loop's locals. Options:
-split the function's locals, or raise the limit with its data cost.
+`src/vmsys.c` mixes string functions, stdio, `printf`, `exit` and the
+command line in one compiler-specific file. Instead:
 
-**B4. A switch in src/emit.c overruns MAX_CASES.** 36 case labels
-across the switches open at once (src/pstmt.c) is too few for the
-opcode dispatch at emit.c:391. Same options: restructure the switch,
-or raise the limit.
+- `lib/include/` for the headers and `lib/` for the sources, compiled
+  by ccish into objects the stage script (and later, users) link.
+- Small objects (roughly one per function or group), because ccrel
+  links whole objects and every byte counts in 64K. Later, ccrel could
+  search a library directory and link only the objects that define
+  something still undefined, as a Unix `ld` does with an archive;
+  until then the link lists name them.
+- Only what the compiler needs first (approach.md 18.5 lists it):
+  `string.h`, the stdio file calls, `exit`, and the startup code
+  (R6). `malloc` follows approach.md 12's sketch when something needs
+  it.
 
-**B5. The linker's shared-name table is too small for the compiler
-itself.** MAX_GSYMS 163 names / MAX_GNAMES 1427 name bytes (src/
-link.c, commented as 10% above "linking ccish's" 144 names) is
-exceeded by the main.c translation alone: its headers declare most
-of the compiler's API, so its symbol summary carries 177 names. The
-final ccrel run over all 25 objects needs more still. Options:
-raise the limits (g_name, g_hash, g_count, g_flags, g_def, g_desc,
-gnames: roughly 13 bytes per name of data) against the module's
-64K, or emit slimmer summaries (referenced or defined symbols only,
-as a C linker keeps) so a header's declarations stop counting.
+### R5. File I/O through FILEIO
 
-**B7. The 64K budget (RLD size).** Once the stages run, the modules
-must fit the VM's 64K: code, data (including the linker's tables if
-B5 raises them), the name table, and the compiler buffers. Measure
-the stage 1 modules' sizes when B6 is past, and track every limit
-raised in B2/B3/B4/B5 against the budget. The compiler module
-carries the whole source including the linker it does not use in
-compile-only mode; dropping link.c from it is a size option to
-consider.
+The library's stdio sits on FILEIO's table: `open`, `read`, `write`,
+`close`, `create`, `destroy`, plus `newline` if we ever want text
+mode. It converts C strings to length-prefixed paths, keeps a small
+table of open files, and gives `fopen(path, "wb")` its C meaning with
+destroy, create, open. That works under plvm today and on an Apple II
+with the stock FILEIO module.
 
-**B1. Demoted: the per-pass state reset.** The passes do not reset
-between files in one process (compile_file / parse_program, src/
-ptop.c, start the next file with the previous file's function,
-variable, type, tag, label, name and macro tables still loaded), so
-the committed in-process multi-file mode breaks on file 2. The
-batched stages sidestep this: each plvm load is a fresh module in
-zeroed memory, the way separate processes always gave a clean state.
-B1 is now host-side convenience for one-process-multi-file, not in
-the bootstrap's path. The broken multi-input path in main.c should
-still be removed (or fixed) so the compiler does not carry a known-
-broken mode.
+We don't recommend implementing raw MLI in plvm's `syscall6502` for
+this. It would work (fileio.pla shows exactly which calls and blocks),
+and it would fix PLFORTH's `SYSCALL`, but it's emulation-only code
+the real machine doesn't need, and C code that builds MLI blocks is
+bigger than calls through FILEIO.
 
-## The CMDSYS contract the VM side must honor
+### R6. Function pointers and module imports (decided, decision 35)
 
-For B6, the C side (src/vmsys.c) already assumes, matching the PLASMA
-source's fileio.pla:
+Calling FILEIO means loading a word from its table and calling
+through it. PLASMA has the op (ICAL); ccish needs the two pieces
+below. approach.md issue 22 has the options and why a naming
+convention (`__MODULE_ENTRY`) lost.
 
-- `CALL` receives (parameter block address, function number) from
-  the 6502 stack (syscall6502's current pull order), returns the
-  SOS error code, 0 for success;
-- the block's byte 0 is the parameter count, its little-endian words
-  the values;
-- OPENIN/OPENOUT: `[3, path, iobuf, 0]`, the refnum written into the
-  block's byte 5, 0 on failure;
-- READ/WRITE: `[4, refnum, buf, len, 0]`, the count of bytes moved
-  written into word 4;
-- CLOSE: `[1, refnum]`; DESTROY: `[1, path]`.
+- **Function pointers**, which approach.md 18.5 found the compiler
+  itself doesn't use, but which we want anyway. Two PLASMA rules shape
+  them: a call must pass exactly the callee's parameter count, and a
+  function returns exactly its declared number of values (#0, #1).
+  So a pointer's type must carry its parameter count and whether it
+  returns a value, and a call through it is checked like a direct
+  call. FILEIO's `geteof` and `getmark` return two values (#2), which
+  C can't express; the library leaves them out.
+- **Imports from other modules.** ccish modules import only CMDSYS
+  functions today (guide 2.3). An `extern` that no object defines,
+  declared after `#pragma plasma import MODULE`, becomes an import of
+  a PLASMA symbol, and the module gets a dependency on MODULE if any
+  such extern is used. The symbol is the asm label if there is one,
+  else the uppercased C name; names that collide once uppercased and
+  cut to 16 characters are an error. So the library's headers say
+  `extern const struct t_fileio fileio __asm__("FILEIO");` and call
+  `fileio.open(p)`, and `extern const struct t_cmdsys cmdsys
+  __asm__("CMDSYS");` reaches `cmdline`, `syspath` and `syserr`
+  (plvm exports the `CMDSYS` symbol; it needs no dependency).
+- The plvm loader should reject an import it can't resolve. Today it
+  resolves an unknown symbol to address 0 silently (`lookup_sym`),
+  which would make every mistake in these declarations a mystery.
 
-The C side's `call(cmd, count, block, 0, 0)` (five int arguments,
-the CMDSYS signature) passes the function number, the count, and the
-block's address; how the VM's CALL receives them is the VM side's
-choice to document.
+### R7. Startup and `main(argc, argv)`
 
-## Next tasks, in order
+The passes take command lines, and ccish's `main` takes no parameters
+today (guide 5.1), hence measure.py's `main_args` rename and the first
+attempt's `cmd_argv` with hardcoded addresses. Instead, the library's
+startup (an object the link includes, or code ccrel's init emits)
+splits `cmdsys.cmdline` (R6) in a static buffer, skips the module name,
+and calls `main(argc, argv)`. ccish then accepts `int main(int, char
+**)` as well as `int main(void)`. The passes' sources need no
+`__CCISH__` branches.
 
-1. Rework to the batched stages: the script as the per-file loop
-   plus the ccrel link, per stage, for both source sets; main.c as
-   single-file plus a compile-only mode, dropping the broken
-   multi-input loop and its tables; one-letter output bases; drop
-   the `-DSMALL` alias if nothing still needs it.
-2. Settle the include style question (angle brackets plus `-Istd`
-   versus quoted plus flat copies); revert the 32 lines if the
-   former wins.
-3. B6: the plvm file-call option (PLASMA-side); the gate for stages
-   2 and 3.
-4. B2, B3, B4: the capacity limits, each measured against the 64K
-   budget (B7) before raising.
-5. B5: the shared-name table, or slimmer summaries.
-6. Run the stages; diagnose any stage 2 versus stage 3 difference
-   with the kept directories: the IR dumps (-i) and machine-op
-   dumps (-d) line up file for file.
-7. Out of scope for the bootstrap: the per-pass resets (B1), if one
-   process is ever wanted to compile several files.
+### R8. The exit status
+
+Yes, this is worth doing, and it's mostly PLASMA-side work; without
+it, a failing stage under plvm looks like a successful one. Three
+pieces:
+
+1. **`main`'s return value becomes init's result.** ccrel's init
+   calls `main` and discards the result (src/link.c, `init_code`).
+   Have it return 0 when `main` returns 0, else `-(status & 0xFF)`, or
+   -1 when that's 0. The value must be negative, because a positive
+   init result means "keep the module" flags. On the Apple II, CMD
+   then reports it through `perr`, as it does for any failing module.
+2. **plvm returns that status.** `main` in src/vmsrc/cmdsys.c should
+   exit with the negation of `load_mod`'s result when it's negative,
+   else 0. I don't think this needs an option: today a negative init
+   result (an error) silently becomes success. That's a few lines.
+3. **`exit()` from deep in a call.** The compiler calls it 8 times,
+   mostly through `fatal()`. Today's `exit()` spins until `timeout`
+   kills it. It needs to unwind to the startup code, and the two VMs
+   need different mechanisms (see the except/throw fact above). I
+   recommend a small runtime module, say `CCRT`, that ccish modules
+   depend on, exporting `EXIT`: plvm provides it natively, like
+   FILEIO (flush and call the host's `exit`), and on the Apple II it's
+   a small PLASMA module built on except/throw that restores the
+   state the startup saved. The same module file runs on both. `CCRT`
+   is also the natural home for an `ERRPUTC` that writes to the host's
+   stderr under plvm and to the console on an Apple II, so the
+   bootstrap's messages can be compared the way the host tests compare
+   stderr.
+
+Until then, the shim is in the stage script: check that every expected
+output exists, isn't empty, and that the pass printed nothing, and
+treat `timeout`'s status as a failure.
+
+### R9. No six-argument `printf`
+
+The first attempt made `printf` take exactly six arguments, padded
+every call with zeros, and silenced gcc with `-Wno-format-extra-args`.
+That's a nonstandard `printf` that's hard to keep honest. Only emit.c
+(24 calls, the `-d` dump) and link.c (23, the listing) use it.
+approach.md already decided that, until varargs, "the runtime use[s]
+fixed-argument output functions instead of `printf`": a handful of
+helpers (a string, a decimal, a hex number of n digits) in diag.c,
+writing to a `FILE *`. Then drop the padding and the CFLAGS flag. A
+real `printf` waits for varargs (approach.md, `...` with a prototype).
+
+### R10. The command-line budget
+
+plvm's command line holds 127 characters, and an Apple II's isn't
+bigger. The per-file pass lines are short. A link line naming a
+program's objects plus the library's can approach the limit, so give
+ccrel a list file (`ccrel -o cccomp @cccomp.lst`, one name per line)
+rather than one-letter output names. The source and object names stay
+real names, and the list files are the same at every stage.
+
+## What to keep, and what to undo, from the first attempt
+
+| Change | Recommendation |
+|---|---|
+| Makefile: `BOOTSTRAP_VM`, the bootstrap stamp kept out of `SPEC`, `bootstrap` and `full-test` targets, `clean` | Keep |
+| src/irin.c: `mod = 0` for modulo 65536 | Keep; a real 16-bit fix |
+| The per-file sweep and blockers B2 to B7 | Keep (below) |
+| src/main.c: N files in one process | Revert (R1) |
+| tests/spec/bootstrap.sh: one invocation, one-letter sources | Rewrite (R1, R10) |
+| `-DSMALL` alias in src/build.h | Drop; the short lines don't need it |
+| Quoted std includes in 32 places, `src/std` | Revert to `<...>`; headers move to the library (R2) |
+| src/vmsys.c | Replace with the library (R4 to R7) |
+| `#define getc getc_f`, `memset`/`memcpy` as CMDSYS imports | Superseded by R3 |
+| Six-argument `printf`, `-Wno-format-extra-args` | Replace (R9) |
+| `call(cmd, n, block, 0, 0)` with "SOS" numbers | Wrong on both VMs; replace (R5) |
+
+## The per-file sweep (from the first attempt)
+
+Each source compiled alone by the host ccish, small build. An
+"undefined" row is expected for one object: the name is in another.
+
+```
+main     link: fatal 222, too many names shared (B5; main isn't in R1's programs)
+diag     link: undefined fopen (expected alone)
+bio      link: undefined fopen (expected alone)
+ppname   link: undefined strlen (expected alone)
+pplex    link: undefined pp_macro_flag (expected alone)
+ppmac    link: undefined pp_id_spelling (expected alone)
+ppif     link: undefined pp_next_raw (expected alone)
+ppout    link: undefined error (expected alone)
+pp       link: undefined pp_out (expected alone)
+nam      link: undefined fopen (expected alone)
+tokin    link: undefined nam_open (expected alone)
+name     link: undefined fatal (expected alone)
+type     link: undefined error (expected alone)
+parse    ccpp: fatal 244, too many macros (B2)
+pexpr    ccpp: fatal 244 (B2)
+pstmt    ccpp: fatal 244 (B2)
+ptop     ccpp: fatal 244 (B2)
+irout    link: fatal 222 (B5)
+irin     fatal 28, too many variables (B3)
+lower    link: undefined num_text (expected alone)
+peep     link: undefined emit_put (expected alone)
+emit     fatal 138, too many case labels (B4)
+helper   link: undefined lower_op (expected alone)
+link     link: undefined strcmp (expected alone)
+vmsys    compiles and links its own object clean
+```
+
+measure.py's BIG_LIMITS path already works around B2 to B4 to measure
+sizes; the bootstrap needs them fixed for real.
+
+## The blockers
+
+**B2. ccpp's macro limits.** `MAX_MACROS 72` and `MAX_MACRO_BYTES
+512` (src/ppmac.c, sized for parse.c at 62 macros and 274 bytes) are
+exceeded by parse, pexpr, pstmt and ptop (at IR_REFS_LABEL, ir.h:151).
+These are per-translation limits, so one file at a time doesn't help.
+ccpp has headroom (26,049-byte module file); measure the cost of
+raising them.
+
+**B3. `counted_loop` (src/irin.c) overruns MAX_VARS.** irin.c's
+globals plus its locals exceed cccomp's 79 visible variables. Options:
+split the function, or raise the limit; cccomp is the program that
+doesn't fit, so splitting is probably cheaper.
+
+**B4. A switch in src/emit.c overruns MAX_CASES** (36 case labels open
+at once, the opcode dispatch at emit.c:391). Restructure the switch
+(a table may also be smaller) or raise the limit, again in cccomp.
+
+**B5. ccrel's shared-name table.** MAX_GSYMS 163 and MAX_GNAMES 1427
+(src/link.c) are exceeded by irout's summary, because a header's
+declarations count even when nothing uses them. R1 removes main.c
+from the bootstrap, but cccomp's link still carries its whole API.
+Options: raise the limits (about 13 bytes per name), or write slimmer
+summaries (only names an object defines or references, as a C linker
+keeps). ccrel has the most headroom (14,200-byte module file).
+
+**B6. File I/O.** Not a VM gap after all: plvm has FILEIO. The gate
+is ccish's side: R3 to R7 (function pointers, data imports, the
+library, startup).
+
+**B7. The 64K budget.** cccomp's module file (42,743 bytes) doesn't
+fit an Apple II's free memory yet (AGENTS.md); under plvm, with no
+ProDOS or screen, it may load anyway, so stage 2 may run on the host
+before cccomp fits the real machine. Track every limit B2 to B5 raises
+against each program's size with tools/measure.py, and the library's
+size, which is new code in every program.
+
+**B1 (dropped).** The passes don't reset their tables between files in
+one process. R1 never asks them to. If we ever want one process to
+compile several files on the host, it's a separate feature.
+
+## Implementation order
+
+Each step is tested and committed on its own. The order follows the
+dependencies, gets better test feedback early, and puts the biggest
+size risk (function pointers in cccomp) where we learn its cost before
+building on it.
+
+**Phase 0: cleanups (independent, small).**
+1. Keep `mod = 0` in src/irin.c (already in 7d986620).
+2. Revert main.c's multi-input mode, the `-DSMALL` alias, and the
+   six-argument `printf` padding (with `-Wno-format-extra-args`); put
+   the std includes back to `<...>`. Retire src/vmsys.c, src/std and
+   the old bootstrap.sh (the library and the new script replace
+   them); until the new script exists, `make bootstrap` says so and
+   fails.
+3. Replace `printf` in emit.c and link.c with fixed-arity helpers
+   (R9), so ccish can compile them. Measure ccgen and ccrel
+   before and after.
+
+**Phase 1: test feedback (needs the R8 decision; mostly PLASMA-side).**
+4. plvm exits with the negation of a negative init result, and its
+   loader rejects an unresolved import. ccrel's init returns
+   `main`'s status (R8, parts 1 and 2). Every later run test can then
+   check a status, and every import mistake in steps 7 to 10 fails
+   loudly.
+
+**Phase 2: names.**
+5. The `__` prefix on the CMDSYS fixed ids (R3): parse.c, link.c,
+   inc/ptest.h, the tests, the guide. Mechanical, and done before the
+   library so the library is written once, against its final names.
+
+**Phase 3: function pointers.**
+6. Declarations, `&f` and plain `f` as values, assignment, calls
+   through a pointer (ICAL) checked like direct calls, comparison
+   with 0 and each other, pointers in arrays and struct members.
+   Cross-check with xrun tests against gcc and clang. Measure cccomp
+   (it doesn't fit yet) and report the cost before going on.
+
+**Phase 4: imports from other modules.**
+7. The asm label and `#pragma plasma import` in cccomp; dependency
+   names and imports beyond CMDSYS in ccrel (OBJECT.md version bump
+   if the .syms format changes). Test with run tests that read
+   `cmdsys` fields and call a CONIO or FILEIO entry. (This step
+   doesn't need step 6 for data imports, so it could go first; the
+   table calls need both.)
+
+**Phase 5: the library and startup.**
+8. `lib/include` and the default include directory: compiled in on
+   the host, `<syspath>CCINC/` under the VM (R2).
+9. Startup and `main(argc, argv)` from `cmdsys.cmdline` (R7).
+10. The C library (R4, R5): string.h first, then stdio over FILEIO
+    (`fopen`, `fread`, `fwrite`, `fclose`, `remove`, `getc`, `putc`,
+    `fputs`), stdlib's `exit` (a stopgap that reports and stops), with
+    run tests under plvm. Measure each program with the library linked
+    in.
+
+**Phase 6: the bootstrap.**
+11. ccrel's `@list` file (R10), then rewrite tests/spec/bootstrap.sh
+    for R1 and R2, sharing measure.py's preparation.
+12. B2 to B5, each measured against B7.
+13. Run the stages; diagnose a stage 2 versus stage 3 difference with
+    the kept directories, file by file (`-i` and `-d` dumps line up).
+
+**Later.**
+14. `exit()` that unwinds (`CCRT`, R8 part 3) and a stderr route.
+    The compiler calls `exit` only on failure, so a successful stage
+    never needs it; until then a failing pass shows up as a timeout.
+15. The Apple II itself: CR line ends in ccpp, ProDOS file names, a
+    disk layout matching R2's `sys/` directories, and cccomp fitting
+    in free memory (B7).
