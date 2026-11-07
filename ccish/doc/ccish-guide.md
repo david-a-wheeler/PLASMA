@@ -271,14 +271,14 @@ The supported keywords are:
 
 ```
 break    const    continue default do     else     enum   extern
-for      goto     if       int    return   sizeof   static   struct
-switch   typedef  unsigned void     volatile while
+for      goto     if       int    return   sizeof   short    static
+struct   switch   typedef  unsigned void     volatile while
 ```
 
-plus `signed`, as in `signed int`, which is `int`. Seven more of
-C89's keywords are recognized so the error is clear, but not
-supported (section 9.1): `auto`, `double`, `float`, `long`,
-`register`, `short` and `union`.
+plus `signed`, as in `signed int`, which is `int`, and `short`, a
+synonym for `int` (section 4.1). Six more of C89's keywords are
+recognized so the error is clear, but not supported (section 9.1):
+`auto`, `double`, `float`, `long`, `register` and `union`.
 
 `enum tag` used as a type does not have to match a definition
 (section 1.1).
@@ -354,8 +354,9 @@ type is `char *` too.
 
 The arithmetic types are `int` (16 bits), `char` (8 bits, unsigned)
 and `unsigned` (16 bits); `void` names the absence of a value.
-Pointers are 16 bits. There is no `short`, no `long`, no floating
-point, and no `signed char` (section 9.1).
+Pointers are 16 bits. `short` is a synonym for `int` (section 4.1);
+there is no `long`, no floating point, and no `signed char`
+(section 9.1).
 
 All values live in 16-bit words on a little-endian 6502. Where C
 leaves a choice to the implementation, ccish's choices are the ones
@@ -365,6 +366,19 @@ listed here.
 
 `int` is a 16-bit signed integer, from -32768 to 32767, in two's
 complement.
+
+`short` is a synonym for `int`: the same type in every position,
+`short` local, `short` parameter, `short` return, `short *`,
+`short` array element, `short` struct member, and in a macro or a
+cast. The standard C distinction between the two (a `short` that may
+be narrower than an `int`) is not worth implementing: on this target
+an `int` is already the narrowest useful word type, and ccish has to
+run in limited memory. The synonym also makes it easier to write a
+program that compiles under both ccish and a regular C compiler, and
+to port existing programs that use `short` for small integers.
+`sizeof(short) / sizeof(int)` is 1 under ccish; under a regular
+compiler it may be 0, so a portable program uses the element-count
+ratio (`sizeof a / sizeof a[0]`) instead.
 
 Integer arithmetic wraps around on overflow, and that is defined
 behavior: `32767 + 1` is `-32768`, and `-32768 - 1` is `32767`.
@@ -1190,7 +1204,6 @@ directive is an error.
 
 ### 9.1 Not implemented, expected soon
 
-* `short` (it would be `int` on this target, but isn't in yet)
 * `union`
 * `signed char`
 
