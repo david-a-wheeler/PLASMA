@@ -87,9 +87,14 @@ files of the sessions so far, before a move to a new computer.)
   model. The second line is the git identity of whoever is working;
   on this machine that is `Signed-off-by: David A. Wheeler
   <dwheeler@dwheeler.com>`. (Not the Co-Authored-By trailer.)
-- **Files in `src/` named with a leading comma** (`,parse.c`,
-  `,enum-set-membership`) and editor swap files are the user's own:
-  never touch, delete or commit them.
+- **A file named with a leading comma is a temporary file**, by a
+  long-standing convention, anywhere in the tree (`src/,parse.c`,
+  `doc/,instruction`, `,issue-rld-streaming.md` at the top). Don't
+  commit one automatically: the user decides when one is checked in
+  (a few are). Stage files by explicit path, not with `git add` of a
+  directory or `-A`, which would sweep them in. Don't touch or delete
+  the user's comma files or editor swap files. Name your own
+  temporary files with a leading comma too.
 
 ## Code style
 
