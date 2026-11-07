@@ -3589,18 +3589,45 @@ PLASMA modules under plvm: open, read, create, write, close, destroy
 and newline work; the quirks are in doc/bootstrap-test.md. Answer:
 the C library's stdio sits on FILEIO.
 
-**The exit status (possible, not committed).** ccrel's init discards
-`main`'s result, and plvm discards init's. Proposed: init returns 0,
-or `-(status & 0xFF)` (-1 when that's 0) for a nonzero status, since a
-positive init result means "keep the module"; plvm exits with the
-negation of a negative init result. On an Apple II, CMD already
-reports a negative init result through `perr`. An `exit()` from deep
-in a call must unwind, and the VMs need different mechanisms
-(longjmp.pla's except/throw is 6502 code, and I believe it can't
-unwind plvm's C-recursive interpreter); one option is a small runtime
-module (`CCRT`) that plvm provides natively and an Apple II loads as a
-PLASMA module. The compiler calls `exit` only on failure, so this can
-follow the first stage 2 run.
+**The exit status (decided in discussion 2026-11-07, decision 36).**
+ccrel's init used to discard `main`'s result, and plvm discards
+init's, always exiting 0. Constraint: change only ccish, not PLASMA's
+VMs or CMDSYS (the plvm change is in doc/plasma-requests.md).
+
+- **No clash with "keep resident".** PLASMA's loader reads init's
+  result in three ranges (cmd.pla `loadmod`): $2000 (`modkeep`) and
+  up keep the module, 0 to $1FFF free it, and a negative result is an
+  error (`perr = -result`, which CMD prints as `ERR:$xx`). So init
+  returns `-(status & 255)`: 0 for success (or a void `main`), never
+  positive. On an Apple II a failing C program then shows
+  `ERR:$03`, as any failing module does. `status & 255` is what a
+  Unix shell sees (`exit(256)` is 0).
+- **Getting it to the host, per run, without changing plvm.** plvm
+  passes a module only its command line and the current directory (no
+  environment variables; memory starts zeroed). Options: (A) a marker
+  the program always prints; (B) a status file the program writes;
+  (C) a magic first argument the program's startup recognizes; (D) a
+  driver module. A and B cost every program code (and B a FILEIO
+  dependency); C needs startup code in every program and command-line
+  space. Answer: D. `tools/ccstat.pla`, 25 lines of PLASMA, runs as
+  `plvm ccstat prog args`: it drops its own name from
+  `cmdsys:cmdline`, so the program sees exactly `prog args`, runs it
+  with `cmdsys:modexec` (which returns init's negative result on both
+  plvm and the Apple II), and prints a marker line, ^A `exit N`.
+  `tools/ccrun` runs plvm through ccstat, strips the marker, and exits
+  with N (no marker: plvm's status, or 125; a timeout: 124). A module
+  run directly prints no marker, so the switch is per run, and the
+  program carries no code for it. Prototyped and tested 2026-11-07.
+- **`exit()` from deep in a call** is still open. Tested 2026-11-07:
+  longjmp.pla's except/throw crashes plvm ("stack smashing
+  detected"), since plvm runs each bytecode call as a C recursion
+  (CALL -> M6502_exec -> vm_interp). On plvm, without changing it,
+  `exit()` can only report and stop: print ccstat's marker if ccstat
+  is present (`cmdsys:lookupsym`), then a 6502 BRK (plvm prints
+  `BRK: $xxxx` to stderr and exits 255); that needs function pointers
+  and imports. On an Apple II, BRK enters the monitor, so it needs
+  except/throw (6502 code, untested there). The compiler calls `exit`
+  only on failure, so this can follow the first stage 2 run.
 
 ## Decisions so far
 
@@ -4125,8 +4152,14 @@ issue. In summary:
     stdio sits on FILEIO, not raw MLI. The bootstrap builds the four
     pass programs, one source file per invocation, with a separate
     ccrel link (doc/bootstrap-test.md, R1); the in-process
-    multi-file `ccish` is not needed. The exit status (issue 22) is
-    proposed, not yet decided.
+    multi-file `ccish` is not needed.
+36. **The exit status** (decided in discussion, 2026-11-07; issue
+    22). ccrel's init returns `-(status & 255)` of `main`'s result,
+    PLASMA's own error convention, which can't be read as "keep the
+    module". The host gets it, per run and without changing plvm,
+    through the ccstat driver module and `tools/ccrun`; the run, gen
+    and xrun tests check it (a test's expected status is in
+    `NAME.status`, else 0).
 
 
 ## Milestones

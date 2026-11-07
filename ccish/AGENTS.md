@@ -217,7 +217,12 @@ files of the sessions so far, before a move to a new computer.)
   `/path/src/plvm name` (lowercase, no extension); output is CR LF.
   `-t` traces. "Eval stack over/underflow" means unbalanced code.
 - xplasm: `xplasm -AMS file.pla > out.a` (`-S`, or it writes next to the
-  source), then `acme --setpc 4094 -o mod out.a`.
+  source), then `acme --setpc 4094 -o mod out.a`. The test build needs
+  both, for the ccstat driver (tests/out/ccstat).
+- Exit status: plvm always exits 0. `tools/ccrun [-t secs] name args`
+  runs a module (from its directory) through ccstat and exits with
+  `main`'s status; the run, gen and xrun tests use it, and a run test's
+  expected status is in `tests/run/NAME.status` (else 0).
 - No Apple II emulator is installed: measuring free memory on a real
   64K Apple II (approach.md 18.6 E1) is still to do. The user owns Apple
   IIs and prefers an Apple II+ or IIe.

@@ -33,10 +33,11 @@ where ccish is going. In short, we recommend:
    convention), so the library can call FILEIO's table.
 
 Items 1, 3, 5 and 6 were decided in discussion on 2026-11-07
-(approach.md issue 22, decision 35); 7 is proposed, not committed.
+(approach.md issue 22, decision 35); 7's first part is done
+(decision 36).
 7. **Get an exit status out:** `main`'s return value through the
-   module's init to plvm's process status, and an `exit()` that
-   unwinds.
+   module's init and a driver module to the host (done), and an
+   `exit()` that unwinds.
 8. **Drop the six-argument `printf`;** use a few fixed-arity output
    functions until varargs exist (approach.md already decided this).
 
@@ -249,9 +250,10 @@ convention (`__MODULE_ENTRY`) lost.
   `fileio.open(p)`, and `extern const struct t_cmdsys cmdsys
   __asm__("CMDSYS");` reaches `cmdline`, `syspath` and `syserr`
   (plvm exports the `CMDSYS` symbol; it needs no dependency).
-- The plvm loader should reject an import it can't resolve. Today it
-  resolves an unknown symbol to address 0 silently (`lookup_sym`),
-  which would make every mistake in these declarations a mystery.
+- plvm's loader resolves an import it can't find to address 0,
+  silently (`lookup_sym`), so a mistake in these declarations shows
+  up as a mystery at run time. Rejecting it is a request in
+  doc/plasma-requests.md; until then, test each new import.
 
 ### R7. Startup and `main(argc, argv)`
 
@@ -264,39 +266,28 @@ and calls `main(argc, argv)`. ccish then accepts `int main(int, char
 **)` as well as `int main(void)`. The passes' sources need no
 `__CCISH__` branches.
 
-### R8. The exit status
+### R8. The exit status (done for `main`, decision 36)
 
-Yes, this is worth doing, and it's mostly PLASMA-side work; without
-it, a failing stage under plvm looks like a successful one. Three
-pieces:
+Without it, a failing pass under plvm looks like a successful one.
+Done without changing PLASMA (approach.md issue 22 has the options):
 
-1. **`main`'s return value becomes init's result.** ccrel's init
-   calls `main` and discards the result (src/link.c, `init_code`).
-   Have it return 0 when `main` returns 0, else `-(status & 0xFF)`, or
-   -1 when that's 0. The value must be negative, because a positive
-   init result means "keep the module" flags. On the Apple II, CMD
-   then reports it through `perr`, as it does for any failing module.
-2. **plvm returns that status.** `main` in src/vmsrc/cmdsys.c should
-   exit with the negation of `load_mod`'s result when it's negative,
-   else 0. I don't think this needs an option: today a negative init
-   result (an error) silently becomes success. That's a few lines.
-3. **`exit()` from deep in a call.** The compiler calls it 8 times,
-   mostly through `fatal()`. Today's `exit()` spins until `timeout`
-   kills it. It needs to unwind to the startup code, and the two VMs
-   need different mechanisms (see the except/throw fact above). I
-   recommend a small runtime module, say `CCRT`, that ccish modules
-   depend on, exporting `EXIT`: plvm provides it natively, like
-   FILEIO (flush and call the host's `exit`), and on the Apple II it's
-   a small PLASMA module built on except/throw that restores the
-   state the startup saved. The same module file runs on both. `CCRT`
-   is also the natural home for an `ERRPUTC` that writes to the host's
-   stderr under plvm and to the console on an Apple II, so the
-   bootstrap's messages can be compared the way the host tests compare
-   stderr.
-
-Until then, the shim is in the stage script: check that every expected
-output exists, isn't empty, and that the pass printed nothing, and
-treat `timeout`'s status as a failure.
+1. **`main`'s return value becomes init's result:** ccrel's init
+   returns `-(status & 255)`, PLASMA's error convention, never
+   positive (which would mean "keep the module"). An Apple II's CMD
+   shows it as `ERR:$xx`.
+2. **The host gets it through a driver:** `plvm ccstat prog args`
+   runs `prog` with exactly `prog args` as its command line and prints
+   a marker with init's result; `tools/ccrun` strips the marker and
+   exits with the status. A module run directly is unchanged. The
+   run, gen and xrun tests use it. (Making plvm itself exit with the
+   status is in doc/plasma-requests.md.)
+3. **`exit()` from deep in a call** is still open. The compiler calls
+   it 8 times, all on failure, mostly through `fatal()`. Tested:
+   longjmp.pla's except/throw crashes plvm, so on plvm `exit()` can
+   only print ccstat's marker and stop with a BRK (which needs
+   function pointers); an Apple II needs except/throw. Until then a
+   failing pass shows up as a missing marker or a timeout, which
+   `ccrun` reports as a nonzero status anyway.
 
 ### R9. No six-argument `printf` (done)
 
@@ -436,12 +427,12 @@ building on it.
 3. Replace `printf` in emit.c with `out_num()` and `fputs()` (R9).
    Done; ccgen can't be measured until B4 is past.
 
-**Phase 1: test feedback (needs the R8 decision; mostly PLASMA-side).**
-4. plvm exits with the negation of a negative init result, and its
-   loader rejects an unresolved import. ccrel's init returns
-   `main`'s status (R8, parts 1 and 2). Every later run test can then
-   check a status, and every import mistake in steps 7 to 10 fails
-   loudly.
+**Phase 1: test feedback (done, decision 36).**
+4. ccrel's init returns `main`'s status, and the ccstat driver and
+   `tools/ccrun` hand it to the host; the run, gen and xrun tests
+   check it. The plvm changes that would help (exiting with the
+   status itself, rejecting an unresolved import) are requests in
+   doc/plasma-requests.md, not part of this plan.
 
 **Phase 2: names.**
 5. The `__` prefix on the CMDSYS fixed ids (R3): parse.c, link.c,

@@ -38,6 +38,13 @@ PLVMBIN= $(abspath $(PLVM))
 # (bootstrap, below).
 BOOTSTRAP_VM ?= $(PLVMBIN)
 OUT    = tests/out
+# PLASMA's cross-compiler, and the assembler it writes for, which build
+# the ccstat driver that tools/ccrun runs a module through to get its
+# exit status (approach.md issue 22).
+XPLASM = ../src/xplasm
+ACME  ?= acme
+CCSTAT = $(OUT)/ccstat
+CCRUN  = CCSTAT=$(abspath $(CCSTAT)) PLVM=$(PLVMBIN) $(abspath tools/ccrun)
 
 all: ccish ccpp cccomp ccgen ccrel
 
@@ -75,49 +82,67 @@ ccrel-small: src/ccrel.c $(COMMON) $(LINK) $(HEADERS)
 $(PLVM):
 	$(MAKE) -C ../src plvm
 
+$(XPLASM):
+	$(MAKE) -C ../src xplasm
+
+$(CCSTAT): tools/ccstat.pla ../src/inc/cmdsys.plh $(XPLASM)
+	@mkdir -p $(dir $@)
+	$(XPLASM) -AMOWS tools/ccstat.pla > $@.a
+	$(ACME) --setpc 4094 -o $@ $@.a
+
 # The passes a test may run; a stamp depends on these, so a rebuilt pass
 # re-runs the tests.
 PASSES := ccish ccpp cccomp ccgen ccrel \
-          ccpp-small cccomp-small ccgen-small ccrel-small $(PLVM)
+          ccpp-small cccomp-small ccgen-small ccrel-small $(PLVM) \
+          $(CCSTAT) tools/ccrun
 
 # --- The test kinds. Each is a directory of inputs; the stamp for input
 # tests/<kind>/<stem> is tests/out/<kind>/<stem>.stamp.
 
-# run: compile, run under plvm; stdout must equal the .expected, the
-# stderr must equal .stderr.expected (or be empty if there is none), and
-# the source's listing directives (tests/check_listing.sh) must hold.
+# run: compile, run under plvm (through tools/ccrun); stdout must equal
+# the .expected, the exit status the number in .status (or 0 if there
+# is none), the stderr .stderr.expected (or be empty if there is none),
+# and the source's listing directives (tests/check_listing.sh) must
+# hold.
 RUN := $(wildcard tests/run/*.c)
 $(OUT)/run/%.stamp: tests/run/%.c tests/run/%.expected \
                     $(wildcard tests/run/*.stderr.expected) \
+                    $(wildcard tests/run/*.status) \
                     $(PASSES) tests/check_listing.sh
 	@mkdir -p $(dir $@)
 	@./ccish -l -o $(dir $@)$* tests/run/$*.c >$(dir $@)$*.lst 2>$(dir $@)$*.stderr
-	@(cd $(dir $@) && timeout 10 $(PLVMBIN) $(notdir $*) 2>&1 | tr -d '\r' > $*.actual)
+	@(cd $(dir $@) && { $(CCRUN) -t 10 $(notdir $*) 2>&1; echo $$? > $(notdir $*).status; } | tr -d '\r' > $*.actual)
 	@diff -u tests/run/$*.expected $(dir $@)$*.actual
+	@want=$$(cat tests/run/$*.status 2>/dev/null || echo 0); got=$$(cat $(dir $@)$*.status); \
+	 [ "$$got" = "$$want" ] || { echo "run $*: exit status $$got, expected $$want"; exit 1; }
 	@if [ -f tests/run/$*.stderr.expected ]; then diff -u tests/run/$*.stderr.expected $(dir $@)$*.stderr; elif [ -s $(dir $@)$*.stderr ]; then echo "run: unexpected stderr"; cat $(dir $@)$*.stderr; exit 1; fi
 	@tests/check_listing.sh tests/run/$*.c $(dir $@)$*.lst
 	@touch $@
 
 # gen: ccish -d (machine ops after the peephole stage) must equal the
-# .exp, and the module must run under plvm.
+# .exp, and the module must run under plvm (through tools/ccrun, so a
+# crash or timeout fails; the exit status is the program's business).
 GEN := $(wildcard tests/gen/*.c)
 $(OUT)/gen/%.stamp: tests/gen/%.c tests/gen/%.exp $(PASSES)
 	@mkdir -p $(dir $@)
 	@./ccish -d -o $(dir $@)$* tests/gen/$*.c >$@.actual 2>$@.err
 	@test ! -s $@.err || { echo "gen: unexpected messages"; cat $@.err; exit 1; }
 	@diff -u tests/gen/$*.exp $@.actual
-	@(cd $(dir $@) && timeout 10 $(PLVMBIN) $(notdir $*) >/dev/null 2>&1)
+	@(cd $(dir $@) && $(CCRUN) -t 10 $(notdir $*) >/dev/null 2>&1; s=$$?; \
+	  [ $$s -lt 124 ] || { echo "gen $*: plvm status $$s"; exit 1; })
 	@touch $@
 
 # xrun: the same source must print the same under ccish+plvm as under
-# the host oracle, whose output make xref cached in the .ref.
+# the host oracle, whose output make xref cached in the .ref, and exit
+# with status 0, as the oracle must (make xref fails otherwise).
 XRUN := $(wildcard tests/xrun/*.c)
 $(OUT)/xrun/%.stamp: tests/xrun/%.c tests/xrun/%.ref $(PASSES)
 	@mkdir -p $(dir $@)
 	@./ccish -I inc -o $(dir $@)$* tests/xrun/$*.c 2>$(dir $@)$*.err
 	@test ! -s $(dir $@)$*.err || { echo "xrun: unexpected messages"; cat $(dir $@)$*.err; exit 1; }
-	@(cd $(dir $@) && timeout 10 $(PLVMBIN) $(notdir $*) 2>&1 | tr -d '\r' > $*.actual)
+	@(cd $(dir $@) && { $(CCRUN) -t 10 $(notdir $*) 2>&1; echo $$? > $(notdir $*).status; } | tr -d '\r' > $*.actual)
 	@diff -u tests/xrun/$*.ref $(dir $@)$*.actual
+	@got=$$(cat $(dir $@)$*.status); [ "$$got" = 0 ] || { echo "xrun $*: exit status $$got"; exit 1; }
 	@touch $@
 
 # errors: must fail to compile, and the message (stderr) must contain
@@ -182,7 +207,7 @@ full-test: test $(OUT)/spec/bootstrap.stamp
 # Everything the tests need, built but not run: the passes, the small
 # passes, the VM, and the cross references. The test stamps hang off this,
 # so nothing runs against a stale pass.
-testbuild: all small $(PLVM) xref
+testbuild: all small $(PLVM) $(CCSTAT) xref
 
 # The whole suite: a stamp for every test, then one that depends on all
 # of them and reports the count (only when something actually ran).

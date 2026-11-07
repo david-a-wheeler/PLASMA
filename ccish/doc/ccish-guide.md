@@ -647,8 +647,11 @@ A few specifics:
 * The return type can be any of these types but an array.
 * Parameters can be any type but `void`. An array parameter is a
   pointer, as in C (section 4.6).
-* `main` takes no parameters (`int main(void)`), and its return value
-  is ignored.
+* `main` takes no parameters (`int main(void)`). Its return value,
+  `& 255`, is the program's exit status: the module's init returns its
+  negation, PLASMA's error convention, so an Apple II shows a nonzero
+  status as `ERR:$xx`. plvm always exits 0; to get the status on the
+  host, run the module with `tools/ccrun` (approach.md issue 22).
 * A struct parameter or return value must be at most 8 bytes
   (section 4.7). Passing a struct needs a prototype.
 * A function can call itself.

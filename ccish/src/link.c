@@ -1218,9 +1218,11 @@ static void init_word(int *n, int op, int w)
  * the block from heapalloc, zeroes it, and points each pointer word at
  * its global. (It asks heapavail first: plvm's heapalloc stops the VM
  * when the heap is full, and the Apple's can wrap past $FFFF.) Then it
- * calls main, discards its result, and returns 0. A positive init
- * result would be read as "keep the module" flags. Init must be the
- * last bytecode. */
+ * calls main and returns -(status & 255), main's exit status as a
+ * PLASMA error (0 for success, or for a void main), never positive: a
+ * positive init result would be read as "keep the module" flags. CMD
+ * reports a negative one as ERR:$xx, and tools/ccstat.pla hands it to
+ * the host (approach.md issue 22). Init must be the last bytecode. */
 static int init_code(void)
 {
   int n = 0, i, pw = data_base + obj_data[nobjs] + zstay;
@@ -1254,9 +1256,12 @@ static int init_code(void)
     init_op(&n, OP_CALL, 0, gsym_find("memset"));
   }
   init_op(&n, OP_CALL, 0, main_sym);
-  if (g_flags[main_sym] & G_RETURNS)
-    fbuf[n++] = OP_DROP;
-  fbuf[n++] = OP_CN;
+  if (g_flags[main_sym] & G_RETURNS) {
+    fbuf[n++] = OP_ANDI;
+    fbuf[n++] = 255;
+    fbuf[n++] = OP_NEG;
+  } else
+    fbuf[n++] = OP_CN;
   fbuf[n++] = OP_RET;
   return n;
 }
@@ -1268,7 +1273,7 @@ static int init_size(void)
   int n;
   if (main_sym < 0)
     return 0;
-  n = 6 - !(g_flags[main_sym] & G_RETURNS);
+  n = g_flags[main_sym] & G_RETURNS ? 7 : 5;
   if (nmoved > 0)
     n += 3 + 3 + 3 + 3 + 1 + sizeof(no_memory) + 3 + 1 + 1
          + 3 + 3 + 3 + 7 * (nmoved - 1) + 1 + 3 + 1 + 3 + 3;

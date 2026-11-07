@@ -2,8 +2,9 @@
  * jumps"). No comparison is turned into a 1 or 0 (no NEG), == and !=
  * fuse with their branch (BREQ, BRNE), and with no else part, no
  * BRNCH is left: the one that a && b || c and !(a && b) need goes, by
- * Bcond L BRNCH T L: -> Binv T L:. */
-// listing-lacks: NEG
+ * Bcond L BRNCH T L: -> Binv T L:. The one NEG is the init
+ * function's, for main's exit status. */
+// listing-count: 1 NEG
 // listing-lacks: BRNCH
 // listing-lacks: ISEQ
 // listing-lacks: ISNE

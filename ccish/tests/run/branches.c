@@ -1,12 +1,13 @@
 /* Truth runs (approach.md, decision 31): an if whose arms return 1
  * and 0 is the condition's truth, so it compiles to the condition's
  * value, with no branch or label at all. The while keeps its test
- * branch. */
+ * branch. The init function adds an ANDI and a NEG, for main's exit
+ * status. */
 // listing-count: 1 ISEQ
 // listing-count: 1 ISNE
 // listing-count: 1 NOT
-// listing-count: 1 ANDI
-// listing-count: 2 NEG
+// listing-count: 2 ANDI
+// listing-count: 3 NEG
 // listing-count: 1 ISLT
 // listing-count: 1 BRTRU
 // listing-count: 1 BRNCH

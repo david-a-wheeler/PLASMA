@@ -1,0 +1,55 @@
+//
+// ccstat: run a module and report its exit status, for tools/ccrun.
+//
+// plvm ccstat prog args... runs prog with "prog args..." as its command
+// line, exactly as plvm prog args... would, then prints a marker line,
+// ^A (1), "exit", a space and the status, which ccrun strips and turns
+// into its own exit status. plvm itself always exits 0, and a module
+// run directly prints no marker, so this is the per-run switch.
+//
+// The status is the negation of the program's init result: CMDSYS's
+// modexec returns that result when it's negative (an error), else 0. A
+// ccish program's init returns -(status & 255) when main returns a
+// nonzero status (approach.md issue 22).
+//
+include "../src/inc/cmdsys.plh"
+word cl, i, n, r
+byte name[64]
+cl = cmdsys:cmdline
+n  = ^cl
+//
+// Skip this module's name and the spaces after it.
+//
+i = 1
+while i <= n and ^(cl + i) <> ' '
+    i++
+loop
+while i <= n and ^(cl + i) == ' '
+    i++
+loop
+if i > n
+    puts("usage: ccstat module [args...]"); putln
+    return -1
+fin
+//
+// Move the rest to the front, one byte at a time (the two overlap).
+//
+r = 1
+while i <= n
+    ^(cl + r) = ^(cl + i)
+    r++
+    i++
+loop
+^cl = r - 1
+//
+// The program's name is the first word.
+//
+i = 1
+while i <= ^cl and ^(cl + i) <> ' ' and i < 64
+    name[i] = ^(cl + i)
+    i++
+loop
+name[0] = i - 1
+r = cmdsys:modexec(@name)
+putc(1); puts("exit "); puti(-r); putln
+done

@@ -21,7 +21,7 @@ int main()
   puti(sum3(100, twice(10), sum3(1, 2, 3))); putln();
   nothing();
   puti(((1 + (2)) + 3)); putln();
-  return 99;                      /* main's result is discarded */
+  return 99;                      /* the exit status (calls.status) */
 }
 
 int twice(int x) { return x + x; }

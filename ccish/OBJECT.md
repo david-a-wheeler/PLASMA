@@ -467,8 +467,9 @@ module. It has at most one input file open at a time, and the module.
    passes (with several objects, each object's functions after an
    `object NAME:` line). Then copy each helper from the stream of the
    object it was taken from (listed as `helper NAME:`), then add the
-   init function, which sets up the moved globals (below) and calls
-   `main`.
+   init function, which sets up the moved globals (below), calls
+   `main`, and returns `-(status & 255)` of its result (0 for a void
+   `main`), PLASMA's error convention.
 4. Write the RLD (function entries in code order, the helpers'
    included, then the kept
    relocations, those in the data first) and the ESD (imports). With

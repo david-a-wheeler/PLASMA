@@ -1,17 +1,18 @@
 /* Constant folding in the parser, with C's 16-bit int rules.
  * Every operation on constants alone is computed at compile time, so
  * only the operations that involve x appear in the code. (The two
- * 2 * x become DUP ADD in the peephole stage.) */
+ * 2 * x become DUP ADD in the peephole stage.) The one NEG and the one
+ * AND (an ANDI) are the init function's, for main's exit status. */
 // listing-lacks: MUL
 // listing-count: 2 DUP
 // listing-count: 2 DIV
 // listing-count: 1 SHL
 // listing-lacks: MOD
 // listing-lacks: SHR
-// listing-lacks: NEG
+// listing-count: 1 NEG
 // listing-lacks: COMP
 // listing-lacks: NOT
-// listing-lacks: AND
+// listing-count: 1 AND
 // listing-lacks: IOR
 // listing-lacks: XOR
 // listing-has: INCR

@@ -1,0 +1,67 @@
+#!/bin/sh
+# ccrun: run a PLASMA module under plvm and exit with its exit status.
+#
+# Usage: ccrun [-t seconds] module [args...]
+#
+# Run it from the module's directory, as plvm needs (a module's name is
+# lowercase, with no extension). plvm itself always exits 0, so ccrun
+# runs the module through the ccstat driver (tools/ccstat.pla), which
+# prints a marker line, ^A "exit N", after the module returns. ccrun
+# passes everything else through, strips the marker, and exits with N:
+# for a ccish program, main's return value (& 255). If the marker is
+# missing (a crash, or BRK), ccrun exits with plvm's status, or 125 if
+# that was 0. -t gives a timeout (timeout's status, 124, if it hits).
+#
+# The environment variables PLVM and CCSTAT override where plvm and the
+# ccstat module are (by default, ../src/plvm and the Makefile's
+# tests/out/ccstat, relative to this script's directory's parent).
+# plvm finds ccstat through the current directory's sys/ (its system
+# path), so ccrun links it there.
+
+here=$(cd "$(dirname "$0")/.." && pwd)
+PLVM=${PLVM:-$here/../src/plvm}
+CCSTAT=${CCSTAT:-$here/tests/out/ccstat}
+secs=
+
+if [ "$1" = -t ]; then
+  secs=$2
+  shift 2
+fi
+if [ $# -lt 1 ]; then
+  echo "usage: ccrun [-t seconds] module [args...]" >&2
+  exit 2
+fi
+[ -f "$CCSTAT" ] || { echo "ccrun: no ccstat module at $CCSTAT (make)" >&2; exit 2; }
+
+# Link sys/ccstat atomically, so parallel runs in one directory don't
+# race: a new link under a private name, then a rename over the old.
+if [ ! -e sys/ccstat ]; then
+  mkdir -p sys
+  ln -s "$CCSTAT" "sys/.ccstat.$$" && mv -f "sys/.ccstat.$$" sys/ccstat
+fi
+
+# After plvm, a second marker, ^A "plvm N", carries plvm's own status,
+# for when the module's marker never came. A marker may follow output
+# that doesn't end its line; the text before it is kept.
+{
+  if [ -n "$secs" ]; then
+    timeout "$secs" "$PLVM" ccstat "$@"
+  else
+    "$PLVM" ccstat "$@"
+  fi
+  printf '\001plvm %d\n' $?
+} | awk '
+  BEGIN { status = -1; plvm = 0 }
+  {
+    i = index($0, "\001")
+    if (i == 0) { print; fflush(); next }
+    if (i > 1) { printf "%s", substr($0, 1, i - 1); fflush() }
+    split(substr($0, i + 1), w, " ")
+    sub(/\r$/, "", w[2])
+    if (w[1] == "exit") status = w[2] + 0
+    else if (w[1] == "plvm") plvm = w[2] + 0
+  }
+  END {
+    if (status >= 0) exit status
+    exit plvm ? plvm : 125
+  }'
