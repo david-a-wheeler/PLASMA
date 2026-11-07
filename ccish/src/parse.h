@@ -283,4 +283,7 @@ void need_lvalue(Operand *o, int what);
 void assign_to(Operand *o);
 int  is_null(Operand *o);
 int  elem_size(int t);
+#ifdef CCISH_STATS
+void parse_stats(int *vars_peak, int *ptypes);
+#endif
 #endif

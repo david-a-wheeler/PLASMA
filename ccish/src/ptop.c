@@ -669,8 +669,7 @@ static void report_stats(void)
 {
   int v[7], i;
   v[0] = nfuncs;
-  v[1] = nvars_peak;
-  v[2] = nparam_types;
+  parse_stats(&v[1], &v[2]);
   v[3] = id_peak();
   type_stats(&v[4], &v[5], &v[6]);
   fputs("cccomp-stats", stderr);

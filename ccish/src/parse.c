@@ -376,6 +376,16 @@ int add_static_local(int name, int type)
 char param_types[MAX_PARAM_TYPES];  /* unqualified types */
 static int nparam_types;
 
+#ifdef CCISH_STATS
+/* For report_stats() (ptop.c): the most variables visible at once, and
+ * the parameter types used. */
+void parse_stats(int *vars_peak, int *ptypes)
+{
+  *vars_peak = nvars_peak;
+  *ptypes = nparam_types;
+}
+#endif
+
 /* Record that f's n parameters have the types of its first n
  * variables above the globals (the
  * parameters just parsed), or check them against the types an earlier
