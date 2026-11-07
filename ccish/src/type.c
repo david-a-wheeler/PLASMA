@@ -29,7 +29,7 @@
  * always next to each other, since a struct may be defined inside
  * another's member list.
  */
-#include <stddef.h>
+#include "stddef.h"
 #include "build.h"
 #include "diag.h"
 #include "type.h"

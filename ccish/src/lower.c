@@ -4,8 +4,8 @@
  * and chooses their encodings, mostly 1:1. Each IR op is described in
  * ../IR.md. -i prints each op (dump_ir()) as irin.c reads it.
  */
-#include <stdio.h>
-#include <string.h>
+#include "stdio.h"
+#include "string.h"
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"

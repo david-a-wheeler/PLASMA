@@ -7,9 +7,9 @@
  */
 
 #ifdef CCISH_STATS
-#include <stdio.h>
+#include "stdio.h"
 #endif
-#include <string.h>
+#include "string.h"
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"

@@ -20,8 +20,8 @@
  * __VA_ARGS__ if mac_va[m]), and its body is mac_len[m] bytes of body[]
  * from mac_at[m]; bodies are in the table's order, with no gaps.
  */
-#include <stdio.h>
-#include <string.h>
+#include "stdio.h"
+#include "string.h"
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"

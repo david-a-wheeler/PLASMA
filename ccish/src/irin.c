@@ -12,8 +12,8 @@
  * The file is read once, in order, and every record is checked, so that
  * a damaged file is reported rather than compiled.
  */
-#include <stdio.h>
-#include <string.h>
+#include "stdio.h"
+#include "string.h"
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
@@ -800,7 +800,7 @@ static void between_rewrite(void)
       return;               /* the byte block must be whole bytes */
     mod = 256;
   } else
-    mod = 65536;
+    mod = 0;                 /* 65536: (0 - w) & 0xFFFF is that mask */
   w = high - low + 1;
   if ((w & (w - 1)) != 0)
     return;                 /* the block's width must be a power of two */

@@ -16,7 +16,11 @@
 # under tests/spec/.
 
 CC ?= cc
-CFLAGS ?= -std=c89 -pedantic -Wall -Wextra -O2
+# -Wno-format-extra-args: a build by ccish itself has no variadic
+# arguments, so the source's printf calls all pass the most a call
+# uses, six (src/std/stdio.h); on the host the extras are unused and
+# would only warn.
+CFLAGS ?= -std=c89 -pedantic -Wall -Wextra -O2 -Wno-format-extra-args
 # The host C compiler that writes the cross tests' references (make xref).
 XCC ?= $(shell command -v gcc 2>/dev/null || command -v clang 2>/dev/null)
 XREF_FLAGS = -Wall -Wextra -Werror -funsigned-char -fwrapv -O2
@@ -34,6 +38,9 @@ LINK   = src/link.c
 HEADERS= $(wildcard src/*.h)
 PLVM   = ../src/plvm
 PLVMBIN= $(abspath $(PLVM))
+# The 6502 VM that runs the compiler-bootstrap stages 2 and 3
+# (bootstrap, below).
+BOOTSTRAP_VM ?= $(PLVMBIN)
 OUT    = tests/out
 
 all: ccish ccpp cccomp ccgen ccrel
@@ -148,8 +155,9 @@ $(OUT)/link/%.stamp: $(wildcard tests/link/*/*.c) $(LINK_TESTS) $(PASSES) \
 
 # spec: the specialized checks, each a self-contained script that exits
 # nonzero on failure; the ones that read test inputs or ccish.msg depend
-# on them too.
-SPEC := $(wildcard tests/spec/*.sh)
+# on them too. The bootstrap test (below) is a spec script but is kept
+# out of SPEC, so the regular suite does not run it.
+SPEC := $(filter-out tests/spec/bootstrap.sh,$(wildcard tests/spec/*.sh))
 $(OUT)/spec/%.stamp: tests/spec/%.sh tests/lib.sh $(PASSES)
 	@mkdir -p $(dir $@) && sh $< && touch $@
 
@@ -160,6 +168,20 @@ $(OUT)/spec/back.stamp: tests/run/hello.c tests/run/global_init.c
 $(OUT)/spec/ccrel.stamp: tests/run/hello.c tests/run/global_init.c \
                          tests/link/helpers/a.c tests/link/helpers/b.c
 $(OUT)/spec/msgs.stamp: ccish.msg
+
+# The compiler bootstrap test: the seed, this source's $(CC) build,
+# compiles the compiler's source into a VM module (stage 1); stage 1,
+# run under $(BOOTSTRAP_VM), compiles the same source into stage 2;
+# stage 2 does it again into stage 3; and the test is that stage 2 and
+# stage 3 are byte-for-byte the same module. It is its own target for
+# now, not in the regular suite (full-test runs both), because it is
+# slow and still depends on VM work that is not done (see
+# doc/bootstrap-test.md).
+$(OUT)/spec/bootstrap.stamp: tests/spec/bootstrap.sh $(PASSES) tests/lib.sh
+	@mkdir -p $(dir $@) && BOOTSTRAP_VM="$(BOOTSTRAP_VM)" sh $< && touch $@
+
+bootstrap: $(OUT)/spec/bootstrap.stamp
+full-test: test $(OUT)/spec/bootstrap.stamp
 
 # Everything the tests need, built but not run: the passes, the small
 # passes, the VM, and the cross references. The test stamps hang off this,
@@ -200,6 +222,6 @@ measure: all
 clean:
 	rm -f ccish ccpp cccomp ccgen ccrel
 	rm -f ccpp-small cccomp-small ccgen-small ccrel-small
-	rm -rf $(OUT) tools/out
+	rm -rf $(OUT) tools/out bootstrap
 
-.PHONY: all small test testbuild xref measure clean
+.PHONY: all small test testbuild xref measure bootstrap full-test clean

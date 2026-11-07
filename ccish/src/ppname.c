@@ -7,8 +7,8 @@
  * id is simply its place among the identifiers, and NAME.nam is the pool
  * written out in order, with no table from ids to entries.
  */
-#include <stdio.h>
-#include <string.h>
+#include "stdio.h"
+#include "string.h"
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"

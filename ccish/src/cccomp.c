@@ -13,9 +13,9 @@
  * It reads input.i and input.nam, and removes input.i once it succeeds
  * (unless -k); ccgen needs input.nam too, so it removes that.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "stdio.h"
+#include "stdlib.h"
+#include "string.h"
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"

@@ -64,10 +64,15 @@
  *                  find_func(), parse.c). Either way, the output is the
  *                  same.
  */
+/* The small configuration: -DCCISH_SMALL, or -DSMALL, a shorter
+ * alias for the VM command lines that sit near their 127-character
+ * limit (the bootstrap test's stages, doc/bootstrap-test.md). */
 #ifndef CCISH_SMALL
+#ifndef SMALL
 #define CCISH_LISTING
 #define CCISH_CHECKS
 #define CCISH_TEXT
+#endif
 #endif
 
 #endif
