@@ -3969,6 +3969,22 @@ page, and 32 of parse_expr's 148-byte frames, about 4.7K.
   larger and its def table 5; measure.py's frame stack 1,596 (40 less);
   and the real worst frame stack over ccish's own sources, 1,422 bytes
   (ppmac.c), not 1,742.
+- **Stack checks: possible, not committed** (discussed 2026-11-08).
+  enter_nest() could check the real stacks: the frame stack against
+  the heap's top (`__heapmark()` once, plus a margin; plain C, about 30
+  to 40 bytes), and the 6502 stack by reading S with a few bytes of
+  6502 code called through a function pointer (about 26 bytes more;
+  it depends on the VM's zero page, $A0 and $C0 for the eval stack,
+  which plvm and the Apple II VM share). enter_nest() runs about 25,000
+  times over src/ (3,103 for pexpr.c), so a check costs roughly 1
+  second per large file at 1 MHz, unless it runs only past a threshold
+  of `nest`. Decided: if done, behind a feature macro, off by default
+  (the user: "I expect ccish to be the largest program ccish
+  processes", and "We need to focus on downsizing cccomp, not adding
+  checks, until we can actually use cccomp"). A test program that
+  prints S and `heapavail` at main's start, run on a real Apple II,
+  would measure what CMD and ProDOS leave of the page (and E1) at no
+  cost to cccomp.
 - **parse_struct and parse_union** are one function,
   `parse_struct(is_union)`, since they differed only in the union
   test, one message and the union flag: cccomp's code is 152 bytes
