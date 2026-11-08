@@ -7978,3 +7978,8 @@ M1 is built fresh around the pipeline.
     reversed stores (`SWR`, `SBR`), unsigned comparisons, and perhaps
     `SWAP`? If so, when, behind which ccish option, and can they go
     upstream?
+
+**Header names, 2026-11-08** (decided in discussion): a header split
+for scope is NAME.SCOPE.h (AGENTS.md, "Split headers"), so diagsrc.h
+is now diag.src.h, and objfmt.h and objsym.h, split from obj.h for
+B5, are obj.fmt.h and obj.sym.h. Earlier entries use the old names.

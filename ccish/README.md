@@ -465,7 +465,7 @@ function returns exactly one.
 | Path | Contents |
 |------|----------|
 | `src/main.c` | `ccish`: the command line, then every pass |
-| `src/*.h` | Each `.c` file's interface (`parse.h` for `parse.c`), and headers for what several must agree on: `build.h` (the builds; read it first), `cclimits.h`, `token.h`, `fixed.h`, `ir.h`, `obj.h`, `objfmt.h`, `objsym.h` and `mop.h` |
+| `src/*.h` | Each `.c` file's interface (`parse.h` for `parse.c`), and headers for what several must agree on: `build.h` (the builds; read it first), `cclimits.h`, `token.h`, `fixed.h`, `ir.h`, `obj.h`, `obj.fmt.h`, `obj.sym.h` and `mop.h` |
 | `src/ccpp.c`, `src/cccomp.c`, `src/ccgen.c`, `src/ccrel.c` | The preprocessor, the front end, the back end and the final pass as programs of their own |
 | `src/diag.c` | Error messages and stream files, shared by all the programs |
 | `ccish.msg` | The text of every error and warning, by number (see "Messages") |

@@ -159,7 +159,7 @@ enum {
 
 /* The bit that marks an IR op followed by a one-byte operand. An IR
  * op's tag is its number, below IR_TAG_END: 'D', the lowest record
- * letter (objfmt.h has the IR file's record tags). */
+ * letter (obj.fmt.h has the IR file's record tags). */
 #define IR_BYTE_OP  0x80
 #define IR_TAG_END  0x44
 

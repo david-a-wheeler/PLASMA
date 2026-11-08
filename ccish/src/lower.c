@@ -10,7 +10,7 @@
 #include "cclimits.h"
 #include "diag.h"
 #include "obj.h"
-#include "objfmt.h"
+#include "obj.fmt.h"
 #include "ir.h"
 #include "mop.h"
 #include "irin.h"

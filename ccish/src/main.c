@@ -31,7 +31,7 @@
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
-#include "diagsrc.h"
+#include "diag.src.h"
 #include "token.h"
 #include "obj.h"
 #include "ir.h"

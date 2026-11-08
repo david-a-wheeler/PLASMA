@@ -2,11 +2,11 @@
  * ccish's object format (../OBJECT.md): the record tags of NAME.obj
  * and of the IR file (one set of letters), and the helpers, for the
  * files that write or read them. Changing the format changes
- * OBJ_VERSION. The relocations and symbol flags are in objsym.h, and
+ * OBJ_VERSION. The relocations and symbol flags are in obj.sym.h, and
  * the limits and file names in obj.h.
  */
-#ifndef OBJFMT_H
-#define OBJFMT_H
+#ifndef OBJ_FMT_H
+#define OBJ_FMT_H
 
 #define OBJ_VERSION 7       /* the format version, in the symbol summary */
 

@@ -1,12 +1,12 @@
 /*
  * ccish's object format (../OBJECT.md): the relocation kinds and symbol
  * flags of NAME.syms (and of the IR file, which carries them), for the
- * files that write or read them. Apart from objfmt.h so that ptop.c,
- * which makes them, doesn't count objfmt.h's names against cccomp's
+ * files that write or read them. Apart from obj.fmt.h so that ptop.c,
+ * which makes them, doesn't count obj.fmt.h's names against cccomp's
  * MAX_IDS.
  */
-#ifndef OBJSYM_H
-#define OBJSYM_H
+#ifndef OBJ_SYM_H
+#define OBJ_SYM_H
 
 /* Relocation kinds and symbol flags. A REL_DATA target is a data
  * offset, a REL_STR target an offset in the string pool, a REL_FUNC

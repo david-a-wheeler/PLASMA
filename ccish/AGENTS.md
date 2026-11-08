@@ -118,6 +118,17 @@ files of the sessions so far, before a move to a new computer.)
   it in the owner's header and include that only where it's used; and
   each distinct array type takes a `MAX_TYPES` slot, so give an
   `extern` array its size where the size's macro is visible.
+- **Split headers are NAME.SCOPE.h** (decided in discussion,
+  2026-11-08). When some of a file's declarations would cost files
+  that don't use them (cccomp's `MAX_VARS` and `MAX_IDS`, ccpp's macro
+  tables), they go in a header of their own, and together the headers
+  are one "virtual" header: the main one has the usual name, NAME.h,
+  and each special-scope one is NAME.SCOPE.h, as diag.h and
+  diag.src.h (the source position), and obj.h with obj.fmt.h and
+  obj.sym.h. Use a period, not a hyphen: ProDOS names allow only
+  letters, digits and periods, 15 at most, starting with a letter.
+  Each header's comment names the others it goes with, so a
+  maintainer finds them all.
 - **Every function has a comment directly above it** (1-2 lines, what
   it does), including one-line static helpers; with `#ifdef` versions,
   one directly above each. Each peephole pattern in peep.c has a

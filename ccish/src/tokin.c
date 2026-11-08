@@ -11,7 +11,7 @@
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
-#include "diagsrc.h"
+#include "diag.src.h"
 #include "bio.h"
 #include "token.h"
 #include "nam.h"

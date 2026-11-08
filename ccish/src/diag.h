@@ -3,11 +3,11 @@
  * programs (approach.md, "B3", and "C2 design"). Include after
  * build.h.
  *
- * diag.c's exports are in two headers: this one, and diagsrc.h, the
+ * diag.c's exports are in two headers: this one, and diag.src.h, the
  * source position that messages give (src_name, src_line and
  * src_name_hook). That's kept apart because every variable a file can
  * see counts against cccomp's MAX_VARS when ccish compiles itself, and
- * ccrel's files don't need it. Include diagsrc.h after this one.
+ * ccrel's files don't need it. Include diag.src.h after this one.
  */
 #ifndef DIAG_H
 #define DIAG_H

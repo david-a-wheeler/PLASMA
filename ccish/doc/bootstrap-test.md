@@ -489,9 +489,9 @@ the heap.
 measure: pstmt.c saw 210 enum constants and typedef names (203), and
 pp.c 36 struct members (32), 29 of them `<plasma.h>`'s. Fixed in the
 headers, at no cost: `<fileio.h>` now holds FILEIO's table apart from
-`<plasma.h>`'s `cmdsys`, and obj.h's object format moved to objfmt.h
+`<plasma.h>`'s `cmdsys`, and obj.h's object format moved to obj.fmt.h
 (the record tags of the stream and the IR file, and the helpers) and
-objsym.h (the relocations and symbol flags), so the parser's files
+obj.sym.h (the relocations and symbol flags), so the parser's files
 don't see them. The most is now 200 identifiers (irin.c, which sees
 mop.h's 83 machine ops) and 27 members.
 
@@ -604,7 +604,7 @@ The order agreed on 2026-11-08, as five steps:
   regex also rewrote pplex.c's keyword strings.)
 - **Step 2: fit the tables (done, 85b8a376 and the commit after).**
   B2 and B5 are raised; `MAX_MEMBERS` and `MAX_IDS` are fixed in the headers
-  (`<fileio.h>`, objfmt.h, objsym.h). Left over, cccomp's:
+  (`<fileio.h>`, obj.fmt.h, obj.sym.h). Left over, cccomp's:
   `MAX_VARS` (irin.c needs 83, the limit is 79) and `MAX_TYPES`
   (link.c needs 49, the limit is 40). **Decided 2026-11-08 (option
   1): split the files rather than raise cccomp's limits.** Move

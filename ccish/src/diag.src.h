@@ -5,8 +5,8 @@
  * diag.h (whose comment says why) only so that ccrel's files don't see
  * it.
  */
-#ifndef DIAGSRC_H
-#define DIAGSRC_H
+#ifndef DIAG_SRC_H
+#define DIAG_SRC_H
 
 extern const char *src_name;    /* the source file, for messages */
 extern int src_line;            /* its line, or 0 for none */

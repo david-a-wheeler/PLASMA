@@ -4,7 +4,7 @@
  * 18.7) and ccrel (the final pass; approach.md, "B3"). Each program
  * supplies clean_up(), which closes and removes its partial output
  * after an error. What this file exports is declared in two headers,
- * diag.h and diagsrc.h (the source position; diag.h says why).
+ * diag.h and diag.src.h (the source position; diag.h says why).
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,7 +12,7 @@
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
-#include "diagsrc.h"
+#include "diag.src.h"
 #include "obj.h"
 
 const char *src_name = "";

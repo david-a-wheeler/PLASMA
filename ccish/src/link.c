@@ -45,8 +45,8 @@
 #include "diag.h"
 #include "bio.h"
 #include "obj.h"
-#include "objfmt.h"
-#include "objsym.h"
+#include "obj.fmt.h"
+#include "obj.sym.h"
 #include "mop.h"
 #include "link.h"
 

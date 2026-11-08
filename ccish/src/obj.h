@@ -2,8 +2,8 @@
  * ccish's objects (../OBJECT.md), NAME.obj and NAME.syms, which ccgen
  * writes (and cccomp, whose IR file carries their data records and
  * summary) and ccrel reads: the limits on one object that they all
- * share, and the file names. The format itself is in objfmt.h and
- * objsym.h, apart, so that the parser's files spend none of cccomp's
+ * share, and the file names. The format itself is in obj.fmt.h and
+ * obj.sym.h, apart, so that the parser's files spend none of cccomp's
  * identifier table on names they don't use.
  */
 #ifndef OBJ_H
@@ -11,7 +11,7 @@
 
 #define MAX_FUNCS    242    /* functions (220, pexpr.c) */
 #define MAX_VARS     79     /* globals, plus the parameters and locals
-                             * visible at once (76, link.c) */
+                             * visible at once (74, link.c) */
 #define MAX_FUNC_CODE 1280  /* bytecode in one function (1,053) */
 #define MAX_FUNC_RELOCS 128 /* relocations in one function (112) */
 
