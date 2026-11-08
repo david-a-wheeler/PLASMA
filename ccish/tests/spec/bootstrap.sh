@@ -16,6 +16,7 @@
 # stage 2's (a host-only miscompile shows here: the ccgen of
 # 15008d8c), and stage 2's stage 3's. On a difference, or a pass that
 # fails, it says which and keeps the directories; else it removes them.
+# It prints each stage as it goes, a dot per file compiled.
 #
 # The Makefile gives the sources: BOOT_ccpp, BOOT_cccomp, BOOT_ccgen and
 # BOOT_ccrel (each program's, as it builds them), and BOOT_LIB (the
@@ -30,6 +31,7 @@ PROGS="ccpp cccomp ccgen ccrel"
 TIMEOUT=60                      # seconds for any one pass
 
 fail() {
+    echo
     echo "bootstrap: $*"
     echo "bootstrap: kept $BOOT"
     exit 1
@@ -82,14 +84,28 @@ compile() {
                 "$CCRUN" -t $TIMEOUT "v$pass" "$@"
             fi >>log 2>&1 || fail "stage $stage: $pass failed on $in (see $BOOT/$stage/log)"
         done
+        printf .
     done
+}
+
+# Progress, so a long run doesn't look hung: begin stage $1 (on $2),
+# and a dot for each file compiled; end it with its time.
+nfiles=$(echo $names | wc -w)
+begin() {
+    t0=$(date +%s)
+    printf "bootstrap: stage %d (%s) " $1 "$2"
+}
+end() {
+    echo " $(($(date +%s) - t0))s"
 }
 
 # Stage 1, on the host.
 rm -rf "$BOOT"
+echo "bootstrap: 3 stages of $nfiles files each, a dot per file"
 stage=1
 setup 1
 cd "$BOOT/1" || exit 1
+begin 1 host
 compile 1 host
 for p in $PROGS; do
     eval "list=\$BOOT_$p"
@@ -98,6 +114,7 @@ for p in $PROGS; do
     "$top/tools/cclink" -r "$top/ccrel" -o "$p" -w "$p.objs" $objs \
         >>log 2>&1 || fail "stage 1: linking $p failed (see $BOOT/1/log)"
 done
+end
 
 # Stages 2 and 3, under the VM, each with the stage before's modules.
 for stage in 2 3; do
@@ -107,15 +124,18 @@ for stage in 2 3; do
     for p in $PROGS; do
         cp "../$prev/$p" "v$p" && cp "../1/$p.objs" . || exit 1
     done
+    begin $stage plvm
     compile $stage vm
     for p in $PROGS; do
         "$CCRUN" -t $TIMEOUT vccrel -o "$p" "@$p.objs" >>log 2>&1 \
             || fail "stage $stage: linking $p failed (see $BOOT/$stage/log)"
     done
+    end
 done
 
 # Stage 1 against 2, and 2 against 3: every object, in the order
 # compiled, then every module.
+echo "bootstrap: comparing the stages"
 for a in 1 2; do
     b=$((a + 1))
     for n in $names; do
