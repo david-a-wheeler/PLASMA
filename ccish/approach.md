@@ -3942,6 +3942,33 @@ page, and 32 of parse_expr's 148-byte frames, about 4.7K.
   The deepest chain measure.py sees is one call shorter (67).
   tests/run/else_if.c tests chains with and without a final else, a
   dangling else, and a chain of 40.
+- **parse_primary into parse_unary: skipped** (decided in discussion).
+  Its 13 returns would become 3-byte jumps to the parse_postfix call,
+  costing about what the merge saves; the merged function would be
+  about 1,226 bytes, 54 under `MAX_FUNC_CODE`; and parse_unary's own
+  recursion (- - x, *&p) would carry the merged 18-byte frame.
+- **How deep ccish nests** (an instrumented cccomp, on src/ and lib/):
+  `nest` at most 16 (pexpr.c), parse_expr at most 10 levels; the
+  library 6; tests/run/held_deep.c 31 and xrun's xarith 28, on purpose.
+  The deepest real call chain (gcc's -finstrument-functions on the
+  host cccomp, whose functions are the module's) was 47 calls (pexpr.c,
+  1,652 frame bytes), so about 50 on an Apple II with init, `__start`
+  and the library's leaves: about 200 bytes of the 6502 page, before
+  CMD's and the VM's own. One `nest` level costs from 1 call (a binary
+  operator's right operand) to 5 (a call in a call's arguments:
+  parse_expr, parse_unary, parse_primary, parse_call, parse_args), so
+  no single `MAX_NEST` both admits ccish's 16 and keeps every program
+  in the page; a check of the real stacks is proposed instead.
+- **fold_held()**: parse_expr's folding of a held left operand with
+  its right one (a + c, c + p, c op c, c op x), done after the
+  recursion for the right operand, is a function of its own, so its
+  locals (an `Operand` and two ints) aren't in every level's frame:
+  parse_expr's frame is 108 bytes, not 148. It works on a copy of the
+  right operand, cheaper to reach than through a pointer. The IR is the
+  same for all 171 test and source files. cccomp's code is 25 bytes
+  larger and its def table 5; measure.py's frame stack 1,596 (40 less);
+  and the real worst frame stack over ccish's own sources, 1,422 bytes
+  (ppmac.c), not 1,742.
 - **parse_struct and parse_union** are one function,
   `parse_struct(is_union)`, since they differed only in the union
   test, one message and the union flag: cccomp's code is 152 bytes

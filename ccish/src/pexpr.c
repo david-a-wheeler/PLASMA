@@ -1563,6 +1563,80 @@ static void parse_assign(Operand *o, int ir_op, int m0, int h0)
   o->is_bool = ir_op < 0 && r.is_bool && o->kind == K_VALUE;
 }
 
+/* After parse_expr() has parsed r, the right operand of o's binary
+ * operator ir_op, with o's constant still held back (hold()) because
+ * r emitted nothing: fold what can be folded now (a + c and a - c, for
+ * o the address constant *addr, or addr NULL; c + p; c op c; c op x).
+ * Returns 1 if it did, so the operator needs nothing more, else 0. It
+ * is apart from parse_expr() so that its locals aren't in the frame of
+ * every level of parse_expr()'s recursion. */
+static int fold_held(Operand *o, Operand *rp, int ir_op, Operand *addr)
+{
+  Operand r = *rp;       /* a copy: cheaper to reach, and off the
+                          * recursion's frames; *rp is unchanged when
+                          * this returns 0 */
+  int a;
+  if (addr) {
+    /* The left operand is an address constant: a + c and a - c fold. */
+    if (r.kind != K_CONST || is_pointer(r.type))
+      return 0;
+    nheld--;
+    *o = *addr;
+    a = wrap16((unsigned)r.val * (unsigned)elem_size(o->type));
+    o->off = wrap16((unsigned)o->off
+                    + (ir_op == IR_ADD ? (unsigned)a : 0u - (unsigned)a));
+    return 1;
+  }
+  if (is_pointer(value_type(r.type))) {
+    if (ir_op == IR_ADD && r.kind != K_VOID) {
+      /* c + p: emit p, then c scaled; c + an address constant
+       * folds. */
+      Operand c = *o;
+      nheld--;
+      if (addr_const(&r)) {
+        a = wrap16((unsigned)c.val * (unsigned)elem_size(r.type));
+        r.off = wrap16((unsigned)r.off + (unsigned)a);
+        *o = r;
+        return 1;
+      }
+      rvalue(&r);
+      push_scaled(&c, r.type);
+      put(IR_ADD, 0, -1);
+      *o = r;
+      return 1;
+    }
+  } else if (r.kind == K_CONST) {
+    int shift = IR_IS_S_SHIFT(ir_op);
+    nheld--;
+    o->val = fold(ir_op, o->val, r.val,
+                  shift ? is_uns(o->type)
+                        : is_uns(o->type) || is_uns(r.type));
+    o->type = is_compare(ir_op) ? TY_INT
+              : shift ? promoted(o->type) : arith_type(o->type, r.type);
+    o->nonice |= r.nonice;
+    return 1;
+  } else if (r.kind == K_VAR && swapped_op(ir_op) >= 0) {
+    /* c op x: emit x c op' (op' is op with its operands swapped), so
+     * that the peephole stage sees the constant right before the op
+     * (1+x: INCR). An unsigned comparison's right operand is then that
+     * one constant. */
+    int op = swapped_op(ir_op);
+    nheld--;
+    rvalue(&r);
+    put(IR_CONST, o->val, -1);
+    if (is_relational(op)
+        && (is_uns(o->type) || is_uns(value_type(r.type))))
+      put(op + IR_ULT - IR_LT, 1, -1);
+    else
+      put(op, 0, -1);
+    o->type = is_compare(ir_op) ? TY_INT : arith_type(o->type, r.type);
+    o->kind = K_VALUE;
+    o->is_bool = is_compare(ir_op);
+    return 1;
+  }
+  return 0;
+}
+
 /*
  * Precedence climbing: parse an expression whose operators all have
  * precedence min_prec or higher. The result is left in *o, possibly
@@ -1633,68 +1707,9 @@ void parse_expr(int min_prec, Operand *o)
     parse_expr(prec + 1, &r);   /* all binary ops are left-assoc */
     if (r.kind == K_CONST && !suppress)
       check_right_const(ir_op, r.val);
-    if (mark >= 0 && nheld > mark && is_addr) {
-      /* The right operand emitted nothing, so the left address
-       * constant is still held: a + c and a - c fold. */
-      if (r.kind == K_CONST && !is_pointer(r.type)) {
-        nheld--;
-        *o = addr;
-        a = wrap16((unsigned)r.val * (unsigned)elem_size(o->type));
-        o->off = wrap16((unsigned)o->off
-                        + (ir_op == IR_ADD ? (unsigned)a : 0u - (unsigned)a));
-        continue;
-      }
-    } else if (mark >= 0 && nheld > mark) {
-      /* The right operand emitted nothing, so the left constant
-       * is still held. */
-      if (is_pointer(value_type(r.type))) {
-        if (ir_op == IR_ADD && r.kind != K_VOID) {
-          /* c + p: emit p, then c scaled; c + an address constant
-           * folds. */
-          Operand c = *o;
-          nheld--;
-          if (addr_const(&r)) {
-            a = wrap16((unsigned)c.val * (unsigned)elem_size(r.type));
-            r.off = wrap16((unsigned)r.off + (unsigned)a);
-            *o = r;
-            continue;
-          }
-          rvalue(&r);
-          push_scaled(&c, r.type);
-          put(IR_ADD, 0, -1);
-          *o = r;
-          continue;
-        }
-      } else if (r.kind == K_CONST) {
-        int shift = IR_IS_S_SHIFT(ir_op);
-        nheld--;
-        o->val = fold(ir_op, o->val, r.val,
-                      shift ? is_uns(o->type)
-                            : is_uns(o->type) || is_uns(r.type));
-        o->type = is_compare(ir_op) ? TY_INT
-                  : shift ? promoted(o->type) : arith_type(o->type, r.type);
-        o->nonice |= r.nonice;
-        continue;
-      } else if (r.kind == K_VAR && swapped_op(ir_op) >= 0) {
-        /* c op x: emit x c op' (op' is op with its operands
-         * swapped), so that the peephole stage sees the
-         * constant right before the op (1+x: INCR). An unsigned
-         * comparison's right operand is then that one constant. */
-        int op = swapped_op(ir_op);
-        nheld--;
-        rvalue(&r);
-        put(IR_CONST, o->val, -1);
-        if (is_relational(op)
-            && (is_uns(o->type) || is_uns(value_type(r.type))))
-          put(op + IR_ULT - IR_LT, 1, -1);
-        else
-          put(op, 0, -1);
-        o->type = is_compare(ir_op) ? TY_INT : arith_type(o->type, r.type);
-        o->kind = K_VALUE;
-        o->is_bool = is_compare(ir_op);
-        continue;
-      }
-    }
+    if (mark >= 0 && nheld > mark
+        && fold_held(o, &r, ir_op, is_addr ? &addr : NULL))
+      continue;
     /* Otherwise the left value is (or, via put(), will be) on the
      * stack below the right one. */
     binary(o, &r, ir_op, lstart, mid);
