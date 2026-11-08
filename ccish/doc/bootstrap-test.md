@@ -552,12 +552,65 @@ decision 35).**
     `<syspath>ccinc` branch) and its library is 858 bytes of code;
     ccgen's 824; ccrel's 822.
 
-**Phase 6: the bootstrap.**
+**Phase 6: the bootstrap (in progress, status as of 2026-11-08).**
 11. ccrel's `@list` file (R10), then rewrite tests/spec/bootstrap.sh
     for R1 and R2, sharing measure.py's preparation.
 12. B2 to B5, each measured against B7.
 13. Run the stages; diagnose a stage 2 versus stage 3 difference with
     the kept directories, file by file (`-i` and `-d` dumps line up).
+
+The order agreed on 2026-11-08, as five steps:
+
+- **Step 5, first: the ccgen miscompile (done, 15008d8c).** From the
+  same IR, the self-compiled ccgen wrote a different type.obj than the
+  host's. `mop_const` and the const AND peephole used range tests on
+  an `int` holding a 16-bit value, and from $8000 up that's negative
+  on the Apple II. Now the host and self-compiled ccgen write identical
+  objects for every file in src/. The check, a throwaway script: for
+  each tools/out/src/*.c, the host ccpp (or tools/out/big/ccpp) and
+  cccomp (or big/cccomp) with `-DCCISH_SMALL` and `-k`, then the host
+  ccgen and `tools/ccrun vccgen` (measure.py's tools/out/ccgen, with
+  ccish.msg beside it) on copies of the same .ir and .nam; cmp the
+  .obj and .syms. The bootstrap test (step 4) should subsume it.
+- **Step 1: compile src/ unchanged (done, a29036cb).** The `short`
+  casts are masks, the struct `?:` is an `if`, and measure.py's only
+  workaround is the full build's `printf`. (Its old `short`/`long`
+  regex also rewrote pplex.c's keyword strings.)
+- **Step 2: fit the tables (mostly done, 85b8a376).** B2 and B5 are
+  raised; `MAX_MEMBERS` and `MAX_IDS` are fixed in the headers
+  (`<fileio.h>`, objfmt.h, objsym.h). Left over, cccomp's:
+  `MAX_VARS` (irin.c needs 83, the limit is 79) and `MAX_TYPES`
+  (link.c needs 49, the limit is 40). **Decided 2026-11-08 (option
+  1): split the files rather than raise cccomp's limits.** Move
+  irin.c's loop machinery (`lp_*`, `cl_*`, `fo_*` and their functions,
+  about 32 of irin.c's roughly 70 file-scope variables; around lines
+  980-1400) to a file of its own, and find a similar split of link.c
+  (its types are mostly distinct array types: one per table size). If
+  link.c has no clean split, raise `MAX_TYPES` alone (about 5 bytes of
+  cccomp per type, so about 70). Measure each with `python3 -I -S
+  tools/measure.py`: "over a limit" must go, and cccomp's size must
+  not grow. irin.c's identifiers are 200 of `MAX_IDS` 203, the
+  tightest left.
+- **Step 3: ccrel's `@list` file (R10).** `ccrel -o cccomp
+  @cccomp.lst`, one object name per line, read into a static buffer
+  in ccrel only; cccomp's link names 30 objects, over the 127-character
+  command line.
+- **Step 4: tests/spec/bootstrap.sh.** Stage 1: the host passes
+  compile src/ (small build) and the library, and link the four
+  programs, finding each program's library objects as measure.py does
+  (one per undefined reference; see its `lib_object`), and write the
+  .lst files every stage shares. Stages 2 and 3: the same under plvm
+  through tools/ccrun, each in its own directory with `sys/ccinc`
+  (lib/include) and ccish.msg (diag looks beside argv[0]). The test:
+  stage 2's and stage 3's modules and objects identical, and stage
+  1's objects equal to stage 2's too (that's the check that caught
+  ccgen); on a difference, name the first object that differs and
+  keep the directories.
+
+Each step: discuss any design change first, then test (`make`, which
+runs the 413 tests), measure, update the docs, and commit with
+explicit paths. Every pass runs under plvm in well under a second per
+file, so the bootstrap should be quick.
 
 **Before the Apple II.**
 14. `exit()` that unwinds (R8 part 3), in the library, replacing
