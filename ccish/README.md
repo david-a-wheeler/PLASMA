@@ -273,8 +273,8 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   - A bigger struct can't be passed or returned by value, which is an
     error (a deliberate limit, to keep the compiler small: pass a
     pointer instead).
-  - Not yet: `union` (later, if needed). `==` on structs is an error,
-    as in C.
+  - `union`, whose members all start at byte 0. `==` on structs is an
+    error, as in C.
 * `enum`: `enum [tag] { A, B = 5, C, };`. A constant is an `int`
   constant expression, so it works in `case` labels, array sizes and
   global initializers; it is one more than the one before unless given
@@ -282,7 +282,8 @@ $ ./ccrel -o prog main util && ../src/plvm prog
 * `typedef`, with `*`s, array sizes and qualifiers
   (`typedef struct node *NodeP;`, `typedef int Vec[3];`,
   `typedef const char *str;`). A typedef name can be used wherever a
-  built-in type can. Typedefs of function types aren't supported.
+  built-in type can, and a function typedef can declare a function or
+  a pointer (`typedef int binop(int, int); binop *op;`).
 * Enum constants and typedef names have block scope, as in C: one
   declared in a block hides a variable of the same name declared
   outside it, and the other way around.
@@ -312,6 +313,14 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   can't be assigned to. A local array must fit in the function's
   255-byte frame, with the other locals; a bigger one can be global or
   a static local.
+* Function pointers, with declarators in C's full syntax
+  (`int (*fp)(int)`, `int (*table[3])(int)`, `int (*p)[4]`). A
+  function's name used as a value is a pointer to it, as is `&f`;
+  `fp(x)` and `(*fp)(x)` call through one, and a function's address
+  can initialize a global or static (a table, or a struct's members).
+  A function type is only its return type, so a call through a
+  pointer checks neither its arguments' count nor their types
+  (ccish-guide.md, section 4.12).
 * Types are checked as strictly as C requires (GCC 14 does the same by
   default): mixing integers and pointers needs a cast, except for the
   constant 0, and pointer types must match unless one is `void *`.
@@ -337,8 +346,8 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   compilation continues.
 * Casts between any of these types. `(void)` discards a value.
 * Statements: `return`, `if`/`else`, `while`, `do`, `for`, `switch`,
-  `break`, `continue`, expression statements, empty statements and
-  nested blocks.
+  `break`, `continue`, `goto` and labels, expression statements,
+  empty statements and nested blocks.
 * `switch` compiles to PLASMA's `SEL` and a case table after the body,
   sorted by value, 4 bytes per case. `case` and `default` labels may be
   anywhere in the body, even inside nested blocks and loops (Duff's
@@ -379,10 +388,9 @@ $ ./ccrel -o prog main util && ../src/plvm prog
 * Digraphs `<% %> <: :>`, `/* */` and `//` comments, and LF, CR or CRLF
   line endings.
 
-Anything else, such as
-function pointers, declarators in parentheses (`int (*p)[4]`), `goto`,
-`union`, the comma operator, or the types `signed char`, `short` and
-`long`, gives a "not supported yet" error.
+Anything else, such as the comma operator, or the types `signed char`
+and `long`, gives a "not supported yet" error. (`short` is a synonym
+for `int`.)
 
 ### Strings and `pstr()`
 

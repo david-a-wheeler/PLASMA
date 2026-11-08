@@ -689,6 +689,16 @@ pointer checks neither its argument count nor the arguments' types:
 passing the wrong number corrupts PLASMA's stack, as it would in K&R
 C.
 
+A call through a pointer is PLASMA's `ICAL`, which takes the address
+on top of the arguments, so the pointer is loaded last: `fp(x)` is
+`LLW x LLW fp ICAL`, and `table[i](x)` loads the element after `x`
+the same way. C leaves the order open, so that's allowed. A pointer
+that only a call gives (`pick(k)(x)`) is kept in a temporary while the
+arguments are computed, which costs 4 bytes. A named function called
+as `(*f)(x)` or `(&f)(x)` is a plain `CALL`. A function's address is
+its loader stub's, the same wherever it's taken, so pointers to one
+function compare equal across files.
+
 ## 5. Declarations and storage
 
 ### 5.1 Functions
@@ -721,8 +731,9 @@ A few specifics:
 * A struct parameter or return value must be at most 8 bytes
   (section 4.7). Passing a struct needs a prototype.
 * A function can call itself.
-* A function that is called but not defined in any file linked into
-  the module must be a CMDSYS function (section 5.3).
+* A function that is called, or whose address is taken, but not
+  defined in any file linked into the module must be a CMDSYS
+  function (section 5.3).
 
 ### 5.2 Local variables
 
@@ -786,11 +797,12 @@ functions with C's meanings (approach.md decision 35). The linker
 drops the `__` when it writes the import, so the module imports
 PLASMA's `PUTS`.
 
-A function that is called but not defined in any file linked into the
-module must be a CMDSYS function; it is imported from CMDSYS, and a
-declaration must match its exact types (the compiler checks calls
+A function that is called, or whose address is taken (`vp = __puti`),
+but not defined in any file linked into the module must be a CMDSYS
+function; it is imported from CMDSYS, and a declaration must match its
+exact types (the compiler checks calls
 against them, so a mistake is caught at compile time and not at load
-time). The CMDSYS functions are declared already: a call with no
+time). The CMDSYS functions are declared already: a call or use with no
 declaration is auto-declared from the table in `src/parse.c`
 (`cmdsys_sigs[]`), or you may write the declaration yourself, as the
 test header `inc/ptest.h` does:

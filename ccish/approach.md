@@ -3573,7 +3573,9 @@ data symbol, a table of function pointers (`struc t_fileio`).
     pass exactly the callee's count and get exactly its #n results.
     FILEIO's `geteof` and `getmark` return two values (#2), which C
     can't express; their slots get a placeholder type and aren't
-    called.
+    called. (Superseded by the "Function pointer design" below: the
+    type is only the return type, the arguments give the count, and a
+    struct return covers #2.)
   - Pros: no ambiguity; C names stay C names; covers functions, data
     and tables; the same mechanism reaches any PLASMA library
     (`conio`, `memmgr`, `longjmp`) and later C code calling PLASMA
@@ -3908,7 +3910,9 @@ issue. In summary:
     declarator `int (*fp)(int)` (error 92), a function's address as
     an operand (error 63), and the call through a pointer, `fp(args)`
     (error 24). When it lands, the cross test is to assign a pointer
-    between two functions and check which ran by its result. Tests follow the dialect, not C89,
+    between two functions and check which ran by its result. (Landed
+    2026-11-07: "Function pointer design", below; the cross tests are
+    tests/xrun/xfuncptr.c and xfuncinit.c.) Tests follow the dialect, not C89,
     split by where the host compiler stands: an extension the host
     also accepts is testable in tests/xrun (the cross check is the
     gate), while a genuinely ccish-only extension can be tested only
@@ -4273,6 +4277,14 @@ compiler, but have a lot of error-checking ignored in ccish."
   object's data), and the error test func_init_int. Cost (small
   build, measure.py against step 2): cccomp code +41 bytes (ptop.c
   +34, pexpr.c +7), module file 46,712 to 46,761.
+- **Step 4 is done** (2026-11-07): the guide's 4.12 (use, the code
+  of a call, initializers) and 5.1 and 5.3 (a function whose address
+  is taken links as a called one does); README.md's feature list
+  (which also wrongly listed goto, union and short as unsupported);
+  and notes on the older text above that this design superseded (issue
+  22's "Other modules" option B, whose pointer type carried the
+  parameter count, and decision 29's "candidate"). Phase 3 is complete: all of it cost cccomp 1,771
+  bytes of code, module file 44,147 to 46,761.
 
 **`ccpp` design (decided in discussion, 2026-10-31; decision 24; F9
 and A6 in 18.6; this is M8).** The user: "Currently cccomp is too
