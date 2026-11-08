@@ -11,5 +11,9 @@
 #define MAX_PATH     128    /* a file name's characters, with its NUL: a
                              * ProDOS path has at most 64, or 128 with a
                              * prefix (diag.c's buffers) */
+#define MAX_MSG      96     /* a message's text in ccish.msg, with its
+                             * NUL (diag.c's report(); 87 is the longest,
+                             * and tests/spec/msgs.sh checks that each
+                             * fits) */
 
 #endif

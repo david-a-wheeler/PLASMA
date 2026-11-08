@@ -3766,9 +3766,9 @@ a measurement (E1 still needs a 64K emulator). cccomp, small build,
 | Strings | 558 |
 | The loader's def table (5 bytes per function, 329 functions) | 1,645 |
 | Zero-filled tables moved to the heap (parse 2,361, name 812, tokin 778, irout 522) | 4,473 |
-| Frame stack, worst case (measure.py) | 1,763 |
+| Frame stack, worst case (measure.py; 1,763 before diag.c's buffers shrank) | 1,665 |
 | ProDOS buffers, 2 or 3 open files | 2,048 to 3,072 |
-| **Total** | **42,546 to 43,570** |
+| **Total** | **42,448 to 43,472** |
 
 So loading would work once the RLD is streamed (a load peak of the
 body plus the def table, about 34.3K), but running wouldn't: cccomp is
@@ -3811,12 +3811,19 @@ to date). Anything added meanwhile, such as issue 23, widens the gap.
 - **Fewer functions.** Each costs 5 bytes in the def table on top of
   its code, so merging small functions with one caller saves twice
   (C5).
-- **Smaller frames.** `stop()` in diag.c has the largest frame, 208
-  bytes, nearly all a 200-byte copy buffer that could be static (it
-  runs once, as the program stops); then report() 136, parse_expr()
-  148, copy_struct() 96 and parse_conditional() 92. The frame stack's
-  worst case is a sum along the deepest call chain, so the frames on
-  it matter most.
+- **Smaller frames.** The frame stack's worst case is a sum along
+  the deepest call chain, and that chain ends in an error found at
+  the deepest nesting: stop() and report() in diag.c. So their
+  buffers are sized to what they hold, not made static: a static
+  buffer is resident all the time and in the module file too, while a
+  frame's bytes count only at the peak, so making one static saves
+  nothing. Done 2026-11-07: stop()'s copy of the detail went from 200
+  bytes to MAX_PATH (128), and report()'s message buffer from 128 to
+  MAX_MSG (96; the longest text is 87, and tests/spec/msgs.sh checks
+  that each fits). The worst-case frame stack went from 1,763 bytes to
+  1,665 in cccomp, 567 to 463 in ccpp, and 538 to 434 in ccrel, with
+  no change in code. Next on the chain: parse_expr() 148,
+  copy_struct() 96 and parse_conditional() 92.
 - **Fewer open files** (B6): each saves 1K of ProDOS buffer.
 - **Cold code out of memory**: diag.c (about 1.4K with its data and
   strings) runs only on an error, so it's a candidate for an overlay

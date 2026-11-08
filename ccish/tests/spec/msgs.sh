@@ -11,6 +11,8 @@
 #     in a range that a source's comment declares as "messages A-B"
 #     (texts looked up by computed number: tok_desc()'s token names).
 #   - No diagnostic call gives a message number without its comment.
+#   - Each text fits diag.c's buffer: shorter than MAX_MSG
+#     (src/cclimits.h), which counts the NUL.
 
 set -u
 MSG=ccish.msg
@@ -46,7 +48,9 @@ for f in src/*.c; do
     fi
 done
 
-awk -v msgfile="$MSG" '
+max=$(sed -n 's/^#define MAX_MSG *\([0-9]*\).*/\1/p' src/cclimits.h)
+[ -n "$max" ] || { echo "no MAX_MSG in src/cclimits.h"; exit 1; }
+awk -v msgfile="$MSG" -v max="$max" '
     BEGIN {
         prev = 0
         while ((getline line < msgfile) > 0) {
@@ -63,6 +67,11 @@ awk -v msgfile="$MSG" '
             }
             prev = n
             text[n] = substr(line, index(line, " ") + 1)
+            if (length(text[n]) >= max + 0) {
+                print msgfile ": message " n " is too long for MAX_MSG (" \
+                      max " with its NUL): " text[n]
+                bad = 1
+            }
         }
     }
     {

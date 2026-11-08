@@ -160,7 +160,7 @@ static void put_part(int part)
  * "x.c:2: error 41 (194):". */
 static void report(const char *kind, int msg, int part, const char *detail)
 {
-  char text[128];
+  char text[MAX_MSG];
   fflush(stdout);
   if (src_line > 0) {
     put_err(src_name);
@@ -199,13 +199,16 @@ static void report(const char *kind, int msg, int part, const char *detail)
  * files are closed first, so that printing (which opens the
  * message file) needs no more memory or files. detail is copied first:
  * it may be in a static buffer that clean_up() reuses (stream_name()'s,
- * when removing the stream files). The copy fits in a PLASMA frame (255
- * bytes); a ProDOS path has at most 64 characters, and only a longer
- * host path is cut short. */
+ * when removing the stream files). The copy holds MAX_PATH, the longest
+ * path ccish makes, and a ProDOS path with a prefix: only a longer host
+ * path, given on the command line, is cut short. It's on the frame, not
+ * static, since stop() runs once, usually at the deepest point of the
+ * frame stack: a static copy would take the same memory always, and
+ * the module file too (approach.md issue 24). */
 static void stop(const char *kind, int msg, int part, const char *detail)
 {
   static char stopping;     /* a second stop, from inside clean_up() */
-  char copy[200];
+  char copy[MAX_PATH];
   if (detail) {
     strncpy(copy, detail, sizeof(copy) - 1);
     copy[sizeof(copy) - 1] = 0;
