@@ -25,7 +25,7 @@
 26 too many functions
 27 redeclaration of
 28 too many variables
-29 internal error: a global declared among locals
+29 too many parts in a declarator
 30 too many local variables in
 31 conflicting parameter types for
 32 too many function parameters in all
@@ -87,7 +87,7 @@
 89 array size must be positive
 90 expected ']' after an array size, not
 91 array elements can't have type void
-92 declarators in parentheses are not supported yet
+92 expected ')' in a declarator, not
 93 expected a name, not
 94 a variable can't have type void
 95 a struct or union needs at least one member
@@ -107,9 +107,9 @@
 109 enum value too large for an int (over 32767)
 110 expected ',' or '}' in an enum, not
 111 expected a type after 'typedef', not
-112 typedefs of function types are not supported
+112 a function can't return an array or a function
 113 expected ';' after a typedef, not
-114 local function declarations are not supported
+114 a function type isn't allowed here (use a pointer to a function)
 115 local array doesn't fit in the 255-byte frame (make it static or global):
 116 local struct doesn't fit in the 255-byte frame (make it static or global):
 117 expected '}' after the initializer, not
@@ -120,7 +120,7 @@
 122 expected 'while' after the body of 'do', not
 123 expected ';' after 'do ... while (...)', not
 124 expected '(' after 'for', not
-125 a 'for' loop can't declare a static variable
+125 a 'for' loop can't declare a static or extern variable
 126 expected ';' after 'for' initialization, not
 127 expected ';' after 'for' condition, not
 128 expected ')' after 'for' clauses, not
@@ -158,7 +158,7 @@
 160 expected '{' to start a struct initializer, not
 161 too many initializers for
 162 an array of unknown size needs initializers:
-163 declare functions separately from variables
+163 'extern' in a block can't hide a local:
 164 expected a declaration or function definition, not
 165 conflicting declaration of
 166 conflicting parameter count for
@@ -213,7 +213,7 @@
 216 'extern' with an initializer is not supported
 217 static declaration follows a non-static declaration of
 218 expected a type after 'extern', not
-219 'extern' in a block is not supported: declare it at file scope
+219 missing ')' at end of file
 220 multiple definition of
 221 conflicting types for
 222 too many names shared between objects

@@ -1,0 +1,1 @@
+:6: error 163: 'extern' in a block can't hide a local: 'x'

@@ -494,52 +494,136 @@ static int declare_global(int name, int type, int storage)
   return s;
 }
 
-/* Parse global variable declarations, after the base type base and
- * the first declarator's type and name, with storage class storage
- * (T_STATIC, T_EXTERN or 0): int x = 1, *p = &x, buf[100]; A global
- * without an initializer is zero when the module loads. */
-static void parse_globals(int base, int type, int name, int storage)
+/* Declare the global variable name of type type, with storage class
+ * storage (T_STATIC, T_EXTERN or 0), and parse its initializer, if any.
+ * A global without one is zero when the module loads. */
+static void define_global(int name, int type, int storage)
 {
   int s;
-  for (;;) {
-    type = parse_var_type(type, 1);
-    if (tok == '(')
-      error(163 /* "declare functions separately from variables" */,
+  type = parse_var_type(type, 1);
+  /* In C, the name is in scope in its own initializer. */
+  s = declare_global(name, type, storage);
+  type = var_type[s];
+  if (tok == '=') {
+    if (storage == T_EXTERN)
+      error(216 /* "'extern' with an initializer is not supported" */,
             NULL);
-    /* In C, the name is in scope in its own initializer. */
-    s = declare_global(name, type, storage);
-    type = var_type[s];
-    if (tok == '=') {
-      if (storage == T_EXTERN)
+    next();
+    var_type[s] = parse_global_init(type, name);
+    if (init_known)
+      set_known(s, init_val);
+  } else if (storage != T_EXTERN) {
+    if (is_array(type) && type_count(type) == 0)
+      error(87 /* "array size missing" */, NULL);
+    if ((is_array(type) || is_struct(type))
+        && type_size(type) >= BSS_MIN) {
+      /* In the zero-filled space, with no data bytes: ccrel places
+       * it, maybe on the heap. */
+      if (bss_next > 0x7FFF - type_size(type))
+        error(182 /* "too much data: globals over 32767 bytes" */,
+              NULL);
+      var_link[s] |= VL_BSS;
+      var_off[s] = bss_next;
+      bss_next += type_size(type);
+    } else {
+      data_zero(type_size(type));
+    }
+  }
+}
+
+/* Parse global declarations, after the base type base and the first
+ * declarator's type and name, with storage class storage: int x = 1,
+ * *p = &x, buf[100]; A declarator may also declare a function (int x,
+ * f(int);). */
+static void parse_globals(int base, int type, int name, int storage)
+{
+  for (;;) {
+    if (is_func(type))
+      declare_function(name, type, storage == T_STATIC);
+    else
+      define_global(name, type, storage);
+    if (tok != ',')
+      break;
+    next();
+    type = parse_declarator(base, 0, &name);
+  }
+  expect(';', 118 /* "expected ';' after declaration, not" */);
+}
+
+/* Declare function name of function type type (its return type; the
+ * parameter count is fixed by the first call), as int f(); does: a
+ * declarator that isn't a file-scope function's own (int x, f(int);
+ * fn_t g; int g(int); in a block). In a block it is declared as at
+ * file scope, from there on. is_static makes it local to the file. */
+void declare_function(int name, int type, int is_static)
+{
+  int f;
+  type = unqual(type_sub(type));
+  check_byval(type, 0);
+  if (find_var(name) >= 0)
+    error(27 /* "redeclaration of" */, quote(name));
+  check_not_id(name);
+  f = find_func(name);
+  if (f < 0)
+    f = add_func(name);
+  if ((fn_flags[f] & FN_DECLARED) && fn_type[f] != type)
+    error(165 /* "conflicting declaration of" */, quote(fn_name[f]));
+  fn_type[f] = type;
+  if (is_static)
+    fn_flags[f] |= FN_STATIC;
+  fn_flags[f] |= FN_DECLARED;
+}
+
+/* An extern declaration in a block, after the "extern": each
+ * declarator declares a global with no storage here (or a function),
+ * as at file scope, from here on. C would hide the name after the
+ * block, and ccish doesn't; a visible local of the same name would
+ * hide the global in the block, so that's an error. */
+void parse_block_extern(void)
+{
+  int base = parse_base_type(), type, name, s;
+  for (;;) {
+    type = parse_declarator(base, 0, &name);
+    if (is_func(type)) {
+      declare_function(name, type, 0);
+    } else {
+      s = find_var(name);
+      if (s >= nglobals)
+        error(163 /* "'extern' in a block can't hide a local:" */,
+              quote(name));
+      if (tok == '=')
         error(216 /* "'extern' with an initializer is not supported" */,
               NULL);
-      next();
-      var_type[s] = parse_global_init(type, name);
-      if (init_known)
-        set_known(s, init_val);
-    } else if (storage != T_EXTERN) {
-      if (is_array(type) && type_count(type) == 0)
-        error(87 /* "array size missing" */, NULL);
-      if ((is_array(type) || is_struct(type))
-          && type_size(type) >= BSS_MIN) {
-        /* In the zero-filled space, with no data bytes: ccrel places
-         * it, maybe on the heap. */
-        if (bss_next > 0x7FFF - type_size(type))
-          error(182 /* "too much data: globals over 32767 bytes" */,
-                NULL);
-        var_link[s] |= VL_BSS;
-        var_off[s] = bss_next;
-        bss_next += type_size(type);
-      } else {
-        data_zero(type_size(type));
-      }
+      declare_global(name, parse_var_type(type, 1), T_EXTERN);
     }
     if (tok != ',')
       break;
     next();
-    type = parse_declarator(base, &name);
   }
   expect(';', 118 /* "expected ';' after declaration, not" */);
+}
+
+/* The function begin_function() found or added. */
+static int new_func;
+
+/* Begin the function named name, declared at file scope, at its own
+ * parameter list's '(' (parse_declarator(), D_PARAMS): find or add it,
+ * and parse the parameters as its variables. Returns their count, or
+ * -1 for "()". */
+int begin_function(int name)
+{
+  int n;
+  if (find_var(name) >= 0)
+    error(27 /* "redeclaration of" */, quote(name));
+  check_not_id(name);
+  new_func = find_func(name);
+  if (new_func < 0)
+    new_func = add_func(name);
+  cur_fn = new_func;              /* for messages about its variables */
+  in_params = 1;
+  n = parse_params();
+  in_params = 0;
+  return n;
 }
 
 /* Parse one top-level item: global variable declarations, a function
@@ -574,30 +658,23 @@ static void parse_toplevel(void)
     next();                     /* struct pt { ... }; declares only */
     return;
   }
-  type = parse_declarator(base, &name);
-  if (tok != '(') {
+  type = parse_declarator(base, D_PARAMS, &name);
+  if (decl_nparams == -2) {
     parse_globals(base, type, name, storage);
     return;
   }
-  type = unqual(type);    /* const int f(void) returns an int */
+  /* A function, its parameters parsed (begin_function()). Its return
+   * type loses its qualifiers: const int f(void) returns an int. */
+  f = new_func;
+  nparams = decl_nparams;
+  type = unqual(type_sub(type));
   check_byval(type, 0);
-  if (find_var(name) >= 0)
-    error(27 /* "redeclaration of" */, quote(name));
-  check_not_id(name);
-  f = find_func(name);
-  if (f < 0)
-    f = add_func(name);
   if (storage == T_STATIC) {
     if ((fn_flags[f] & FN_DECLARED) && !(fn_flags[f] & FN_STATIC))
       error(217 /* "static declaration follows a non-static declaration"
                    " of" */, quote(name));
     fn_flags[f] |= FN_STATIC;
   }
-
-  cur_fn = f;                     /* for messages about its variables */
-  in_params = 1;
-  nparams = parse_params();
-  in_params = 0;
   pwords = frame_next / 2;
   if (tok == ';') {
     /* A prototype. "()" leaves the parameter count unspecified. */

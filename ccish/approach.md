@@ -4180,6 +4180,62 @@ issue. In summary:
 
 ## Milestones
 
+**Function pointer design (decided in discussion, 2026-11-07;
+decision 35, phase 3 of doc/bootstrap-test.md).** Wanted anyway, and
+the C library's FILEIO calls need them (a table of functions, issue
+22). The user: "It's okay if the program cannot detect many errors.
+The 64K limit greatly limits practical limits, and function pointers
+are always a simple byte address. We need to know how many bytes to
+send and return" and "I want to support *declarations* in full
+generality, so that the same code would be acceptable to a full C
+compiler, but have a lot of error-checking ignored in ccish."
+
+- *A function type is only its return type* (`TK_FUNC`, type.c). A
+  call needs the words it returns (none for void, one for a scalar,
+  a struct's size rounded up to words), and each argument's own type
+  gives the words it pushes (push_struct_words()), so a pointer's type
+  needn't describe the parameters. Two function types are the same
+  when their return types are, which is the one mistake it catches:
+  a wrong result count. A wrong argument count through a pointer
+  corrupts PLASMA's stack, as in K&R C, and isn't checked. A struct
+  return covers PLASMA's multiple results (FILEIO's getmark is #2).
+- *Declarators in C's full syntax* (pstmt.c, parse_declarator()):
+  parentheses, pointers to arrays and functions, arrays of them,
+  functions returning them, abstract declarators in casts and
+  sizeof. Read inside out with no rewinding: each derivation goes on
+  a small stack (MAX_STEPS, 16) in the order it applies, a nested
+  declarator's after the suffixes that follow it (by rotating the
+  stack), and the type is built from them. Only a file-scope
+  function's own parameter list (right after its name) is parsed,
+  by begin_function() (ptop.c), which declares the parameters and
+  keeps the checks of direct calls; every other list is skipped as
+  balanced parentheses, so any list a C compiler accepts is accepted.
+- *C's adjustments that change the code:* a parameter of function
+  type is a pointer (C11 6.7.6.3p8), as an array parameter already
+  was; a function typedef can declare a function (fn_t g;), as int
+  g(); does.
+- *Block-scope declarations* (user: "Yes, include block-scope
+  declarations"): int g(int); and extern int x; in a block are
+  declared as at file scope, from there on, ignoring C's rule that
+  the name is hidden again after the block. A block extern adds a
+  global while locals exist, so add_global() moves the locals up a
+  slot (only globals' indices are kept anywhere: an Operand's global
+  field), and blocks restore their locals by count. A visible local
+  of the same name would hide the global, so that's an error (163).
+- Steps: (1) the types and declarators; (2) a function's name as a
+  value (IR_FUNCADDR) and calls through a pointer (IR_ICALL, ICAL,
+  with the address put on top of the arguments, C11 6.5.2.2p10 leaving
+  their order open); (3) function addresses in initializers (a data
+  relocation of kind 2, object format 7); (4) the docs.
+- **Step 1 is done** (2026-11-07). tests/run/declarators.c declares
+  each form, with its sizes and a block extern among locals, and seven
+  error tests cover the new messages (29, 92, 112, 114, 125, 163,
+  219, renumbered from ones that no longer apply). Cost (small build,
+  measure.py against the previous commit): cccomp code +1,196 bytes
+  (pstmt.c +720, the declarator; ptop.c +300; parse.c +135; type.c
+  +51; pexpr.c -10), data +54, strings -23; its module file 44,147 to
+  46,002.
+
 **`ccpp` design (decided in discussion, 2026-10-31; decision 24; F9
 and A6 in 18.6; this is M8).** The user: "Currently cccomp is too
 big, so I think that *necessitates* that the preprocessor ccpp do the

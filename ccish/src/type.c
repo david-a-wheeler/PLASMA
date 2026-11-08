@@ -139,6 +139,18 @@ int array_of(int t, int count)
   return find_type(TK_ARRAY, t, count);
 }
 
+/* The type "function returning t", t unqualified. */
+int func_of(int t)
+{
+  return find_type(TK_FUNC, unqual(t), 0);
+}
+
+/* Is t a function type? */
+int is_func(int t)
+{
+  return type_kind(t) == TK_FUNC;
+}
+
 /* Type t with qualifiers q (Q_CONST, Q_VOLATILE) added. An array's
  * qualifiers go to its elements, as in C. */
 int qualify(int t, int q)
@@ -172,8 +184,8 @@ int hash_byte(int h, int c)
 /* Type hash h with type t added, as a canonical string: k and V for
  * const and volatile, then i, u (unsigned int), c or v, * and the
  * target, [ with the
- * count and the element, or s, the tag's name and ';' (a struct is
- * known by its name in every file). */
+ * count and the element, ( and the return type, or s, the tag's name
+ * and ';' (a struct is known by its name in every file). */
 int type_hash(int t, int h)
 {
   int tag;
@@ -187,6 +199,7 @@ int type_hash(int t, int h)
   case TK_INT:  return hash_byte(h, 'i');
   case TK_UINT: return hash_byte(h, 'u');
   case TK_PTR:  return type_hash(type_sub(t), hash_byte(h, '*'));
+  case TK_FUNC: return type_hash(type_sub(t), hash_byte(h, '('));
   case TK_ARRAY:
     h = hash_byte(hash_byte(h, '['), type_count(t));
     return type_hash(type_sub(t), hash_byte(h, type_count(t) >> 8));

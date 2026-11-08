@@ -342,10 +342,32 @@ static int push_var(int name, int type, int off, int flags)
  * initial value, or zeros. */
 int add_global(int name, int type)
 {
-  if (nvars != nglobals)
-    fatal(29 /* "internal error: a global declared among locals" */, NULL);
+  int v;
+  if (nvars == nglobals) {
+    nglobals++;
+    return push_var(name, type, data_offset(), V_DATA);
+  }
+  /* An extern in a block (parse_block_extern()) declares one while
+   * locals are visible: they move up a slot. Nothing keeps a local's
+   * index from one declaration to the next, and blocks restore their
+   * locals by count (parse_block()), so that's safe. */
+  if (nvars >= MAX_VARS)
+    fatal(28 /* "too many variables" */, NULL);
+  for (v = nvars++; v > nglobals; v--) {
+    var_name[v] = var_name[v - 1];
+    var_type[v] = var_type[v - 1];
+    var_off[v] = var_off[v - 1];
+    var_flags[v] = var_flags[v - 1];
+    var_val[v] = var_val[v - 1];
+    var_link[v] = var_link[v - 1];
+  }
+  var_name[v] = name;
+  var_type[v] = type;
+  var_off[v] = data_offset();
+  var_flags[v] = V_DATA;
+  var_link[v] = 0;
   nglobals++;
-  return push_var(name, type, data_offset(), V_DATA);
+  return v;
 }
 
 /* Declare a local (or parameter) of the given type at the current
@@ -441,7 +463,7 @@ void need_complete(int t, int msg)
 }
 
 /* Parse any qualifiers (const, volatile), and return them as Q_ bits. */
-static int parse_quals(void)
+int parse_quals(void)
 {
   int q = 0;
   while (T_IS_QUAL(tok)) {
@@ -511,20 +533,6 @@ int parse_base_type(void)
   }
   base_tagged = tagged;           /* after any members' own types */
   return qualify(t, q | parse_quals());
-}
-
-/* Parse any '*'s after a base type t: each makes a pointer to the type
- * before it, so "char **" is a pointer to a pointer to char. Qualifiers
- * after a '*' qualify that pointer: char *const p is a const pointer to
- * char. */
-int parse_pointers(int t)
-{
-  while (tok == '*') {
-    next();
-    t = pointer_to(t);
-    t |= parse_quals();
-  }
-  return t;
 }
 
 /* The type a letter stands for in a cmdsys_sigs[] signature: S and P

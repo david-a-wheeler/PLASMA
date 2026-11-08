@@ -20,4 +20,14 @@ int parse_global_init(int type, int name);
  * Returns the type, with an array size that was left out filled in. */
 int parse_local_init(int type, int name, int base);
 
+/* Begin a file-scope function at its parameter list (parse_declarator(),
+ * D_PARAMS), and return its parameter count, or -1 for "()". */
+int begin_function(int name);
+
+/* Declare function name of function type type, as int f(); does. */
+void declare_function(int name, int type, int is_static);
+
+/* An extern declaration in a block, after the "extern". */
+void parse_block_extern(void);
+
 #endif

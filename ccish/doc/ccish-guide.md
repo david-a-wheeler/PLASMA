@@ -576,8 +576,10 @@ typedef const char *str;
 ```
 
 A typedef name can be used wherever a built-in type can, with `*`s,
-array sizes and qualifiers. Typedefs of function types are not
-supported. Typedef names have block scope, as in C.
+array sizes and qualifiers. A typedef may name a function type
+(`typedef int fn_t(int);`), which can then declare a function
+(`fn_t g;`) or a pointer to one (`fn_t *p;`). Typedef names have
+block scope, as in C.
 
 ### 4.10 const and volatile
 
@@ -630,6 +632,39 @@ initializer is an error. Reading a member other than the one last
 written gives the value the shared bytes hold; for this subset of
 members (ints and chars, little-endian) ccish and the host compiler
 agree on it.
+
+### 4.12 Declarators
+
+A declarator may use C's whole syntax, so a declaration a C compiler
+accepts, ccish accepts too:
+
+```c
+int (*fp)(int);             /* a pointer to a function */
+int (*table[3])(int);       /* an array of 3 of them */
+int (*pa)[4] = &a;          /* a pointer to an array of 4 ints */
+int *(*f(int))(char *);     /* a function returning a pointer to one */
+int x, g(int);              /* a variable and a function together */
+sizeof(int (*)[4])          /* an abstract declarator in a type name */
+```
+
+ccish checks much less of it than a C compiler would, since it needs
+little to generate the code. A function type is only its return type:
+a call needs that to know what comes back, and each argument's own
+type says how many words it pushes. So any parameter list in a
+declarator is skipped, except a file-scope function's own (the one
+right after its name, `int g(int x)`), which declares its parameters
+and checks the calls of it as before. Two function types are the same
+when their return types are. A parameter of function type is a
+pointer to the function (`void sort(int cmp(int, int))`), as in C11
+6.7.6.3.
+
+A function may be declared in a block (`int g(int);`), and so may a
+global (`extern int count;`, section 5.5). Either is declared as at
+file scope, from there on: C would hide the name again after the
+block, and ccish doesn't.
+
+Declaring function pointers works now; calling through one, and using
+a function's name as a value, come next (section 9.1).
 
 ## 5. Declarations and storage
 
@@ -842,8 +877,10 @@ the same file (`int count = 1;`) gives it storage; otherwise it must
 be defined in another file linked with it (section 2.3), or it is an
 "undefined reference". One that is never used needn't be defined.
 `extern` on a function declaration changes nothing. An `extern` with
-an initializer, and `extern` in a block, aren't supported. `sizeof`
-an array of unknown size is an error.
+an initializer isn't supported. `extern` in a block declares the
+global from there on, as at file scope (section 4.12); a local of the
+same name in scope there is an error, since it would hide the global.
+`sizeof` an array of unknown size is an error.
 
 `static` has two uses:
 
@@ -1282,8 +1319,12 @@ directive is an error.
 ### 9.1 Not implemented, expected soon
 
 * `signed char`
+* Calls through a function pointer, and a function's name used as a
+  value (declaring function pointers works, section 4.12)
 
-It gives a "not supported yet" error that names the token.
+`signed char` gives a "not supported yet" error that names the token,
+and a call through a function pointer gives "called object is not a
+function".
 
 ### 9.2 Out of scope
 
@@ -1293,18 +1334,13 @@ These are deliberate limits, each a clear compile-time error:
   arithmetic on the 6502, and no room for it in the compiler).
 * `auto` and `register` (locals are automatic anyway; there is no
   register storage to name).
-* Function pointers, and any declarator in parentheses
-  (`int (*p)[4]`).
 * The comma operator.
 * Bitfields.
 * Variable argument lists (`...` in a function's parameters; the
   preprocessor's `...`/`__VA_ARGS__` is separate, section 8.2).
-* Local function declarations (declare functions at file scope).
-* `main` with parameters, `extern` with an initializer, and
-  `extern` in a block.
+* `main` with parameters, and `extern` with an initializer.
 * Nested braces in initializers (`int m[2][3] = {{1,2,3},{4,5,6}};`
   takes a flat list, section 5.6).
-* Typedefs of function types.
 * Structs over 8 bytes passed or returned by value (pass a pointer).
 * `==` and `!=` on structs (as in C).
 * Anything that needs more than 16 bits of address or 8 bits of

@@ -441,12 +441,13 @@ building on it.
    the tests, and the docs. Cost: ccpp +61 bytes (the longer fixed
    names), cccomp +3, ccrel +50.
 
-**Phase 3: function pointers.**
-6. Declarations, `&f` and plain `f` as values, assignment, calls
-   through a pointer (ICAL) checked like direct calls, comparison
-   with 0 and each other, pointers in arrays and struct members.
-   Cross-check with xrun tests against gcc and clang. Measure cccomp
-   (it doesn't fit yet) and report the cost before going on.
+**Phase 3: function pointers (step 1 of 4 done; approach.md,
+"Function pointer design").**
+6. Declarations in C's full syntax (done), `&f` and plain `f` as
+   values, calls through a pointer (ICAL; a function type is only its
+   return type, so the arguments aren't checked), function addresses
+   in initializers. Cross-check with xrun tests against gcc and
+   clang. Step 1 cost cccomp 1.2K of code; measure each step.
 
 **Phase 4: imports from other modules.**
 7. The asm label and `#pragma plasma import` in cccomp; dependency

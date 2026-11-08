@@ -13,10 +13,14 @@
  * of its own: const char is TY_CHAR | Q_CONST. Only a pointer to a
  * qualified type does, since const char * and char * differ. An array
  * is never qualified itself; its elements are (const int t[3]). A
- * struct type has one entry per tag, made by struct_type().
+ * struct type has one entry per tag, made by struct_type(). A function
+ * type is only its return type: a call needs that to know what it
+ * returns, and its arguments' own types say what they push, so ccish
+ * keeps no parameter list (approach.md, "Function pointer design").
  * The table is private to type.c; use the functions below. */
 
-enum { TK_VOID, TK_CHAR, TK_INT, TK_PTR, TK_ARRAY, TK_STRUCT, TK_UINT };
+enum { TK_VOID, TK_CHAR, TK_INT, TK_PTR, TK_ARRAY, TK_STRUCT, TK_UINT,
+       TK_FUNC };
 /* the basic types' indexes: TY_UINT is unsigned int */
 enum { TY_VOID, TY_CHAR, TY_INT, TY_UINT };
 #define Q_CONST    0x100
@@ -28,7 +32,8 @@ enum { TY_VOID, TY_CHAR, TY_INT, TY_UINT };
 
 int type_kind(int t);       /* TK_* */
 int type_sub(int t);        /* pointer: the type pointed to; array: the
-                             * element type (handles, with qualifiers) */
+                             * element type (handles, with qualifiers);
+                             * function: the return type */
 int type_count(int t);      /* array: the element count, or 0 if unknown
                              * (only while parsing an array parameter) */
 int type_size(int t);
@@ -36,6 +41,8 @@ int is_pointer(int t);
 int is_array(int t);
 int pointer_to(int t);
 int array_of(int t, int count);
+int func_of(int t);         /* a function returning t */
+int is_func(int t);
 int qualify(int t, int q);
 int unqual(int t);
 int is_const(int t);

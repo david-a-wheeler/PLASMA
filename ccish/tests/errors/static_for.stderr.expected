@@ -1,1 +1,1 @@
-a 'for' loop can't declare a static variable
+a 'for' loop can't declare a static or extern variable

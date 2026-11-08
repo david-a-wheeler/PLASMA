@@ -5,18 +5,26 @@
 #ifndef PSTM_H
 #define PSTM_H
 
-/* Parse any array sizes ("[3][4]") after a declarator's name, and
- * return the declared type, given the type t before them. If may_omit
- * is set (an array parameter), the first size may be left out. */
-int  parse_dims(int t, int may_omit);
+/* parse_declarator()'s flags: the name may be left out (a parameter);
+ * there is no name (a type name); a file-scope function's own
+ * parameter list is parsed by begin_function() (ptop.c). */
+enum { D_ABSTRACT = 1, D_NONAME = 2, D_PARAMS = 4 };
 
-/* Parse the start of a declarator after the base type base: any '*'s,
- * then the name, whose id is stored in *name. Returns the type so far. */
-int  parse_declarator(int base, int *name);
+/* Parse a declarator after the base type base, in C's full syntax
+ * (int (*p)(int), int *(*a[3])[4]), store its name's id in *name (-1
+ * if none), and return the declared type. Only a D_PARAMS function's
+ * own parameter list is parsed; any other is skipped. */
+int  parse_declarator(int base, int flags, int *name);
 
-/* Parse the rest of a variable's declarator after its name (any array
- * sizes) and return its full type. If may_omit is set, the first array
- * size may be left out, for an initializer to give. */
+/* After a D_PARAMS parse_declarator(): the parameter count of the
+ * declared function's own list, or -2 if it had none. */
+extern int decl_nparams;
+
+/* A type name, as in a cast or sizeof: int (*)(int). */
+int  parse_type_name(void);
+
+/* Check a variable's declared type and return it. If may_omit is
+ * clear, an array's size can't be left out. */
 int  parse_var_type(int type, int may_omit);
 
 /* typedef type name, ...; in the current block. */

@@ -33,22 +33,85 @@
 /* ---------- Statements ---------- */
 
 
-/* Parse any array sizes ("[3][4]") after a declarator's name, and
- * return the declared type, given the type t before them: int m[3][4]
- * is an array of 3 arrays of 4 ints. If may_omit is set (an array
- * parameter), the first size may be left out, giving a count of 0. */
-int parse_dims(int t, int may_omit)
+/*
+ * Declarators (approach.md, "Function pointer design"). A declarator
+ * is read in C's own order, inside out: in int *(*p)[3], p is a
+ * pointer to an array of 3 pointers to int. As it is read, each
+ * derivation (a pointer, an array of n, a function) goes on a small
+ * stack, in the order it applies to the base type, and then the type
+ * is built from them. A nested declarator's own derivations come after
+ * the suffixes that follow it, since they apply last; the parse puts
+ * them there by rotating the stack. Nothing is rewound, so the token
+ * stream is still read once, in order.
+ *
+ * A function's own parameter list, the one right after the name of a
+ * function declared at file scope (D_PARAMS), is parsed by
+ * begin_function() (ptop.c), which declares the parameters. Every
+ * other parameter list (in a pointer to a function, a typedef, a cast,
+ * a parameter's own declarator, a block-scope declaration) is skipped
+ * as balanced parentheses: a function type is only its return type
+ * (type.h), so ccish accepts any list a C compiler would and checks
+ * none of it.
+ */
+enum { DS_PTR, DS_ARRAY, DS_FUNC };
+#define MAX_STEPS    16     /* derivations in the declarators being read */
+static char step_kind[MAX_STEPS];
+static int step_val[MAX_STEPS];    /* a pointer's qualifiers, or an
+                                    * array's count (0: left out) */
+static int nsteps;
+
+/* The parameter count begin_function() gave for the D_PARAMS
+ * declarator just read, or -2 if its name had no parameter list right
+ * after it. */
+int decl_nparams;
+
+/* Push derivation kind k with value v. */
+static void add_step(int k, int v)
+{
+  if (nsteps >= MAX_STEPS)
+    fatal(29 /* "too many parts in a declarator" */, NULL);
+  step_kind[nsteps] = (char)k;
+  step_val[nsteps++] = v;
+}
+
+/* Reverse steps from to to - 1. */
+static void reverse_steps(int from, int to)
+{
+  int k, v;
+  while (from < --to) {
+    k = step_kind[from];
+    v = step_val[from];
+    step_kind[from] = step_kind[to];
+    step_val[from] = step_val[to];
+    step_kind[to] = (char)k;
+    step_val[to] = v;
+    from++;
+  }
+}
+
+/* Skip a parameter list, its '(' already read, to its matching ')'. */
+static void skip_params(void)
+{
+  int open = 1;
+  while (open) {
+    if (tok == T_EOF)
+      error(219 /* "missing ')' at end of file" */, NULL);
+    if (tok == '(')
+      open++;
+    else if (tok == ')')
+      open--;
+    next();
+  }
+}
+
+/* Parse one array size after its '[', through the ']': a positive
+ * constant, or 0 if it is left out. */
+static int parse_dim(void)
 {
   Operand e;
   int n = 0;
-  if (tok != '[')
-    return t;
-  enter_nest();
-  next();
-  if (tok == ']') {
-    if (!may_omit)
-      error(87 /* "array size missing" */, NULL);
-  } else {
+  next();                         /* '[' */
+  if (tok != ']') {
     parse_expr(PREC_COND, &e);
     if (e.kind != K_CONST || is_pointer(e.type))
       error(88 /* "array size must be a constant" */, NULL);
@@ -61,40 +124,147 @@ int parse_dims(int t, int may_omit)
     n = e.val;
   }
   expect(']', 90 /* "expected ']' after an array size, not" */);
-  t = parse_dims(t, 0);
-  need_complete(t, 209 /* "an array element can't have the incomplete"
-                          " type" */);
-  if (type_size(t) == 0)
-    error(91 /* "array elements can't have type void" */, NULL);
-  nest--;
-  return array_of(t, n);
+  return n;
 }
 
-/* Parse the start of a declarator after the base type base: any '*'s,
- * then the name, whose id is stored in *name. Returns the type so far;
- * any array sizes come after the name. */
-int parse_declarator(int base, int *name)
+/* Parse a declarator's suffixes (array sizes and parameter lists) and
+ * push them, applying from the last: int m[3][4] is an array of 3
+ * arrays of 4. open is set if the first is a parameter list whose '('
+ * is already read; own_name is the declared name if its own parameter
+ * list may come first (D_PARAMS), else -1. */
+static void parse_suffixes(int open, int own_name)
 {
-  int type = parse_pointers(base);
-  if (tok == '(')
-    error(92 /* "declarators in parentheses are not supported yet" */,
-          "(such as int (*p)[4])");
-  if (tok != T_ID)
-    error(93 /* "expected a name, not" */, tok_desc());
-  *name = tok_val;
-  next();
-  return type;
+  int from = nsteps;
+  if (open) {
+    skip_params();
+    add_step(DS_FUNC, 0);
+  }
+  for (;;) {
+    if (tok == '[') {
+      add_step(DS_ARRAY, parse_dim());
+    } else if (tok == '(') {
+      if (own_name >= 0) {
+        decl_nparams = begin_function(own_name);
+      } else {
+        next();
+        skip_params();
+      }
+      add_step(DS_FUNC, 0);
+    } else {
+      break;
+    }
+    own_name = -1;
+  }
+  reverse_steps(from, nsteps);
 }
 
-/* Parse the rest of a variable's declarator after its name (any array
- * sizes) and return its full type, which can't be void or an
- * incomplete struct. If may_omit is set, the first array size may be
- * left out (count 0), for an initializer to give. */
+/* Parse a declarator, pushing its derivations, and store its name's id
+ * in *name (-1 if it has none, which flags must allow: D_ABSTRACT). */
+static void parse_steps(int flags, int *name)
+{
+  int from, inner;
+  while (tok == '*') {
+    next();
+    add_step(DS_PTR, parse_quals());
+  }
+  if (tok == '(') {
+    next();
+    if (tok == '*' || tok == '(' || (tok == T_ID && !is_type_start())) {
+      /* A nested declarator, (*p): its derivations apply after the
+       * suffixes that follow it. */
+      enter_nest();
+      from = nsteps;
+      parse_steps(flags, name);
+      nest--;
+      expect(')', 92 /* "expected ')' in a declarator, not" */);
+      inner = nsteps;
+      parse_suffixes(0, -1);
+      reverse_steps(from, inner);         /* rotate the suffixes */
+      reverse_steps(inner, nsteps);       /* ahead of the nested */
+      reverse_steps(from, nsteps);        /* declarator's steps */
+      return;
+    }
+    *name = -1;                 /* an unnamed function: int (int) */
+    if (!(flags & D_ABSTRACT))
+      error(93 /* "expected a name, not" */, tok_desc());
+    parse_suffixes(1, -1);
+    return;
+  }
+  *name = -1;
+  if (tok == T_ID && !(flags & D_NONAME)) {
+    *name = tok_val;
+    next();
+  } else if (!(flags & D_ABSTRACT)) {
+    error(93 /* "expected a name, not" */, tok_desc());
+  }
+  parse_suffixes(0, (flags & D_PARAMS) && *name >= 0 ? *name : -1);
+}
+
+/* Parse a declarator after the base type base, storing its name's id
+ * in *name (-1 for none), and return the declared type, with flags
+ * D_ABSTRACT (the name may be left out), D_NONAME (there's none: a
+ * type name) and D_PARAMS (a file-scope function's own parameter list
+ * is parsed by begin_function(); decl_nparams says if it was). The
+ * declared object's own (outermost) array size may be left out (count
+ * 0): the caller checks that where it isn't allowed. A function's
+ * return type loses its qualifiers. */
+int parse_declarator(int base, int flags, int *name)
+{
+  int from = nsteps, t = base, i, k;
+  if (flags & D_PARAMS)
+    decl_nparams = -2;
+  parse_steps(flags, name);
+  for (i = from; i < nsteps; i++) {
+    k = step_kind[i];
+    if (k == DS_PTR) {
+      t = pointer_to(t) | step_val[i];
+      continue;
+    }
+    if (is_func(t) || (k == DS_FUNC && is_array(t)))
+      error(k == DS_FUNC
+            ? 112 /* "a function can't return an array or a function" */
+            : 114 /* "a function type isn't allowed here (use a pointer"
+                     " to a function)" */, NULL);
+    if (k == DS_FUNC) {
+      t = func_of(t);
+      continue;
+    }
+    need_complete(t, 209 /* "an array element can't have the incomplete"
+                            " type" */);
+    if (type_size(t) == 0)
+      error(91 /* "array elements can't have type void" */, NULL);
+    if (step_val[i] == 0 && i != nsteps - 1)
+      error(87 /* "array size missing" */, NULL);
+    t = array_of(t, step_val[i]);
+  }
+  nsteps = from;
+  return t;
+}
+
+/* Parse a type name, as in a cast or sizeof: a base type and an
+ * abstract declarator (int (*)(int)). It can't be a function or an
+ * array of unknown size. */
+int parse_type_name(void)
+{
+  int name, t = parse_declarator(parse_base_type(), D_ABSTRACT | D_NONAME,
+                                 &name);
+  if (is_func(t))
+    error(114 /* "a function type isn't allowed here (use a pointer"
+                 " to a function)" */, NULL);
+  if (is_array(t) && type_count(t) == 0)
+    error(87 /* "array size missing" */, NULL);
+  return t;
+}
+
+/* Check a variable's declared type, which can't be void or an
+ * incomplete struct, and return it. If may_omit is clear, an array's
+ * size can't be left out. */
 int parse_var_type(int type, int may_omit)
 {
   if (unqual(type) == TY_VOID)
     error(94 /* "a variable can't have type void" */, NULL);
-  type = parse_dims(type, may_omit);
+  if (!may_omit && is_array(type) && type_count(type) == 0)
+    error(87 /* "array size missing" */, NULL);
   need_complete(type, 207 /* "a variable can't have the incomplete type" */);
   return type;
 }
@@ -123,11 +293,12 @@ static void parse_members(int tag, int is_union)
             tok_desc());
     base = parse_base_type();
     for (;;) {
-      t = parse_declarator(base, &name);
-      if (tok == '(')
+      t = parse_declarator(base, 0, &name);
+      if (is_func(t))
         error(97 /* "a struct or union member can't be a function:" */,
               quote(name));
-      t = parse_dims(t, 0);
+      if (is_array(t) && type_count(t) == 0)
+        error(87 /* "array size missing" */, NULL);
       if (unqual(t) == TY_VOID)
         error(98 /* "a struct or union member can't have type void" */,
               NULL);
@@ -311,11 +482,9 @@ void parse_typedef(void)
     error(111 /* "expected a type after 'typedef', not" */, tok_desc());
   base = parse_base_type();
   for (;;) {
-    t = parse_declarator(base, &name);
-    if (tok == '(')
-      error(112 /* "typedefs of function types are not supported" */,
-            NULL);
-    t = parse_dims(t, 0);
+    t = parse_declarator(base, 0, &name);
+    if (is_array(t) && type_count(t) == 0)
+      error(87 /* "array size missing" */, NULL);
     i = id_find(name);
     if (i >= 0 && id_depth(i) == depth) {
       if (id_kind(i) != ID_TYPEDEF || id_val(i) != t)
@@ -372,7 +541,9 @@ void set_known(int s, int v)
  * initializer: int a = 1, *p = &a, v[10]; A struct or enum type may
  * have no declarators (struct pt { int x, y; };). If is_static is set (after
  * "static"), the variables are static locals: in the data segment, with
- * constant initializers applied once, when the module loads. */
+ * constant initializers applied once, when the module loads. A
+ * function declared here (int g(int);) is declared as at file scope,
+ * from here on: C would hide it after the block, and ccish doesn't. */
 static void parse_declaration(int is_static)
 {
   int base = parse_base_type();
@@ -383,10 +554,15 @@ static void parse_declaration(int is_static)
   for (;;) {
     Operand v, e;
     int s, name;
-    int type = parse_var_type(parse_declarator(base, &name), 1), braced;
-    if (tok == '(')
-      error(114 /* "local function declarations are not supported" */,
-            NULL);
+    int type = parse_declarator(base, 0, &name), braced;
+    if (is_func(type)) {
+      declare_function(name, type, 0);
+      if (tok != ',')
+        break;
+      next();
+      continue;
+    }
+    type = parse_var_type(type, 1);
     if (is_array(type) && type_count(type) == 0 && tok != '=')
       error(87 /* "array size missing" */, NULL);
     if (is_static) {
@@ -583,17 +759,15 @@ static void parse_do(void)
  * variables (as in C99); they are in scope only in the loop. */
 static void parse_for(void)
 {
-  int saved_nvars = nvars, saved_next = frame_next;
+  int saved_locals = nvars - nglobals, saved_next = frame_next;
   int l[4];
 
   next();                         /* "for" */
   expect('(', 124 /* "expected '(' after 'for', not" */);
   depth++;
-  if (tok == T_STATIC)
-    error(125 /* "a 'for' loop can't declare a static variable" */, NULL);
-  if (tok == T_EXTERN)
-    error(219 /* "'extern' in a block is not supported: declare it at"
-                 " file scope" */, NULL);
+  if (tok == T_STATIC || tok == T_EXTERN)
+    error(125 /* "a 'for' loop can't declare a static or extern"
+                 " variable" */, NULL);
   if (is_type_start()) {
     parse_declaration(0);       /* includes the ';' */
   } else {
@@ -613,7 +787,7 @@ static void parse_for(void)
   expect(')', 128 /* "expected ')' after 'for' clauses, not" */);
   loop_rest(l);
   depth--;
-  nvars = saved_nvars;
+  nvars = nglobals + saved_locals;
   frame_next = saved_next;
 }
 
@@ -893,8 +1067,10 @@ static void parse_statement(void)
     parse_typedef();
     return;
   case T_EXTERN:
-    error(219 /* "'extern' in a block is not supported: declare it at"
-                 " file scope" */, NULL);
+    next();
+    if (!is_type_start())
+      error(218 /* "expected a type after 'extern', not" */, tok_desc());
+    parse_block_extern();
     return;
   case T_STATIC:
     next();
@@ -914,7 +1090,7 @@ static void parse_statement(void)
  * block shares the parameters' scope, as in C. */
 void parse_block(int new_scope)
 {
-  int saved_nvars = nvars, saved_next = frame_next;
+  int saved_locals = nvars - nglobals, saved_next = frame_next;
   enter_nest();
   if (new_scope)
     depth++;
@@ -929,7 +1105,7 @@ void parse_block(int new_scope)
     /* The block's variables and struct tags go out of scope, and
      * the variables' frame slots can be reused by later blocks. */
     depth--;
-    nvars = saved_nvars;
+    nvars = nglobals + saved_locals;
     frame_next = saved_next;
     tag_hide(depth);
     id_hide(depth);
@@ -963,9 +1139,10 @@ int parse_params(void)
       not_yet();
     if (!is_type_start())
       error(151 /* "expected a parameter type, not" */, tok_desc());
-    type = parse_pointers(parse_base_type());
+    /* A prototype may leave the name out (name -1). */
+    type = parse_declarator(parse_base_type(), D_ABSTRACT, &name);
     if (unqual(type) == TY_VOID) {
-      if (type == TY_VOID && n == 0 && tok == ')') {
+      if (type == TY_VOID && n == 0 && name < 0 && tok == ')') {
         next();
         return 0;           /* (void): no parameters */
       }
@@ -973,17 +1150,14 @@ int parse_params(void)
     }
     if (n >= MAX_PARAMS)
       fatal(153 /* "too many parameters" */, NULL);
-    name = -1;                  /* a prototype may leave it out */
-    if (tok == T_ID) {
-      name = tok_val;
-      next();
-    }
     /* An array parameter is a pointer to its first element, as in
      * C: int a[] and int a[10] are int *a, and int m[][4] is a
-     * pointer to arrays of 4 ints. */
-    type = parse_dims(type, 1);
+     * pointer to arrays of 4 ints. A function parameter is a pointer
+     * to the function: int g(int) is int (*g)(int) (C11 6.7.6.3). */
     if (is_array(type))
       type = pointer_to(type_sub(type));
+    else if (is_func(type))
+      type = pointer_to(type);
     check_byval(type, 1);
     /* ENTER puts the parameters' words in consecutive frame words,
      * one each for a scalar (a char is then read as its low byte),

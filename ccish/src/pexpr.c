@@ -414,7 +414,7 @@ static void parse_primary(Operand *o)
     next();
     if (is_type_start()) {
       /* A cast: (type) unary-expression. */
-      c = parse_pointers(parse_base_type());
+      c = parse_type_name();
       expect(')', 59 /* "expected ')' after the type in a cast, not" */);
       parse_unary(o);
       cast(o, c);
@@ -831,8 +831,8 @@ static void parse_sizeof(Operand *o)
   if (tok == '(') {
     next();
     if (is_type_start()) {
-      /* A type name: a base type, '*'s and array sizes. */
-      t = parse_dims(parse_pointers(parse_base_type()), 0);
+      /* A type name: a base type and an abstract declarator. */
+      t = parse_type_name();
       expect(')', 77 /* "expected ')' after the type in sizeof, not" */);
     } else {
       /* A parenthesized expression, which may be followed by

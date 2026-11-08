@@ -1,1 +1,1 @@
-:4: error 219: 'extern' in a block is not supported: declare it at file scope
+:4: error 125: a 'for' loop can't declare a static or extern variable

@@ -1,0 +1,1 @@
+:2: error 114: a function type isn't allowed here (use a pointer to a function)

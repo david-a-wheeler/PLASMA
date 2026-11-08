@@ -212,7 +212,7 @@ int  add_static_local(int name, int type);
 void set_param_types(int f, int n);
 int  is_type_start(void);
 int  parse_base_type(void);
-int  parse_pointers(int t);
+int  parse_quals(void);
 const char *tag_desc(int tag);
 void need_complete(int t, int msg);
 int  new_label(void);
