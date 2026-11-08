@@ -239,7 +239,8 @@ void join_label(int from, int to);
  * goto reserves the label; its ':' defines it; the function's end
  * checks that every target was defined. */
 extern int ngoto_labels;            /* goto labels made */
-extern int nlbls;                   /* goto labels defined or used */
+extern int nlbls;                   /* goto labels defined or used; */
+                                    /* both reset at a function's start */
 
 int  reserve_goto_label(int id);
 int  define_goto_label(int id);
@@ -263,7 +264,6 @@ int  result_words(int t);
  * the number of globals and global v's flags, data offset, size, type
  * hash and name (an id). */
 int  func_sym(int f, int *hash);
-extern int bss_next;                /* the zero-filled space's bytes */
 int  data_sym(int v, int *off, int *size, int *hash, int *name);
 /* Imports (ptop.c): whether function f, or global v as IMP_DATA + v,
  * is one, with its PLASMA name (name, an id, if it has no label) and
@@ -271,7 +271,6 @@ int  data_sym(int v, int *off, int *size, int *hash, int *name);
 #define IMP_DATA 0x4000
 int  sym_import(int key, int name, int *label);
 int  dep_count(void);
-extern int dep_id[];                /* the modules pragmas named, ids */
 void compile_file(const char *in, const char *base);   /* the front end */
 void compile_abort(void);                   /* after an error */
 

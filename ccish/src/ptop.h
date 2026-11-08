@@ -5,6 +5,13 @@
 #ifndef PTOP_H
 #define PTOP_H
 
+/* For the symbol summary (irout.c): the file's zero-filled space so far
+ * (its VL_BSS globals), and the modules #pragma plasma import named,
+ * each one's name an id. Only ptop.c changes them. */
+#define MAX_DEPS     4      /* modules named by pragmas (1) */
+extern int bss_next;
+extern int dep_id[MAX_DEPS];
+
 /* Set by parse_scalar_init(): whether the initializer it parsed was
  * an integer constant (not an address), and its value. A const
  * variable initialized so has a known value (set_known()). */

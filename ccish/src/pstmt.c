@@ -368,11 +368,6 @@ int parse_struct(void)
   return struct_type(tag);
 }
 
-/* Mark tag as a union's (type.c's tg_union[]): its members all start
- * at byte 0, and its size is the largest member's. A macro, not a
- * function: this is its one user. */
-#define tag_mark_union(tag) (tg_union[tag] = 1)
-
 /*
  * Parse a union type after "union", and return it: a tag, a member
  * list, or both, as parse_struct(), but with the union layout: every
@@ -409,7 +404,7 @@ int parse_union(void)
                      "outside it:" */, tag_desc(tag));
 #endif
   }
-  tag_mark_union(tag);
+  tg_union[tag] = 1;              /* members all at 0; the largest's size */
   if (tok == '{') {
     if (tag_size(tag) != -1)
       error(104 /* "redefinition of" */, tag_desc(tag));

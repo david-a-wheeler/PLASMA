@@ -105,6 +105,19 @@ files of the sessions so far, before a move to a new computer.)
   this is really a placeholder to enable bootstrapping.
 - **2-space indents, never tabs**; continuation lines align under the
   opening parenthesis or operator.
+- **Shared variables: direct access, not accessors** (decided in
+  discussion, 2026-11-08: "Merely getting stuff to *fit* is a
+  challenge"). A variable other files need is defined in its owner
+  .c file and declared `extern` in that file's own header, and the
+  others read and write it directly: an access is one 3-byte op, where
+  an accessor adds a call, a body and a 5-byte def-table entry. A rule
+  about who may change it goes in a comment by the `extern`. Keep a
+  function (or, with one caller, a macro) only where the access does
+  work. Two limits shape this: every `extern` a file can see counts
+  against cccomp's `MAX_VARS` when ccish compiles itself, so declare
+  it in the owner's header and include that only where it's used; and
+  each distinct array type takes a `MAX_TYPES` slot, so give an
+  `extern` array its size where the size's macro is visible.
 - **Every function has a comment directly above it** (1-2 lines, what
   it does), including one-line static helpers; with `#ifdef` versions,
   one directly above each. Each peephole pattern in peep.c has a

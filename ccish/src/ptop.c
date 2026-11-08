@@ -86,7 +86,7 @@
 #include "pexpr.h"
 
 int bss_next;                       /* the zero-filled space so far
-                                     * (bss_size() in irout.c) */
+                                     * (ptop.h) */
 
 /* Set by parse_scalar_init(): whether the initializer it parsed was an
  * integer constant (not an address), and its value. A const variable
@@ -551,12 +551,11 @@ static int declare_global(int name, int type, int storage)
  * from 1).
  */
 #define MAX_IMPORTS  16     /* symbols with a label or a pragma (2) */
-#define MAX_DEPS     4      /* modules named by pragmas (1) */
 static int imp_sym[MAX_IMPORTS];
 static int imp_label[MAX_IMPORTS];
 static unsigned char imp_dep[MAX_IMPORTS];
 static int nimports;
-int dep_id[MAX_DEPS];               /* (dep_name() in irout.c) */
+int dep_id[MAX_DEPS];               /* (ptop.h; MAX_DEPS is there) */
 static unsigned char dep_file[MAX_DEPS];
 static int ndeps;
 
@@ -636,7 +635,7 @@ void note_import(int key, int label)
 
 /* For the symbol summary: if key (as for note_import()) is an import,
  * set *label to its PLASMA name (its label, else name, its C name) and
- * return its module (0 for none, else 1 plus a dep_name() index);
+ * return its module (0 for none, else 1 plus a dep_id[] index);
  * otherwise return -1. */
 int sym_import(int key, int name, int *label)
 {
@@ -796,10 +795,6 @@ int begin_function(int name)
   return n;
 }
 
-/* Reset parse.c's goto label table, at a function's start. A macro,
- * not a function: this is its one user. */
-#define reset_goto_labels() do { ngoto_labels = 0; nlbls = 0; } while (0)
-
 /* Parse one top-level item: global variable declarations, a function
  * prototype, or a function definition. Any may start with "static",
  * which makes it local to the file, or "extern", which declares a
@@ -900,7 +895,8 @@ static void parse_toplevel(void)
   fn_flags[f] |= FN_DECLARED | FN_DEFINED;
 
   nlabels = 0;
-  reset_goto_labels();
+  ngoto_labels = 0;             /* a new goto label table */
+  nlbls = 0;
   put(IR_FUNC, pwords, f);        /* ENTER takes the parameters' words */
   parse_block(0);
   check_goto_labels();            /* every goto's target was defined */

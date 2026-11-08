@@ -49,7 +49,7 @@ static int ntypes = 4;
 static int tg_name[MAX_TAGS];
 static int tg_size[MAX_TAGS];
 static char tg_depth[MAX_TAGS];
-char tg_union[MAX_TAGS];        /* (tag_mark_union() in pstmt.c) */
+char tg_union[MAX_TAGS];        /* (type.h) */
 static unsigned tg_hsum[MAX_TAGS];
 static unsigned tg_hmul[MAX_TAGS];
 static int ntags;

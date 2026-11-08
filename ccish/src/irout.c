@@ -27,6 +27,7 @@
 #include "ir.h"
 #include "type.h"
 #include "parse.h"
+#include "ptop.h"
 #include "irout.h"
 
 #define DATA_RUN    128     /* bytes in one data record at most */
@@ -198,13 +199,6 @@ int data_zero(int n)
   return first;
 }
 
-/* What the summary needs from ptop.c: the number of global variables
- * (the data symbols), the zero-filled space's bytes, and module i's
- * name, an id. Macros, not functions, since this is their one user. */
-#define data_sym_count() nglobals
-#define bss_size() bss_next
-#define dep_name(i) dep_id[i]
-
 /* ---------- The end ---------- */
 
 /* Write the symbol summary as the last record, and close the file: the
@@ -217,7 +211,7 @@ int data_zero(int n)
 void ir_finish(void)
 {
   int i, flags, off, size, hash, name, dep, label;
-  int nsyms = data_sym_count();
+  int nsyms = nglobals;           /* the data symbols */
 
   flush_data();
   bputc(&out, REC_SUMMARY);
@@ -226,12 +220,12 @@ void ir_finish(void)
   bputw(&out, ndata);
   bputw(&out, nstrs);
   bputw(&out, 0);
-  bputw(&out, bss_size());
+  bputw(&out, bss_next);
   bputw(&out, nfuncs);
   bputw(&out, nsyms);
   bputc(&out, dep_count());       /* the modules pragmas named */
   for (i = 0; i < dep_count(); i++)
-    bputw(&out, dep_name(i));
+    bputw(&out, dep_id[i]);
   for (i = 0; i < nfuncs; i++) {
     flags = func_sym(i, &hash);
     bputc(&out, flags);

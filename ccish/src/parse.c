@@ -755,7 +755,7 @@ char label_used[MAX_LABELS];  /* some branch to it so far */
 static int lbl_id[GOTO_LABELS];
 static int lbl_num[GOTO_LABELS];
 static char lbl_def[GOTO_LABELS];
-int nlbls;                          /* (reset_goto_labels() in ptop.c) */
+int nlbls;                          /* (parse.h) */
 
 /* Allocate a new ordinary label in the current function (0 up, stopping
  * at the entry label, which is reserved for a self tail call's jump). */
