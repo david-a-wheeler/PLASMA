@@ -104,6 +104,11 @@ enum {
    * always an LA of the symbol itself, which ccrel may turn into an
    * LAW of its pointer word, so never folded into another op */
   IR_HEAPADDR,
+  /* function pointers (approach.md, "Function pointer design"): */
+  IR_FUNCADDR,    /* f = function: push its address */
+  IR_ICALL,       /* a = argument count, f = the result's words:
+                   * ( args addr -- result ) call the function at
+                   * addr */
   /* loop markers (approach.md, "Loop design"), in source order around
    * a loop's parts; ccgen writes the loop's own jumps and labels, and
    * moves the test and step after the body. They must stay last. */
@@ -114,8 +119,8 @@ enum {
   IR_LOOPBODY,    /* a = the body's label, f = the test's: the body
                    * follows */
   IR_LOOPEND,     /* a = the continue label, f = the break label */
-  IR_NOPS,        /* the number of IR ops: at most 64, since an op's
-                   * tag is a byte below IR_TAG_END (below) */
+  IR_NOPS,        /* the number of IR ops: at most IR_TAG_END (68),
+                   * since an op's tag is a byte below it (below) */
   /* not in the IR file: ccgen's own, for a counted loop's branches
    * (irin.c), which have no IR op: machine op a, with label f */
   IR_MOP = IR_NOPS
@@ -124,7 +129,7 @@ enum {
 /* The IR file: the output name plus this suffix, and its format's
  * version (in its header, after the magic "CIR"). */
 #define SUFFIX_IR   ".ir"
-#define IR_VERSION  8
+#define IR_VERSION  9
 
 /* The sets of ops the compiler tests in more than one place, and its
  * value manipulations on ops, each defined here next to the values it
@@ -154,11 +159,11 @@ enum {
 
 /* Its record tags besides the stream's D, R and S (below), and the bit
  * that marks an IR op followed by a one-byte operand. An IR op's tag is
- * its number, below IR_TAG_END. */
+ * its number, below IR_TAG_END: 'D', the lowest record letter. */
 enum { REC_LINE = 'L', REC_NAME = 'N', REC_WORD = 'W', REC_SECOND = 'X',
        REC_SUMMARY = 'Y' };
 #define IR_BYTE_OP  0x80
-#define IR_TAG_END  0x40
+#define IR_TAG_END  0x44
 
 /* A name record's flags byte: NAME_RETURNS set if the function returns
  * a value. */

@@ -67,6 +67,13 @@ extern int nfuncs;
  * pointer to its first element (rvalue()); value_type() gives that
  * type. It isn't converted before it is used, so that a[i], *a and &a
  * can still see the array.
+ *
+ * A function is like an array (approach.md, "Function pointer
+ * design"): used as a value, it is a pointer to itself. A named one is
+ * K_FUNC. Any other operand of function type (*fp) is the function
+ * whose address is the operand's value: the place's, the constant's,
+ * or the value on the stack. So *fp is fp until it is loaded, and &*fp
+ * is fp again.
  */
 enum {
   K_VALUE,        /* its value is on the stack (a struct's: its words,
@@ -83,11 +90,14 @@ enum {
                    * otherwise is true: it falls through, or jumps
                    * to label off, if off isn't -1 (approach.md C4,
                    * "Conditions as jumps") */
-  K_ADDR          /* an address constant, not emitted yet: off bytes
+  K_ADDR,         /* an address constant, not emitted yet: off bytes
                    * into the data (global 1), off bytes past extern
                    * global v's address (global 2 + v), or the string
                    * pool's offset off (global G_STR: a literal, from
                    * disp to val, its NUL's end) */
+  K_FUNC          /* function val's address, not emitted yet: type is
+                   * the function's (a function designator), or a
+                   * pointer to it (&f) */
 };
 
 #define G_STR (-1)      /* K_ADDR's global field: the string pool */

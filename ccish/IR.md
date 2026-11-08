@@ -629,7 +629,42 @@ to right.
   - the argument count travels with the op, so later stages can track
     stack depth. The parser has already checked the count against the
     function's declaration or the CMDSYS table.
-- **Later:** indirect calls through function pointers (`ICAL`).
+- **A named function called as `(*f)(x)` or `(&f)(x)`** is an
+  `IR_CALL` too: only a call of a pointer's value is `IR_ICALL`.
+
+### `IR_FUNCADDR` *sym*
+
+Push the address of function *sym* (approach.md, "Function pointer
+design"): a function's name used as a value, `fp = f` or `&f`.
+
+- **Stack:** `( -- addr )`.
+- **Now:** `LA addr` with a function relocation record, as
+  `IR_CALL`'s `CALL`. The final pass resolves it the same way: to an
+  internal function (RLD `$81`, redirected by the loader to the
+  function's stub, which is what `ICAL` and `CALL` both jump to, so a
+  pointer to a function compares equal to it wherever it was taken),
+  or to an import. Taking a function's address links it, as a call
+  does (`SYM_CALLED`).
+- **Why it differs from `LA`:** the target is symbolic (reason 2).
+
+### `IR_ICALL` *a* = argument count, *f* = the result's words
+
+Call the function whose address is on top of the stack, with the *a*
+arguments below it, pushed left to right.
+
+- **Stack:** `( a1 … an addr -- result )`, with the result's *f*
+  words: 0 for `void`, 1, or a struct's words, as for `IR_CALL`.
+- **Now:** `ICAL`.
+- **Why it differs from `ICAL`:** the counts travel with the op, as
+  `IR_CALL`'s do, since nothing names the function. A function type
+  is only its return type, so the parser checks neither the count nor
+  the arguments' types against the function's parameters.
+- **The address goes on last**, after the arguments, which C allows
+  (C11 6.5.2.2p10 leaves the order of the callee and its arguments
+  open). A callee whose value needs no code until then (a variable,
+  an element such as `table[i]` or `s->fn`, a constant address) is
+  loaded then; any other (`pick(k)(x)`) is computed first and kept in
+  a temporary local meanwhile.
 
 ### `IR_DROP`
 

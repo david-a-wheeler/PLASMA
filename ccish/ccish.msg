@@ -58,7 +58,7 @@
 60 expected ')', not
 61 a type name can't be used as a value:
 62 called object is not a function:
-63 function pointers are not supported yet:
+63 called object is not a function or function pointer
 64 undeclared identifier
 65 expected an expression, not
 66 unary '*' needs a pointer operand

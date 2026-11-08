@@ -1020,9 +1020,11 @@ int is_place(Operand *o)
 }
 
 /* The type of a value of type t: an array's value is a pointer to its
- * first element. */
+ * first element, and a function's a pointer to it. */
 int value_type(int t)
 {
+  if (is_func(t))
+    return pointer_to(t);
   return is_array(t) ? pointer_to(type_sub(t)) : t;
 }
 
@@ -1129,7 +1131,9 @@ void place_true(Operand *o)
 }
 
 /* Make sure the operand's value is on the stack. An array's value is
- * the address of its first element (for K_DEREF, already there). */
+ * the address of its first element (for K_DEREF, already there), and a
+ * function's is its address (for any but K_FUNC, the operand's value:
+ * see parse.h). */
 void rvalue(Operand *o)
 {
   if (is_struct(o->type))
@@ -1145,6 +1149,11 @@ void rvalue(Operand *o)
     return;
   }
   switch (o->kind) {
+  case K_FUNC:
+    put(IR_FUNCADDR, 0, o->val);
+    if (!suppress)
+      fn_flags[o->val] |= FN_CALLED;  /* it may be called: link it */
+    break;
   case K_VOID:
     error(38 /* "void value used in an expression" */, NULL);
     break;
@@ -1187,6 +1196,8 @@ void rvalue(Operand *o)
   }
   }
   o->kind = K_VALUE;
+  if (is_func(o->type))
+    o->type = pointer_to(o->type);  /* a function's value: its address */
 }
 
 /* Allocate a temporary frame word. Temporaries are freed at the end of
@@ -1303,7 +1314,7 @@ void need_lvalue(Operand *o, int what)
 {
   if (is_array(o->type) && is_place(o))
     error_in(40 /* "an array can't be the" */, what, NULL);
-  if (!is_place(o) || o->assigned)
+  if (!is_place(o) || o->assigned || is_func(o->type))
     error_in(41 /* "lvalue required as" */, what, NULL);
   if (o->quals & Q_CONST)
     error_in(42 /* "a 'const' object can't be the" */, what, NULL);

@@ -29,7 +29,7 @@ static const char *const ir_names[] = {
   "NEG", "COMP", "NOT",
   "LABEL", "JUMP", "BRFALSE", "BRTRUE", "SEL",
   "JOIN", "CASES", "CASEVAL", "CASETO", "SWAP",
-  "UDIV", "UMOD", "USHR", "HEAPADDR",
+  "UDIV", "UMOD", "USHR", "HEAPADDR", "FUNCADDR", "ICALL",
   "LOOP", "LOOPSTEP", "LOOPBODY", "LOOPEND"
 };
 
@@ -70,6 +70,7 @@ static const char lw_kind[IR_NOPS] = {
   L_SPECIAL,                                /* SWAP */
   L_SPECIAL, L_SPECIAL, L_SPECIAL,          /* UDIV, UMOD, USHR */
   L_SPECIAL,                                /* HEAPADDR */
+  L_SPECIAL, L_SIMPLE,                      /* FUNCADDR, ICALL */
   L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL    /* loop markers: irin.c
                                                  * takes them */
 };
@@ -92,6 +93,7 @@ static const unsigned char lw_op[IR_NOPS] = {
   0,
   0, 0, 0,
   OP_LA,
+  0, OP_ICAL,
   0, 0, 0, 0
 };
 
@@ -129,6 +131,8 @@ void dump_ir(int op, int a, int f)
                     break;
   case IR_STRADDR:  out_num(" string+", a); break;
   case IR_HEAPADDR: out_num(" sym", f); break;
+  case IR_FUNCADDR: fputs(" ", stdout); fputs(func_name(f), stdout); break;
+  case IR_ICALL:    out_num(" nargs=", a); out_num(" words=", f); break;
   case IR_LOCAL: case IR_SETLOCAL:
   case IR_LOCALB: case IR_SETLOCALB: case IR_LOCALADDR:
                     out_num(" [", a); fputs("]", stdout); break;
@@ -255,7 +259,8 @@ static void lower_special(Mop *m, int op, int a, int f)
     m->fn = f;
     break;
   case IR_CALL:
-    m->op = OP_CALL;
+  case IR_FUNCADDR:
+    m->op = op == IR_CALL ? OP_CALL : OP_LA;
     m->fix = FIX_FUNC;
     m->fn = f;
     break;

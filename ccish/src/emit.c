@@ -376,6 +376,7 @@ static const char *mnem(int op)
   case OP_BRNCH: return "BRNCH";
   case OP_SEL: return "SEL";
   case OP_CALL: return "CALL";
+  case OP_ICAL: return "ICAL";
   case OP_ENTER: return "ENTER";
   case OP_LEAVE: return "LEAVE";
   case OP_RET: return "RET";

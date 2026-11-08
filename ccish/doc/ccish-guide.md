@@ -663,8 +663,25 @@ global (`extern int count;`, section 5.5). Either is declared as at
 file scope, from there on: C would hide the name again after the
 block, and ccish doesn't.
 
-Declaring function pointers works now; calling through one, and using
-a function's name as a value, come next (section 9.1).
+A function's name used as a value is a pointer to the function, and
+so is `&f`; you call through a pointer as `fp(x)` or `(*fp)(x)`:
+
+```c
+int twice(int a) { return 2 * a; }
+int (*fp)(int) = 0;
+int (*ops[2])(int);
+
+fp = twice;                 /* or &twice */
+n = fp(5) + (*fp)(6);       /* 10 + 12 */
+ops[k](n);                  /* through an element, or a member */
+```
+
+Since a function type is only its return type, a call through a
+pointer checks neither its argument count nor the arguments' types:
+passing the wrong number corrupts PLASMA's stack, as it would in K&R
+C. A function's address in a global's initializer
+(`int (*fp)(int) = twice;` at file scope) isn't supported yet
+(section 9.1); assign it at run time instead.
 
 ## 5. Declarations and storage
 
@@ -1319,12 +1336,11 @@ directive is an error.
 ### 9.1 Not implemented, expected soon
 
 * `signed char`
-* Calls through a function pointer, and a function's name used as a
-  value (declaring function pointers works, section 4.12)
+* A function's address in a global's initializer (section 4.12)
 
 `signed char` gives a "not supported yet" error that names the token,
-and a call through a function pointer gives "called object is not a
-function".
+and a function's address in a global's initializer gives "initializer
+is not a constant ccish supports".
 
 ### 9.2 Out of scope
 

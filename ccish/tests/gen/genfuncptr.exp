@@ -1,0 +1,106 @@
+    ; add
+    ENTER 4 2
+    ; label 103
+    LLW 0
+    ADDLW 2
+    LEAVE 4
+
+    ; nop
+    ENTER 2 1
+    ; label 103
+    LEAVE 2
+
+    ; pick
+    ENTER 2 1
+    ; label 103
+    LA data +0
+    IDXLW 0
+    LW
+    LEAVE 2
+
+    ; param
+    ENTER 4 2
+    ; label 103
+    LLW 2
+    LLW 0
+    ICAL
+    LLW 2
+    LLW 0
+    ICAL
+    ADD
+    LEAVE 4
+
+    ; elem
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CN 2
+    LA data +0
+    IDXLW 0
+    LW
+    ICAL
+    LEAVE 2
+
+    ; named
+    ENTER 0 0
+    ; label 103
+    CN 1
+    CN 2
+    CALL add
+    CN 3
+    CN 4
+    CALL add
+    ADD
+    LEAVE 0
+
+    ; result
+    ENTER 2 0
+    ; label 103
+    CN 1
+    CALL pick
+    SLW 0
+    CN 5
+    CN 6
+    LLW 0
+    ICAL
+    LEAVE 2
+
+    ; fixed
+    ENTER 0 0
+    ; label 103
+    CN 7
+    CW 768
+    ICAL
+    LEAVE 0
+
+    ; stmt
+    ENTER 4 2
+    ; label 103
+    CN 1
+    LLW 0
+    ICAL
+    CN 2
+    CN 3
+    LLW 2
+    ICAL
+    DROP
+    LEAVE 4
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    LA add
+    SAW data +0
+    LA add
+    SAW data +2
+    LA nop
+    LA add
+    CALL stmt
+    CN 1
+    CALL elem
+    CALL result
+    ADD
+    CALL named
+    SUB
+    SUBI 4
+    LEAVE 0

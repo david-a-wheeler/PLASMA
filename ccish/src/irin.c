@@ -282,6 +282,7 @@ static const char stk_effect[IR_NOPS] = {
   0x22,                                     /* SWAP */
   0x21, 0x21, 0x21,                         /* UDIV, UMOD, USHR */
   0x01,                                     /* HEAPADDR */
+  0x01, 0x00,                               /* FUNCADDR, ICALL */
   -1, -1, -1, -1                            /* loop markers: never held */
 };
 
@@ -326,6 +327,9 @@ static int block_ok(int start, int len, int want)
     if (op == IR_CALL) {
       pops = buf_a[i];
       pushes = fn_returns[buf_f[i]];
+    } else if (op == IR_ICALL) {
+      pops = buf_a[i] + 1;
+      pushes = buf_f[i];
     }
     if (depth < pops)
       return 0;
@@ -1193,7 +1197,7 @@ static int limit_ok(int from, int to)
       cl_ga[cl_ngl++] = a;
       depth++;
       break;
-    case IR_DATAADDR: case IR_HEAPADDR: case IR_STRADDR:
+    case IR_DATAADDR: case IR_HEAPADDR: case IR_STRADDR: case IR_FUNCADDR:
       depth++;
       break;
     case IR_LOAD: case IR_LOADB: case IR_NEG: case IR_COMP:
@@ -1229,7 +1233,7 @@ static int limit_ok(int from, int to)
 static int body_ok(int op, int a, int f)
 {
   switch (op) {
-  case IR_CALL: case IR_UDIV: case IR_UMOD: case IR_USHR:
+  case IR_CALL: case IR_ICALL: case IR_UDIV: case IR_UMOD: case IR_USHR:
     return 0;
   case IR_LABEL: case IR_JUMP:
     return !IS_GOTO_LABEL(a);   /* a goto, or its target */
@@ -1337,6 +1341,7 @@ static int pure_effect(int op)
   switch (op) {
   case IR_CONST: case IR_LOCAL: case IR_LOCALB: case IR_GLOBAL:
   case IR_GLOBALB: case IR_DATAADDR: case IR_STRADDR: case IR_HEAPADDR:
+  case IR_FUNCADDR:
     return 1;
   case IR_LOAD: case IR_LOADB: case IR_NEG: case IR_COMP:
     return 0;
@@ -1600,7 +1605,7 @@ static void do_op(int op, int a, int f)
   if (op >= IR_NOPS || (op == IR_FUNC) == in_func)
     damaged();                  /* FUNC outside a function, all else in */
   switch (op) {
-  case IR_FUNC: case IR_CALL:
+  case IR_FUNC: case IR_CALL: case IR_FUNCADDR:
     if (f < 0 || f >= MAX_FUNCS || !fn_id[f])
       damaged();
     if (f > max_func)
@@ -1626,6 +1631,10 @@ static void do_op(int op, int a, int f)
     break;
   case IR_UDIV: case IR_UMOD: case IR_USHR:
     if (a < 0 || a > 1)
+      damaged();
+    break;
+  case IR_ICALL:
+    if (a < 0 || f < 0 || f > MAX_BYVAL / 2)
       damaged();
     break;
   case IR_RETURN:
@@ -1774,7 +1783,8 @@ void gen_file(const char *base)
     }
     /* An IR op: below IR_TAG_END, or that plus IR_BYTE_OP, with a byte
      * a after it (not after a W prefix). */
-    if (t < IR_TAG_END || ((t & 0xC0) == IR_BYTE_OP && prefixed < 2)) {
+    if (t < IR_TAG_END || (t >= IR_BYTE_OP && t < IR_BYTE_OP + IR_TAG_END
+                           && prefixed < 2)) {
       if (t & IR_BYTE_OP) {
         a = get_byte();
         t -= IR_BYTE_OP;

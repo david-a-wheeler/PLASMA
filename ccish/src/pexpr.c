@@ -294,10 +294,11 @@ void check_byval(int t, int is_param)
  * after its right side, to see whether that has a call. */
 static int ncalls;
 
-/* Parse a call to fn, starting at '(': emit the arguments, check their
- * count (and their types, if fn's parameter types are known), then
- * emit the call. */
-static void parse_call(int f, Operand *o)
+/* Parse a call's arguments, starting at '(', and emit them; f is the
+ * function called, or -1 for a call through a pointer, whose parameter
+ * types aren't known (approach.md, "Function pointer design"). Checks
+ * their types if f's are known. Returns their count. */
+static int parse_args(int f)
 {
   char where[MAX_NAME + 16];
   Operand a;
@@ -306,7 +307,7 @@ static void parse_call(int f, Operand *o)
   if (tok != ')') {
     for (;;) {
       parse_expr(PREC_ASSIGN, &a);
-      if (fn_ptypes[f] >= 0 && nargs < nparams_of(f)) {
+      if (f >= 0 && fn_ptypes[f] >= 0 && nargs < nparams_of(f)) {
         strcpy(where, num_text(nargs + 1));
         strcat(where, " of ");
         strcat(where, quote(fn_name[f]));
@@ -314,7 +315,7 @@ static void parse_call(int f, Operand *o)
                      200 /* "argument" */, where);
       }
       if (is_struct(a.type)) {
-        if (fn_ptypes[f] < 0)
+        if (f >= 0 && fn_ptypes[f] < 0)
           error(53 /* "passing a struct needs a prototype for" */,
                 quote(fn_name[f]));
         push_struct_words(&a);
@@ -328,17 +329,70 @@ static void parse_call(int f, Operand *o)
     }
   }
   expect(')', 54 /* "expected ')' after arguments, not" */);
+  if (!suppress)
+    ncalls++;
+  return nargs;
+}
+
+/* Parse a call to fn, starting at '(': emit the arguments, check their
+ * count (and their types, if fn's parameter types are known), then
+ * emit the call. */
+static void parse_call(int f, Operand *o)
+{
+  int nargs = parse_args(f);
   if (nparams_of(f) < 0)
     set_nparams(f, nargs);      /* first use fixes the count */
   else if (nparams_of(f) != nargs)
     error(55 /* "wrong number of arguments in call to" */,
           quote(fn_name[f]));
   fn_flags[f] |= FN_CALLED;
-  if (!suppress)
-    ncalls++;
   put(IR_CALL, nargs, f);
   o->kind = fn_type[f] != TY_VOID ? K_VALUE : K_VOID;
   o->type = fn_type[f];       /* a struct: its words are on the stack */
+}
+
+/* Can a value of type t be called: is it a function, or a pointer to
+ * one? */
+static int callable(int t)
+{
+  return is_func(t) || (is_pointer(t) && is_func(type_sub(t)));
+}
+
+/* Parse a call of o, starting at '(': o is a function, or a pointer to
+ * one (approach.md, "Function pointer design"). A named function (f,
+ * *f, &f) is called directly. Otherwise the call is ICAL, which takes
+ * the address on top of the arguments: a callee whose value needs no
+ * code yet (a variable, an element, a constant) is loaded after them,
+ * and any other is kept in a temporary meanwhile. Nothing is known of
+ * the parameters, so the arguments are passed as they are. */
+static void parse_icall(Operand *o)
+{
+  int t = o->type, nargs, tmp = -1, r;
+  if (o->kind == K_FUNC) {
+    parse_call(o->val, o);
+    return;
+  }
+  if (is_pointer(t))
+    t = type_sub(t);
+  if (o->kind != K_VAR && o->kind != K_ELEM && o->kind != K_CONST
+      && o->kind != K_ADDR) {
+    rvalue(o);
+    tmp = new_temp();
+    put(IR_SETLOCAL, tmp, -1);
+    put(IR_DROP, 0, -1);
+  }
+  nargs = parse_args(-1);
+  if (tmp >= 0)
+    put(IR_LOCAL, tmp, -1);
+  else
+    rvalue(o);
+  r = unqual(type_sub(t));
+  put(IR_ICALL, nargs, result_words(r));
+  o->kind = r != TY_VOID ? K_VALUE : K_VOID;
+  o->type = r;                /* a struct: its words are on the stack */
+  o->quals = 0;
+  o->is_bool = 0;
+  o->assigned = 0;
 }
 
 /* pstr("literal"): the address of the literal's PLASMA (length-prefixed)
@@ -441,15 +495,15 @@ static void parse_primary(Operand *o)
       o->val = id_val(c);
       return;
     }
-    if (tok == '(') {
+    v = find_var(name);
+    if (tok == '(' && v >= 0 && !callable(var_type[v]))
+      error(62 /* "called object is not a function:" */, quote(name));
+    if (tok == '(' && v < 0) {
       if (name == ID_PSTR) {
         parse_pstr();
         o->type = pointer_to(TY_CHAR);
         return;
       }
-      if (find_var(name) >= 0)
-        error(62 /* "called object is not a function:" */,
-              quote(name));
       f = find_func(name);
       if (f < 0) {
         /* No implicit declarations (approach.md, decision 20):
@@ -464,7 +518,6 @@ static void parse_primary(Operand *o)
       parse_call(f, o);
       return;
     }
-    v = find_var(name);
     if (v >= 0 && (var_flags[v] & V_KNOWN) && !place && !assign_op(&c)
         && tok != T_INC && tok != T_DEC) {
       o->kind = K_CONST;      /* a const variable's known value */
@@ -482,9 +535,17 @@ static void parse_primary(Operand *o)
       o->global = var_where(v);
       return;
     }
-    if (find_func(name) >= 0)
-      error(63 /* "function pointers are not supported yet:" */,
-            quote(name));
+    f = find_func(name);
+    if (f < 0 && (c = find_cmdsys(name)) >= 0) {
+      f = add_func(name);       /* fp = __puti: declared by use */
+      declare_cmdsys(f, c);
+    }
+    if (f >= 0) {
+      o->kind = K_FUNC;         /* a function designator */
+      o->val = f;
+      o->type = func_of(fn_type[f]);
+      return;
+    }
     error(64 /* "undeclared identifier" */, quote(name));
     return;
   case T_KEYWORD:
@@ -548,6 +609,17 @@ static void deref(Operand *o)
   int t = o->type;
   if (o->kind == K_VOID)
     error(38 /* "void value used in an expression" */, NULL);
+  if (is_func(t))
+    return;                     /* *f is f */
+  if (callable(t)) {
+    /* The function fp points to, whose address is fp's value: still
+     * pending, or on the stack (parse.h). */
+    if (o->kind == K_STORE)
+      rvalue(o);
+    o->type = type_sub(t);
+    o->quals = 0;
+    return;
+  }
   if (is_array(t) && is_place(o)) {
     /* *a is a[0]: the same address, with the element's type. */
     set_object(o, type_sub(t));
@@ -639,6 +711,14 @@ static void parse_index(Operand *o)
 /* Apply unary & to o: the result is its address. */
 static void address_of(Operand *o)
 {
+  if (is_func(o->type)) {
+    /* &f, &*fp: the function's address, which is its value. */
+    if (o->kind == K_FUNC)
+      o->type = pointer_to(o->type);
+    else
+      rvalue(o);
+    return;
+  }
   if (o->assigned)
     error_in(41 /* "lvalue required as" */,
              196 /* "unary '&' operand" */, NULL);
@@ -793,8 +873,9 @@ static void parse_unary(Operand *o)
   parse_postfix(o);
 }
 
-/* Parse any postfix operators after the operand o: ++, --, [], . and
- * ->. (A call's "(" is handled with the function name.) */
+/* Parse any postfix operators after the operand o: ++, --, [], ., ->
+ * and a call's "(" (a named function's call is parsed with the name,
+ * in parse_primary()). */
 static void parse_postfix(Operand *o)
 {
   int t;
@@ -813,7 +894,11 @@ static void parse_postfix(Operand *o)
       parse_member(o, tok == T_ARROW);
       continue;
     case '(':
-      not_yet();
+      if (!callable(o->type))
+        error(63 /* "called object is not a function or function"
+                    " pointer" */, NULL);
+      parse_icall(o);
+      continue;
     }
     return;
   }

@@ -4235,6 +4235,28 @@ compiler, but have a lot of error-checking ignored in ccish."
   (pstmt.c +720, the declarator; ptop.c +300; parse.c +135; type.c
   +51; pexpr.c -10), data +54, strings -23; its module file 44,147 to
   46,002.
+- **Step 2 is done** (2026-11-07; IR format 9). A function's name as a
+  value is a pending operand, K_FUNC (parse.h), so (*f)(x) and
+  (&f)(x) stay direct CALLs, and its rvalue is IR_FUNCADDR (LA with a
+  function relocation, which links the function as a call does). Any
+  other operand of function type (*fp) is the function whose address
+  is the operand's value, so *fp is fp until loaded. A call of
+  anything else is IR_ICALL (parse_icall(), pexpr.c): a pending
+  callee (variable, element, constant) is loaded after the arguments,
+  and any other goes through a temporary (SLW, LLW: 4 bytes). The IR
+  had 63 of its 64 op tags, so tags now go up to 'D' (IR_TAG_END,
+  68 ops). Tests: tests/xrun/xfuncptr.c against gcc (every callee
+  form, void, char and struct results, recursion through a pointer,
+  a CMDSYS function by address), tests/gen/genfuncptr.c (the code of
+  each form), the link tests funcaddr (an import used only by
+  address; pointers to static functions across objects) and
+  undefined_addr, and error tests call_nonfunc, assign_func,
+  assign_func_deref and func_to_int (63 is now "called object is not
+  a function or function pointer"). Cost (small build, measure.py
+  against step 1): cccomp code +534 bytes (pexpr.c +436, parse.c
+  +91, irout.c +7), module file 46,002 to 46,712; ccgen's irin.c +53
+  and lower.c +67 code, +8 data, +38 strings (emit.c gains an ICAL
+  mnemonic but still can't be measured: blocker B4).
 
 **`ccpp` design (decided in discussion, 2026-10-31; decision 24; F9
 and A6 in 18.6; this is M8).** The user: "Currently cccomp is too
