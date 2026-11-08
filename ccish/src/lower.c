@@ -160,12 +160,14 @@ static int data_fix(Mop *m, int f)
   return f < 0 ? FIX_DATA : FIX_DSYM;
 }
 
-/* Make m push the constant v, using the shortest encoding (the same
- * choice as the PLASMA compiler's emit_const). */
-void mop_const(Mop *m, int v)
+/* Make m push the constant c, using the shortest encoding (the same
+ * choice as the PLASMA compiler's emit_const). The range tests are on
+ * it as unsigned, v: on a 16-bit host, an int from $8000 up is
+ * negative. */
+void mop_const(Mop *m, int c)
 {
+  unsigned v = (unsigned)c & 0xFFFF;
   memset(m, 0, sizeof(*m));
-  v &= 0xFFFF;
   if (v == 0xFFFF) {
     m->op = OP_MINUS1;
   } else if (v < 16) {
@@ -182,7 +184,9 @@ void mop_const(Mop *m, int v)
   }
 }
 
-/* If m pushes a constant, store it (as 16 bits) in *v and return 1. */
+/* If m pushes a constant, store it (as 16 bits) in *v and return 1.
+ * On a 16-bit host, a value from $8000 up is negative, so test *v with
+ * masks, not ranges. */
 int mop_const_value(Mop *m, int *v)
 {
   if (m->op < 0x20 && !(m->op & 1)) {

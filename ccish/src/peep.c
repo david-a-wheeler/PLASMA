@@ -378,7 +378,7 @@ static int rewrite_const(Mop *a, Mop *b)
 
   /* const AND -> ANDI const, for a constant from 0 to 255: one
    * two-byte op (it clears the high byte, as the AND would). */
-  if (b->op == OP_AND && mop_const_value(a, &v) && v <= 0xFF) {
+  if (b->op == OP_AND && mop_const_value(a, &v) && !(v & 0xFF00)) {
     a->op = OP_ANDI;
     a->a = v;
     nwin--;
