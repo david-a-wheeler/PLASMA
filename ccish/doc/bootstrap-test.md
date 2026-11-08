@@ -649,7 +649,7 @@ The order agreed on 2026-11-08, as five steps:
   takes about 36 seconds.
 
 Each step: discuss any design change first, then test (`make`, which
-runs the 413 tests), measure, update the docs, and commit with
+runs the test suite), measure, update the docs, and commit with
 explicit paths. Every pass runs under plvm in well under a second per
 file, so the bootstrap should be quick.
 

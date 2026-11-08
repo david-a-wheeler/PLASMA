@@ -205,8 +205,8 @@ $(OUT)/pp/%.stamp: tests/pp/%.c tests/pp/%.nam tests/pp/%.tok \
 # the number in "status" (or 0 if there is none); with "expect-error"
 # the link must fail with its message.
 LINK_TESTS := $(wildcard tests/link/*/expected tests/link/*/expect-error)
-LINK_STAMPS := $(patsubst tests/link/%/expected,$(OUT)/link/%.stamp,$(LINK_TESTS)) \
-               $(patsubst tests/link/%/expect-error,$(OUT)/link/%.stamp,$(LINK_TESTS))
+LINK_STAMPS := $(sort $(patsubst tests/link/%/,$(OUT)/link/%.stamp,\
+                 $(dir $(LINK_TESTS))))
 $(OUT)/link/%.stamp: $(wildcard tests/link/*/*.c) $(LINK_TESTS) \
                      $(wildcard tests/link/*/status) $(PASSES) \
                      tests/link_test.sh tests/lib.sh tests/check_listing.sh
@@ -263,7 +263,7 @@ ALL_STAMPS := $(patsubst tests/run/%.c,$(OUT)/run/%.stamp,$(RUN)) \
 test: testbuild $(ALL_STAMPS) $(OUT)/ALL.stamp
 
 $(OUT)/ALL.stamp: $(ALL_STAMPS)
-	@echo "passed: $$(ls $(OUT)/*/*.stamp 2>/dev/null | grep -v ALL.stamp | wc -l) tests"
+	@echo "passed: $(words $(ALL_STAMPS)) tests"
 	@touch $@
 
 # The cross tests' references: tests/xrun/NAME.ref is NAME.c's stdout
