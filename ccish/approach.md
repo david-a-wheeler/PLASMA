@@ -3900,6 +3900,28 @@ self-compiled ccgen on pexpr.c makes 384 FILEIO reads, not 33,041.
 diag.c still reads ccish.msg a byte at a time, but only to print a
 message.
 
+**Twelve one-caller functions as macros, 2026-11-08** (decided in
+discussion: "use #define on some, as it would *appear* distinct but
+inline cleanly"; step 1 of two, the small safe ones). Of cccomp's 87
+functions with one caller (10 more are the library's), those whose
+body is short, has no `return` in a loop, and adds no local to a
+recursive caller's frame became macros: `parse_program`, `load_op`,
+`var_data`, `parse_label`, `pre_incdec`, `bss_size`,
+`data_sym_count`, `dep_name`, `reset_goto_labels`, `add_static_local`,
+`tag_mark_union` and `data_word`. Each macro is in its one user's
+file, with a comment where its variable lives, since a macro in a
+header counts against ccpp's macro tables in every file that includes
+it (they overflowed: ptop.c is now at 94 of `MAX_MACROS` 104 and 669
+of `MAX_MACRO_BYTES` 704), and a multi-line one is written compactly,
+since ccpp joins its lines into one of at most 255 characters. Their
+variables (`bss_next`, `dep_id`, `nlbls`, `ngoto_labels`,
+`tg_union`, and the function `push_var`) are now exported.
+`compile_abort` stayed a function (its callers are cccomp.c and
+main.c). Saved in cccomp: 100 bytes of code and 60 of def table, 200
+of module file, and 2 calls of 6502 stack (68). Step 2, merging the
+large one-caller functions on the recursive parser chain into their
+callers for the 6502 stack, is to be discussed first.
+
 So the goal, with streaming: shed at least 2.5K more of running
 memory (about 4K, for a margin), and shorten the deepest call chain
 to about 50 calls. The old conclusion, below, stands, with these

@@ -224,7 +224,7 @@ void check_not_id(int name);
 void check_not_var(int name);
 int  add_global(int name, int type);
 int  add_local(int name, int type, int size);
-int  add_static_local(int name, int type);
+int  push_var(int name, int type, int off, int flags);
 void set_param_types(int f, int n);
 int  is_type_start(void);
 int  parse_base_type(void);
@@ -238,7 +238,9 @@ void join_label(int from, int to);
 /* Goto labels (decision 34): id is the label's identifier. A forward
  * goto reserves the label; its ':' defines it; the function's end
  * checks that every target was defined. */
-void reset_goto_labels(void);
+extern int ngoto_labels;            /* goto labels made */
+extern int nlbls;                   /* goto labels defined or used */
+
 int  reserve_goto_label(int id);
 int  define_goto_label(int id);
 void check_goto_labels(void);
@@ -257,13 +259,11 @@ void store_var(Operand *o);
 int  addr_const(Operand *o);
 int  value_type(int t);
 int  result_words(int t);
-void parse_program(void);
 /* For the symbol summary: function f's SYM_* flags and type hash, and
  * the number of globals and global v's flags, data offset, size, type
  * hash and name (an id). */
 int  func_sym(int f, int *hash);
-int  data_sym_count(void);
-int  bss_size(void);                /* the zero-filled space's bytes */
+extern int bss_next;                /* the zero-filled space's bytes */
 int  data_sym(int v, int *off, int *size, int *hash, int *name);
 /* Imports (ptop.c): whether function f, or global v as IMP_DATA + v,
  * is one, with its PLASMA name (name, an id, if it has no label) and
@@ -271,7 +271,7 @@ int  data_sym(int v, int *off, int *size, int *hash, int *name);
 #define IMP_DATA 0x4000
 int  sym_import(int key, int name, int *label);
 int  dep_count(void);
-int  dep_name(int i);
+extern int dep_id[];                /* the modules pragmas named, ids */
 void compile_file(const char *in, const char *base);   /* the front end */
 void compile_abort(void);                   /* after an error */
 

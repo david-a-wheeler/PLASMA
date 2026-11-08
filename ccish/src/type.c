@@ -49,7 +49,7 @@ static int ntypes = 4;
 static int tg_name[MAX_TAGS];
 static int tg_size[MAX_TAGS];
 static char tg_depth[MAX_TAGS];
-static char tg_union[MAX_TAGS];
+char tg_union[MAX_TAGS];        /* (tag_mark_union() in pstmt.c) */
 static unsigned tg_hsum[MAX_TAGS];
 static unsigned tg_hmul[MAX_TAGS];
 static int ntags;
@@ -292,13 +292,6 @@ int tag_size(int tag)
 void tag_set_size(int tag, int size)
 {
   tg_size[tag] = size;
-}
-
-/* Mark tag as a union's: its members all start at byte 0, and its
- * size is the largest member's. */
-void tag_mark_union(int tag)
-{
-  tg_union[tag] = 1;
 }
 
 /* Is tag a union's, not a struct's? */

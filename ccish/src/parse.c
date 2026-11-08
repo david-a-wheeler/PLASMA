@@ -264,11 +264,9 @@ static int var_depth(int v)
   return var_flags[v] & V_DEPTH;
 }
 
-/* Is variable v in the data segment (a global or a static local)? */
-static int var_data(int v)
-{
-  return (var_flags[v] & V_DATA) != 0;
-}
+/* Is variable v in the data segment (a global or a static local)? A
+ * macro: one caller. */
+#define var_data(v) ((var_flags[v] & V_DATA) != 0)
 
 /* The visible enum constant or typedef named name, or -1. One hides a
  * variable or function declared less deep, and is hidden by one
@@ -318,7 +316,7 @@ void check_not_var(int name)
 /* Push a variable named name (an id, or -1 for an unnamed prototype
  * parameter) of type type at the current depth, at offset off, with
  * flags (V_DATA or 0), and return it. */
-static int push_var(int name, int type, int off, int flags)
+int push_var(int name, int type, int off, int flags)
 {
   if (name >= 0) {
     check_not_var(name);
@@ -383,16 +381,6 @@ int add_local(int name, int type, int size)
   if (frame_next > frame_max)
     frame_max = frame_next;
   return v;
-}
-
-/* Declare a static local of the given type at the current depth. It has
- * block scope, like any local, but lives in the data segment like a
- * global (V_DATA, at the next data offset), so it keeps its value
- * between calls and takes no frame space. The caller then writes its
- * bytes to the data stream: its initial value, or zeros. */
-int add_static_local(int name, int type)
-{
-  return push_var(name, type, data_offset(), V_DATA);
 }
 
 /* Parameter types of declared functions, n at a time; fn_ptypes[] says
@@ -767,7 +755,7 @@ char label_used[MAX_LABELS];  /* some branch to it so far */
 static int lbl_id[GOTO_LABELS];
 static int lbl_num[GOTO_LABELS];
 static char lbl_def[GOTO_LABELS];
-static int nlbls;
+int nlbls;                          /* (reset_goto_labels() in ptop.c) */
 
 /* Allocate a new ordinary label in the current function (0 up, stopping
  * at the entry label, which is reserved for a self tail call's jump). */
@@ -789,13 +777,6 @@ static int new_goto_label(void)
   label_used[n] = 0;
   ngoto_labels++;
   return n;
-}
-
-/* Reset the goto label table (at a function's start). */
-void reset_goto_labels(void)
-{
-  ngoto_labels = 0;
-  nlbls = 0;
 }
 
 /* The goto label reserved or defined for id, or -1 if there is none. */
@@ -1003,11 +984,8 @@ int max_offset(int global)
 }
 
 /* The IR op that loads a value of type t from an address (a char is a
- * byte). */
-static int load_op(int t)
-{
-  return t == TY_CHAR ? IR_LOADB : IR_LOAD;
-}
+ * byte). A macro, not a function: it has one caller. */
+#define load_op(t) ((t) == TY_CHAR ? IR_LOADB : IR_LOAD)
 
 /* The IR op that stores a value of type t at an address. */
 int store_op(int t)

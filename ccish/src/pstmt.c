@@ -368,6 +368,11 @@ int parse_struct(void)
   return struct_type(tag);
 }
 
+/* Mark tag as a union's (type.c's tg_union[]): its members all start
+ * at byte 0, and its size is the largest member's. A macro, not a
+ * function: this is its one user. */
+#define tag_mark_union(tag) (tg_union[tag] = 1)
+
 /*
  * Parse a union type after "union", and return it: a tag, a member
  * list, or both, as parse_struct(), but with the union layout: every
@@ -537,6 +542,15 @@ void set_known(int s, int v)
   var_flags[s] |= V_KNOWN;
   var_val[s] = unqual(var_type[s]) == TY_CHAR ? v & 0xFF : v;
 }
+
+/* Add a static local (parse.c's push_var()): in block scope, like any
+ * local, but in the data segment like a global (V_DATA, at the next
+ * data offset), so it keeps its value between calls and takes no frame
+ * space. The caller then writes its bytes to the data stream: its
+ * initial value, or zeros. A macro, not a function: this is its one
+ * user. */
+#define add_static_local(name, type) \
+  push_var(name, type, data_offset(), V_DATA)
 
 /* A declaration: a base type, then declarators, each a name with any
  * '*'s before it, any array sizes after it, and an optional
@@ -814,15 +828,11 @@ static void parse_break_continue(void)
  * only by gotos. In C a label's only use is as a goto's target, so the
  * front end gives it a goto label (ir.h), and ccgen keeps any loop
  * whose body holds it uncounted. A label is followed by a statement,
- * which may be another label. */
-static void parse_label(void)
-{
-  int l = define_goto_label(tok_val);
-  next();                         /* the id */
-  expect(':', 315 /* "expected ':' after a label, not" */);
-  place_label(l);
-  parse_statement();              /* the statement it labels */
-}
+ * which may be another label.
+ * A macro, not a function: it has one caller. */
+#define parse_label() do { int l_ = define_goto_label(tok_val); \
+  next(); expect(':', 315 /* "expected ':' after a label, not" */); \
+  place_label(l_); parse_statement(); } while (0)
 
 /* goto label;: an unconditional jump to the label (reserved if it comes
  * after its ':', defined if before). It is a plain branch to a goto

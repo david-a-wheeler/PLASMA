@@ -85,7 +85,8 @@
 #include "pstmt.h"
 #include "pexpr.h"
 
-static int bss_next;                /* the zero-filled space so far */
+int bss_next;                       /* the zero-filled space so far
+                                     * (bss_size() in irout.c) */
 
 /* Set by parse_scalar_init(): whether the initializer it parsed was an
  * integer constant (not an address), and its value. A const variable
@@ -102,6 +103,10 @@ int init_known, init_val;
  * indexes, members, casts to pointers, and + or - a constant (C6), or
  * a function's address (K_FUNC: f, &f, a cast of either to a pointer).
  * Anything else (&*p, a pointer variable's value) is an error. */
+
+/* Append a word, low byte first, to the data (irout.c's data_byte()); v
+ * is evaluated twice. A macro, not a function: this is its one user. */
+#define data_word(v) do { data_byte(v); data_byte((v) >> 8); } while (0)
 
 /* Parse the initializer of one scalar of type type (an int, char or
  * pointer), check it as an assignment, and write it to the data stream.
@@ -551,7 +556,7 @@ static int imp_sym[MAX_IMPORTS];
 static int imp_label[MAX_IMPORTS];
 static unsigned char imp_dep[MAX_IMPORTS];
 static int nimports;
-static int dep_id[MAX_DEPS];
+int dep_id[MAX_DEPS];               /* (dep_name() in irout.c) */
 static unsigned char dep_file[MAX_DEPS];
 static int ndeps;
 
@@ -648,12 +653,6 @@ int sym_import(int key, int name, int *label)
 int dep_count(void)
 {
   return ndeps;
-}
-
-/* For the symbol summary: module i's name, an id. */
-int dep_name(int i)
-{
-  return dep_id[i];
 }
 
 /* Declare the global variable name of type type, with storage class
@@ -797,6 +796,10 @@ int begin_function(int name)
   return n;
 }
 
+/* Reset parse.c's goto label table, at a function's start. A macro,
+ * not a function: this is its one user. */
+#define reset_goto_labels() do { ngoto_labels = 0; nlbls = 0; } while (0)
+
 /* Parse one top-level item: global variable declarations, a function
  * prototype, or a function definition. Any may start with "static",
  * which makes it local to the file, or "extern", which declares a
@@ -935,6 +938,20 @@ static void report_stats(void)
 }
 #endif
 
+/* Stage 1's entry: parse the whole source file. A function called but
+ * not defined here is left to the final pass, which finds it in
+ * another file or CMDSYS (approach.md issue 11).
+ * A macro, not a function: it has one caller. */
+#define parse_program() while (tok != T_EOF) parse_toplevel()
+
+/* After an error in the front end: close its open files (ProDOS needs
+ * it), writing out what the IR file holds. */
+void compile_abort(void)
+{
+  tok_close();
+  ir_abort();
+}
+
 /* The front end: compile the token stream and name file of input
  * name in (ccpp's NAME.i and NAME.nam) into the IR file of output name
  * base (approach.md 18.7), for the back end. */
@@ -949,23 +966,6 @@ void compile_file(const char *in, const char *base)
 #ifdef CCISH_STATS
   report_stats();
 #endif
-}
-
-/* After an error in the front end: close its open files (ProDOS needs
- * it), writing out what the IR file holds. */
-void compile_abort(void)
-{
-  tok_close();
-  ir_abort();
-}
-
-/* Stage 1's entry: parse the whole source file. A function called but
- * not defined here is left to the final pass, which finds it in
- * another file or CMDSYS (approach.md issue 11). */
-void parse_program(void)
-{
-  while (tok != T_EOF)
-    parse_toplevel();
 }
 
 /* Function f's SYM_* flags for the symbol summary, and its type hash
@@ -996,18 +996,6 @@ int func_sym(int f, int *hash)
     *hash = h ? h : 1;
   }
   return flags;
-}
-
-/* The number of global variables: the data symbols. */
-int data_sym_count(void)
-{
-  return nglobals;
-}
-
-/* The size of the file's zero-filled space (its VL_BSS globals). */
-int bss_size(void)
-{
-  return bss_next;
 }
 
 /* Global v's SYM_* flags for the symbol summary, with its data offset

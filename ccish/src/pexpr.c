@@ -595,14 +595,10 @@ static int start_incdec(Operand *o)
   return is_pointer(o->type) ? elem_size(o->type) : 1;
 }
 
-/* ++x / --x: x = x + 1, and the value is the new x. */
-static void pre_incdec(Operand *o, int ir_op)
-{
-  put(IR_CONST, start_incdec(o), -1);
-  put(ir_op, 0, -1);
-  assign_to(o);
-  o->is_bool = 0;
-}
+/* ++x / --x: x = x + 1, and the value is the new x. A macro, not a
+ * function: it has one caller, on the recursive expression chain. */
+#define pre_incdec(o, ir_op) do { put(IR_CONST, start_incdec(o), -1); \
+  put(ir_op, 0, -1); assign_to(o); (o)->is_bool = 0; } while (0)
 
 /* x++ / x--: the value is the old x. Keep a copy of it below the
  * update; when the value is unused, the peephole stage removes the

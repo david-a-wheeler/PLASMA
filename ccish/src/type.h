@@ -68,7 +68,7 @@ int tag_name(int tag);           /* for messages */
 #endif
 int tag_size(int tag);
 void tag_set_size(int tag, int size);
-void tag_mark_union(int tag);   /* the tag is a union's, not a struct's */
+extern char tg_union[];         /* tags that are unions' (set in pstmt.c) */
 int tag_is_union(int tag);
 int member_add(int tag, int name, int type, int off);
 int member_find(int tag, int name);     /* a member, or -1 */

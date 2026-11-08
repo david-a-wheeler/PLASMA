@@ -156,13 +156,6 @@ void data_byte(int v)
   ndata++;
 }
 
-/* Append a word, low byte first, to the data. */
-void data_word(int v)
-{
-  data_byte(v);
-  data_byte(v >> 8);
-}
-
 /* Append a word to the data that holds an address, plus add bytes: of
  * data (kind REL_DATA) or of a string (REL_STR), at offset target, of
  * data symbol target (REL_DSYM, an extern global), or of function
@@ -204,6 +197,13 @@ int data_zero(int n)
   ndata += n;
   return first;
 }
+
+/* What the summary needs from ptop.c: the number of global variables
+ * (the data symbols), the zero-filled space's bytes, and module i's
+ * name, an id. Macros, not functions, since this is their one user. */
+#define data_sym_count() nglobals
+#define bss_size() bss_next
+#define dep_name(i) dep_id[i]
 
 /* ---------- The end ---------- */
 
