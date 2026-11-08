@@ -3872,6 +3872,22 @@ streaming is about 7.3K over (FILEIO's 2,011 and the 47,512-byte
 file). link.c now sees 77 of `MAX_VARS` 79 (the hook's declaration
 in diag.h) and 50 of `MAX_TYPES` 54, the tightest tables left.
 
+**Three easy cuts, 2026-11-08** (decided in discussion): bio's
+buffer (`BLOCK`) went from 512 bytes to 128, since ProDOS's own 1K
+buffer for each file already reads and writes whole blocks, so it
+costs only more FILEIO calls (about 120 instead of 30 for parse.c's
+token stream), and saves 384 bytes per open file (cccomp 768, ccpp
+2,304, ccgen and ccrel 768); functions only another program used left
+the shared objects (`base_of` to pp.c, `remove_streams` to irin.c,
+`bgetw` and `bskip` to link.c, and `tag_name` under `CCISH_DIAG`);
+and `MAX_FUNCS` went to 242 (peak 220) and `MAX_PARAM_TYPES` to 352
+(peak 317). cccomp's resident memory (body, heap tables and def
+table) went from 39,917 bytes to 38,361 (1,556 less): code 28,329
+(258 less), 322 functions (5 fewer), heap tables 2,388 (2,085 less).
+Its module file grew 438 bytes, to 47,865, though: five tables (`in`
+and `out`, now 138 bytes, and three of 242) fell below `BSS_MIN`
+(256), so their zeros are in the file instead of on the heap.
+
 So the goal, with streaming: shed at least 2.5K more of running
 memory (about 4K, for a margin), and shorten the deepest call chain
 to about 50 calls. The old conclusion, below, stands, with these

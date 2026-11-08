@@ -63,7 +63,9 @@ int tag_find(int name, int depth);  /* innermost visible tag named
                                      * name, at depth or any depth if
                                      * depth < 0; -1 if none */
 void tag_hide(int depth);   /* hide the tags declared deeper */
-int tag_name(int tag);
+#ifdef CCISH_DIAG
+int tag_name(int tag);           /* for messages */
+#endif
 int tag_size(int tag);
 void tag_set_size(int tag, int size);
 void tag_mark_union(int tag);   /* the tag is a union's, not a struct's */

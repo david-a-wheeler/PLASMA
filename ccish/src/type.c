@@ -274,11 +274,13 @@ void tag_hide(int depth)
       tg_depth[i] = 0;
 }
 
-/* The name of tag (an id), or -1 if anonymous. */
+#ifdef CCISH_DIAG
+/* The name of tag (an id), or -1 if anonymous (for messages). */
 int tag_name(int tag)
 {
   return tg_name[tag];
 }
+#endif
 
 /* The size of tag's struct, or -1 if it is incomplete. */
 int tag_size(int tag)

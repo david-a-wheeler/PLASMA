@@ -2,8 +2,8 @@
  * The reader of the name file, NAME.nam (../CCPP.md), for cccomp and
  * ccgen: it checks the whole file once, when it is opened (ccgen opens
  * it at the start, cccomp only for a message), and then looks spellings up by id. It reads through stdio,
- * as the message file is read, so that it needs no 512-byte buffer of
- * its own, and it
+ * as the message file is read, so that it needs no bio buffer of its
+ * own, and it
  * keeps its place: a lookup reads on from the last one, and starts
  * again from the top only for an earlier line (bio can't seek). Ids are
  * given in the order names are first met, which is nearly the order of

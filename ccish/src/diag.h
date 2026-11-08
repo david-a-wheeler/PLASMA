@@ -39,8 +39,6 @@ void msg_init(const char *argv0);           /* find ccish.msg */
 int  msg_text(int n, char *buf, int size);  /* message n's text, or 0 */
 const char *stream_name(const char *base, const char *suffix);
 void remove_stream(const char *base, const char *suffix);  /* unless -k */
-void remove_streams(const char *base);      /* .obj and .syms, unless -k */
-const char *base_of(const char *src);       /* "x.c" -> "x" */
 const char *num_text(int n);                /* n in decimal (no printf) */
 
 /* Defined by each program: after an error, close the open files and

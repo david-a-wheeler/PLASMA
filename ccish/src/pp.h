@@ -13,5 +13,6 @@ int  pp_arg(int argc, char **argv, int i);        /* -I, -D, -U: its last
                                                    * argument, or -1 */
 void pp_file(const char *src, const char *base);  /* NAME.i, NAME.nam */
 void pp_abort(void);                              /* after an error */
+const char *base_of(const char *src);             /* "x.c" -> "x" */
 
 #endif

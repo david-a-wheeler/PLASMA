@@ -177,8 +177,8 @@ enum { VL_STATIC = 1, VL_USED = 2, VL_EXTERN = 4, VL_BSS = 8,
        VL_INDATA = 16 };
 
 /* Parameter types of declared functions, in parse.c. */
-#define MAX_PARAM_TYPES 401 /* parameter types of all declared functions
-                             * (364) */
+#define MAX_PARAM_TYPES 352 /* parameter types of all declared functions
+                             * (320, pexpr.c) */
 extern char param_types[MAX_PARAM_TYPES];   /* unqualified types */
 
 /* The parser's state, in parse.c, shared by the parser's files. */

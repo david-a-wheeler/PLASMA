@@ -8,5 +8,6 @@
 void gen_file(const char *base);
 void gen_abort(void);                       /* after an error */
 const char *func_name(int f);       /* a function's name, for messages */
+void remove_streams(const char *base);  /* .obj and .syms, unless -k */
 
 #endif

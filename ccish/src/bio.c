@@ -1,8 +1,10 @@
 /*
  * Block-buffered file I/O. Every file the compiler reads or writes goes
- * through a 512-byte buffer, the size of a ProDOS block, so that on an
- * Apple II each system call moves a whole block and not a byte
- * (approach.md 18.1). On the host it sits on top of stdio.
+ * through a BLOCK-byte buffer, so that on an Apple II a system call
+ * moves many bytes and not one (approach.md 18.1); ProDOS's own 1K
+ * buffer for the file reads and writes the disk in whole blocks, so
+ * BLOCK is small (128), for memory. On the host it sits on top of
+ * stdio. ccrel's bgetw() and bskip() are in link.c, its only user.
  */
 #include <stdio.h>
 #include <string.h>
@@ -22,7 +24,7 @@ int bopen(Bfile *b, const char *path, int writing)
 
 /* Refill the read buffer with the file's next block (len = 0 at the
  * end of the file). */
-static void fill(Bfile *b)
+void bfill(Bfile *b)
 {
   b->len = (int)fread(b->buf, 1, BLOCK, b->f);
   b->pos = 0;
@@ -32,7 +34,7 @@ static void fill(Bfile *b)
 int bgetc(Bfile *b)
 {
   if (b->pos >= b->len) {
-    fill(b);
+    bfill(b);
     if (b->len == 0)
       return EOF;
   }
@@ -44,35 +46,6 @@ int bgetc(Bfile *b)
 void bungetc(Bfile *b, int c)
 {
   b->buf[--b->pos] = (unsigned char)c;
-}
-
-/* A little-endian word. Running out of data here means the file is
- * damaged, which only the final pass can see. */
-int bgetw(Bfile *b)
-{
-  int lo = bgetc(b), hi = bgetc(b);
-  if (lo == EOF || hi == EOF)
-    fatal(3 /* "unexpected end of a compiler stream file" */, NULL);
-  return lo | (hi << 8);
-}
-
-/* Read past the next n bytes, which must be there: the rest of the
- * buffer at a time, not a byte at a time. */
-void bskip(Bfile *b, int n)
-{
-  int k;
-  while (n > 0) {
-    if (b->pos >= b->len) {
-      fill(b);
-      if (b->len == 0)
-        fatal(3 /* "unexpected end of a compiler stream file" */, NULL);
-    }
-    k = b->len - b->pos;
-    if (k > n)
-      k = n;
-    b->pos += k;
-    n -= k;
-  }
 }
 
 /* Write out the buffered bytes, remembering any write error for

@@ -49,29 +49,6 @@ void remove_stream(const char *base, const char *suffix)
     remove(stream_name(base, suffix));
 }
 
-/* Remove the stream file and symbol summary of output name base, unless
- * -k asked to keep them. */
-void remove_streams(const char *base)
-{
-  remove_stream(base, SUFFIX_OBJ);
-  remove_stream(base, SUFFIX_SYMS);
-}
-
-/* The output name for source file src: its name without ".c", in a
- * static buffer. */
-const char *base_of(const char *src)
-{
-  static char buf[MAX_PATH];
-  size_t n = strlen(src);
-  if (n < 3 || strcmp(src + n - 2, ".c"))
-    fatal(2 /* "input name must end in .c, or use -o" */, NULL);
-  if (n - 2 >= sizeof(buf))
-    fatal(1 /* "output name too long" */, NULL);
-  memcpy(buf, src, n - 2);
-  buf[n - 2] = 0;
-  return buf;
-}
-
 /* The message file, ccish.msg: each line is a message number, a space
  * and its text, in ascending order of number (approach.md, "C2
  * design"). It is the only copy of the text, so the programs keep none

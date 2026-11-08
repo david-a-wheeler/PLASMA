@@ -9,7 +9,7 @@
 #ifndef OBJ_H
 #define OBJ_H
 
-#define MAX_FUNCS    280    /* functions (254, parse.c) */
+#define MAX_FUNCS    242    /* functions (220, pexpr.c) */
 #define MAX_VARS     79     /* globals, plus the parameters and locals
                              * visible at once (76, link.c) */
 #define MAX_FUNC_CODE 1280  /* bytecode in one function (1,053) */

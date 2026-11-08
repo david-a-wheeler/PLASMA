@@ -548,3 +548,18 @@ void pp_abort(void)
     bclose(&files[depth--]);
   pp_out_abort();
 }
+
+/* The output name for source file src: its name without ".c", in a
+ * static buffer. */
+const char *base_of(const char *src)
+{
+  static char buf[MAX_PATH];
+  size_t n = strlen(src);
+  if (n < 3 || strcmp(src + n - 2, ".c"))
+    fatal(2 /* "input name must end in .c, or use -o" */, NULL);
+  if (n - 2 >= sizeof(buf))
+    fatal(1 /* "output name too long" */, NULL);
+  memcpy(buf, src, n - 2);
+  buf[n - 2] = 0;
+  return buf;
+}

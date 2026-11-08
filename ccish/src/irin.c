@@ -1187,3 +1187,11 @@ void gen_abort(void)
   nam_close();
   emit_abort();
 }
+
+/* Remove the stream file and symbol summary of output name base, unless
+ * -k asked to keep them. */
+void remove_streams(const char *base)
+{
+  remove_stream(base, SUFFIX_OBJ);
+  remove_stream(base, SUFFIX_SYMS);
+}

@@ -216,10 +216,41 @@ static void bad_obj(void)
   damaged(stream_name(obj_name[cur], SUFFIX_OBJ));
 }
 
+/* ---------- Reading the objects (bio.c's, for ccrel only) ---------- */
+
+/* A little-endian word. Running out of data here means the file is
+ * damaged, which only the final pass can see. */
+static int bgetw(Bfile *b)
+{
+  int lo = bgetc(b), hi = bgetc(b);
+  if (lo == EOF || hi == EOF)
+    fatal(3 /* "unexpected end of a compiler stream file" */, NULL);
+  return lo | (hi << 8);
+}
+
+/* Read past the next n bytes, which must be there: the rest of the
+ * buffer at a time, not a byte at a time. */
+static void bskip(Bfile *b, int n)
+{
+  int k;
+  while (n > 0) {
+    if (b->pos >= b->len) {
+      bfill(b);
+      if (b->len == 0)
+        fatal(3 /* "unexpected end of a compiler stream file" */, NULL);
+    }
+    k = b->len - b->pos;
+    if (k > n)
+      k = n;
+    b->pos += k;
+    n -= k;
+  }
+}
+
 /* ---------- Step 1: the symbol summaries ---------- */
 
 /* The file the final pass is reading (in) and the module it writes
- * (out). They are static, not locals, so that their 512-byte buffers
+ * (out). They are static, not locals, so that their buffers
  * take no frame space (a frame holds 255 bytes), and so that
  * link_abort() can close them after an error. */
 static Bfile in, out;
