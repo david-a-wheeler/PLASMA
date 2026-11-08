@@ -5086,9 +5086,12 @@ ccish.h, each where its text was, so that every object is unchanged
   `CCISH_TEXT`; `CCISH_STATS` described).
 - cclimits.h: the limits every program shares, `MAX_NAME` and
   `MAX_PATH`.
-- obj.h: the object format, and the limits on one object that cccomp,
-  ccgen and ccrel all check (`MAX_FUNCS`, `MAX_VARS`, `MAX_FUNC_CODE`,
-  `MAX_FUNC_RELOCS`).
+- obj.h: the limits on one object that cccomp, ccgen and ccrel all
+  check (`MAX_FUNCS`, `MAX_VARS`, `MAX_FUNC_CODE`, `MAX_FUNC_RELOCS`).
+  objfmt.h and objsym.h: the object format (the record tags of the
+  stream and the IR file, and the helpers; the relocations and symbol
+  flags), apart so the parser's files don't count their names against
+  `MAX_IDS`.
 - ir.h: the IR file's ops, records and `MAX_LABELS`.
 - mop.h: ccgen's machine ops and `Mop`.
 - token.h and fixed.h were already purpose headers. measure.py now

@@ -164,7 +164,7 @@ which `make` compiles into `tests/out/lib/`: `<string.h>` (`strlen`,
 `strrchr`, `memcpy`, `memmove`, `memset`), `<stdio.h>` (`fopen`,
 `fclose`, `getc`, `putc`, `fputs`, `fread`, `fwrite`, `remove`,
 `fflush`, unbuffered over PLASMA's FILEIO), `<stddef.h>`, and
-`<plasma.h>` (CMDSYS's and FILEIO's tables). ccpp finds its headers
+`<plasma.h>` and `<fileio.h>` (CMDSYS's and FILEIO's tables). ccpp finds its headers
 after the `-I` directories. ccrel links whole objects and doesn't
 search a library yet, so you name the ones you need after the source
 (`ccish -o prog prog.c tests/out/lib/strlen ...`); `start` is the
@@ -455,7 +455,7 @@ function returns exactly one.
 | Path | Contents |
 |------|----------|
 | `src/main.c` | `ccish`: the command line, then every pass |
-| `src/*.h` | Each `.c` file's interface (`parse.h` for `parse.c`), and headers for what several must agree on: `build.h` (the builds; read it first), `cclimits.h`, `token.h`, `fixed.h`, `ir.h`, `obj.h` and `mop.h` |
+| `src/*.h` | Each `.c` file's interface (`parse.h` for `parse.c`), and headers for what several must agree on: `build.h` (the builds; read it first), `cclimits.h`, `token.h`, `fixed.h`, `ir.h`, `obj.h`, `objfmt.h`, `objsym.h` and `mop.h` |
 | `src/ccpp.c`, `src/cccomp.c`, `src/ccgen.c`, `src/ccrel.c` | The preprocessor, the front end, the back end and the final pass as programs of their own |
 | `src/diag.c` | Error messages and stream files, shared by all the programs |
 | `ccish.msg` | The text of every error and warning, by number (see "Messages") |
@@ -546,7 +546,7 @@ in `src/tokin.c` declares the range ("messages 262-307"), which
     `MAX_TAGS`, `MAX_MEMBERS`, `MAX_IDS`). The front end keeps no
     names: the preprocessor numbers them (below).
   - The preprocessor: 8432 bytes of distinct names and file names, a
-    length byte each (`MAX_PP_POOL`), 72 macros (`MAX_MACROS`), and
+    length byte each (`MAX_PP_POOL`), 104 macros (`MAX_MACROS`), and
     source lines of 255 characters (`MAX_LINE`); the rest are in
     CCPP.md, "Limits".
   - A string literal: 255 characters, after adjacent ones are joined

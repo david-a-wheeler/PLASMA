@@ -1,6 +1,6 @@
 /* fread.c: C's fread over FILEIO. */
 #include <stdio.h>
-#include <plasma.h>
+#include <fileio.h>
 
 /* Read up to n items of size bytes from f into p; how many whole items
  * were read. */

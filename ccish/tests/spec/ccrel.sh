@@ -67,7 +67,7 @@ fi
 rm -f "$OUT/atend.obj" "$OUT/atend.syms"
 
 # The shared-name table full (approach.md issue 11, "Fitting the
-# linker's tables"): 163 names fill all 163 slots and link, and b's use
+# linker's tables"): 307 names fill all 307 slots and link, and b's use
 # of a's g0 is found in the full table; one more name stops the link.
 gen_decls() {
     i=$2
@@ -76,19 +76,19 @@ gen_decls() {
         i=$((i + 1))
     done >"$1"
 }
-gen_decls "$OUT/link/full_a.c" 1 81
+gen_decls "$OUT/link/full_a.c" 1 153
 echo 'void g0(void) {}' >>"$OUT/link/full_a.c"
-gen_decls "$OUT/link/full_b.c" 82 161
+gen_decls "$OUT/link/full_b.c" 154 305
 echo 'void g0(void); void use(void) { g0(); }' >>"$OUT/link/full_b.c"
-gen_decls "$OUT/link/full_c.c" 82 163
+gen_decls "$OUT/link/full_c.c" 154 307
 if cc_obj "" "$OUT/link/full_a" "$OUT/link/full_a.c" \
    && cc_obj "" "$OUT/link/full_b" "$OUT/link/full_b.c" \
    && ./ccrel -l -o "$OUT/link/full" "$OUT/link/full_a" "$OUT/link/full_b" \
       >"$OUT/link/full.lst" 2>"$OUT/link/full.err" \
-   && grep -qF "; shared names: 163 of 163 slots" "$OUT/link/full.lst"; then
+   && grep -qF "; shared names: 307 of 307 slots" "$OUT/link/full.lst"; then
     :
 else
-    echo "FAIL ccrel: 163 shared names don't fill the table and link"
+    echo "FAIL ccrel: 307 shared names don't fill the table and link"
     sed 's/^/    /' "$OUT/link/full.err"; bad=1
 fi
 if cc_obj "" "$OUT/link/full_c" "$OUT/link/full_c.c" \
@@ -98,7 +98,7 @@ if cc_obj "" "$OUT/link/full_c" "$OUT/link/full_c.c" \
         "$OUT/link/full_over.err"; then
     :
 else
-    echo "FAIL ccrel: 164 shared names, wanted 'too many names', got:"
+    echo "FAIL ccrel: 308 shared names, wanted 'too many names', got:"
     sed 's/^/    /' "$OUT/link/full_over.err"; bad=1
 fi
 rm -f "$OUT"/link/full_[abc].obj "$OUT"/link/full_[abc].syms
@@ -184,11 +184,11 @@ gen_long() {
         i=$((i + 1))
     done >"$1"
 }
-# The 43 names of 31 characters, main, the 27-character caller, and
-# __puti and __putc take 1423 of the 1427 name bytes, too few for the
+# The 92 names of 31 characters, main, the 27-character caller, and
+# __puti and __putc take 2991 of the 3000 name bytes, too few for the
 # static name's 32.
-gen_long "$OUT/link/nofit_a.c" 1 22
-gen_long "$OUT/link/nofit_b.c" 23 43
+gen_long "$OUT/link/nofit_a.c" 1 46
+gen_long "$OUT/link/nofit_b.c" 47 92
 cat >>"$OUT/link/nofit_b.c" <<'EOF'
 static int static_padded_to_thirty_one_chr(void) { return 7; }
 int caller_padded_to_27_chars_x(void)
@@ -207,7 +207,7 @@ if cc_obj "" "$OUT/link/nofit_a" "$OUT/link/nofit_a.c" \
       2>>"$OUT/link/nofit.err" \
    && ./ccrel -l -o "$OUT/link/nofit" "$OUT/link/nofit_a" \
       "$OUT/link/nofit_b" >"$OUT/link/nofit.lst" 2>>"$OUT/link/nofit.err" \
-   && grep -qF "; shared names: 47 of 163 slots, 1423 of 1427" \
+   && grep -qF "; shared names: 96 of 307 slots, 2991 of 3000" \
         "$OUT/link/nofit.lst" \
    && grep -q '^static@\$[0-9A-F]\{4\}:$' "$OUT/link/nofit.lst" \
    && grep -qF '; static@$' "$OUT/link/nofit.lst" \

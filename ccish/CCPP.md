@@ -368,8 +368,8 @@ in `t.i`, low byte first).
 | `ccpp`'s name pool: every name and file name, a length byte each | 8432 bytes (`MAX_PP_POOL`) | 18 |
 | Files `#include`d at once, beside the source | 3 (`MAX_INCLUDE`), or what the system can open | 237, 236 |
 | Groups (`#ifdef` ...) open at once | 8 (`MAX_IF_NEST`) | 243 |
-| Macros defined at once, counting `__CCISH__` | 72 (`MAX_MACROS`) | 244 |
-| Their bodies, as tokens (an identifier or number is 3 bytes) | 512 bytes (`MAX_MACRO_BYTES`) | 244 |
+| Macros defined at once, counting `__CCISH__` | 104 (`MAX_MACROS`) | 244 |
+| Their bodies, as tokens (an identifier or number is 3 bytes) | 704 bytes (`MAX_MACRO_BYTES`) | 244 |
 | Macro expansions inside one another, and arguments being expanded | 16 (`MAX_EXPAND`) | 245 |
 | The texts being read and the arguments being collected; the arguments' own expansions | 256 bytes each (`MAX_EXP_BYTES`) | 256 |
 | Arguments of the calls being expanded | 32 (`MAX_ARG_SLOTS`) | 256 |

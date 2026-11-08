@@ -1,6 +1,6 @@
 /* fopen.c: C's fopen and fclose over FILEIO. */
 #include <stdio.h>
-#include <plasma.h>
+#include <fileio.h>
 
 char *__path(const char *path);
 

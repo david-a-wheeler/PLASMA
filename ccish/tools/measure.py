@@ -115,9 +115,10 @@ def lib_sources():
 
 def lib_object(symbol):
     """The library object that defines symbol: each defines the function
-    it's named for, less a leading __ (__start, __path), but exit is
-    plvmexit's."""
-    return "plvmexit" if symbol == "exit" else symbol.lstrip("_")
+    it's named for, less a leading __ (__start, __path), but fclose is
+    fopen's and exit is plvmexit's."""
+    return {"exit": "plvmexit", "fclose": "fopen"}.get(
+        symbol, symbol.lstrip("_"))
 
 
 def pp_args():
@@ -459,7 +460,8 @@ def module_rld(path):
 
 
 def summary(name):
-    """The sizes in OUT/NAME.syms: data, strings, code, functions."""
+    """The sizes in OUT/NAME.syms: data, strings, code, zero-filled
+    (the data symbols ccrel may move to the heap)."""
     with open(os.path.join(OUT, name + ".syms"), "rb") as f:
         h = f.read(13)
     word = lambda i: h[i] | h[i + 1] << 8
@@ -478,7 +480,7 @@ def main():
     big = build_big()
 
     libsrc = lib_sources()
-    print("File        Code    Data  Strings  Functions")
+    print("File        Code    Data  Strings     Zero")
     for name in names + sorted(libsrc):
         if name in libsrc:
             if name == sorted(libsrc)[0]:
@@ -489,9 +491,9 @@ def main():
                 failed = True
                 continue
             sizes[name] = summary(name)
-            data, strs, code, nfuncs = sizes[name]
+            data, strs, code, zero = sizes[name]
             print("%-10s %5d   %5d    %5d      %5d"
-                  % (name, code, data, strs, nfuncs))
+                  % (name, code, data, strs, zero))
             continue
         stats, cstats = pp_stats(big, name)
         for i, v in enumerate(stats or []):
@@ -510,9 +512,9 @@ def main():
             failed = True
             continue
         sizes[name] = summary(name)
-        data, strs, code, nfuncs = sizes[name]
+        data, strs, code, zero = sizes[name]
         print("%-10s %5d   %5d    %5d      %5d%s"
-              % (name, code, data, strs, nfuncs,
+              % (name, code, data, strs, zero,
                  "  (over a limit: %s)" % over[name] if name in over
                  else ""))
         if keep:

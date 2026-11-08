@@ -157,11 +157,9 @@ enum {
                               || (op) == IR_CASETO)
 #define IR_IS_LOOP_MARKER(op) ((op) >= IR_LOOP && (op) <= IR_LOOPEND)
 
-/* Its record tags besides the stream's D, R and S (below), and the bit
- * that marks an IR op followed by a one-byte operand. An IR op's tag is
- * its number, below IR_TAG_END: 'D', the lowest record letter. */
-enum { REC_LINE = 'L', REC_NAME = 'N', REC_WORD = 'W', REC_SECOND = 'X',
-       REC_SUMMARY = 'Y' };
+/* The bit that marks an IR op followed by a one-byte operand. An IR
+ * op's tag is its number, below IR_TAG_END: 'D', the lowest record
+ * letter (objfmt.h has the IR file's record tags). */
 #define IR_BYTE_OP  0x80
 #define IR_TAG_END  0x44
 

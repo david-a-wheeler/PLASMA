@@ -15,13 +15,14 @@
  * blocks to exchange, which ccgen does (approach.md 18.7, A).
  */
 #include <stdio.h>
-#include <string.h>
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
 #include "bio.h"
 #include "nam.h"
 #include "obj.h"
+#include "objfmt.h"
+#include "objsym.h"
 #include "ir.h"
 #include "type.h"
 #include "parse.h"

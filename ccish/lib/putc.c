@@ -1,6 +1,6 @@
 /* putc.c: C's putc over FILEIO, or CMDSYS's console. */
 #include <stdio.h>
-#include <plasma.h>
+#include <fileio.h>
 
 /* Write c to f; c, or EOF if the write failed. On the console, '\n'
  * is CMDSYS's newline. */

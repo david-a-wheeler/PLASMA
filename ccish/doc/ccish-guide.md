@@ -1449,14 +1449,14 @@ Per file:
   those in blocks that have ended), 32 struct members in all, and 203
   enum constants and typedef names visible at once.
 
-The preprocessor: 8432 bytes of distinct names and file names, 72
-macros with 512 bytes of bodies (as tokens) in all, and source lines
+The preprocessor: 8432 bytes of distinct names and file names, 104
+macros with 704 bytes of bodies (as tokens) in all, and source lines
 of 255 characters.
 
 Other: a string literal of 255 characters (after adjacent ones are
 joined); an identifier's first 31 significant characters; 32 operands
 on the back end's temporaries in one function; a file name of 127
-characters; and per link, 32 objects and 163 shared names.
+characters; and per link, 32 objects and 307 shared names.
 
 A few other limits: a local array must fit in the 255-byte frame
 with the other locals; globals are limited to 32767 bytes in the
@@ -1718,8 +1718,9 @@ ref = fileio.open(pstr("MYFILE"));  /* a load from the table, then ICAL */
   `#ifdef __CCISH__` when a header is shared with another compiler.
   Under `plvm`, FILEIO and CONIO are built in, so their dependencies
   load no file.
-* `<plasma.h>`, in the library's headers (section 11.2), declares
-  `cmdsys` and `fileio` this way, with their tables' layouts.
+* `<plasma.h>` and `<fileio.h>`, in the library's headers (section
+  11.2), declare `cmdsys` and `fileio` this way, with their tables'
+  layouts.
 
 ### 11.2 The C library
 
@@ -1741,7 +1742,8 @@ $ ./ccish -o copy copy.c $L/start $L/fopen $L/path $L/fread $L/fwrite $L/strlen
 | `<stdio.h>` | `fopen`, `fclose`, `getc`, `putc`, `fputs`, `fread`, `fwrite`, `remove`, and `fflush` (a macro), `stdin`, `stdout`, `stderr`, `EOF` |
 | `<stdlib.h>` | `EXIT_SUCCESS`, `EXIT_FAILURE`, and `exit` (declared, but not defined yet) |
 | `<stddef.h>` | `size_t` (`unsigned`), `ptrdiff_t`, `NULL` |
-| `<plasma.h>` | `cmdsys` and `fileio`, CMDSYS's and FILEIO's tables (section 11.1); not standard C |
+| `<plasma.h>` | `cmdsys`, CMDSYS's table (section 11.1); not standard C |
+| `<fileio.h>` | `fileio`, FILEIO's table (section 11.1), and `<plasma.h>`; not standard C |
 
 * **Which objects:** each is named for its function, so `strlen`'s is
   `strlen`. Some call others: `fopen` (which holds `fclose` too) and

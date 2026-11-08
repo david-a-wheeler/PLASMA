@@ -45,14 +45,17 @@
 #include "diag.h"
 #include "bio.h"
 #include "obj.h"
+#include "objfmt.h"
+#include "objsym.h"
 #include "mop.h"
 #include "link.h"
 
 #define MAX_OBJS    32      /* objects in one link */
-#define MAX_GSYMS   163     /* names shared between objects: the first
-                             * prime 10% above linking ccish's (144) */
-#define MAX_GNAMES  1427    /* bytes of those names, with their NULs:
-                             * 10% above linking ccish's (1,297) */
+#define MAX_GSYMS   307     /* names shared between objects: the first
+                             * prime 10% above linking cccomp's, with
+                             * the library (271) */
+#define MAX_GNAMES  3000    /* bytes of those names, with their NULs:
+                             * 10% above linking cccomp's (2,716) */
 #define MAX_SEL_TABLES 32   /* SEL case tables the listing of one
                              * function waits for at once */
 #define MAX_MOVED   32      /* globals moved to the heap in one module */

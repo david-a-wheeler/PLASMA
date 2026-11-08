@@ -1,18 +1,18 @@
 /* The other half of probe: see a.c. */
-int f108188(int n);
-extern int f108284;
-int f108296(int n);
-int f108198 = 4;
+int f108018(int n);
+extern int f108042;
+int f108050(int n);
+int f108028 = 4;
 
-/* n less f108198. */
-int f108189(int n) { return n - f108198; }
+/* n less f108028. */
+int f108019(int n) { return n - f108028; }
 
 int main()
 {
-  __puti(f108188(1)); __putc(' ');
-  __puti(f108284); __putc(' ');
-  __puti(f108296(3)); __putc(' ');
-  __puti(f108189(10));
+  __puti(f108018(1)); __putc(' ');
+  __puti(f108042); __putc(' ');
+  __puti(f108050(3)); __putc(' ');
+  __puti(f108019(10));
   __putln();
   return 0;
 }

@@ -13,8 +13,6 @@
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
-#include "fixed.h"
-#include "nam.h"
 #include "tokin.h"
 #include "obj.h"
 #include "ir.h"

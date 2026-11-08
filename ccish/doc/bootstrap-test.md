@@ -412,12 +412,19 @@ sizes; the bootstrap needs them fixed for real.
 exceeded by parse, pexpr, pstmt and ptop (at IR_REFS_LABEL, ir.h:151).
 These are per-translation limits, so one file at a time doesn't help.
 ccpp has headroom (26,049-byte module file); measure the cost of
-raising them.
+raising them. **Done** (2026-11-08): dropping includes the parser's
+files didn't need left ptop.c at 88 macros and 608 bytes (about 20 of
+the macros are include guards), so they're 104 and 704 now. That costs
+ccpp 480 bytes (288 of data, 192 zero-filled), and cccomp nothing.
 
 **B3. `counted_loop` (src/irin.c) overruns MAX_VARS.** irin.c's
 globals plus its locals exceed cccomp's 79 visible variables. Options:
 split the function, or raise the limit; cccomp is the program that
-doesn't fit, so splitting is probably cheaper.
+doesn't fit, so splitting is probably cheaper. Measured 2026-11-08:
+it's not one function. irin.c has about 70 file-scope variables (32 of
+them the loop machinery's `lp_*`, `cl_*` and `fo_*`), so nearly any
+function with more than five of its own overflows. The same day, link.c
+needed 49 types (`MAX_TYPES` 40), mostly distinct array types.
 
 **B4. emit.c's `mnem()` overruns cccomp's limits.** The first sweep
 stopped at its switch's case labels (MAX_CASES, 36 open at once); on
@@ -447,6 +454,20 @@ from the bootstrap, but cccomp's link still carries its whole API.
 Options: raise the limits (about 13 bytes per name), or write slimmer
 summaries (only names an object defines or references, as a C linker
 keeps). ccrel has the most headroom (14,200-byte module file).
+**Done** (2026-11-08): cccomp's link, with the library, needs 271
+names and 2,716 bytes, so they're 307 (the first prime 10% above) and
+3,000. That costs ccrel 3,589 bytes, nearly all zero-filled tables on
+the heap.
+
+**MAX_IDS and MAX_MEMBERS** (cccomp) were over too, in 2026-11-08's
+measure: pstmt.c saw 210 enum constants and typedef names (203), and
+pp.c 36 struct members (32), 29 of them `<plasma.h>`'s. Fixed in the
+headers, at no cost: `<fileio.h>` now holds FILEIO's table apart from
+`<plasma.h>`'s `cmdsys`, and obj.h's object format moved to objfmt.h
+(the record tags of the stream and the IR file, and the helpers) and
+objsym.h (the relocations and symbol flags), so the parser's files
+don't see them. The most is now 200 identifiers (irin.c, which sees
+mop.h's 83 machine ops) and 27 members.
 
 **B6. File I/O (done).** Not a VM gap after all: plvm has FILEIO. The
 gate was ccish's side: R3 to R7 (function pointers, data imports, the

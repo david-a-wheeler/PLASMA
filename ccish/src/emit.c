@@ -28,6 +28,8 @@
 #include "diag.h"
 #include "bio.h"
 #include "obj.h"
+#include "objfmt.h"
+#include "objsym.h"
 #include "ir.h"
 #include "mop.h"
 #include "irin.h"

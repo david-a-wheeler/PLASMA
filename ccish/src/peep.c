@@ -99,6 +99,7 @@
 #include "build.h"
 #include "cclimits.h"
 #include "obj.h"
+#include "objfmt.h"
 #include "mop.h"
 #include "lower.h"
 #include "peep.h"

@@ -1,6 +1,6 @@
 /* fwrite.c: C's fwrite over FILEIO. */
 #include <stdio.h>
-#include <plasma.h>
+#include <fileio.h>
 
 /* Write n items of size bytes from p to f; how many whole items were
  * written. */

@@ -46,16 +46,16 @@ if ./ccpp -o "$OUT/ppopt/v" "$OUT/ppopt/t.c" 2>"$OUT/ppopt/v.err" \
     echo "FAIL ccpp: found <sys.h> beside the including file, with no -I"
     bad=1
 fi
-# The macro table full (MAX_MACROS, 72): __CCISH__ is one, so the
-# 72nd #define is one too many.
+# The macro table full (MAX_MACROS, 104): __CCISH__ is one, so the
+# 104th #define is one too many.
 {
     i=1
     while [ $i -le 129 ]; do echo "#define M$i $i"; i=$((i + 1)); done
 } >"$OUT/ppopt/many.c"
 if ./ccpp -o "$OUT/ppopt/many" "$OUT/ppopt/many.c" 2>"$OUT/ppopt/many.err" \
-   || ! grep -qF "many.c:72: fatal 244: too many macros" \
+   || ! grep -qF "many.c:104: fatal 244: too many macros" \
         "$OUT/ppopt/many.err"; then
-    echo "FAIL ccpp: 129 macros, wanted 'too many macros' on line 72, got:"
+    echo "FAIL ccpp: 129 macros, wanted 'too many macros' on line 104, got:"
     sed 's/^/    /' "$OUT/ppopt/many.err"
     bad=1
 fi

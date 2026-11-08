@@ -1,7 +1,7 @@
 /* fputs.c: C's fputs over FILEIO, or CMDSYS's console. */
 #include <stdio.h>
 #include <string.h>
-#include <plasma.h>
+#include <fileio.h>
 
 /* Write s to f; 0, or EOF if the write failed. On the console, '\n' is
  * CMDSYS's newline. */

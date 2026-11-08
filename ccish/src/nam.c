@@ -10,7 +10,6 @@
  * names takes about one pass.
  */
 #include <stdio.h>
-#include <string.h>
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"

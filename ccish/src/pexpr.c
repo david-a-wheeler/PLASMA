@@ -15,7 +15,6 @@
 #include "cclimits.h"
 #include "diag.h"
 #include "fixed.h"
-#include "nam.h"
 #include "tokin.h"
 #include "obj.h"
 #include "ir.h"
@@ -24,7 +23,6 @@
 #include "parse.h"
 #include "irout.h"
 #include "pstmt.h"
-#include "ptop.h"
 #include "pexpr.h"
 static void parse_unary(Operand *o);
 static void parse_postfix(Operand *o);

@@ -1,6 +1,6 @@
 /* getc.c: C's getc over FILEIO, or CMDSYS's console. */
 #include <stdio.h>
-#include <plasma.h>
+#include <fileio.h>
 
 /* The next byte of f, or EOF at its end. The console has no end. */
 int getc(FILE *f)
