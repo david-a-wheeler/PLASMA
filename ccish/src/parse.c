@@ -505,10 +505,8 @@ int parse_base_type(void)
 {
   int q = parse_quals(), t = TY_INT;
   int tagged = T_IS_TAGGED(tok);  /* after the quals */
-  if (tok == T_STRUCT) {
-    t = parse_struct();
-  } else if (tok == T_UNION) {
-    t = parse_union();
+  if (tok == T_STRUCT || tok == T_UNION) {
+    t = parse_struct(tok == T_UNION);
   } else if (tok == T_ENUM) {
     t = parse_enum();
   } else if (T_IS_INT_TYPE(tok)) {

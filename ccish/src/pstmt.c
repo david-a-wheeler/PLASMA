@@ -323,8 +323,8 @@ static void parse_members(int tag, int is_union)
 }
 
 /*
- * Parse a struct type after "struct", and return it: a tag, a member
- * list, or both. As in C:
+ * Parse a struct type after "struct", or a union type after "union"
+ * (is_union), and return it: a tag, a member list, or both. As in C:
  *   - struct s { ... } defines s in the current block (or at file
  *     scope), completing an earlier "struct s;" there;
  *   - struct s; alone declares a new s in the current block, hiding any
@@ -334,22 +334,32 @@ static void parse_members(int tag, int is_union)
  *     struct node is complete.
  * A tag first seen in a parameter list is visible only inside that
  * function, which is rarely what was meant; gcc warns, and so do we.
+ * A union has the union layout: every member starts at byte 0, and the
+ * union is the largest member (see parse_members()). It is stored like
+ * a struct: the same TK_STRUCT type, with its tag marked a union's
+ * (type.h), so every mechanism that works on a struct's members and
+ * size works on a union's. Struct and union tags share a name space,
+ * so a name can't be both, which the standard C allows (a known
+ * difference, as with enum). One function for both, since they differ
+ * only in that.
  */
-int parse_struct(void)
+int parse_struct(int is_union)
 {
   int name = -1, tag = -1, hsum = 0, hmul = 1;
 
-  next();                         /* struct */
+  next();                         /* struct or union */
   if (tok == T_ID) {
     name = tok_val;
     hsum = tok_hsum;
     hmul = tok_hmul;
     next();
     tag = tag_find(name, tok == '{' || tok == ';' ? depth : -1);
-    if (tag >= 0 && tag_is_union(tag))
+    if (tag >= 0 && tag_is_union(tag) != is_union)
       error(104 /* "redefinition of" */, tag_desc(tag));
   } else if (tok != '{') {
-    error(102 /* "expected a struct name or '{' after 'struct', not" */,
+    error(is_union
+          ? 318 /* "expected a union name or '{' after 'union', not" */
+          : 102 /* "expected a struct name or '{' after 'struct', not" */,
           tok_desc());
   }
   if (tag < 0) {
@@ -360,55 +370,11 @@ int parse_struct(void)
                      "outside it:" */, tag_desc(tag));
 #endif
   }
+  tg_union[tag] = (char)is_union; /* members all at 0; the largest's size */
   if (tok == '{') {
     if (tag_size(tag) != -1)
       error(104 /* "redefinition of" */, tag_desc(tag));
-    parse_members(tag, 0);
-  }
-  return struct_type(tag);
-}
-
-/*
- * Parse a union type after "union", and return it: a tag, a member
- * list, or both, as parse_struct(), but with the union layout: every
- * member starts at byte 0, and the union is the largest member (see
- * parse_members()). A union is stored like a struct: the same
- * TK_STRUCT type, with its tag marked a union's (type.h), so every
- * mechanism that works on a struct's members and size works on a
- * union's. Struct and union tags share a name space, so a name can't
- * be both, which the standard C allows (a known difference, as with
- * enum).
- */
-int parse_union(void)
-{
-  int name = -1, tag = -1, hsum = 0, hmul = 1;
-
-  next();                         /* union */
-  if (tok == T_ID) {
-    name = tok_val;
-    hsum = tok_hsum;
-    hmul = tok_hmul;
-    next();
-    tag = tag_find(name, tok == '{' || tok == ';' ? depth : -1);
-    if (tag >= 0 && !tag_is_union(tag))
-      error(104 /* "redefinition of" */, tag_desc(tag));
-  } else if (tok != '{') {
-    error(318 /* "expected a union name or '{' after 'union', not" */,
-          tok_desc());
-  }
-  if (tag < 0) {
-    tag = tag_new(name, depth, hsum, hmul);
-#ifdef CCISH_DIAG
-    if (in_params && name >= 0)
-      warning(103 /* "declared in a parameter list, so not visible "
-                     "outside it:" */, tag_desc(tag));
-#endif
-  }
-  tg_union[tag] = 1;              /* members all at 0; the largest's size */
-  if (tok == '{') {
-    if (tag_size(tag) != -1)
-      error(104 /* "redefinition of" */, tag_desc(tag));
-    parse_members(tag, 1);
+    parse_members(tag, is_union);
   }
   return struct_type(tag);
 }

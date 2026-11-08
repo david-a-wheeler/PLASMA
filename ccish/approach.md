@@ -3942,6 +3942,13 @@ page, and 32 of parse_expr's 148-byte frames, about 4.7K.
   The deepest chain measure.py sees is one call shorter (67).
   tests/run/else_if.c tests chains with and without a final else, a
   dangling else, and a chain of 40.
+- **parse_struct and parse_union** are one function,
+  `parse_struct(is_union)`, since they differed only in the union
+  test, one message and the union flag: cccomp's code is 152 bytes
+  smaller and its def table 5, its module file 240, its worst-case
+  frame stack 6, and its deepest chain one call shorter (66). Four
+  error tests cover the paths that differ (messages 102 and 318, and a
+  struct tag used as a union's and the reverse).
 
 So the goal, with streaming: shed at least 2.5K more of running
 memory (about 4K, for a margin), and shorten the deepest call chain
