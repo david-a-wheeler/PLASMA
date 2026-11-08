@@ -106,6 +106,8 @@ $(CCSTAT): tools/ccstat.pla ../src/inc/cmdsys.plh $(XPLASM)
 LIBSRC := $(wildcard lib/*.c)
 LIBOBJS:= $(patsubst lib/%.c,$(OUT)/lib/%.obj,$(LIBSRC)) \
           $(OUT)/lib/plvmexit.obj
+# The library and plvmexit's sources, for the bootstrap and measure.py.
+CCLIB_SRC = $(LIBSRC) tools/plvmexit.c
 $(OUT)/lib/%.obj: lib/%.c $(wildcard lib/include/*.h) ccpp cccomp ccgen
 	@mkdir -p $(dir $@)
 	@./ccpp -o $(OUT)/lib/$* $< && ./cccomp -o $(OUT)/lib/$* $(OUT)/lib/$* \
@@ -238,7 +240,7 @@ $(OUT)/spec/bootstrap.stamp: tests/spec/bootstrap.sh $(PASSES) tests/lib.sh \
 	@mkdir -p $(dir $@) && BOOTSTRAP_VM="$(BOOTSTRAP_VM)" \
 	 BOOT_ccpp="$(CCPP_SRC)" BOOT_cccomp="$(CCCOMP_SRC)" \
 	 BOOT_ccgen="$(CCGEN_SRC)" BOOT_ccrel="$(CCREL_SRC)" \
-	 BOOT_LIB="$(LIBSRC) tools/plvmexit.c" sh $< && touch $@
+	 BOOT_LIB="$(CCLIB_SRC)" sh $< && touch $@
 
 bootstrap: $(OUT)/spec/bootstrap.stamp
 full-test: test $(OUT)/spec/bootstrap.stamp
@@ -279,9 +281,20 @@ tests/xrun/%.ref: tests/xrun/%.c tests/xrun/%.flags inc/ptest.h
 measure: all
 	python3 tools/measure.py
 
+# The sources, for tools/measure.py: a line for each Apple II program,
+# its name and its sources in link order, and a line "lib" and the
+# library's. measure.py asks for these, so they're kept only here.
+print-sources:
+	@echo ccpp $(CCPP_SRC)
+	@echo cccomp $(CCCOMP_SRC)
+	@echo ccgen $(CCGEN_SRC)
+	@echo ccrel $(CCREL_SRC)
+	@echo lib $(CCLIB_SRC)
+
 clean:
 	rm -f ccish ccpp cccomp ccgen ccrel
 	rm -f ccpp-small cccomp-small ccgen-small ccrel-small
 	rm -rf $(OUT) tools/out bootstrap
 
-.PHONY: all small test testbuild xref measure bootstrap full-test clean
+.PHONY: all small test testbuild xref measure print-sources bootstrap full-test \
+        clean

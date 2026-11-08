@@ -9,7 +9,9 @@ then compiled with ccpp (whose default
 include directory is the library's, lib/include), cccomp and ccgen, as
 the small build (-DCCISH_SMALL, approach.md decision 21; or the full
 build, with -full). The C library (lib/*.c) and tools/plvmexit.c's
-exit are compiled too, unchanged. Then each of the Apple II programs
+exit are compiled too, unchanged (the programs' sources and the
+library's are the Makefile's, from make print-sources). Then each of
+the Apple II programs
 (ccpp, cccomp, ccgen, ccrel) is linked by tools/cclink, which adds
 only the library objects it needs, and writes OUT/PROGRAM.objs, the
 objects linked. The report gives each
@@ -40,12 +42,29 @@ CCLINK = os.path.join(TOOLS, "cclink")
 OUT = os.path.join(TOOLS, "out")
 FULL = "-full" in sys.argv[1:]      # measure the full build instead
 
-COMMON = ["diag", "bio"]
-PP = ["ppname", "pplex", "ppmac", "ppif", "ppout", "pp"]
-NAM = ["nam"]                       # in both cccomp and ccgen
-FRONT = ["tokin", "name", "type", "parse", "pexpr", "pstmt", "ptop",
-         "irout"]
-BACK = ["irin", "irloop", "lower", "peep", "emit", "helper"]
+
+
+def make_sources():
+    """The Apple II programs (B3a), each with its sources' names in link
+    order, and the library's sources as {name: path}: from the Makefile
+    (make print-sources), which keeps them for the builds and the
+    bootstrap too. (ccish, all the passes in one, is for the host only:
+    it is too large for one module.)"""
+    out = subprocess.run(["make", "-s", "--no-print-directory",
+                          "print-sources"], cwd=CCOMP, check=True,
+                         capture_output=True, text=True).stdout
+    progs, lib = [], {}
+    for line in out.splitlines():
+        name, *paths = line.split()
+        names = [os.path.basename(p)[:-2] for p in paths]
+        if name == "lib":
+            lib = {n: os.path.join(CCOMP, p) for n, p in zip(names, paths)}
+        else:
+            progs.append((name, names))
+    return progs, lib
+
+
+PROGRAMS, LIB_SOURCES = make_sources()
 # Limits raised for big_cccomp(), and the fatal messages that call
 # for it.
 BIG_LIMITS = {"MAX_FUNCS": 1024, "MAX_VARS": 512, "MAX_LABELS": 512,
@@ -71,14 +90,6 @@ PP_TABLES = [("name pool bytes", "MAX_PP_POOL"), ("macros", "MAX_MACROS"),
              ("includes open", "MAX_INCLUDE"), ("groups open", "MAX_IF_NEST")]
 LIMIT_MSGS = ("too many", "is full", "too long", "too deeply")
 
-# The Apple II programs (B3a). ccish, both passes in one, is for the
-# host only: it is too large for one module.
-PROGRAMS = [
-    ("ccpp", ["ccpp"] + COMMON + PP),
-    ("cccomp", ["cccomp"] + COMMON + NAM + FRONT),
-    ("ccgen", ["ccgen"] + COMMON + NAM + BACK),
-    ("ccrel", ["ccrel"] + COMMON + ["link"]),
-]
 
 
 def prepare(path, dest):
@@ -102,16 +113,6 @@ def prepare_all():
         if name.endswith((".c", ".h")):
             prepare(os.path.join(CCOMP, "src", name),
                     os.path.join(OUT, "src", name))
-
-
-def lib_sources():
-    """The library's objects, as {name: source path}: lib/*.c, and
-    tools/plvmexit.c's exit."""
-    lib = os.path.join(CCOMP, "lib")
-    srcs = {n[:-2]: os.path.join(lib, n) for n in os.listdir(lib)
-            if n.endswith(".c")}
-    srcs["plvmexit"] = os.path.join(TOOLS, "plvmexit.c")
-    return srcs
 
 
 def pp_args():
@@ -161,22 +162,23 @@ def build_big():
             text = re.sub(r"(#define MAX_GSYMS\s+)\d+", r"\g<1>1021", text)
         with open(os.path.join(big, os.path.basename(name)), "w") as f:
             f.write(text)
-    src = lambda names: [os.path.join(big, n + ".c") for n in names]
+    src = lambda prog: [os.path.join(big, n + ".c")
+                        for n in dict(PROGRAMS)[prog]]
     inc = '-DCCISH_INC="%s"' % os.path.join(CCOMP, "lib", "include")
     subprocess.run(["cc", "-O2", inc, "-o", os.path.join(big, "ccpp")]
-                   + src(["ccpp"] + COMMON + PP), check=True)
+                   + src("ccpp"), check=True)
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "cccomp")]
-                   + src(["cccomp"] + COMMON + NAM + FRONT), check=True)
+                   + src("cccomp"), check=True)
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccgen")]
-                   + src(["ccgen"] + COMMON + NAM + BACK), check=True)
+                   + src("ccgen"), check=True)
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccrel")]
-                   + src(["ccrel"] + COMMON + ["link"]), check=True)
+                   + src("ccrel"), check=True)
     subprocess.run(["cc", "-O2", "-DCCISH_STATS", inc, "-o",
                     os.path.join(big, "ccpp-stats")]
-                   + src(["ccpp"] + COMMON + PP), check=True)
+                   + src("ccpp"), check=True)
     subprocess.run(["cc", "-O2", "-DCCISH_STATS", "-o",
                     os.path.join(big, "cccomp-stats")]
-                   + src(["cccomp"] + COMMON + NAM + FRONT), check=True)
+                   + src("cccomp"), check=True)
     return big
 
 
@@ -379,7 +381,10 @@ def stack_report(funcs):
           " bytes" % ("at least " if unbounded else "", total["frame"],
                       "at least " if unbounded else "", total["calls"],
                       4 * total["calls"]))
-    for comp, trip, has_loops in groups:
+    # Sets order by string hashes, which differ from run to run: sort,
+    # so that the report doesn't.
+    for comp, trip, has_loops in sorted(groups,
+                                        key=lambda g: sorted(g[0])):
         if not comp & nest:
             continue
         names = sorted(comp & nest)
@@ -387,7 +392,7 @@ def stack_report(funcs):
               " calls%s" % (", ".join(names), trip["frame"], trip["calls"],
                            " (more with the unbounded recursion below)"
                            if has_loops else ""))
-    for loop in unbounded:
+    for loop in sorted(unbounded, key=sorted):
         print("    unbounded recursion (no nest count; counted once"
               " above): %s" % ", ".join(sorted(loop)))
     big = sorted(funcs, key=lambda v: -funcs[v]["frame"])[:5]
@@ -472,7 +477,7 @@ def main():
     prepare_all()
     big = build_big()
 
-    libsrc = lib_sources()
+    libsrc = LIB_SOURCES
     print("File        Code    Data  Strings     Zero")
     for name in names + sorted(libsrc):
         if name in libsrc:
