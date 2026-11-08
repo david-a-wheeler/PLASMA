@@ -37,7 +37,8 @@ Items 1, 3, 5 and 6 were decided in discussion on 2026-11-07
 (decision 36).
 7. **Get an exit status out:** `main`'s return value through the
    module's init and a driver module to the host (done), and an
-   `exit()` that unwinds.
+   `exit()` that unwinds (not yet: the library leaves `exit` out, and
+   the passes link a plvm-only stand-in; R8).
 8. **Drop the six-argument `printf`;** use a few fixed-arity output
    functions until varargs exist (approach.md already decided this).
 
@@ -140,13 +141,22 @@ for each program p in ccpp, cccomp, ccgen, ccrel:
   `-c` for the bootstrap, since ccpp/cccomp/ccgen already stop at the
   object; add one later only if it helps on the host.
 - tools/measure.py already does most of this (it compiles every
-  source with the passes and links each program, with stand-in
-  headers in tools/inc and a stub library). The bootstrap script
-  should share that preparation rather than grow a second copy, and
-  its workarounds (no `long`, `main_args`) should shrink as ccish
-  catches up.
+  source with the passes and links each program with the library
+  objects it needs). The bootstrap script should share that
+  preparation rather than grow a second copy, and its workarounds (no
+  `long`, the full build's `printf`) should shrink as ccish catches
+  up.
 
-### R2. Standard includes through a directory we control
+### R2. Standard includes through a directory we control (done)
+
+Done in phase 5: src/pp.c adds the default directory after the `-I`
+ones, `CCISH_INC` if the build defines it (the Makefile does, as
+lib/include's absolute path), else `<syspath>ccinc` from `<plasma.h>`'s
+`cmdsys`; lowercase, since plvm's file system is case sensitive. A
+self-compiled ccpp under plvm finds `<string.h>` in `sys/ccinc`. Its
+name file then names the headers by their `sys/ccinc` paths, so it
+isn't byte for byte the host ccpp's; modules don't hold file names.
+The src/ includes were already `<...>`.
 
 You should be able to write `#include <stdio.h>` and build the same
 file with gcc, with ccish on the host, and with ccish on the Apple II.
@@ -192,7 +202,12 @@ nonzero byte silently differs from C.
   suite changes little. The guide's "same type" override rule (2.3,
   5.3) goes away.
 
-### R4. A ccish C library, in its own directory
+### R4. A ccish C library, in its own directory (done)
+
+Done in phase 5, one object per function (the smallest links), built
+by the Makefile into `tests/out/lib/`. The guide's 11.2 lists them;
+the xrun tests xstring and xstdio check them against the host's C
+library.
 
 `src/vmsys.c` mixes string functions, stdio, `printf`, `exit` and the
 command line in one compiler-specific file. Instead:
@@ -209,7 +224,14 @@ command line in one compiler-specific file. Instead:
   (R6). `malloc` follows approach.md 12's sketch when something needs
   it.
 
-### R5. File I/O through FILEIO
+### R5. File I/O through FILEIO (done)
+
+Done in phase 5, unbuffered (bio.c buffers for the compiler). A `FILE
+*` is FILEIO's reference number, or negative for the console, so
+there's no table of streams. Found while testing: plvm's FILEIO create
+and destroy return `errno` even when they succeed, a stale value, so
+`fopen` ignores them (its open fails if they did) and `remove` can't
+report a missing file; and plvm doesn't implement `geteof`.
 
 The library's stdio sits on FILEIO's table: `open`, `read`, `write`,
 `close`, `create`, `destroy`, plus `newline` if we ever want text
@@ -255,10 +277,18 @@ convention (`__MODULE_ENTRY`) lost.
   up as a mystery at run time. Rejecting it is a request in
   doc/plasma-requests.md; until then, test each new import.
 
-### R7. Startup and `main(argc, argv)`
+### R7. Startup and `main(argc, argv)` (done)
+
+Done in phase 5: cccomp accepts `main` with 0 or 2 parameters, and
+when it has 2, ccrel's init calls `__start` (lib/start.c) instead,
+which splits the command line in place (its text moved down over the
+length byte, so the last NUL fits) into at most 24 words. Without the
+start object, the link fails with "undefined reference to
+'__start'". measure.py's `main_args` rename and tools/libstub.c are
+gone.
 
 The passes take command lines, and ccish's `main` takes no parameters
-today (guide 5.1), hence measure.py's `main_args` rename and the first
+today (guide 5.1), hence measure.py's former `main_args` rename and the first
 attempt's `cmd_argv` with hardcoded addresses. Instead, the library's
 startup (an object the link includes, or code ccrel's init emits)
 splits `cmdsys.cmdline` (R6) in a static buffer, skips the module name,
@@ -282,12 +312,21 @@ Done without changing PLASMA (approach.md issue 22 has the options):
    run, gen and xrun tests use it. (Making plvm itself exit with the
    status is in doc/plasma-requests.md.)
 3. **`exit()` from deep in a call** is still open. The compiler calls
-   it 8 times, all on failure, mostly through `fatal()`. Tested:
-   longjmp.pla's except/throw crashes plvm, so on plvm `exit()` can
-   only print ccstat's marker and stop with a BRK (which needs
-   function pointers); an Apple II needs except/throw. Until then a
-   failing pass shows up as a missing marker or a timeout, which
-   `ccrun` reports as a nonzero status anyway.
+   it 5 times, all on failure: each pass's `usage()`, and diag.c's
+   `stop()`, which every error reaches, often from deep in the call
+   tree, so the compiler can't do without it. Tested: longjmp.pla's
+   except/throw crashes plvm. A real `exit()` must restore the 6502
+   stack and the VM's frame and evaluation stacks to where init called
+   `main`, close the open files, and return the status as init's
+   result: except/throw, or a small 6502 routine of ccish's own,
+   called through a function pointer. Decided (2026-11-08): the
+   library doesn't define `exit` until then (`<stdlib.h>` declares it,
+   so a call is an undefined reference at link time), and ccish's own
+   passes link `tools/plvmexit.c`, a plvm-only stand-in that prints
+   ccstat's marker and runs a BRK (a function pointer to a 0 byte;
+   plvm doesn't implement `__call`). plvm exits at a BRK, so nothing
+   needs unwinding there; on an Apple II, a BRK drops into the monitor,
+   which is why it isn't the library's.
 
 ### R9. No six-argument `printf` (done)
 
@@ -408,9 +447,9 @@ Options: raise the limits (about 13 bytes per name), or write slimmer
 summaries (only names an object defines or references, as a C linker
 keeps). ccrel has the most headroom (14,200-byte module file).
 
-**B6. File I/O.** Not a VM gap after all: plvm has FILEIO. The gate
-is ccish's side: R3 to R7 (function pointers, data imports, the
-library, startup).
+**B6. File I/O (done).** Not a VM gap after all: plvm has FILEIO. The
+gate was ccish's side: R3 to R7 (function pointers, data imports, the
+library, startup), all done.
 
 **B7. The 64K budget.** cccomp's module file (42,743 bytes) doesn't
 fit an Apple II's free memory yet (AGENTS.md); under plvm, with no
@@ -476,15 +515,20 @@ decision 35).**
    `read` and `close` under plvm. Cost: cccomp +721 bytes of code and
    +96 of data, ccrel +640 of code, ccpp +165, ccgen +59.
 
-**Phase 5: the library and startup.**
+**Phase 5: the library and startup (done, 2026-11-08).**
 8. `lib/include` and the default include directory: compiled in on
-   the host, `<syspath>CCINC/` under the VM (R2).
+   the host, `<syspath>ccinc` under the VM (R2).
 9. Startup and `main(argc, argv)` from `cmdsys.cmdline` (R7).
-10. The C library (R4, R5): string.h first, then stdio over FILEIO
+10. The C library (R4, R5): string.h, then stdio over FILEIO
     (`fopen`, `fread`, `fwrite`, `fclose`, `remove`, `getc`, `putc`,
-    `fputs`), stdlib's `exit` (a stopgap that reports and stops), with
-    run tests under plvm. Measure each program with the library linked
-    in.
+    `fputs`), and no `exit` (R8 part 3), with xrun tests against the
+    host's library and tests/spec/lib.sh under plvm. Measured with
+    the library linked in (each program links only the objects it
+    needs): cccomp's library is 790 bytes of code and 179 of data
+    (the 128-byte path buffer, the 50-byte `argv`), its module file
+    49,081 bytes (+981); ccpp's own code grew 55 bytes (the
+    `<syspath>ccinc` branch) and its library is 888 bytes of code;
+    ccgen's 854; ccrel's 852.
 
 **Phase 6: the bootstrap.**
 11. ccrel's `@list` file (R10), then rewrite tests/spec/bootstrap.sh
@@ -493,10 +537,11 @@ decision 35).**
 13. Run the stages; diagnose a stage 2 versus stage 3 difference with
     the kept directories, file by file (`-i` and `-d` dumps line up).
 
-**Later.**
-14. `exit()` that unwinds (`CCRT`, R8 part 3) and a stderr route.
-    The compiler calls `exit` only on failure, so a successful stage
-    never needs it; until then a failing pass shows up as a timeout.
-15. The Apple II itself: CR line ends in ccpp, ProDOS file names, a
-    disk layout matching R2's `sys/` directories, and cccomp fitting
-    in free memory (B7).
+**Before the Apple II.**
+14. `exit()` that unwinds (R8 part 3), in the library, replacing
+    tools/plvmexit.c; and a stderr route. A successful stage never
+    calls `exit`, so the bootstrap under plvm doesn't wait for it, but
+    the passes can't run on an Apple II without it.
+15. The Apple II itself: CR line ends in ccpp, ProDOS file names
+    (`ccinc` is lowercase today), a disk layout matching R2's `sys/`
+    directories, and cccomp fitting in free memory (B7).

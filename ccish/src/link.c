@@ -570,8 +570,8 @@ static void use_cmdsys(const char *name)
 }
 
 /* After step 1: resolve the shared names. A used name that no object
- * defines must be a CMDSYS function, which becomes an import; main
- * becomes the entry point. */
+ * defines must be a CMDSYS function, which becomes an import; main, or
+ * __start for a main with parameters, becomes the entry point. */
 static void resolve(void)
 {
   int g;
@@ -610,6 +610,15 @@ static void resolve(void)
       if (g_mod[g])
         mod_used[g_mod[g] - 1] = 1;
     }
+  }
+  /* main(argc, argv): init calls the library's startup (lib/start.c),
+   * which splits the command line and calls main. */
+  if (main_sym >= 0 && g_count[main_sym] == 2) {
+    g = gsym_find("__start");
+    if (g < 0 || g_def[g] == NO_OBJ)
+      undefined(172 /* "undefined reference to" */, "__start");
+    else
+      main_sym = g;
   }
 }
 

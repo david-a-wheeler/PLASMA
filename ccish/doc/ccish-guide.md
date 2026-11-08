@@ -24,11 +24,12 @@ share the name: a program written in it is *C-ish*, and `ccish` is the
 compiler. It is intended to aggressively optimize its generated results.
 
 The ccish compiler is designed to run on an Apple II and to compile
-itself there. It doesn't yet. ccish compiles its own sources, but
-the four passes still need imports from other PLASMA modules and a C
-library over FILEIO (section 9.1) before they can run under the VM;
-PLASMA's loaders must stream a module's RLD; and `cccomp` must shrink
-by about 3 to 5K to fit a 64K machine's free memory. The plan is in
+itself there. It doesn't yet. ccish compiles its own sources and links
+them with its C library (section 11.2), and the self-compiled ccpp
+runs under plvm; the bootstrap itself is next. Before the Apple II,
+`exit()` must unwind the VM (section 11.2), PLASMA's loaders must
+stream a module's RLD, and `cccomp` must shrink by about 4 to 5K to
+fit a 64K machine's free memory. The plan is in
 doc/bootstrap-test.md, and the memory budget in approach.md, issue 24.
 
 ### 1.1 A subset of C, not a standard
@@ -125,7 +126,7 @@ A few special quirks:
 ### 2.1 Compiling a file
 
 ```
-ccish [-l] [-d] [-i] [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.c
+ccish [-l] [-d] [-i] [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.c [object...]
 ```
 
 * `-o output`: the module file to write. The default is the input name
@@ -148,6 +149,9 @@ ccish [-l] [-d] [-i] [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.
 * `-I dir`: add a directory to the `#include` search (section 8).
 * `-D name[=text]` and `-U name`: define and undefine a macro before
   the first line of the program.
+* `object...`: more objects to link into the module after the input's,
+  each named as for `ccrel` (section 2.3), such as the C library's
+  (section 11.2).
 
 Example:
 
@@ -220,11 +224,15 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   type hash) and a global's size ("conflicting types for"). This
   holds even for a declaration nothing uses.
 * A function that no object defines must be a CMDSYS function
-  (`__puts` and the rest), which is imported (section 5.3); a program
-  may define its own function of a CMDSYS name, with the same type,
-  and calls then go to it. Anything else used and not defined,
-  including a plain `puts` or `memset`, is an "undefined reference".
-* `main` (not `static`) in any object is the entry point.
+  (`__puts` and the rest), which is imported (section 5.3), or a
+  PLASMA import (section 11.1); a program may define its own function
+  of a CMDSYS name, with the same type, and calls then go to it.
+  Anything else used and not defined is an "undefined reference",
+  including a C library function (`strlen`) whose object isn't on the
+  link line (section 11.2).
+* `main` (not `static`) in any object is the entry point. A `main`
+  with parameters needs the library's `start` object, which calls it
+  (section 5.1).
 * The module exports nothing. It imports CMDSYS functions, by their
   PLASMA names (`__puts` imports `PUTS`), and what you declare as a
   PLASMA import (section 11.1); other C names are matched in full,
@@ -731,7 +739,12 @@ A few specifics:
 * The return type can be any of these types but an array.
 * Parameters can be any type but `void`. An array parameter is a
   pointer, as in C (section 4.6).
-* `main` takes no parameters (`int main(void)`). Its return value,
+* `main` takes no parameters (`int main(void)`), or two (`int
+  main(int argc, char **argv)`). With two, link the library's `start`
+  object (section 11.2): ccrel's init calls its `__start`, which splits
+  CMDSYS's command line at spaces, the module's name first, and calls
+  `main`. It keeps at most 24 words (`MAX_ARGS`). The parameters'
+  types aren't checked. Its return value,
   `& 255`, is the program's exit status: the module's init returns its
   negation, PLASMA's error convention, so an Apple II shows a nonzero
   status as `ERR:$xx`. plvm always exits 0; to get the status on the
@@ -1272,9 +1285,16 @@ before anything else, as in C.
 ### 8.1 #include
 
 ```c
-#include "file.h"     /* beside the including file, then the -I dirs */
-#include <file>       /* only the -I dirs */
+#include "file.h"     /* beside the including file, then as <file> */
+#include <file>       /* the -I dirs, then the library's headers */
 ```
+
+After the `-I` directories, ccpp looks in the C library's include
+directory (section 11.2): on the host, `lib/include` (its absolute
+path, compiled in by the Makefile as `CCISH_INC`); built by ccish and
+run under the VM, `ccinc` in CMDSYS's system directory (`syspath`),
+which under plvm is `sys/ccinc` in the current directory. A `-I`
+directory holding a header of the same name comes first.
 
 Includes nest a few levels deep; the limit is message 236, which
 says the file is missing or too many files are open. Each file read
@@ -1372,19 +1392,16 @@ directive is an error.
 
 ### 9.1 Not implemented, expected soon
 
-* A C library and the standard headers (`<stdio.h>`, `<string.h>`
-  and the rest): `stdio` over FILEIO, `string.h`, and `exit`. Today
-  there are only the CMDSYS functions (section 11).
-* `main` with parameters (`int main(int argc, char **argv)`, from
-  the command line).
+* `exit()`: declared in `<stdlib.h>` but not defined, so a call is an
+  undefined reference when the module is linked (section 11.2).
+* The rest of the C library: `printf` (which needs varargs), `malloc`,
+  and the other headers (section 11.2 lists what there is).
 * A struct-valued `?:` (`s = k ? a : b;`): use an `if`.
 * `signed char`.
 
-Each gives a "not supported yet" error, except the struct `?:`
-("a struct can't be used as a value here"), and the missing library,
-whose functions are undeclared (or, if you declare them, undefined
-when the module is linked). The first two are the next steps of the
-bootstrap (doc/bootstrap-test.md, phase 5).
+Each gives a "not supported yet" error, except `exit` and the missing
+library functions (undeclared, or undefined when linked), and the
+struct `?:` ("a struct can't be used as a value here").
 
 ### 9.2 Out of scope
 
@@ -1639,13 +1656,13 @@ The routines, with their ccish names, parameters and return types:
 | `__heaprelease` | `void *p` | `int` | Puts the top of the heap back to `p`, releasing everything allocated since, and returns the bytes freed. |
 | `__heapavail` | none | `int` | Returns the number of heap bytes still free. |
 | `__memset` | `void *p, int c, int n` | `void` | Fills `n` bytes at `p` with the 16-bit pattern `c`. |
-| `__memcpy` | `void *d, const void *s, int n` | `void` | Copies `n` bytes from `s` to `d`, correct even when they overlap. |
+| `__memcpy` | `void *d, const void *s, int n` | `void` | Copies `n` bytes from `s` to `d`, correct even when they overlap on an Apple II (plvm's calls the host's `memcpy`, which needn't be). |
 | `__isugt` | `int a, int b` | `int` | 0 or -1: is `a` greater than `b` as `unsigned`? |
 | `__isuge` | `int a, int b` | `int` | 0 or -1: is `a` at least `b` as `unsigned`? |
 | `__isult` | `int a, int b` | `int` | 0 or -1: is `a` less than `b` as `unsigned`? |
 | `__isule` | `int a, int b` | `int` | 0 or -1: is `a` at most `b` as `unsigned`? |
 | `__syscall` | `int cmd, void *params` | `int` | Runs a ProDOS system call with the command byte `cmd` and the parameter block at `params`, returning the error code (0 on success). |
-| `__call` | `int addr, int a, int x, int y, int st` | `int` | Calls a 6502 routine at `addr` with `A`, `X`, `Y` and the status set, and returns a pointer to a four-byte block with the result in `A`, `X`, `Y` and the status. |
+| `__call` | `int addr, int a, int x, int y, int st` | `int` | Calls a 6502 routine at `addr` with `A`, `X`, `Y` and the status set, and returns a pointer to a four-byte block with the result in `A`, `X`, `Y` and the status. plvm doesn't implement it ("SYSCALL6502 unimplemented!"); there, call the address through a function pointer instead, which runs it as 6502 code. |
 
 The export table also holds `DIVMOD(a, b)` which divides `a` by `b` and returns two values, the
 quotient and the remainder. You'll need to assign that return value to a
@@ -1701,6 +1718,64 @@ ref = fileio.open(pstr("MYFILE"));  /* a load from the table, then ICAL */
   `#ifdef __CCISH__` when a header is shared with another compiler.
   Under `plvm`, FILEIO and CONIO are built in, so their dependencies
   load no file.
+* `<plasma.h>`, in the library's headers (section 11.2), declares
+  `cmdsys` and `fileio` this way, with their tables' layouts.
+
+### 11.2 The C library
+
+ccish has a small C library, written in ccish's C: the headers in
+`lib/include/`, and one source per function in `lib/`. `make`
+compiles each into `tests/out/lib/NAME` (`NAME.obj` and `NAME.syms`).
+ccrel links whole objects, and doesn't search a library yet, so you
+name on the link line the objects your program calls, and the ones
+they call:
+
+```
+$ L=tests/out/lib
+$ ./ccish -o copy copy.c $L/start $L/fopen $L/path $L/fread $L/fwrite $L/strlen
+```
+
+| Header | What's there |
+|---|---|
+| `<string.h>` | `strlen`, `strcmp`, `strcpy`, `strcat`, `strncpy`, `strncat`, `strchr`, `strrchr`, `memcpy`, `memmove`, `memset` |
+| `<stdio.h>` | `fopen`, `fclose`, `getc`, `putc`, `fputs`, `fread`, `fwrite`, `remove`, and `fflush` (a macro), `stdin`, `stdout`, `stderr`, `EOF` |
+| `<stdlib.h>` | `EXIT_SUCCESS`, `EXIT_FAILURE`, and `exit` (declared, but not defined yet) |
+| `<stddef.h>` | `size_t` (`unsigned`), `ptrdiff_t`, `NULL` |
+| `<plasma.h>` | `cmdsys` and `fileio`, CMDSYS's and FILEIO's tables (section 11.1); not standard C |
+
+* **Which objects:** each is named for its function, so `strlen`'s is
+  `strlen`. Some call others: `fopen` (which holds `fclose` too) and
+  `remove` call `path`, and `path` and `fputs` call `strlen`. `start`
+  is the startup for `main(argc, argv)` (section 5.1). A missing one
+  is an "undefined reference" that names the function.
+* **stdio is unbuffered**, over FILEIO: each call is one FILEIO call,
+  so read and write in blocks, not a byte at a time. There's nothing
+  to flush, so `fflush` is 0.
+* **A `FILE *` is FILEIO's reference number**, or negative for the
+  console, so there's no table of streams and no limit but FILEIO's
+  (ProDOS's 8 open files). Don't look inside one. `stdin`, `stdout`
+  and `stderr` are all the console; a `'\n'` written to it is CMDSYS's
+  newline, so it works on every machine.
+* **`fopen`** takes a mode starting with `r` (read) or `w` (write,
+  after destroying the file and creating it as a binary file, ProDOS
+  type $06); FILEIO opens a file for both either way. Any other mode,
+  or a path over 127 characters, gives `NULL`. Files are binary: no
+  newline conversion.
+* **`remove`** can't report a missing file under plvm, whose FILEIO
+  destroy returns a stale error code; it returns 0, or `EOF` for a path
+  that's too long. `fclose` returns 0.
+* **`memcpy` and `memset`** call CMDSYS's `__memcpy` and `__memset`.
+  `memmove` copies a byte at a time, since plvm's `__memcpy` calls the
+  host's `memcpy`, which needn't handle an overlap.
+* **`exit` isn't implemented.** It has to unwind the VM back to CMD
+  (the 6502 stack and the VM's frame and evaluation stacks) and close
+  the open files, which takes PLASMA's except/throw or a 6502 routine
+  of ccish's own (doc/bootstrap-test.md, R8). So a call to it is an
+  undefined reference when the module is linked. ccish's own passes
+  call it on their first error, and link `tools/plvmexit.c`'s
+  stand-in, for plvm only: it prints `tools/ccstat.pla`'s status
+  marker and runs a 6502 BRK, which makes plvm exit. Don't use it on
+  an Apple II, where a BRK drops into the monitor.
 
 ## 12. Writing small and fast code
 

@@ -8,11 +8,13 @@ OUT=tests/out
 bad=0
 mkdir -p "$OUT/small"
 
-# $1 the source, $2 an extra ccpp option (""). The small ccpp/cccomp/
-# ccgen must write the full build's token stream, name file, object and
-# symbol summary, and ccrel-small the same module.
+# $1 the source, $2 an extra ccpp option (""), $3 a tag for the file
+# names, and $4 the library objects to link (a cross test's NAME.lib,
+# or none). The small ccpp/cccomp/ccgen must write the full build's
+# token stream, name file, object and symbol summary, and ccrel-small
+# the same module.
 same_build() {
-    src=$1 extra=$2 tag=$3
+    src=$1 extra=$2 tag=$3 libs=${4:-}
     if ! ./ccpp $extra -o "$OUT/small/$tag.f" "$src" 2>/dev/null \
        || ! ./ccpp-small $extra -o "$OUT/small/$tag.s" "$src" 2>/dev/null \
        || ! cmp -s "$OUT/small/$tag.f.i" "$OUT/small/$tag.s.i" \
@@ -27,8 +29,10 @@ same_build() {
        || ! cc_obj -small "$OUT/small/$tag.s" "$src" "$extra" 2>/dev/null \
        || ! cmp -s "$OUT/small/$tag.f.obj" "$OUT/small/$tag.s.obj" \
        || ! cmp -s "$OUT/small/$tag.f.syms" "$OUT/small/$tag.s.syms" \
-       || ! ./ccrel "$OUT/small/$tag.f" 2>/dev/null \
-       || ! ./ccrel-small "$OUT/small/$tag.s" 2>/dev/null \
+       || ! ./ccrel -o "$OUT/small/$tag.f" "$OUT/small/$tag.f" $libs \
+            2>/dev/null \
+       || ! ./ccrel-small -o "$OUT/small/$tag.s" "$OUT/small/$tag.s" $libs \
+            2>/dev/null \
        || ! cmp -s "$OUT/small/$tag.f" "$OUT/small/$tag.s"; then
         echo "FAIL $src: the small build doesn't write the full build's" \
              "object and module"
@@ -44,7 +48,12 @@ for src in tests/run/*.c; do
 done
 i=0
 for src in tests/xrun/*.c; do
-    i=$((i + 1)); same_build "$src" "-I inc" "xrun$i"
+    i=$((i + 1))
+    libs=""
+    if [ -f "${src%.c}.lib" ]; then
+        for o in $(cat "${src%.c}.lib"); do libs="$libs $OUT/lib/$o"; done
+    fi
+    same_build "$src" "-I inc" "xrun$i" "$libs"
 done
 i=0
 for src in tests/gen/*.c; do

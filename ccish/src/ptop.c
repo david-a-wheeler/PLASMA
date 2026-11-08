@@ -888,8 +888,8 @@ static void parse_toplevel(void)
   if (nparams_of(f) >= 0 && nparams_of(f) != nparams)
     error(169 /* "parameter count differs from earlier use of" */,
           quote(fn_name[f]));
-  if (fn_name[f] == ID_MAIN && nparams != 0)
-    error(170 /* "main with parameters is not supported yet" */, NULL);
+  if (fn_name[f] == ID_MAIN && nparams != 0 && nparams != 2)
+    error(170 /* "main takes no parameters, or two" */, NULL);
   set_param_types(f, nparams);
   fn_type[f] = type;
   set_nparams(f, nparams);

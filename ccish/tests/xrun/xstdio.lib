@@ -1,0 +1,10 @@
+fopen
+path
+fread
+fwrite
+getc
+putc
+fputs
+remove
+strlen
+memcpy

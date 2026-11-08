@@ -167,7 +167,7 @@
 167 expected '{' or ';' after function header, not
 168 parameter name missing in definition of
 169 parameter count differs from earlier use of
-170 main with parameters is not supported yet
+170 main takes no parameters, or two
 171 cannot open
 172 undefined reference to
 173 declaration doesn't match the CMDSYS function

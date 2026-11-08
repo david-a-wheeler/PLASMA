@@ -4,24 +4,26 @@
 Usage: tools/measure.py [-full]   (after `make`; writes tools/out/)
 
 Each file in src/, and the headers it includes, is copied to
-tools/out/src/ (and tools/inc/'s stand-in headers to tools/out/inc/)
-with its comments taken out and worked around where ccish still lacks
-something, then compiled with ccpp (with -I tools/out/inc), cccomp and
-ccgen, as the small build (-DCCISH_SMALL, approach.md decision 21; or
-the full build, with -full). Then each of the Apple II programs (ccpp,
-cccomp, ccgen, ccrel) is linked with ccrel, with tools/libstub.c
-standing in for the C library. The report gives each file's code,
-data and string sizes (from its .syms header) and each program's
-totals and link workload (from ccrel's listing), and how full ccpp's
-tables got (from a ccpp built with CCISH_STATS). See approach.md
+tools/out/src/ with its comments taken out and worked around where
+ccish still lacks something, then compiled with ccpp (whose default
+include directory is the library's, lib/include), cccomp and ccgen, as
+the small build (-DCCISH_SMALL, approach.md decision 21; or the full
+build, with -full). The C library (lib/*.c) and tools/plvmexit.c's
+exit are compiled too, unchanged. Then each of the Apple II programs
+(ccpp, cccomp, ccgen, ccrel) is linked with ccrel, with only the
+library objects it needs: each undefined reference ccrel reports adds
+the object that defines it, until none is left. The report gives each
+file's code, data and string sizes (from its .syms header) and each
+program's totals and link workload (from ccrel's listing), and how full
+ccpp's tables got (from a ccpp built with CCISH_STATS). See approach.md
 18.5 and 18.6 E2.
 
 The workarounds, each something ccish doesn't accept yet:
   - long and short become int, and l and L number suffixes go (ccish
     has unsigned, and u suffixes, but no long);
-  - the printf family becomes 0 (in tools/inc/stdio.h), so its calls
-    and the C library itself aren't counted;
-  - main(argc, argv) is renamed main_args; libstub.c's main calls it;
+  - in the full build, the printf family becomes 0 (a #define at the
+    top of each file: the library has no printf, and only the full
+    build's listings call it);
   - parse.c's one struct ?: becomes an if.
 A file that stops on one of ccish's own limits (say, "too many
 variables") is compiled again by a cccomp and ccgen built from a copy of the
@@ -117,33 +119,44 @@ def prepare(path, dest):
     text = re.sub(r"\bint int\b", "int", text)    # unsigned long int
     text = re.sub(r"\b(0[xX][0-9A-Fa-f]+|[0-9]+)([uU]?)[lL]+([uU]?)\b",
                   r"\1\2\3", text)
-    text = re.sub(r"\bint main\(int argc", "int main_args(int argc", text)
     text = text.replace("*o = take_b ? b : c;",
                         "if (take_b) *o = b; else *o = c;")
+    if FULL and dest.endswith(".c"):
+        text = ("#define printf(...) 0\n#define fprintf(...) 0\n"
+                "#define sprintf(...) 0\n" + text)
     with open(dest, "w") as f:
         f.write(text)
 
 
 def prepare_all():
-    """Prepare every source and header (src/), stand-in header
-    (tools/inc/) and tools/libstub.c, into OUT/src/ and OUT/inc/."""
-    for sub in ("src", "inc"):
-        os.makedirs(os.path.join(OUT, sub), exist_ok=True)
+    """Prepare every source and header (src/) into OUT/src/."""
+    os.makedirs(os.path.join(OUT, "src"), exist_ok=True)
     for name in os.listdir(os.path.join(CCOMP, "src")):
         if name.endswith((".c", ".h")):
             prepare(os.path.join(CCOMP, "src", name),
                     os.path.join(OUT, "src", name))
-    for name in os.listdir(os.path.join(TOOLS, "inc")):
-        prepare(os.path.join(TOOLS, "inc", name),
-                os.path.join(OUT, "inc", name))
-    prepare(os.path.join(TOOLS, "libstub.c"),
-            os.path.join(OUT, "src", "libstub.c"))
+
+
+def lib_sources():
+    """The library's objects, as {name: source path}: lib/*.c, and
+    tools/plvmexit.c's exit."""
+    lib = os.path.join(CCOMP, "lib")
+    srcs = {n[:-2]: os.path.join(lib, n) for n in os.listdir(lib)
+            if n.endswith(".c")}
+    srcs["plvmexit"] = os.path.join(TOOLS, "plvmexit.c")
+    return srcs
+
+
+def lib_object(symbol):
+    """The library object that defines symbol: each defines the function
+    it's named for, less a leading __ (__start, __path), but exit is
+    plvmexit's."""
+    return "plvmexit" if symbol == "exit" else symbol.lstrip("_")
 
 
 def pp_args():
-    """ccpp's options: the stand-in headers, and the build."""
-    return (["-I", os.path.join(OUT, "inc")]
-            + ([] if FULL else ["-DCCISH_SMALL"]))
+    """ccpp's options: the build."""
+    return [] if FULL else ["-DCCISH_SMALL"]
 
 
 def run(args):
@@ -152,13 +165,13 @@ def run(args):
     return r.returncode == 0, r.stdout + r.stderr
 
 
-def compile_obj(bindir, name, keep=False):
-    """Compile OUT/src/NAME.c into OUT/NAME.obj and .syms with BINDIR's
-    ccpp, cccomp and ccgen (keeping NAME.i, NAME.nam and NAME.ir if
-    keep); return (succeeded, messages)."""
+def compile_obj(bindir, name, keep=False, src=None):
+    """Compile OUT/src/NAME.c (or src) into OUT/NAME.obj and .syms with
+    BINDIR's ccpp, cccomp and ccgen (keeping NAME.i, NAME.nam and
+    NAME.ir if keep); return (succeeded, messages)."""
     out = os.path.join(OUT, name)
     ok, msg = run([os.path.join(bindir, "ccpp"), "-o", out] + pp_args()
-                  + [os.path.join(OUT, "src", name + ".c")])
+                  + [src or os.path.join(OUT, "src", name + ".c")])
     if ok:
         ok, msg = run([os.path.join(bindir, "cccomp")]
                       + (["-k"] if keep else []) + [out])
@@ -189,7 +202,8 @@ def build_big():
         with open(os.path.join(big, os.path.basename(name)), "w") as f:
             f.write(text)
     src = lambda names: [os.path.join(big, n + ".c") for n in names]
-    subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccpp")]
+    inc = '-DCCISH_INC="%s"' % os.path.join(CCOMP, "lib", "include")
+    subprocess.run(["cc", "-O2", inc, "-o", os.path.join(big, "ccpp")]
                    + src(["ccpp"] + COMMON + PP), check=True)
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "cccomp")]
                    + src(["cccomp"] + COMMON + NAM + FRONT), check=True)
@@ -197,7 +211,7 @@ def build_big():
                    + src(["ccgen"] + COMMON + NAM + BACK), check=True)
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccrel")]
                    + src(["ccrel"] + COMMON + ["link"]), check=True)
-    subprocess.run(["cc", "-O2", "-DCCISH_STATS", "-o",
+    subprocess.run(["cc", "-O2", "-DCCISH_STATS", inc, "-o",
                     os.path.join(big, "ccpp-stats")]
                    + src(["ccpp"] + COMMON + PP), check=True)
     subprocess.run(["cc", "-O2", "-DCCISH_STATS", "-o",
@@ -497,8 +511,22 @@ def main():
     prepare_all()
     big = build_big()
 
+    libsrc = lib_sources()
     print("File        Code    Data  Strings  Functions")
-    for name in names + ["libstub"]:
+    for name in names + sorted(libsrc):
+        if name in libsrc:
+            if name == sorted(libsrc)[0]:
+                print("The library:")
+            ok, msg = compile_obj(CCOMP, name, src=libsrc[name])
+            if not ok:
+                print("%-10s  FAILED: %s" % (name, msg.strip()))
+                failed = True
+                continue
+            sizes[name] = summary(name)
+            data, strs, code, nfuncs = sizes[name]
+            print("%-10s %5d   %5d    %5d      %5d"
+                  % (name, code, data, strs, nfuncs))
+            continue
         stats, cstats = pp_stats(big, name)
         for i, v in enumerate(stats or []):
             if v > peaks[i]:
@@ -544,12 +572,21 @@ def main():
         if any(n not in sizes for n in files):
             print("%s: not linked (a file failed)" % prog)
             continue
-        objs = [os.path.join(OUT, n) for n in files + ["libstub"]]
         module = os.path.join(OUT, prog)
         # A file compiled with raised limits may be over ccrel's too.
         raised = [n for n in files if n in over]
         ccrel = os.path.join(big if raised else CCOMP, "ccrel")
-        ok, msg = run([ccrel, "-l", "-o", module] + objs)
+        # Add the library object for each undefined reference (ccrel
+        # stops at the first), until none is left.
+        libs = []
+        while True:
+            objs = [os.path.join(OUT, n) for n in files + libs]
+            ok, msg = run([ccrel, "-l", "-o", module] + objs)
+            m = re.search(r"undefined reference to '(\w+)'", msg)
+            if ok or not m or lib_object(m.group(1)) in libs \
+               or lib_object(m.group(1)) not in sizes:
+                break
+            libs.append(lib_object(m.group(1)))
         if not ok and any(m in msg for m in LIMIT_MSGS):
             # Over one of ccrel's own limits: link with raised limits,
             # and say which.
@@ -567,11 +604,18 @@ def main():
         code = sum(sizes[n][2] for n in files)
         data = sum(sizes[n][0] for n in files)
         strs = sum(sizes[n][1] for n in files)
+        lcode = sum(sizes[n][2] for n in libs)
+        ldata = sum(sizes[n][0] for n in libs)
+        lstrs = sum(sizes[n][1] for n in libs)
         rld, defs = module_rld(module)
         last = msg.strip().splitlines()[-1]
-        print("%s: %d files, not counting libstub:" % (prog, len(files)))
-        print("  code %d, data %d, strings %d: %d in all"
+        print("%s: %d files, and %d library objects:"
+              % (prog, len(files), len(libs)))
+        print("  its own code %d, data %d, strings %d: %d in all"
               % (code, data, strs, code + data + strs))
+        print("  the library's code %d, data %d, strings %d: %d in all"
+              " (%s)" % (lcode, ldata, lstrs, lcode + ldata + lstrs,
+                         " ".join(sorted(libs))))
         print("  module file %d bytes, all read into memory to load it;"
               " %d of them RLD and ESD, freed after" % (
                   os.path.getsize(module), rld))

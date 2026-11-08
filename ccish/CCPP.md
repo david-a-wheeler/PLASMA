@@ -65,8 +65,13 @@ its output and `NAME.nam` open. PLASMA's Apple II file library allows
 steps 4-6):
 
 - **`#include "file"`** looks for `file` beside the file that
-  includes it, then in each `-I` directory in order; **`#include
-  <file>`** only in the `-I` directories. Includes nest up to
+  includes it, then in each include directory in order; **`#include
+  <file>`** only in the include directories. Those are the `-I` ones,
+  then the C library's headers: `CCISH_INC` if the build defines it
+  (the Makefile does, as `lib/include`'s absolute path), else, for a
+  ccpp built by ccish, `ccinc` in CMDSYS's `syspath` (`sys/ccinc`
+  under plvm). The default counts as one of the 8 `MAX_INC_DIRS`.
+  Includes nest up to
   `MAX_INCLUDE` (3) deep beside the source, or fewer if the system
   can't open that many files (message 236 says the file is missing or
   too many files are open). Each file read gets a number in

@@ -32,6 +32,9 @@ FRONT  = src/tokin.c src/name.c src/type.c src/parse.c src/pexpr.c \
 BACK   = src/irin.c src/lower.c src/peep.c src/emit.c src/helper.c
 LINK   = src/link.c
 HEADERS= $(wildcard src/*.h)
+# The library's headers: ccpp's default include directory, compiled in
+# for the host (on the VM it's <syspath>ccinc; src/pp.c).
+CCINC  = -DCCISH_INC='"$(abspath lib/include)"'
 PLVM   = ../src/plvm
 PLVMBIN= $(abspath $(PLVM))
 # The 6502 VM that runs the compiler-bootstrap stages 2 and 3
@@ -49,10 +52,10 @@ CCRUN  = CCSTAT=$(abspath $(CCSTAT)) PLVM=$(PLVMBIN) $(abspath tools/ccrun)
 all: ccish ccpp cccomp ccgen ccrel
 
 ccish: src/main.c $(COMMON) $(PP) $(NAM) $(FRONT) $(BACK) $(LINK) $(HEADERS)
-	$(CC) $(CFLAGS) -o $@ src/main.c $(COMMON) $(PP) $(NAM) $(FRONT) $(BACK) $(LINK)
+	$(CC) $(CFLAGS) $(CCINC) -o $@ src/main.c $(COMMON) $(PP) $(NAM) $(FRONT) $(BACK) $(LINK)
 
 ccpp: src/ccpp.c $(COMMON) $(PP) $(HEADERS)
-	$(CC) $(CFLAGS) -o $@ src/ccpp.c $(COMMON) $(PP)
+	$(CC) $(CFLAGS) $(CCINC) -o $@ src/ccpp.c $(COMMON) $(PP)
 
 cccomp: src/cccomp.c $(COMMON) $(NAM) $(FRONT) $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ src/cccomp.c $(COMMON) $(NAM) $(FRONT)
@@ -68,7 +71,7 @@ ccrel: src/ccrel.c $(COMMON) $(LINK) $(HEADERS)
 small: ccpp-small cccomp-small ccgen-small ccrel-small
 
 ccpp-small: src/ccpp.c $(COMMON) $(PP) $(HEADERS)
-	$(CC) $(CFLAGS) -DCCISH_SMALL -o $@ src/ccpp.c $(COMMON) $(PP)
+	$(CC) $(CFLAGS) $(CCINC) -DCCISH_SMALL -o $@ src/ccpp.c $(COMMON) $(PP)
 
 cccomp-small: src/cccomp.c $(COMMON) $(NAM) $(FRONT) $(HEADERS)
 	$(CC) $(CFLAGS) -DCCISH_SMALL -o $@ src/cccomp.c $(COMMON) $(NAM) $(FRONT)
@@ -90,11 +93,29 @@ $(CCSTAT): tools/ccstat.pla ../src/inc/cmdsys.plh $(XPLASM)
 	$(XPLASM) -AMOWS tools/ccstat.pla > $@.a
 	$(ACME) --setpc 4094 -o $@ $@.a
 
+# The C library (lib/, doc/bootstrap-test.md R4): one object per
+# source, $(OUT)/lib/NAME.obj and .syms, compiled by the host passes;
+# and tools/plvmexit.c's exit, for running ccish's own passes under
+# plvm (not part of the library).
+LIBSRC := $(wildcard lib/*.c)
+LIBOBJS:= $(patsubst lib/%.c,$(OUT)/lib/%.obj,$(LIBSRC)) \
+          $(OUT)/lib/plvmexit.obj
+$(OUT)/lib/%.obj: lib/%.c $(wildcard lib/include/*.h) ccpp cccomp ccgen
+	@mkdir -p $(dir $@)
+	@./ccpp -o $(OUT)/lib/$* $< && ./cccomp -o $(OUT)/lib/$* $(OUT)/lib/$* \
+	 && ./ccgen $(OUT)/lib/$*
+$(OUT)/lib/plvmexit.obj: tools/plvmexit.c $(wildcard lib/include/*.h) \
+                         ccpp cccomp ccgen
+	@mkdir -p $(dir $@)
+	@./ccpp -o $(OUT)/lib/plvmexit $< \
+	 && ./cccomp -o $(OUT)/lib/plvmexit $(OUT)/lib/plvmexit \
+	 && ./ccgen $(OUT)/lib/plvmexit
+
 # The passes a test may run; a stamp depends on these, so a rebuilt pass
 # re-runs the tests.
 PASSES := ccish ccpp cccomp ccgen ccrel \
           ccpp-small cccomp-small ccgen-small ccrel-small $(PLVM) \
-          $(CCSTAT) tools/ccrun
+          $(CCSTAT) tools/ccrun $(LIBOBJS)
 
 # --- The test kinds. Each is a directory of inputs; the stamp for input
 # tests/<kind>/<stem> is tests/out/<kind>/<stem>.stamp.
@@ -136,11 +157,16 @@ $(OUT)/gen/%.stamp: tests/gen/%.c tests/gen/%.exp \
 
 # xrun: the same source must print the same under ccish+plvm as under
 # the host oracle, whose output make xref cached in the .ref, and exit
-# with status 0, as the oracle must (make xref fails otherwise).
+# with status 0, as the oracle must (make xref fails otherwise). A
+# NAME.lib file names the library objects to link (the oracle uses the
+# host's C library).
 XRUN := $(wildcard tests/xrun/*.c)
-$(OUT)/xrun/%.stamp: tests/xrun/%.c tests/xrun/%.ref $(PASSES)
+$(OUT)/xrun/%.stamp: tests/xrun/%.c tests/xrun/%.ref \
+                     $(wildcard tests/xrun/*.lib) $(PASSES)
 	@mkdir -p $(dir $@)
-	@./ccish -I inc -o $(dir $@)$* tests/xrun/$*.c 2>$(dir $@)$*.err
+	@./ccish -I inc -o $(dir $@)$* tests/xrun/$*.c \
+	 $$(for o in $$(cat tests/xrun/$*.lib 2>/dev/null); do echo $(OUT)/lib/$$o; done) \
+	 2>$(dir $@)$*.err
 	@test ! -s $(dir $@)$*.err || { echo "xrun: unexpected messages"; cat $(dir $@)$*.err; exit 1; }
 	@(cd $(dir $@) && { $(CCRUN) -t 10 $(notdir $*) 2>&1; echo $$? > $(notdir $*).status; } | tr -d '\r' > $*.actual)
 	@diff -u tests/xrun/$*.ref $(dir $@)$*.actual
@@ -186,7 +212,7 @@ SPEC := $(filter-out tests/spec/bootstrap.sh,$(wildcard tests/spec/*.sh))
 $(OUT)/spec/%.stamp: tests/spec/%.sh tests/lib.sh $(PASSES)
 	@mkdir -p $(dir $@) && sh $< && touch $@
 
-$(OUT)/spec/small.stamp: $(wildcard tests/run/*.c tests/xrun/*.c \
+$(OUT)/spec/small.stamp: $(wildcard tests/run/*.c tests/xrun/*.c tests/xrun/*.lib \
                          tests/gen/*.c tests/link/*/*.c)
 $(OUT)/spec/front.stamp: tests/run/hello.c tests/errors/const_assign.c
 $(OUT)/spec/back.stamp: tests/run/hello.c tests/run/global_init.c
@@ -211,7 +237,7 @@ full-test: test $(OUT)/spec/bootstrap.stamp
 # Everything the tests need, built but not run: the passes, the small
 # passes, the VM, and the cross references. The test stamps hang off this,
 # so nothing runs against a stale pass.
-testbuild: all small $(PLVM) $(CCSTAT) xref
+testbuild: all small $(PLVM) $(CCSTAT) $(LIBOBJS) xref
 
 # The whole suite: a stamp for every test, then one that depends on all
 # of them and reports the count (only when something actually ran).

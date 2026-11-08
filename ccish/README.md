@@ -58,8 +58,11 @@ check that.
 ## Usage
 
 ```
-ccish [-l] [-i] [-k] [-o output] input.c
+ccish [-l] [-d] [-i] [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.c [object...]
 ```
+
+* `object...`: more objects to link after the source's, such as the
+  C library's.
 
 * `-o output`: the module file to write. The default is the input name
   without `.c`. To run a module with `plvm`, give it a lowercase name
@@ -77,6 +80,7 @@ ccish [-l] [-i] [-k] [-o output] input.c
 * `-i`: print the IR that passes from the parser to the back end, as
   the back end reads it, with each function's source line. The IR ops
   are described in [IR.md](IR.md).
+* `-d`, `-I`, `-D` and `-U`: as in doc/ccish-guide.md, 2.1.
 
 Example:
 
@@ -141,13 +145,32 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   global's size ("conflicting types for"). This holds even for a
   declaration nothing uses.
 * A function that no object defines must be a CMDSYS function, which
-  is imported; a program may define its own function of a CMDSYS name,
-  with the same type, and calls then go to it. Anything else used and
-  not defined is an "undefined reference".
+  is imported, or a PLASMA import (an asm label, or after `#pragma
+  plasma import MODULE`; doc/ccish-guide.md, 11.1); a program may
+  define its own function of a CMDSYS name, with the same type, and
+  calls then go to it. Anything else used and not defined is an
+  "undefined reference", including a C library function whose object
+  isn't on the link line.
 * `main` (not `static`) in any object is the entry point.
-* The module exports nothing, and imports only CMDSYS functions, so C
-  names are matched in full, with their case, and never reach PLASMA's
-  case-insensitive, 16-character symbol table.
+* The module exports nothing. Other C names are matched in full, with
+  their case, and never reach PLASMA's case-insensitive, 16-character
+  symbol table.
+
+### The C library
+
+`lib/` holds a small C library in ccish's C, one object per function,
+which `make` compiles into `tests/out/lib/`: `<string.h>` (`strlen`,
+`strcmp`, `strcpy`, `strcat`, `strncpy`, `strncat`, `strchr`,
+`strrchr`, `memcpy`, `memmove`, `memset`), `<stdio.h>` (`fopen`,
+`fclose`, `getc`, `putc`, `fputs`, `fread`, `fwrite`, `remove`,
+`fflush`, unbuffered over PLASMA's FILEIO), `<stddef.h>`, and
+`<plasma.h>` (CMDSYS's and FILEIO's tables). ccpp finds its headers
+after the `-I` directories. ccrel links whole objects and doesn't
+search a library yet, so you name the ones you need after the source
+(`ccish -o prog prog.c tests/out/lib/strlen ...`); `start` is the
+startup for `main(argc, argv)`. `exit` is declared but not defined: it
+has to unwind the VM, which isn't done yet. doc/ccish-guide.md, 11.2,
+has the details.
 
 ## The language so far
 
@@ -160,8 +183,9 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   return value must be at most 8 bytes (see below). An array parameter
   is a pointer, as in C: `int a[]` and `int a[10]` are `int *a`, and
   `int m[][4]` points to arrays of 4 ints. A prototype and a definition must
-  agree on the return and parameter types. `main` takes no parameters.
-  Its return value is ignored. A function must be declared (by a
+  agree on the return and parameter types. `main` takes no
+  parameters, or two (`argc` and `argv`, with the library's `start`
+  object). Its return value, `& 255`, is the exit status. A function must be declared (by a
   prototype, or its definition) before it is called; C89's implicit
   declarations are an error. The CMDSYS functions are declared already.
 * Local variables, declared anywhere in a block, with optional
@@ -462,7 +486,8 @@ function returns exactly one.
 | `tests/pp/` | Sources, each with the token stream (`.tok`, in hex) and name file (`.nam`) `ccpp` must write for it |
 | `tests/spec/msgs.sh` | Checks `ccish.msg` against the message comments in the sources |
 | `tools/measure.py` | `make measure`: compiles ccish's own source with ccish, ccpp preprocessing it (with workarounds for what it lacks), links the Apple II programs, and reports sizes and how full ccpp's tables got |
-| `tools/inc/`, `tools/libstub.c` | Stand-in C library headers and empty library functions for `measure.py` |
+| `lib/`, `lib/include/` | The C library's sources (one function each) and headers |
+| `tools/plvmexit.c` | A plvm-only `exit` (a status marker, then a BRK) that ccish's own passes link; not part of the library |
 
 ## Messages
 

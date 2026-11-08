@@ -24,6 +24,9 @@
 #include "ppif.h"
 #include "ppout.h"
 #include "pp.h"
+#ifndef CCISH_INC
+#include <plasma.h>
+#endif
 
 #define MAX_IF_NEST  8      /* #ifdef groups open at once (3) */
 #define MAX_INC_DIRS 8      /* -I directories */
@@ -215,8 +218,9 @@ static int join(char *buf, const char *dir, int n, const char *name)
 }
 
 /* #include "name" or <name>: "name" is looked for beside the file that
- * includes it, then in the -I directories; <name> only in those. The
- * file is read next, from the end of the #include line. */
+ * includes it, then in the include directories (the -I ones, then the
+ * default); <name> only in those. The file is read next, from the end
+ * of the #include line. */
 static void do_include(void)
 {
   static char name[MAX_PATH], buf[MAX_PATH];  /* too big for a frame */
@@ -407,13 +411,27 @@ static void directive(void)
   after_directive();
 }
 
-/* Apply the -D and -U options, in order, each as a directive's line:
- * -D name is name 1, and -D name=text is name text. */
+/* Add the default include directory after the -I ones: CCISH_INC if
+ * the build defines it (the Makefile does, for the host), else the VM's
+ * <syspath>ccinc (doc/bootstrap-test.md, R2). Then apply the -D and -U
+ * options, in order, each as a directive's line: -D name is name 1,
+ * and -D name=text is name text. */
 static void apply_options(void)
 {
   static char buf[MAX_LINE + 1];    /* too big for a frame */
   const char *eq;
   int i;
+#ifdef CCISH_INC
+  pp_include_dir(CCISH_INC);
+#else
+  static char sys_inc[MAX_PATH];  /* <syspath>ccinc */
+  i = cmdsys.syspath[0];
+  if (i < MAX_PATH - 6) {
+    memcpy(sys_inc, cmdsys.syspath + 1, i);
+    strcpy(sys_inc + i, "ccinc");
+    pp_include_dir(sys_inc);
+  }
+#endif
   pp_lex_text("__CCISH__ 1");
   do_define();
   for (i = 0; i < nopts; i++) {
