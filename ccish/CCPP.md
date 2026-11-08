@@ -330,19 +330,20 @@ IR file's stamp, which `cccomp` copies from the token stream's):
   file from ccpp, or the wrong version"); that each code is known,
   that the file doesn't end before `$00`, and that nothing follows its
   stamp (else 231, "token file is damaged").
-- At the end of the token stream: that no id it held is over the
-  stamp's id count (else 231).
 - `NAME.nam`, only if it opens it, for a message, before using any
   name (`ccgen` always, when it starts): that its names come before
   its files, none longer than 31 characters; that at least one file
   follows them, then the blank line, then a stamp of the right form
   and version whose count and checksum match the file itself, and
-  then nothing; and, for each id used, that there is such a name. And
-  that its stamp is the token stream's (`ccgen`: the IR file's), so
-  that a well-formed name file from another run of `ccpp` is refused
-  too. Any of these failing is message 232, "name file is stale or
-  damaged". So a damaged or stale name file passes `cccomp`, when it
-  prints nothing, and `ccgen` refuses it.
+  then nothing; and, for each id used, that there is such a name.
+  `ccgen` also checks that its stamp is the IR file's (which `cccomp`
+  copied from the token stream), so that a well-formed name file from
+  another run of `ccpp` is refused too. Any of these failing is
+  message 232, "name file is stale or damaged". So a damaged or stale
+  name file passes `cccomp`, which only copies the stamp, and `ccgen`
+  refuses it: later, but nothing is lost (decided in discussion,
+  2026-11-08: every byte of cccomp counts, and the pipeline is
+  normally run by a script).
 
 ## An example
 

@@ -28,7 +28,6 @@ int tok_hmul;
 static Bfile in;            /* NAME.i */
 static const char *base_name;
 static int at_end;          /* the end code has been read */
-static int max_id;          /* the largest id read */
 static char source[MAX_PATH];   /* tok_file's name, for messages */
 int tok_file = 1;           /* the file the token is in (the name file's
                              * number), for #pragma plasma import */
@@ -56,13 +55,14 @@ static int get_word(void)
 }
 
 /* Look up the name of the current token's file, for a message
- * (diag.c's src_name_hook; nam.c opens and checks the name file): only
+ * (diag.c's src_name_hook), opening and checking the name file: only
  * then, so that a correct compile never reads it (CCPP.md, "The
  * stamp"). An
  * error is reported after the other files are closed, so this needs no
  * more I/O buffers. */
 static void name_source(void)
 {
+  nam_open(base_name);
   strcpy(source, nam_file(tok_file));
   nam_close();
 }
@@ -79,8 +79,9 @@ void tok_open(const char *base)
       || bgetc(&in) != TOK_VERSION)
     fatal(230 /* "not a token file from ccpp, or the wrong version:" */,
           stream_name(base, SUFFIX_I));
-  nam_base(base);
-  max_id = 0;
+#ifdef CCISH_DIAG
+  nam_base(base);           /* for a message's details (nam_name()) */
+#endif
   tok_file = 1;
   src_name = source;
   src_name_hook = name_source;
@@ -126,11 +127,9 @@ void next(void)
     i = get_word();
     if (bgetc(&in) != EOF)
       damaged();
-    if (max_id > n)
-      damaged();        /* an id the name file can't have */
-    if (nam_checked() && (n != nam_ids || i != nam_sum))
-      nam_stale();      /* opened for a message: from another run */
-    nam_ids = n;        /* the name file's stamp, for the IR file */
+    nam_ids = n;        /* the name file's stamp, for the IR file; */
+                        /* ccgen checks it, and the ids, against
+                         * the name file */
     nam_sum = i;
     at_end = 1;
     tok = T_EOF;
@@ -147,8 +146,6 @@ void next(void)
     tok_val = get_word();
     if (tok_val < 1)
       damaged();
-    if (tok_val > max_id)
-      max_id = tok_val;   /* checked against the stamp at the end */
     if (c == TC_TAG) {
       tok_hsum = get_word();
       tok_hmul = get_word();

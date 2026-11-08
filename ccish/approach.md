@@ -3849,9 +3849,12 @@ text ("1 of 'f'") is spelled only for a message: so in either build
 a correct compile never opens NAME.nam (checked with strace on
 pexpr.c, parse.c, ptop.c and link.c), and a damaged or stale one is
 found by ccgen. tests/spec/front.sh compiles hello.c with its name
-file gone. It costs cccomp 167 bytes of module file (47,620), 87 of
-them resident (nam.c opens and checks the file when a name is first
-looked up, and tokin.c checks the stamp at the end), and ccgen 91. Before
+file gone. cccomp doesn't check the stamp or the ids itself any more,
+since ccgen checks both (the user: "Error-checking is a nice-to-have,
+but must be repeatedly sacrificed"); nam.c opens the file on a name's
+first lookup only in the full build, whose message details are spelled
+before it stops. cccomp's module file is then 47,427 bytes, 26 less
+than before IR version 11, and 18 of them resident; ccgen's 4 less. Before
 this, cccomp reopened NAME.nam for every name in an argument's
 "argument N of 'f'" text, built for every argument of every
 prototyped call: 627 times for pexpr.c, 315 for parse.c, which on a

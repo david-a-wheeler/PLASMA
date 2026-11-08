@@ -1,8 +1,7 @@
 /*
  * The reader of the name file, NAME.nam (../CCPP.md), for cccomp and
  * ccgen: it checks the whole file once, when it is opened (ccgen opens
- * it at the start, cccomp only when it first needs a name, for a
- * message), and then looks spellings up by id. It reads through stdio,
+ * it at the start, cccomp only for a message), and then looks spellings up by id. It reads through stdio,
  * as the message file is read, so that it needs no 512-byte buffer of
  * its own, and it
  * keeps its place: a lookup reads on from the last one, and starts
@@ -23,7 +22,9 @@ int nam_sum;
 
 static FILE *nf;                /* the name file, while open */
 static const char *base_name;
+#ifdef CCISH_DIAG
 static char checked;            /* nam_open() has checked it */
+#endif
 static int at;                  /* the number of the line nf reads next */
 static char line[MAX_PATH];     /* the line last read */
 
@@ -120,23 +121,21 @@ void nam_open(const char *base)
   nam_close();
   nam_ids = ids;
   nam_sum = h;
+#ifdef CCISH_DIAG
   checked = 1;
+#endif
 }
 
+#ifdef CCISH_DIAG
 /* Name the name file, base's, without opening it: it's opened and
- * checked when a name is first looked up (cccomp, which needs one only
- * for a message). */
+ * checked when a name is first looked up (cccomp's full build, whose
+ * messages' details are spelled before it stops). */
 void nam_base(const char *base)
 {
   base_name = base;
   checked = 0;
 }
-
-/* Has the name file been opened and checked? */
-int nam_checked(void)
-{
-  return checked;
-}
+#endif
 
 /* Read line n of the name file (from 1) into line[]. */
 static void line_at(int n)
@@ -152,8 +151,10 @@ static void line_at(int n)
  * reuses. */
 const char *nam_name(int name)
 {
+#ifdef CCISH_DIAG
   if (!checked)
     nam_open(base_name);
+#endif
   if (name < 1 || name > nam_ids)
     nam_stale();
   line_at(name);
@@ -163,8 +164,6 @@ const char *nam_name(int name)
 /* The name of source file k (from 1), in the same static buffer. */
 const char *nam_file(int k)
 {
-  if (!checked)
-    nam_open(base_name);
   line_at(nam_ids + k);
   if (line[0] != '@')
     nam_stale();
