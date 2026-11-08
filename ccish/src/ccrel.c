@@ -11,7 +11,9 @@
  *           from file instead, one per line (CR or LF ends a line,
  *           and blank lines are skipped), since a link's names can
  *           overrun the VM's 127-character command line
- *           (doc/bootstrap-test.md, R10)
+ *           (doc/bootstrap-test.md, R10). It's GCC's @file syntax,
+ *           but not its format: no options, quoting or white-space
+ *           splitting, which an Apple II's CR lines don't need
  *   -l      print a listing of the module's bytecode
  *   -o      module name (default: output, if there is only one)
  */
