@@ -98,10 +98,11 @@ files of the sessions so far, before a move to a new computer.)
 
 ## Code style
 
-- C89, strict: `-std=c89 -pedantic -Wall -Wextra`, no warnings. The
+- C89, strict: `-std=c99 -pedantic -Wall -Wextra`, no warnings. The
   small build is `-DCCISH_SMALL`; code tests feature macros (build.h:
   CCISH_LISTING, CCISH_CHECKS, CCISH_TEXT, CCISH_STATS, CCISH_FAST),
-  never CCISH_SMALL itself.
+  never CCISH_SMALL itself. We actually don't mind using more than C99,
+  this is really a placeholder to enable bootstrapping.
 - **2-space indents, never tabs**; continuation lines align under the
   opening parenthesis or operator.
 - **Every function has a comment directly above it** (1-2 lines, what
