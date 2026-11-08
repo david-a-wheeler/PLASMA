@@ -34,7 +34,7 @@
 #include "diag.h"
 #include "type.h"
 
-#define MAX_TYPES    40     /* distinct types (34, link.c); at most 128,
+#define MAX_TYPES    54     /* distinct types (49, link.c); at most 128,
                              * since char tables (fn_type[], param_types[])
                              * hold unqualified types, and a host's char
                              * may be signed */

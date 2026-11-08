@@ -44,7 +44,7 @@ PP = ["ppname", "pplex", "ppmac", "ppif", "ppout", "pp"]
 NAM = ["nam"]                       # in both cccomp and ccgen
 FRONT = ["tokin", "name", "type", "parse", "pexpr", "pstmt", "ptop",
          "irout"]
-BACK = ["irin", "lower", "peep", "emit", "helper"]
+BACK = ["irin", "irloop", "lower", "peep", "emit", "helper"]
 # Limits raised for big_cccomp(), and the fatal messages that call
 # for it.
 BIG_LIMITS = {"MAX_FUNCS": 1024, "MAX_VARS": 512, "MAX_LABELS": 512,

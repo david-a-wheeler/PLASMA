@@ -269,7 +269,7 @@ Open, roughly in the order they matter:
   the VM gains INCBRNE.
 - Trim candidates in ccgen: peep.c's `frame_expr()` (166 bytes, a
   chain of op tests a table could shorten), the DLW-fix generalization
-  (+249), irin.c's loop code generally.
+  (+249), irloop.c's loop code generally.
 - A dead store before a call is kept (the scan stops at calls); frames
   aren't shrunk when a local's stores all go.
 - `HEAP_SPARE` (512 bytes left for main's frames by the init function)

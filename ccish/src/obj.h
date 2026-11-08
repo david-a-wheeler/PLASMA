@@ -11,7 +11,7 @@
 
 #define MAX_FUNCS    280    /* functions (254, parse.c) */
 #define MAX_VARS     79     /* globals, plus the parameters and locals
-                             * visible at once (71, parse.c) */
+                             * visible at once (76, link.c) */
 #define MAX_FUNC_CODE 1280  /* bytecode in one function (1,053) */
 #define MAX_FUNC_RELOCS 128 /* relocations in one function (112) */
 

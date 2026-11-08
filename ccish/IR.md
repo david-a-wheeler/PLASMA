@@ -554,7 +554,7 @@ LOOPEND  Lcont Lbrk
 - **Stack:** none; the parts between them are statements and
   conditions, which leave the stack as they found it.
 - **Now:** `ccgen` holds the test and the step (IR ops, in a side
-  buffer, `src/irin.c`) instead of lowering them, writes the loop's
+  buffer, `src/irloop.c`) instead of lowering them, writes the loop's
   own jumps and labels, and lowers the held ops after the body:
   `BRNCH Ltest  Lbody: body  Lcont: step  Ltest: test  Lbrk:`. So each
   pass runs one branch. The entry `BRNCH` is left out when the test is

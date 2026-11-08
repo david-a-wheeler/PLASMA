@@ -425,6 +425,13 @@ it's not one function. irin.c has about 70 file-scope variables (32 of
 them the loop machinery's `lp_*`, `cl_*` and `fo_*`), so nearly any
 function with more than five of its own overflows. The same day, link.c
 needed 49 types (`MAX_TYPES` 40), mostly distinct array types.
+**Done** (2026-11-08): the loop machinery moved to src/irloop.c,
+which irin.c reaches through `loop_take()` and `loop_reset()`, and
+which reads irin.c's swap buffer (src/irloop.h). The most visible
+variables is now 76 (link.c). It costs ccgen 50 bytes of code and 66
+of module file. link.c has no clean split (every part reads the
+shared-name table, `fbuf` and the object offsets), so `MAX_TYPES` is
+54, 10% over its 49: 70 bytes of cccomp's data.
 
 **B4. emit.c's `mnem()` overruns cccomp's limits.** The first sweep
 stopped at its switch's case labels (MAX_CASES, 36 open at once); on
@@ -576,8 +583,8 @@ The order agreed on 2026-11-08, as five steps:
   casts are masks, the struct `?:` is an `if`, and measure.py's only
   workaround is the full build's `printf`. (Its old `short`/`long`
   regex also rewrote pplex.c's keyword strings.)
-- **Step 2: fit the tables (mostly done, 85b8a376).** B2 and B5 are
-  raised; `MAX_MEMBERS` and `MAX_IDS` are fixed in the headers
+- **Step 2: fit the tables (done, 85b8a376 and the commit after).**
+  B2 and B5 are raised; `MAX_MEMBERS` and `MAX_IDS` are fixed in the headers
   (`<fileio.h>`, objfmt.h, objsym.h). Left over, cccomp's:
   `MAX_VARS` (irin.c needs 83, the limit is 79) and `MAX_TYPES`
   (link.c needs 49, the limit is 40). **Decided 2026-11-08 (option
@@ -590,7 +597,10 @@ The order agreed on 2026-11-08, as five steps:
   cccomp per type, so about 70). Measure each with `python3 -I -S
   tools/measure.py`: "over a limit" must go, and cccomp's size must
   not grow. irin.c's identifiers are 200 of `MAX_IDS` 203, the
-  tightest left.
+  tightest left. Done as B3 says: irin.c is split and `MAX_TYPES`
+  raised, so every file in src/ now fits cccomp's tables (the closest
+  are `MAX_IDS`, 200 of 203 in irin.c, and `MAX_VARS`,
+  76 of 79 in link.c).
 - **Step 3: ccrel's `@list` file (R10).** `ccrel -o cccomp
   @cccomp.lst`, one object name per line, read into a static buffer
   in ccrel only; cccomp's link names 30 objects, over the 127-character

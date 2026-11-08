@@ -29,7 +29,7 @@ PP     = src/ppname.c src/pplex.c src/ppmac.c src/ppif.c src/ppout.c src/pp.c
 NAM    = src/nam.c
 FRONT  = src/tokin.c src/name.c src/type.c src/parse.c src/pexpr.c \
          src/pstmt.c src/ptop.c src/irout.c
-BACK   = src/irin.c src/lower.c src/peep.c src/emit.c src/helper.c
+BACK   = src/irin.c src/irloop.c src/lower.c src/peep.c src/emit.c src/helper.c
 LINK   = src/link.c
 HEADERS= $(wildcard src/*.h)
 # The library's headers: ccpp's default include directory, compiled in
