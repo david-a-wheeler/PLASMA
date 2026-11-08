@@ -177,7 +177,7 @@ own, so that on the Apple II each can run separately:
 ccpp [-E] [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.c
 cccomp [-k] [-o output] input
 ccgen [-i] [-k] output
-ccrel [-l] [-o module] output...
+ccrel [-l] [-o module] output|@file...
 ```
 
 * `ccpp` (the preprocessor and lexer) reads the source, carries out
@@ -212,6 +212,10 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   (`main` for `main.obj` and `main.syms`). Objects are linked in the
   order given: every object's globals, then every object's strings,
   then every object's code. `-o` is required with more than one.
+* `@file` names the objects in `file` instead, one per line (a CR or
+  LF ends a line, and blank lines are skipped): `ccrel -o prog
+  @prog.lst`. The VM's command line holds only 127 characters. The
+  names may total 512 bytes, and a link may have 32 objects.
 * `ccrel` keeps the objects, so after a change only the changed file
   needs compiling again. (`ccish` removes the stream files it makes,
   unless `-k`.)

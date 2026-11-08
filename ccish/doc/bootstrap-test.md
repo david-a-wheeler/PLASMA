@@ -351,7 +351,13 @@ bigger. The per-file pass lines are short. A link line naming a
 program's objects plus the library's can approach the limit, so give
 ccrel a list file (`ccrel -o cccomp @cccomp.lst`, one name per line)
 rather than one-letter output names. The source and object names stay
-real names, and the list files are the same at every stage.
+real names, and the list files are the same at every stage. **Done**
+(2026-11-08): `@file` in ccrel.c, read into a 512-byte buffer, one
+name per line, CR or LF ending a line. ccrel's `bases[]` shrank from
+256 entries to `MAX_OBJS` (32, now in link.h), so its module file
+grew only 374 bytes (code +180, data +68, strings +10). Under plvm,
+the self-compiled ccrel links cccomp's 30 objects from a list (187
+bytes) to the same module as the host's.
 
 ## What to keep, and what to undo, from the first attempt
 
@@ -601,7 +607,7 @@ The order agreed on 2026-11-08, as five steps:
   raised, so every file in src/ now fits cccomp's tables (the closest
   are `MAX_IDS`, 200 of 203 in irin.c, and `MAX_VARS`,
   76 of 79 in link.c).
-- **Step 3: ccrel's `@list` file (R10).** `ccrel -o cccomp
+- **Step 3: ccrel's `@list` file (R10; done).** `ccrel -o cccomp
   @cccomp.lst`, one object name per line, read into a static buffer
   in ccrel only; cccomp's link names 30 objects, over the 127-character
   command line.

@@ -314,3 +314,4 @@
 316 expected a label after 'goto', not
 317 expected ';' after 'goto', not
 318 expected a union name or '{' after 'union', not
+319 names in the list file too long (512 bytes in all):

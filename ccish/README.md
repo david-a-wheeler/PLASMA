@@ -106,7 +106,8 @@ cccomp [-k] [-o output] input       the front end: input.i and input.nam
 ccgen [-i] [-k] output              the back end: output.ir and
                                     output.nam to the stream files (both
                                     are removed unless -k)
-ccrel [-l] [-o module] output...    the final pass: links them into a module
+ccrel [-l] [-o module] output|@file...
+                                    the final pass: links them into a module
 ```
 
 `ccpp` carries out `#include`, `#define` (object-like and function-like
@@ -133,6 +134,10 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   (`main` for `main.obj` and `main.syms`). They are linked in the
   order given: every object's globals, then every object's strings,
   then every object's code. `-o` is required with more than one.
+* `@file` names the objects in `file` instead, one per line (a CR or
+  LF ends a line, and blank lines are skipped): `ccrel -o prog
+  @prog.lst`. The VM's command line holds only 127 characters. The
+  names may total 512 bytes, and a link may have 32 objects.
 * `ccrel` keeps the objects, so after a change only the changed file
   needs compiling again. (`ccish` removes the stream files it makes,
   unless `-k`.)

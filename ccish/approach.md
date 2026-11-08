@@ -1088,7 +1088,12 @@ Apple II, and 32 objects and 512 names are too few anyway. Options:
    command line can't name even 10 objects, so `ccrel -o prog @objs`,
    reading `objs` (one object per line) again in each pass rather than
    storing the names (4 files may be open; ccrel uses 2). About 8 bytes
-   an object. *Not decided yet*; likely with step 4.
+   an object. *Not decided yet*; likely with step 4. **Done**
+   (2026-11-08, doc/bootstrap-test.md R10), but storing the names: a
+   512-byte buffer in ccrel.c, since link.c keeps each object's name
+   for its four reads, and `bases[]` went from 256 entries to
+   `MAX_OBJS` (32), which pays for most of it. ccrel's module file
+   grew 374 bytes.
 
 The limits themselves (names, name bytes) are to be set once B4
 measures what memory is free.

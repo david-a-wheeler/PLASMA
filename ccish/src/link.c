@@ -50,7 +50,6 @@
 #include "mop.h"
 #include "link.h"
 
-#define MAX_OBJS    32      /* objects in one link */
 #define MAX_GSYMS   307     /* names shared between objects: the first
                              * prime 10% above linking cccomp's, with
                              * the library (271) */

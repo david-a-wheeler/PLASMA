@@ -3,7 +3,8 @@
 # stream file or summary, and the linker's tables and one-offs (the
 # shared-name table full, more functions than one object, many
 # relocations, a static name that doesn't fit, two objects whose helpers
-# differ, and the usage for several objects without -o).
+# differ, a list file of objects, and the usage for several objects
+# without -o).
 . "$(dirname "$0")/../lib.sh"
 OUT=tests/out
 bad=0
@@ -137,7 +138,50 @@ else
     echo "FAIL ccrel: 324 functions in two objects don't link and run"
     sed 's/^/    /' "$OUT/link/many.err"; bad=1
 fi
-rm -f "$OUT"/link/many_[ab].obj "$OUT"/link/many_[ab].syms
+
+# A list file (@file) names the same objects: one per line, with CR or
+# LF ending a line, blank lines skipped, and no newline needed at the
+# end; the module is the same as the command line's.
+printf '\r\n%s\r\n\n%s' "$OUT/link/many_a" "$OUT/link/many_b" \
+    >"$OUT/link/many.lst"
+if ./ccrel -o "$OUT/link/many_lst" "@$OUT/link/many.lst" \
+       2>"$OUT/link/many_lst.err" \
+   && cmp -s "$OUT/link/many" "$OUT/link/many_lst"; then
+    :
+else
+    echo "FAIL ccrel: a list file's link differs from the command line's"
+    sed 's/^/    /' "$OUT/link/many_lst.err"; bad=1
+fi
+rm -f "$OUT"/link/many_[ab].obj "$OUT"/link/many_[ab].syms \
+    "$OUT/link/many_lst" "$OUT/link/many.lst"
+
+# A list file that can't be opened, one whose names overflow ccrel's
+# 512-byte buffer, and one that names more than 32 objects.
+want_fail() {   # want_fail what message args...
+    what=$1 want=$2; shift 2
+    if ./ccrel "$@" 2>"$OUT/link/list.err"; then
+        echo "FAIL ccrel: accepted $what"; bad=1
+    elif grep -qF "$want" "$OUT/link/list.err"; then
+        :
+    else
+        echo "FAIL ccrel: wanted '$want' for $what, got:"
+        sed 's/^/    /' "$OUT/link/list.err"; bad=1
+    fi
+}
+want_fail "a missing list file" "cannot open $OUT/link/nolist.lst" \
+    -o "$OUT/link/x" "@$OUT/link/nolist.lst"
+i=0; : >"$OUT/link/long.lst"
+while [ $i -lt 20 ]; do
+    echo "$OUT/link/a_rather_long_object_name_$i" >>"$OUT/link/long.lst"
+    i=$((i + 1))
+done
+want_fail "a list file too long" "names in the list file too long" \
+    -o "$OUT/link/x" "@$OUT/link/long.lst"
+i=0; : >"$OUT/link/many33.lst"
+while [ $i -lt 33 ]; do echo "o$i" >>"$OUT/link/many33.lst"; i=$((i + 1)); done
+want_fail "33 objects" "too many objects to link" \
+    -o "$OUT/link/x" "@$OUT/link/many33.lst"
+rm -f "$OUT/link/long.lst" "$OUT/link/many33.lst" "$OUT/link/list.err"
 
 # More relocations than ccrel once kept in memory (2432; B4 rereads them
 # instead): f1..f25 each store to the global g 100 times, one data
