@@ -384,7 +384,17 @@ stopped at its switch's case labels (MAX_CASES, 36 open at once); on
 2026-11-07 tools/measure.py stops at its returns ("error 179: too many
 returns in mnem", emit.c:353), so ccgen can't be measured. A table of
 names instead of a 70-way switch of returns is probably smaller as
-well; otherwise raise the limits, at a cost in cccomp's data.
+well; otherwise raise the limits, at a cost in cccomp's data. **Done**
+(2026-11-07): `mnems[]`, a table of the mnemonics indexed by opcode
+($20 to $BE, 160 bytes of pointers), replaced the switch, and the
+listings are unchanged. emit.c now compiles under ccish (code 2,835,
+data 608, strings 641), and ccgen links for the first time: code
+20,571, data 2,911, strings 1,444, a 34,076-byte module file (8,747 of
+it RLD and ESD), 199 functions (995 bytes of def table), and 18,292
+bytes of zero-filled tables on the heap. 12,288 of those are emit.c's
+`lbuf[]`, kept only for `-d`'s listing, in both builds: putting `-d`
+under CCISH_LISTING (full build only, as ccrel's `-l` is) would free
+them on the Apple II.
 
 **B5. ccrel's shared-name table.** MAX_GSYMS 163 and MAX_GNAMES 1427
 (src/link.c) are exceeded by irout's summary, because a header's
@@ -425,7 +435,7 @@ building on it.
    them); until the new script exists, `make bootstrap` says so and
    fails.
 3. Replace `printf` in emit.c with `out_num()` and `fputs()` (R9).
-   Done; ccgen can't be measured until B4 is past.
+   Done; ccgen became measurable once B4 was fixed.
 
 **Phase 1: test feedback (done, decision 36).**
 4. ccrel's init returns `main`'s status, and the ccstat driver and

@@ -348,87 +348,23 @@ static void end_function(int frame_size)
  * pseudo-ops print as comments.
  */
 
-/* The mnemonic of a real op, or NULL. */
-static const char *mnem(int op)
-{
-  switch (op) {
-  case OP_MINUS1: return "MINUS1";
-  case OP_BREQ: return "BREQ";
-  case OP_BRNE: return "BRNE";
-  case OP_LA: return "LA";
-  case OP_LLA: return "LLA";
-  case OP_CB: return "CB";
-  case OP_CW: return "CW";
-  case OP_CFFB: return "CFFB";
-  case OP_DROP: return "DROP";
-  case OP_DUP: return "DUP";
-  case OP_ADDI: return "ADDI";
-  case OP_SUBI: return "SUBI";
-  case OP_ANDI: return "ANDI";
-  case OP_ISEQ: return "ISEQ";
-  case OP_ISNE: return "ISNE";
-  case OP_ISGT: return "ISGT";
-  case OP_ISLT: return "ISLT";
-  case OP_ISGE: return "ISGE";
-  case OP_ISLE: return "ISLE";
-  case OP_BRFLS: return "BRFLS";
-  case OP_BRTRU: return "BRTRU";
-  case OP_BRNCH: return "BRNCH";
-  case OP_SEL: return "SEL";
-  case OP_CALL: return "CALL";
-  case OP_ICAL: return "ICAL";
-  case OP_ENTER: return "ENTER";
-  case OP_LEAVE: return "LEAVE";
-  case OP_RET: return "RET";
-  case OP_LB: return "LB";
-  case OP_LW: return "LW";
-  case OP_LLB: return "LLB";
-  case OP_LLW: return "LLW";
-  case OP_LAB: return "LAB";
-  case OP_LAW: return "LAW";
-  case OP_DLB: return "DLB";
-  case OP_DLW: return "DLW";
-  case OP_SB: return "SB";
-  case OP_SW: return "SW";
-  case OP_SLB: return "SLB";
-  case OP_SLW: return "SLW";
-  case OP_SAB: return "SAB";
-  case OP_SAW: return "SAW";
-  case OP_DAB: return "DAB";
-  case OP_DAW: return "DAW";
-  case OP_NOT: return "NOT";
-  case OP_ADD: return "ADD";
-  case OP_SUB: return "SUB";
-  case OP_MUL: return "MUL";
-  case OP_DIV: return "DIV";
-  case OP_MOD: return "MOD";
-  case OP_INCR: return "INCR";
-  case OP_DECR: return "DECR";
-  case OP_NEG: return "NEG";
-  case OP_COMP: return "COMP";
-  case OP_AND: return "AND";
-  case OP_IOR: return "IOR";
-  case OP_XOR: return "XOR";
-  case OP_SHL: return "SHL";
-  case OP_SHR: return "SHR";
-  case OP_IDXW: return "IDXW";
-  case OP_BRGT: return "BRGT";
-  case OP_BRLT: return "BRLT";
-  case OP_INCBRLE: return "INCBRLE";
-  case OP_ADDBRLE: return "ADDBRLE";
-  case OP_DECBRGE: return "DECBRGE";
-  case OP_SUBBRGE: return "SUBBRGE";
-  case OP_ADDLB: return "ADDLB";
-  case OP_ADDLW: return "ADDLW";
-  case OP_ADDAB: return "ADDAB";
-  case OP_ADDAW: return "ADDAW";
-  case OP_IDXLB: return "IDXLB";
-  case OP_IDXLW: return "IDXLW";
-  case OP_IDXAB: return "IDXAB";
-  case OP_IDXAW: return "IDXAW";
-  }
-  return NULL;
-}
+/* The mnemonic of each real op from MINUS1 ($20) to IDXAW ($BE),
+ * indexed by (op - OP_MINUS1) / 2, with 0 for an op ccish never emits
+ * (CN, $00 to $1E, is listed by list_op() itself). A table, not a
+ * switch of returns: ccish can compile it (doc/bootstrap-test.md, B4),
+ * and it takes less memory. */
+static const char *const mnems[(OP_IDXAW - OP_MINUS1) / 2 + 1] = {
+  "MINUS1", "BREQ", "BRNE", "LA", "LLA", "CB", "CW", 0,  /* $20 */
+  "DROP", 0, "DUP", 0, "ADDI", "SUBI", "ANDI", 0,  /* $30 */
+  "ISEQ", "ISNE", "ISGT", "ISLT", "ISGE", "ISLE", "BRFLS", "BRTRU",  /* $40 */
+  "BRNCH", "SEL", "CALL", "ICAL", "ENTER", "LEAVE", "RET", "CFFB",  /* $50 */
+  "LB", "LW", "LLB", "LLW", "LAB", "LAW", "DLB", "DLW",  /* $60 */
+  "SB", "SW", "SLB", "SLW", "SAB", "SAW", "DAB", "DAW",  /* $70 */
+  "NOT", "ADD", "SUB", "MUL", "DIV", "MOD", "INCR", "DECR",  /* $80 */
+  "NEG", "COMP", "AND", "IOR", "XOR", "SHL", "SHR", "IDXW",  /* $90 */
+  "BRGT", "BRLT", "INCBRLE", "ADDBRLE", "DECBRGE", "SUBBRGE", 0, 0,  /* $A0 */
+  "ADDLB", "ADDLW", "ADDAB", "ADDAW", "IDXLB", "IDXLW", "IDXAB", "IDXAW"   /* $B0 */
+};
 
 /* The name of what a relocated word operand will hold, after the
  * mnemonic, or the operand itself if it needs no relocation. A data
@@ -487,7 +423,7 @@ static void list_op(Mop *m, int frame)
     return;
   }
   fputs("    ", stdout);
-  fputs(mnem(m->op), stdout);
+  fputs(mnems[(m->op - OP_MINUS1) / 2], stdout);
   switch (m->op) {
   case OP_ENTER:
     out_num(" ", m->a == FRAME_LATER ? frame : m->a);

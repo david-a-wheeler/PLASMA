@@ -23,8 +23,13 @@ and the C VM `plvm` used for testing). The dialect and the compiler
 share the name: a program written in it is *C-ish*, and `ccish` is the
 compiler. It is intended to aggressively optimize its generated results.
 
-The ccish compiler can run on an Apple II, and can self-host,
-if the loading system can stream RLD values (work in progress).
+The ccish compiler is designed to run on an Apple II and to compile
+itself there. It doesn't yet. ccish compiles its own sources, but
+the four passes still need imports from other PLASMA modules and a C
+library over FILEIO (section 9.1) before they can run under the VM;
+PLASMA's loaders must stream a module's RLD; and `cccomp` must shrink
+by about 3 to 5K to fit a 64K machine's free memory. The plan is in
+doc/bootstrap-test.md, and the memory budget in approach.md, issue 24.
 
 ### 1.1 A subset of C, not a standard
 
@@ -1362,10 +1367,23 @@ directive is an error.
 
 ### 9.1 Not implemented, expected soon
 
-* `signed char`
+* Imports from PLASMA modules other than CMDSYS (FILEIO, CONIO and
+  the rest), through an asm label and `#pragma plasma import`
+  (approach.md, issue 22). Today a module imports only CMDSYS's
+  functions (section 5.3).
+* A C library and the standard headers (`<stdio.h>`, `<string.h>`
+  and the rest): `stdio` over FILEIO, `string.h`, and `exit`. Today
+  there are only the CMDSYS functions (section 11).
+* `main` with parameters (`int main(int argc, char **argv)`, from
+  the command line).
+* A struct-valued `?:` (`s = k ? a : b;`): use an `if`.
+* `signed char`.
 
-`signed char` gives a "not supported yet" error that names the
-token.
+Each gives a "not supported yet" error, except the struct `?:`
+("a struct can't be used as a value here"), and the missing library,
+whose functions are undeclared (or, if you declare them, undefined
+when the module is linked). The first three are the next steps of
+the bootstrap (doc/bootstrap-test.md, phases 4 and 5).
 
 ### 9.2 Out of scope
 
@@ -1379,7 +1397,10 @@ These are deliberate limits, each a clear compile-time error:
 * Bitfields.
 * Variable argument lists (`...` in a function's parameters; the
   preprocessor's `...`/`__VA_ARGS__` is separate, section 8.2).
-* `main` with parameters, and `extern` with an initializer.
+* `extern` with an initializer.
+* C99's designated initializers (`.x = 1`, `[2] = 5`) and compound
+  literals (`(struct pt){1, 2}`). Designated initializers that only go
+  forward might come later (approach.md, issue 23).
 * Structs over 8 bytes passed or returned by value (pass a pointer).
 * `==` and `!=` on structs (as in C).
 * Anything that needs more than 16 bits of address or 8 bits of
@@ -1396,9 +1417,11 @@ a 64K machine. Going past one is a clear error.
 
 Per function:
 
-* 1280 bytes of bytecode, 128 calls and data references, 104 labels,
-  and 31 `return`s. Each `if`, loop, `&&`, `||` and `?:` uses one to
-  four labels.
+* 1280 bytes of bytecode, 128 calls and data references, 103 labels
+  and 24 `goto` labels, 31 `return`s, and 16 parameters. Each `if`,
+  loop, `&&`, `||` and `?:` uses one to four labels.
+* 36 `case` labels in all the `switch`es open at once, and
+  parentheses, blocks and loops nested 32 deep.
 
 Per file:
 
@@ -1409,7 +1432,8 @@ Per file:
   enum constants and typedef names visible at once.
 
 The preprocessor: 8432 bytes of distinct names and file names, 72
-macros, and source lines of 255 characters.
+macros with 512 bytes of bodies (as tokens) in all, and source lines
+of 255 characters.
 
 Other: a string literal of 255 characters (after adjacent ones are
 joined); an identifier's first 31 significant characters; 32 operands
