@@ -242,7 +242,10 @@ $(OUT)/spec/bootstrap.stamp: tests/spec/bootstrap.sh $(PASSES) tests/lib.sh \
 	 BOOT_ccgen="$(CCGEN_SRC)" BOOT_ccrel="$(CCREL_SRC)" \
 	 BOOT_LIB="$(CCLIB_SRC)" sh $< && touch $@
 
+# Run bootstrap test. This takes ~30 seconds on Linux
 bootstrap: $(OUT)/spec/bootstrap.stamp
+
+# Run all tests, including bootstrap. Thorough but takes longer
 full-test: test $(OUT)/spec/bootstrap.stamp
 
 # Everything the tests need, built but not run: the passes, the small
