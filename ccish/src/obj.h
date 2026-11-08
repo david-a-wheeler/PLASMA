@@ -17,7 +17,7 @@
  * writes one stream of tagged records, then the symbol summary. */
 #define SUFFIX_OBJ  ".obj"
 #define SUFFIX_SYMS ".syms"
-#define OBJ_VERSION 6       /* the format version, in the symbol summary */
+#define OBJ_VERSION 7       /* the format version, in the symbol summary */
 #define BSS_MIN     256     /* bytes: a global with no initializer this big
                              * or bigger may move to the heap (approach.md,
                              * "Large zero-filled data on the heap") */
@@ -46,6 +46,11 @@ enum { REL_DATA = 1, REL_FUNC = 2, REL_STR = 3, REL_DSYM = 4,
        REL_HELPER = 5 };
 enum { SYM_DEFINED = 1, SYM_CALLED = 2, SYM_RETURNS = 4, SYM_LOCAL = 8,
        SYM_CMDSYS = 16, SYM_NOTCMDSYS = 32, SYM_BSS = 64, SYM_INDATA = 128 };
+/* A symbol that is a PLASMA import if no object defines it (approach.md
+ * issue 22): its entry then has its module and its PLASMA name. The
+ * bit differs, since functions and globals use different flags. */
+#define SYM_FIMPORT 64      /* a function's */
+#define SYM_DIMPORT 16      /* a global's */
 
 /* The helper functions an object may hold (approach.md, "unsigned and
  * helper functions design"), by number. */

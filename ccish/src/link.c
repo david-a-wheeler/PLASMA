@@ -66,7 +66,20 @@ typedef struct {
   int size;           /* data: bytes, 0 if unknown */
   int off;            /* if defined: offset in the object's code or data */
   int hash;           /* type hash, 0 if unknown */
+  int mod;            /* SYM_FIMPORT, SYM_DIMPORT: its module, 1 plus an
+                       * obj_mod[] index, or 0 for none */
+  char label[MAX_NAME + 1];   /* and its PLASMA name */
 } Lsym;
+
+/* The modules to import from (approach.md issue 22): each one's name,
+ * as the objects' summaries give it, and whether a used import comes
+ * from it, so that it goes in the module's dependencies; and, for the
+ * object being read, each of its modules' index here. */
+#define MAX_MODS 8
+static char mod_name[MAX_MODS][MAX_NAME + 1];
+static char mod_used[MAX_MODS];
+static int nmods;
+static unsigned char obj_mod[MAX_MODS];
 
 /* How many symbols of each kind the object being read has. */
 static int nfsyms, ndsyms;
@@ -109,6 +122,10 @@ static int g_off[MAX_GSYMS];    /* if defined: offset in its object's
 static unsigned char g_def[MAX_GSYMS];  /* defining object, or NO_OBJ */
 static unsigned char g_desc[MAX_GSYMS]; /* object of the description */
 static unsigned char g_flags[MAX_GSYMS];    /* G_* */
+static int g_lab[MAX_GSYMS];    /* may be a PLASMA import: its PLASMA name,
+                                 * an offset in gnames[]; or -1 */
+static unsigned char g_mod[MAX_GSYMS];  /* its module, 1 plus a mod_name[]
+                                         * index, or 0 for none */
 
 #define NO_OBJ 255
 
@@ -146,7 +163,10 @@ static int nimports, ndefined;
 /* The object being read in steps 2 and 3, mapped: each function symbol
  * to its offset in the module's code, or -2 - its import index, or -1
  * if it is neither; and each data symbol to its offset in the module's
- * data, or -1. */
+ * data, or -2 - its number if it moved to the heap, or DM_IMPORT - its
+ * import index if it is imported, or -1. */
+#define DM_IMPORT (-0x2000)
+#define IS_DIMPORT(v) ((v) <= DM_IMPORT)
 static int fmap[MAX_FUNCS];
 static int dmap[MAX_VARS];
 
@@ -222,6 +242,31 @@ static void read_name(char *buf, const char *name)
   buf[n] = 0;
 }
 
+/* The number of modules the object being read names. */
+static int nobj_mods;
+
+/* Read the modules the object's summary (file name name) names, and map
+ * each to its index in mod_name[] (obj_mod[]), adding it if it is new. */
+static void read_mods(const char *name)
+{
+  char buf[MAX_NAME + 1];
+  int n = bgetc(&in), i, m;
+  if (n == EOF || n > MAX_MODS)
+    damaged(name);
+  nobj_mods = n;
+  for (i = 0; i < n; i++) {
+    read_name(buf, name);
+    for (m = 0; m < nmods && strcmp(mod_name[m], buf); m++)
+      ;
+    if (m == nmods) {
+      if (nmods >= MAX_MODS)
+        fatal(224 /* "too many modules imported" */, NULL);
+      strcpy(mod_name[nmods++], buf);
+    }
+    obj_mod[i] = (unsigned char)m;
+  }
+}
+
 /* Report error msg about the symbol named name, quoted. */
 static void undefined(int msg, const char *name)
 {
@@ -269,6 +314,7 @@ static const char *open_syms(int k)
     fatal(26 /* "too many functions" */, NULL);
   if (ndsyms > MAX_VARS)
     fatal(28 /* "too many variables" */, NULL);
+  read_mods(name);
   return name;
 }
 
@@ -276,6 +322,7 @@ static const char *open_syms(int k)
  * else a function symbol's. name is the summary's file name. */
 static void read_sym(Lsym *s, int data, const char *name)
 {
+  int n;
   s->flags = bgetc(&in);
   if (data) {
     s->off = bgetw(&in);
@@ -288,6 +335,14 @@ static void read_sym(Lsym *s, int data, const char *name)
   }
   s->hash = bgetw(&in);
   read_name(s->name, name);
+  s->mod = 0;
+  s->label[0] = 0;
+  if (s->flags & (data ? SYM_DIMPORT : SYM_FIMPORT)) {
+    if ((n = bgetc(&in)) == EOF || n > nobj_mods)
+      damaged(name);
+    s->mod = n;
+    read_name(s->label, name);
+  }
   /* A function has at least one byte of code, so it can't start at
    * the code's end. */
   if ((s->flags & SYM_DEFINED)
@@ -366,21 +421,33 @@ static int gsym_find(const char *name)
   return -1;
 }
 
+/* Add name to gnames[], and return its offset there. Stops at once if
+ * it is full. */
+static int add_gname(const char *name)
+{
+  int n = (int)strlen(name) + 1, at = gnames_len;
+  if (gnames_len + n > MAX_GNAMES)
+    fatal(222 /* "too many names shared between objects" */, NULL);
+  memcpy(gnames + at, name, n);
+  gnames_len += n;
+  return at;
+}
+
 /* Put name, which isn't in the table, in the first empty slot from its
  * starting slot, with no description or definition yet; returns the
  * slot. Stops at once if the table or its names are full. */
 static int gsym_add(const char *name)
 {
-  int n = (int)strlen(name) + 1, g;
-  if (ngsyms >= MAX_GSYMS || gnames_len + n > MAX_GNAMES)
+  int g;
+  if (ngsyms >= MAX_GSYMS)
     fatal(222 /* "too many names shared between objects" */, NULL);
   for (g = gsym_start(name); g_name[g] >= 0; )
     if (++g == MAX_GSYMS)
       g = 0;
   ngsyms++;
-  g_name[g] = gnames_len;
-  memcpy(gnames + gnames_len, name, n);
-  gnames_len += n;
+  g_name[g] = add_gname(name);
+  g_lab[g] = -1;
+  g_mod[g] = 0;
   g_flags[g] = 0;
   g_def[g] = NO_OBJ;
   g_desc[g] = NO_OBJ;
@@ -424,6 +491,10 @@ static void add_global(Lsym *s, int data)
   }
   if (s->flags & SYM_INDATA)
     g_flags[g] |= G_INDATA;
+  if (s->label[0] && g_lab[g] < 0)  /* an import, if nothing defines it */
+    g_lab[g] = strcmp(s->label, s->name) ? add_gname(s->label) : g_name[g];
+  if (s->mod)
+    g_mod[g] = (unsigned char)(obj_mod[s->mod - 1] + 1);
   if (s->flags & SYM_CALLED)
     g_flags[g] |= G_USED;
   if (s->flags & SYM_NOTCMDSYS)
@@ -525,15 +596,19 @@ static void resolve(void)
       if (!(fl & G_DATA) && !strcmp(name, "main"))
         main_sym = g;
     } else if (fl & G_USED) {
-      if (fl & G_BADCMDSYS)
+      /* Not defined: a CMDSYS function, or one declared as a PLASMA
+       * import (an asm label, or a pragma's module), is imported. */
+      if (g_lab[g] < 0 && (fl & G_BADCMDSYS))
         undefined(173 /* "declaration doesn't match the CMDSYS"
                          " function" */, name);
-      if (fl & (G_DATA | G_PLAIN))
+      if (g_lab[g] < 0 && (fl & (G_DATA | G_PLAIN)))
         undefined(172 /* "undefined reference to" */, name);
       if (nimports >= 255)
         fatal(190 /* "too many imported functions" */, NULL);
       g_flags[g] = (unsigned char)(fl | G_IMPORT);
       g_off[g] = nimports++;
+      if (g_mod[g])
+        mod_used[g_mod[g] - 1] = 1;
     }
   }
 }
@@ -595,7 +670,7 @@ static void map_object(int k)
       if (g_def[g] != NO_OBJ)
         v = g_off[g] + (data ? obj_data[g_def[g]] : obj_code[g_def[g]]);
       else if (g_flags[g] & G_IMPORT)
-        v = -2 - g_off[g];
+        v = (data ? DM_IMPORT : -2) - g_off[g];
     }
     if (data) {
       dmap[i - nfsyms] = v;
@@ -682,6 +757,14 @@ static const char *reloc_note(int at)
         sprintf(buf, "  ; string+%d", t);
       } else if (lr_kind[i] == REL_HELPER) {
         sprintf(buf, "  ; helper %s", h_name[t]);
+      } else if (lr_kind[i] == REL_DSYM) {
+        /* An imported global: t is its import index. */
+        strcpy(buf, "  ; ");
+        for (t = 0; t < MAX_GSYMS; t++)
+          if (g_name[t] >= 0 && (g_flags[t] & G_IMPORT)
+              && g_off[t] == lr_target[i])
+            strcat(buf, gnames + g_name[t]);
+        strcat(buf, " (import)");
       } else {
         /* t < 0: init's call to shared name -2 - t. */
         strcpy(buf, "  ; ");
@@ -825,6 +908,15 @@ static void out_dci(const char *name)
 static int add_reloc(int kind, int at, int target, int add, int list)
 {
   int v;
+  if (kind == REL_DSYM && target < ndsyms && IS_DIMPORT(dmap[target])) {
+    /* An imported global: the word holds the addend, which the loader
+     * adds the symbol's address to (reloc_entry()). */
+#ifdef CCISH_LISTING
+    if (list)
+      keep_reloc(REL_DSYM, at, DM_IMPORT - dmap[target]);
+#endif
+    return add;
+  }
   if (kind == REL_DSYM && target < ndsyms && dmap[target] < -1) {
     if (add != 0)
       bad_obj();
@@ -1123,8 +1215,9 @@ static void def_entries(int k)
 }
 
 /* Write the RLD entry for a relocation of kind to target (a function
- * symbol of the current object, for REL_FUNC) of the word at load
- * address at: an import's, with its ESD index, or an address's. */
+ * symbol of the current object, for REL_FUNC; a data symbol, for
+ * REL_DSYM) of the word at load address at: an import's (a function or
+ * an imported global), with its ESD index, or an address's. */
 static void reloc_entry(int kind, int target, int at)
 {
   int v = -1;
@@ -1132,6 +1225,9 @@ static void reloc_entry(int kind, int target, int at)
     if (target >= nfsyms)
       bad_obj();
     v = fmap[target];
+  } else if (kind == REL_DSYM && target < ndsyms
+             && IS_DIMPORT(dmap[target])) {
+    v = -2 - (DM_IMPORT - dmap[target]);    /* an imported global */
   }
   if (v < -1)
     rld_entry(0x91, at - MODULE_BASE, -2 - v);
@@ -1327,7 +1423,12 @@ void link_module(int n, const char **bases, const char *path)
       init_off += h_size[i];
     }
 
-  deplen = nimports ? (int)sizeof(dep) - 1 + 1 : 1;   /* name(s) + $00 */
+  /* The dependencies: CMDSYS, if anything is imported, then each
+   * module a used import comes from: their names, then $00. */
+  deplen = nimports ? (int)sizeof(dep) - 1 + 1 : 1;
+  for (i = 0; i < nmods; i++)
+    if (mod_used[i] && strcmp(mod_name[i], dep))
+      deplen += strlen(mod_name[i]) > 16 ? 16 : (int)strlen(mod_name[i]);
   /* The data segment holds the globals, then the string pool. One pad
    * byte between it and the bytecode keeps data from ever sharing an
    * address with the first function. */
@@ -1349,6 +1450,9 @@ void link_module(int n, const char **bases, const char *path)
   bputw(&out, main_sym >= 0 ? subseg + init_off : 0);
   if (nimports)
     out_dci(dep);
+  for (i = 0; i < nmods; i++)
+    if (mod_used[i] && strcmp(mod_name[i], dep))
+      out_dci(mod_name[i]);
   bputc(&out, 0);                         /* end of dependencies */
 
   for (k = 0; k < n; k++)
@@ -1394,13 +1498,20 @@ void link_module(int n, const char **bases, const char *path)
     init_entries(init_off);
   bputc(&out, 0);
 
-  /* ESD: imports, in import order (slot order). Each is a CMDSYS
-   * function, whose C name is its PLASMA name with "__" in front
+  /* ESD: imports, in import order (slot order). One declared as a
+   * PLASMA import has its PLASMA name; the others are CMDSYS
+   * functions, whose C name is the PLASMA name with "__" in front
    * (__puts for PUTS), so the "__" goes. */
   for (i = 0; i < MAX_GSYMS; i++)
     if (g_name[i] >= 0 && (g_flags[i] & G_IMPORT)) {
-      const char *name = gnames + g_name[i];
-      out_dci(name[0] == '_' && name[1] == '_' ? name + 2 : name);
+      const char *name = gnames + (g_lab[i] >= 0 ? g_lab[i] : g_name[i]);
+      if (g_lab[i] < 0 && name[0] == '_' && name[1] == '_')
+        name += 2;
+      out_dci(name);
+#ifdef CCISH_LISTING
+      if (opt_list)
+        printf("; import %s as %s\n", gnames + g_name[i], name);
+#endif
       bputc(&out, 0x10);
       bputw(&out, g_off[i]);
     }
@@ -1409,7 +1520,15 @@ void link_module(int n, const char **bases, const char *path)
   if (bclose(&out) != 0)
     fatal(193 /* "error writing output file" */, path);
 #ifdef CCISH_LISTING
-  /* How full the shared-name table is, to see a limit coming. */
+  /* The modules loaded first, and how full the shared-name table is,
+   * to see a limit coming. */
+  if (opt_list) {
+    printf("; dependencies:%s", nimports ? " CMDSYS" : "");
+    for (i = 0; i < nmods; i++)
+      if (mod_used[i] && strcmp(mod_name[i], dep))
+        printf(" %s", mod_name[i]);
+    printf("\n");
+  }
   if (opt_list)
     printf("; shared names: %d of %d slots, %d of %d name bytes\n",
            ngsyms, MAX_GSYMS, gnames_len, MAX_GNAMES);

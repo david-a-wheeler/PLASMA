@@ -10,6 +10,7 @@
 10 number does not fit in 16 bits
 11 number suffixes other than u, and floating point, are not supported
 12 string literal too long
+13 expected a module name after #pragma plasma import
 14 empty character constant
 15 multi-character constants are not supported
 16 unexpected '..'
@@ -53,6 +54,7 @@
 54 expected ')' after arguments, not
 55 wrong number of arguments in call to
 56 pstr() needs a string literal, not
+57 expected '(' after __asm__, not
 58 expected ')' after pstr argument, not
 59 expected ')' after the type in a cast, not
 60 expected ')', not
@@ -153,6 +155,7 @@
 155 initializer address is out of range
 156 initializer string is too long for
 157 expected '}' or ',' in an initializer, not
+158 expected a PLASMA name in quotes in __asm__, not
 159 expected '{' to start an array initializer, not
 160 expected '{' to start a struct initializer, not
 161 too many initializers for
@@ -183,6 +186,7 @@
 186 too much code
 187 error writing
 188 compiler stream file is damaged:
+189 too many imports (with an asm label, or after a #pragma plasma import)
 190 too many imported functions
 191 module too large
 192 cannot create output file
@@ -217,6 +221,7 @@
 221 conflicting types for
 222 too many names shared between objects
 223 too many objects to link
+224 too many modules imported
 225 too many run-time swaps in
 226 conflicting or repeated type specifier:
 227 'signed char' is not supported yet

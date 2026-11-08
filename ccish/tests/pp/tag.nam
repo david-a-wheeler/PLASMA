@@ -29,6 +29,8 @@ __CCISH__
 __FILE__
 __LINE__
 defined
+__asm__
+__plasma_import
 s
 p
 ab
@@ -36,4 +38,4 @@ u
 q
 @tests/pp/tag.c
 
-=1 0024 ssss
+=2 0026 ssss

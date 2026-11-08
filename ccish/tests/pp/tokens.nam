@@ -29,6 +29,8 @@ __CCISH__
 __FILE__
 __LINE__
 defined
+__asm__
+__plasma_import
 x
 a_name_that_is_longer_than_thir
 p
@@ -37,4 +39,4 @@ y
 z
 @tests/pp/tokens.c
 
-=1 0025 ssss
+=2 0027 ssss

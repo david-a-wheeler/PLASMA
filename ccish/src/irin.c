@@ -1709,6 +1709,10 @@ static void read_summary(void)
     damaged();
   emit_word(nf);
   emit_word(nd);
+  n = get_byte();               /* modules to import from */
+  emit_byte(n);
+  while (n-- > 0)
+    put_name();
   for (i = 0; i < nf; i++) {
     flags = get_byte();
     emit_byte(flags);
@@ -1720,13 +1724,21 @@ static void read_summary(void)
     ndefined += (flags & SYM_DEFINED) != 0;
     emit_word(get_word());      /* type hash */
     put_name();
+    if (flags & SYM_FIMPORT) {
+      emit_byte(get_byte());    /* its module */
+      put_name();               /* its PLASMA name */
+    }
   }
   if (ndefined != nwritten)
     damaged();                  /* a function written twice */
   for (i = 0; i < nd; i++) {
-    emit_byte(get_byte());      /* flags */
+    emit_byte(flags = get_byte());
     copy(6);                    /* offset, size, type hash */
     put_name();
+    if (flags & SYM_DIMPORT) {
+      emit_byte(get_byte());
+      put_name();
+    }
   }
   if (bgetc(&in) != EOF)
     damaged();

@@ -464,13 +464,17 @@ design").**
    and clang. Cost: cccomp 1,771 bytes of code in all (step 1 1,196,
    step 2 534, step 3 41).
 
-**Phase 4: imports from other modules.**
+**Phase 4: imports from other modules (done, 2026-11-07; approach.md
+decision 35).**
 7. The asm label and `#pragma plasma import` in cccomp; dependency
    names and imports beyond CMDSYS in ccrel (OBJECT.md version bump
    if the .syms format changes). Test with run tests that read
    `cmdsys` fields and call a CONIO or FILEIO entry. (This step
    doesn't need step 6 for data imports, so it could go first; the
-   table calls need both.)
+   table calls need both.) Done: `.syms` version 7, name file version
+   2; tests/run/imports.c reads `cmdsys` and calls FILEIO's `open`,
+   `read` and `close` under plvm. Cost: cccomp +721 bytes of code and
+   +96 of data, ccrel +640 of code, ccpp +165, ccgen +59.
 
 **Phase 5: the library and startup.**
 8. `lib/include` and the default include directory: compiled in on

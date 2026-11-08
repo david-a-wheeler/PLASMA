@@ -25,7 +25,9 @@ int parse_local_init(int type, int name, int base);
 int begin_function(int name);
 
 /* Declare function name of function type type, as int f(); does. */
-void declare_function(int name, int type, int is_static);
+int  declare_function(int name, int type, int is_static);
+int  parse_asm_label(void);         /* __asm__ (NAME): NAME's id, or 0 */
+void note_import(int key, int label);   /* a function or IMP_DATA + v */
 
 /* An extern declaration in a block, after the "extern". */
 void parse_block_extern(void);

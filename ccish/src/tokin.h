@@ -56,6 +56,7 @@ enum {
 /* The current token. */
 extern int tok;
 extern int tok_val;                 /* T_NUM value; T_ID, T_KEYWORD id */
+extern int tok_file;                /* the token's file, by number */
 extern int tok_unsigned;            /* T_NUM: it is unsigned (a u suffix,
                                      * or hex or octal over $7FFF) */
 extern char tok_text[MAX_STR + 1];  /* T_STR bytes */

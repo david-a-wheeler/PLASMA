@@ -129,7 +129,7 @@ enum {
 /* The IR file: the output name plus this suffix, and its format's
  * version (in its header, after the magic "CIR"). */
 #define SUFFIX_IR   ".ir"
-#define IR_VERSION  9
+#define IR_VERSION  10
 
 /* The sets of ops the compiler tests in more than one place, and its
  * value manipulations on ops, each defined here next to the values it

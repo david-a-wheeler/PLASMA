@@ -28,6 +28,8 @@ static Bfile in;            /* NAME.i */
 static const char *base_name;
 static int at_end;          /* the end code has been read */
 static char source[MAX_PATH];   /* file 1's name, for messages */
+int tok_file = 1;           /* the file the token is in (the name file's
+                             * number), for #pragma plasma import */
 
 /* The token stream is damaged: stop. */
 static void damaged(void)
@@ -97,6 +99,7 @@ void next(void)
       src_line = get_word();
     } else if (c == TC_FILE) {
       c = get_byte();
+      tok_file = c;
       strcpy(source, nam_file(c));
       src_line = get_word();
     } else {

@@ -225,10 +225,11 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   and calls then go to it. Anything else used and not defined,
   including a plain `puts` or `memset`, is an "undefined reference".
 * `main` (not `static`) in any object is the entry point.
-* The module exports nothing, and imports only CMDSYS functions, by
-  their PLASMA names (`__puts` imports `PUTS`), so other C names are
-  matched in full, with their case, and never reach PLASMA's
-  case-insensitive, 16-character symbol table.
+* The module exports nothing. It imports CMDSYS functions, by their
+  PLASMA names (`__puts` imports `PUTS`), and what you declare as a
+  PLASMA import (section 11.1); other C names are matched in full,
+  with their case, and never reach PLASMA's case-insensitive,
+  16-character symbol table.
 
 ### 2.4 Messages
 
@@ -1362,17 +1363,15 @@ The predefined macros are `__LINE__` (the current line's number),
 (1). `-D name[=text]` and `-U name` (section 2.1) define and undefine
 macros before the first line.
 
-`#pragma` is ignored, for now. A `#` alone does nothing. Any other
+`#pragma plasma import MODULE` names a PLASMA module to import from
+(section 11.1); any other `#pragma` is ignored. A `#` alone does
+nothing. Any other
 directive is an error.
 
 ## 9. What ccish doesn't (yet) do
 
 ### 9.1 Not implemented, expected soon
 
-* Imports from PLASMA modules other than CMDSYS (FILEIO, CONIO and
-  the rest), through an asm label and `#pragma plasma import`
-  (approach.md, issue 22). Today a module imports only CMDSYS's
-  functions (section 5.3).
 * A C library and the standard headers (`<stdio.h>`, `<string.h>`
   and the rest): `stdio` over FILEIO, `string.h`, and `exit`. Today
   there are only the CMDSYS functions (section 11).
@@ -1384,8 +1383,8 @@ directive is an error.
 Each gives a "not supported yet" error, except the struct `?:`
 ("a struct can't be used as a value here"), and the missing library,
 whose functions are undeclared (or, if you declare them, undefined
-when the module is linked). The first three are the next steps of
-the bootstrap (doc/bootstrap-test.md, phases 4 and 5).
+when the module is linked). The first two are the next steps of the
+bootstrap (doc/bootstrap-test.md, phase 5).
 
 ### 9.2 Out of scope
 
@@ -1580,9 +1579,11 @@ defined in none must be a CMDSYS import), writes the module's
 dependencies and its relocation table (the RLD, which tells the VM
 what to fix up at load), and adds the init code that moves the
 zero-filled globals to the heap when there are any
-(section 5.4). The module exports nothing and imports only CMDSYS
-functions, so C names never reach PLASMA's 16-character,
-case-insensitive symbol table.
+(section 5.4). The module exports nothing, and imports only CMDSYS
+functions and what you declared as PLASMA imports (section 11.1), so
+other C names never reach PLASMA's 16-character, case-insensitive
+symbol table. A module an import comes from goes in the dependencies,
+after `CMDSYS`, so the loader loads it first.
 
 ### 10.5 Where the speed comes from
 
@@ -1649,6 +1650,57 @@ The routines, with their ccish names, parameters and return types:
 The export table also holds `DIVMOD(a, b)` which divides `a` by `b` and returns two values, the
 quotient and the remainder. You'll need to assign that return value to a
 struct with the same shape (section 1.3).
+
+### 11.1 Calling other PLASMA modules
+
+A module can also use what other PLASMA modules export: functions,
+data, and tables of functions such as FILEIO's and CONIO's. You
+declare each as an ordinary C `extern` (or function prototype), and
+mark it as a PLASMA import in one of two ways:
+
+```c
+#pragma plasma import FILEIO        /* load FILEIO first */
+struct t_fileio {
+  int (*getpfx)(char *);
+  /* ... */
+  int (*open)(char *);              /* PLASMA's open(path), a PLASMA string */
+  int (*close)(int);
+  int (*read)(int, char *, int);
+};
+extern struct t_fileio fileio;      /* the PLASMA symbol FILEIO */
+
+extern struct t_cmdsys cmdsys __asm__("CMDSYS");   /* named by a label */
+
+ref = fileio.open(pstr("MYFILE"));  /* a load from the table, then ICAL */
+```
+
+* **An asm label**, `__asm__("NAME")` after the declarator (the gcc
+  and clang extension for the same job), gives the PLASMA symbol's
+  name. Without one, the symbol is the C name, uppercased; PLASMA keeps
+  16 significant characters.
+* **`#pragma plasma import MODULE`** makes every function and `extern`
+  declared after it, in the same file, an import from MODULE, which the
+  loader loads first. It covers the rest of its own file only: a
+  header's pragma doesn't make the externs of the file that includes
+  it imports. A later pragma in the file replaces it. A CMDSYS function
+  (`__puts`) declared after one is still CMDSYS's.
+* A declaration with a label but no pragma imports from a module
+  that's already loaded, such as CMDSYS's own data (`cmdsys`, whose
+  `syserr` byte is the error code of FILEIO's calls).
+* It's an import only if no object linked into the module defines it,
+  and only if something uses it; a module goes into the module's
+  dependencies only if one of its imports is used. Any other `extern`
+  that's used and defined nowhere is still an "undefined reference",
+  so a misspelled name is still caught when the module is linked.
+* PLASMA calls check nothing: you must pass exactly the arguments the
+  routine takes, and declare the return type it gives (`void` for none).
+  A PLASMA string is a length byte, then the characters: pass
+  `pstr("...")` for a literal. A routine that returns two values
+  (`geteof`, `getmark`) returns a struct of two `int`s.
+* These declarations belong in ccish's own headers, under
+  `#ifdef __CCISH__` when a header is shared with another compiler.
+  Under `plvm`, FILEIO and CONIO are built in, so their dependencies
+  load no file.
 
 ## 12. Writing small and fast code
 

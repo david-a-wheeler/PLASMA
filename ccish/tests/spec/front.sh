@@ -38,14 +38,16 @@ extra'
 nam_damaged_test nam_extra "with a line added"
 nam_edit nam_lost '3d'
 nam_damaged_test nam_lost "with a line lost"
-nam_edit nam_count 's/^=1 \(....\)/=1 FFFF/'
+nam_edit nam_count 's/^=\([0-9]\) \(....\)/=\1 FFFF/'
 nam_damaged_test nam_count "with a wrong count"
 nam_edit nam_sum 's/^__putc$/__putd/'
 nam_damaged_test nam_sum "with a wrong checksum"
 nam_edit nam_after '$a\
 x'
 nam_damaged_test nam_after "with a line after the stamp"
-nam_edit nam_version 's/^=1 /=2 /'
+# Another version: the stamp's digit plus 1 (mod 10), whatever it is.
+nam_edit nam_version 's/^=0 /=1 /;t;s/^=1 /=2 /;t;s/^=2 /=3 /;t;s/^=3 /=4 /;t
+s/^=4 /=5 /;t;s/^=5 /=6 /;t;s/^=6 /=7 /;t;s/^=7 /=8 /;t;s/^=8 /=9 /;t;s/^=9 /=0 /'
 nam_damaged_test nam_version "of another version"
 nam_edit nam_long "s/^__putc\$/$(printf 'n%031d' 0)/"
 nam_damaged_test nam_long "with a name over 31 characters"

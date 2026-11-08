@@ -7,4 +7,4 @@
 05 00 00        # 0
 3b 7d           # ; }
 01              # the next line
-00 1f 00 ss ss  # the end: 31 ids (the fixed ones), the checksum
+00 21 00 ss ss  # the end: 33 ids (the fixed ones), the checksum

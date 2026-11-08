@@ -29,6 +29,8 @@ __CCISH__
 __FILE__
 __LINE__
 defined
+__asm__
+__plasma_import
 N
 S
 E
@@ -37,9 +39,8 @@ tag
 p
 y
 z
-anything
 here
 q
 @tests/pp/directives.c
 
-=1 002A ssss
+=2 002B ssss

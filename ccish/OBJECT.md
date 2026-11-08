@@ -13,10 +13,15 @@ version number bumped.
 
 For output `NAME`, the files are `NAME.obj` and `NAME.syms`. `ccish`
 removes them after the module is written, and after any error, unless
-`-k` is given; `ccgen` leaves them for `ccrel`, which keeps them. This
-is format version 9, which adds the function pointer ops
-`IR_FUNCADDR` and `IR_ICALL` before the loop markers, and so moves the
-markers' numbers. An op's tag may now be up to `$43` (`$C3` with a
+`-k` is given; `ccgen` leaves them for `ccrel`, which keeps them.
+`NAME.obj` and `NAME.syms` are format version 7 (`OBJ_VERSION`), and
+the IR file, `NAME.ir`, is IR format version 10 (`IR_VERSION`); the
+history below gives both. Object version 7 and IR version 10 add
+imports from other PLASMA modules (approach.md issue 22, decision 35):
+in `NAME.syms` (and the IR's `Y` record), the modules to import from,
+and for each symbol that may be an import, its module and PLASMA name.
+IR version 9 added the function pointer ops `IR_FUNCADDR` and
+`IR_ICALL` before the loop markers, and so moved the markers' numbers. An op's tag may now be up to `$43` (`$C3` with a
 byte operand): `D`, the lowest record letter, is `$44`. Version 8
 renumbered the comparison ops into one range in De Morgan pairs
 (src/ir.h, IR_COMPARE_FLIP): no new records, but an earlier file's op
@@ -197,13 +202,15 @@ of its own so that the compiler needn't seek back to patch a header.
 | Size | Field |
 |------|-------|
 | 2 bytes | magic `CI` |
-| byte | format version: 6 |
+| byte | format version: 7 |
 | word | data size |
 | word | string pool size |
 | word | code size (the total code length of the `F` records) |
 | word | zero-filled size: the total size of the data symbols with flag 64 defined here |
 | word | function symbol count *N* |
 | word | data symbol count *M* |
+| byte | module count *D* (0-8): the modules `#pragma plasma import` named |
+| *D* names | each a length byte (1-31) and its characters |
 | *N* entries | function symbols, in index order |
 | *M* entries | data symbols, in index order |
 | byte | helper count *H* |
@@ -223,32 +230,50 @@ Each function symbol entry:
 
 | Size | Field |
 |------|-------|
-| byte | flags: 1 = defined here, 2 = called, 4 = returns a value, 8 = local (`static`), 16 = a CMDSYS function, 32 = a CMDSYS name declared differently |
+| byte | flags: 1 = defined here, 2 = called, 4 = returns a value, 8 = local (`static`), 16 = a CMDSYS function, 32 = a CMDSYS name declared differently, 64 = may be a PLASMA import |
 | byte | parameter count, or 255 if unknown |
 | word | code offset, if defined; otherwise 0 |
 | word | type hash, or 0 if the parameters are unknown (`int f();`) |
 | byte | name length *n* (1–31) |
 | *n* bytes | name |
+| byte | with flag 64 only: its module, 1 plus an index into the module names, or 0 for none |
+| name | with flag 64 only: its PLASMA name, a length byte and its characters (an asm label, else the C name) |
 
 Each data symbol entry (a global variable, numbered as the compiler
 numbers them; every global is listed, static locals aren't):
 
 | Size | Field |
 |------|-------|
-| byte | flags: 1 = defined here, 2 = used, 8 = local (`static`), 64 = zero-filled, 128 = its address is in this object's data |
+| byte | flags: 1 = defined here, 2 = used, 8 = local (`static`), 16 = may be a PLASMA import, 64 = zero-filled, 128 = its address is in this object's data |
 | word | data offset, if defined (with flag 64, an offset in the zero-filled space instead); otherwise 0 |
 | word | size in bytes, or 0 if unknown (`extern int a[];`) |
 | word | type hash |
 | byte | name length *n* (1–31) |
 | *n* bytes | name |
+| byte | with flag 16 only: its module, as for a function |
+| name | with flag 16 only: its PLASMA name |
 
 A symbol without flag 8 is shared by every object linked together, by
 its name; one with flag 8 belongs to its object alone. A function that
 is called but defined in no object is an import if every object's
 entry for it has flag 16, the CMDSYS functions (declared from the
-compiler's table, or matching it). Otherwise, it and a global that is
-used but defined nowhere are undefined references, reported by the
-final pass ("undefined reference to"), or message 173 for flag 32.
+compiler's table, or matching it), or if it may be a PLASMA import
+(below). Otherwise, it and a global that is used but defined nowhere
+are undefined references, reported by the final pass ("undefined
+reference to"), or message 173 for flag 32.
+
+**PLASMA imports** (approach.md issue 22, decision 35): a function or
+`extern` global declared with an asm label (`__asm__("PERR")`), or
+after a `#pragma plasma import MODULE` in the same file, has flag 64
+(a function) or 16 (a global). If no object defines it and some object
+uses it, it is imported: an ESD entry with its PLASMA name, which the
+loader looks up (uppercased, 16 significant characters), and an RLD
+`$91` entry for each word that holds its address. For a global, the
+word holds the addend, so `&ext[3]` works, and an imported global
+never moves to the heap. A module is written in the REL header's
+dependencies, after `CMDSYS`, only if an import from it is used. A
+definition in any object wins over an import of the same name.
+
 Nothing is exported: names stay inside the module. A global declared
 `extern` that nothing uses needn't be defined anywhere.
 
@@ -292,7 +317,7 @@ starts with a header:
 | Size | Field |
 |------|-------|
 | 3 bytes | magic `CIR` |
-| byte | IR format version: 6 |
+| byte | IR format version: 10 |
 | word | the name file's stamp: its id count |
 | word | and its checksum |
 
@@ -405,7 +430,7 @@ how many values a `CALL` leaves.
 | Size | Field |
 |------|-------|
 | byte | tag `Y` |
-| ... | the rest of the file: `NAME.syms` after its magic and version, with the code size and every function's code offset 0, and each name (a length byte and its characters there) as its id, a word |
+| ... | the rest of the file: `NAME.syms` after its magic and version, with the code size and every function's code offset 0, and each name (a length byte and its characters there) as its id, a word: a symbol's, a PLASMA name, or a module's |
 
 `ccgen` writes `NAME.syms` from it: the magic and version, then the
 same bytes, with the code size and each defined function's offset

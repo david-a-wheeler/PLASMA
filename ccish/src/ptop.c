@@ -527,15 +527,147 @@ static int declare_global(int name, int type, int storage)
   return s;
 }
 
+/*
+ * Imports from other PLASMA modules (approach.md issue 22, decision 35).
+ * A function or extern global declared with an asm label,
+ * __asm__("PERR") (which ccpp turns into the id PERR), or declared
+ * after "#pragma plasma import MODULE" in the same file, is a PLASMA
+ * import if no linked object defines it. Its PLASMA name is the label,
+ * else its C name (ccrel uppercases it); a pragma also names the
+ * module to load first, which ccrel writes only if an import from it is
+ * used. A pragma covers the rest of its own file only, so a header's
+ * doesn't turn the including file's externs into imports. Only the
+ * few symbols involved are kept, here, as parallel arrays: imp_sym[]
+ * (a function's index, or IMP_DATA plus a global's), imp_label[] (its
+ * label's id, or 0) and imp_dep[] (its module: 1 plus its index in
+ * dep_id[], or 0). dep_id[] holds the modules' names, and dep_file[]
+ * the file each one's pragma now covers (0 for none: files count
+ * from 1).
+ */
+#define MAX_IMPORTS  16     /* symbols with a label or a pragma (2) */
+#define MAX_DEPS     4      /* modules named by pragmas (1) */
+static int imp_sym[MAX_IMPORTS];
+static int imp_label[MAX_IMPORTS];
+static unsigned char imp_dep[MAX_IMPORTS];
+static int nimports;
+static int dep_id[MAX_DEPS];
+static unsigned char dep_file[MAX_DEPS];
+static int ndeps;
+
+/* __plasma_import NAME, what ccpp makes of #pragma plasma import NAME:
+ * module NAME is to be loaded for what the rest of this file declares
+ * (in place of any earlier pragma of the file's). */
+static void parse_pimport(void)
+{
+  int i, d = -1;
+  next();                         /* __plasma_import */
+  if (tok != T_ID)
+    error(13 /* "expected a module name after #pragma plasma"
+                " import" */, NULL);
+  for (i = 0; i < ndeps; i++) {
+    if (dep_file[i] == tok_file)
+      dep_file[i] = 0;
+    if (dep_id[i] == tok_val)
+      d = i;
+  }
+  if (d < 0) {
+    if (ndeps >= MAX_DEPS)
+      fatal(224 /* "too many modules imported" */, NULL);
+    d = ndeps++;
+    dep_id[d] = tok_val;
+  }
+  dep_file[d] = (unsigned char)tok_file;
+  next();
+}
+
+/* Parse an asm label, __asm__ (NAME), after a declarator, if there is
+ * one: return NAME's id, or 0. */
+int parse_asm_label(void)
+{
+  int label;
+  if (tok != T_ID || tok_val != ID_ASM)
+    return 0;
+  next();
+  expect('(', 57 /* "expected '(' after __asm__, not" */);
+  if (tok != T_ID)
+    error(158 /* "expected a PLASMA name in quotes in __asm__, not" */,
+          tok_desc());
+  label = tok_val;
+  next();
+  expect(')', 60 /* "expected ')', not" */);
+  return label;
+}
+
+/* Note that the function, or extern global, key (a function's index,
+ * or IMP_DATA plus a global's) was declared here with asm label label
+ * (an id, or 0): it is an import if it has a label, or if a pragma
+ * covers this file. A CMDSYS function without a label stays one (a
+ * header may declare __puts after a pragma). */
+void note_import(int key, int label)
+{
+  int i, d = 0;
+  for (i = 0; i < ndeps; i++)
+    if (dep_file[i] == tok_file)
+      d = i + 1;
+  if (!label && (!d || (key < IMP_DATA && find_cmdsys(fn_name[key]) >= 0)))
+    return;
+  for (i = 0; i < nimports && imp_sym[i] != key; i++)
+    ;
+  if (i == nimports) {
+    if (nimports >= MAX_IMPORTS)
+      fatal(189 /* "too many imports (with an asm label, or after a"
+                   " #pragma plasma import)" */, NULL);
+    nimports++;
+    imp_sym[i] = key;
+    imp_label[i] = 0;
+    imp_dep[i] = 0;
+  }
+  if (label)
+    imp_label[i] = label;
+  if (d)
+    imp_dep[i] = (unsigned char)d;
+}
+
+/* For the symbol summary: if key (as for note_import()) is an import,
+ * set *label to its PLASMA name (its label, else name, its C name) and
+ * return its module (0 for none, else 1 plus a dep_name() index);
+ * otherwise return -1. */
+int sym_import(int key, int name, int *label)
+{
+  int i;
+  for (i = 0; i < nimports; i++)
+    if (imp_sym[i] == key) {
+      *label = imp_label[i] ? imp_label[i] : name;
+      return imp_dep[i];
+    }
+  return -1;
+}
+
+/* For the symbol summary: the number of modules pragmas named. */
+int dep_count(void)
+{
+  return ndeps;
+}
+
+/* For the symbol summary: module i's name, an id. */
+int dep_name(int i)
+{
+  return dep_id[i];
+}
+
 /* Declare the global variable name of type type, with storage class
- * storage (T_STATIC, T_EXTERN or 0), and parse its initializer, if any.
- * A global without one is zero when the module loads. */
+ * storage (T_STATIC, T_EXTERN or 0), and parse its asm label and its
+ * initializer, if any. A global without an initializer is zero when the
+ * module loads. Only an extern can be an import (a label on a
+ * definition does nothing). */
 static void define_global(int name, int type, int storage)
 {
-  int s;
+  int s, label = parse_asm_label();
   type = parse_var_type(type, 1);
   /* In C, the name is in scope in its own initializer. */
   s = declare_global(name, type, storage);
+  if (storage == T_EXTERN)
+    note_import(IMP_DATA + s, label);
   type = var_type[s];
   if (tok == '=') {
     if (storage == T_EXTERN)
@@ -572,7 +704,8 @@ static void parse_globals(int base, int type, int name, int storage)
 {
   for (;;) {
     if (is_func(type))
-      declare_function(name, type, storage == T_STATIC);
+      note_import(declare_function(name, type, storage == T_STATIC),
+                  parse_asm_label());
     else
       define_global(name, type, storage);
     if (tok != ',')
@@ -587,8 +720,9 @@ static void parse_globals(int base, int type, int name, int storage)
  * parameter count is fixed by the first call), as int f(); does: a
  * declarator that isn't a file-scope function's own (int x, f(int);
  * fn_t g; int g(int); in a block). In a block it is declared as at
- * file scope, from there on. is_static makes it local to the file. */
-void declare_function(int name, int type, int is_static)
+ * file scope, from there on. is_static makes it local to the file.
+ * Returns the function. */
+int declare_function(int name, int type, int is_static)
 {
   int f;
   type = unqual(type_sub(type));
@@ -605,6 +739,7 @@ void declare_function(int name, int type, int is_static)
   if (is_static)
     fn_flags[f] |= FN_STATIC;
   fn_flags[f] |= FN_DECLARED;
+  return f;
 }
 
 /* An extern declaration in a block, after the "extern": each
@@ -614,11 +749,12 @@ void declare_function(int name, int type, int is_static)
  * hide the global in the block, so that's an error. */
 void parse_block_extern(void)
 {
-  int base = parse_base_type(), type, name, s;
+  int base = parse_base_type(), type, name, s, label;
   for (;;) {
     type = parse_declarator(base, 0, &name);
+    label = parse_asm_label();
     if (is_func(type)) {
-      declare_function(name, type, 0);
+      note_import(declare_function(name, type, 0), label);
     } else {
       s = find_var(name);
       if (s >= nglobals)
@@ -627,7 +763,8 @@ void parse_block_extern(void)
       if (tok == '=')
         error(216 /* "'extern' with an initializer is not supported" */,
               NULL);
-      declare_global(name, parse_var_type(type, 1), T_EXTERN);
+      s = declare_global(name, parse_var_type(type, 1), T_EXTERN);
+      note_import(IMP_DATA + s, label);
     }
     if (tok != ',')
       break;
@@ -668,6 +805,10 @@ static void parse_toplevel(void)
   int base, type, nparams, pwords, i, f, name, storage = 0;
 
   depth = 0;                      /* file scope, for tags and names */
+  if (tok == T_ID && tok_val == ID_PIMPORT) {
+    parse_pimport();
+    return;
+  }
   if (tok == T_TYPEDEF) {
     parse_typedef();
     return;
@@ -709,8 +850,10 @@ static void parse_toplevel(void)
     fn_flags[f] |= FN_STATIC;
   }
   pwords = frame_next / 2;
+  i = parse_asm_label();
   if (tok == ';') {
     /* A prototype. "()" leaves the parameter count unspecified. */
+    note_import(f, i);
     if ((fn_flags[f] & FN_DECLARED) && fn_type[f] != type)
       error(165 /* "conflicting declaration of" */, quote(fn_name[f]));
     fn_type[f] = type;
@@ -832,6 +975,8 @@ int func_sym(int f, int *hash)
   int flags = 0, c, i, h;
   if (fn_flags[f] & FN_DEFINED)
     flags |= SYM_DEFINED;
+  if (sym_import(f, 0, &h) >= 0)
+    flags |= SYM_FIMPORT;
   if (fn_flags[f] & FN_CALLED)
     flags |= SYM_CALLED;
   if (fn_type[f] != TY_VOID)
@@ -873,6 +1018,9 @@ int data_sym(int v, int *off, int *size, int *hash, int *name)
   int t = var_type[v], flags = 0, h = 0;
   if (!(var_link[v] & VL_EXTERN))
     flags |= SYM_DEFINED;
+  if (sym_import(IMP_DATA + v, 0, &h) >= 0)
+    flags |= SYM_DIMPORT;
+  h = 0;
   if (var_link[v] & VL_USED)
     flags |= SYM_CALLED;
   if (var_link[v] & VL_STATIC)

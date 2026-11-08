@@ -3761,19 +3761,23 @@ a measurement (E1 still needs a 64K emulator). cccomp, small build,
 
 | | Bytes |
 |---|---|
-| Code (pexpr 8,917, parse 5,774, pstmt 4,936, ptop 3,678, type 1,144, irout 955, diag 917, tokin 895, nam 539, bio 512, name 223, cccomp 187) | 28,677 |
-| Data (parse 1,241 of it) | 3,382 |
+| Code (pexpr 8,917, parse 5,774, pstmt 4,942, ptop 4,280, type 1,144, irout 1,065, diag 917, tokin 898, nam 539, bio 512, name 223, cccomp 187) | 29,398 |
+| Data (parse 1,241 of it) | 3,478 |
 | Strings | 558 |
-| The loader's def table (5 bytes per function, 329 functions) | 1,645 |
+| The loader's def table (5 bytes per function, 336 functions) | 1,680 |
 | Zero-filled tables moved to the heap (parse 2,361, name 812, tokin 778, irout 522) | 4,473 |
 | Frame stack, worst case (measure.py; 1,763 before diag.c's buffers shrank) | 1,665 |
 | ProDOS buffers, 2 or 3 open files | 2,048 to 3,072 |
-| **Total** | **42,448 to 43,472** |
+| **Total** | **43,300 to 44,324** |
+
+(Updated 2026-11-07 after phase 4's imports, which cost 721 bytes of
+code, 96 of data and 7 functions; it was 42,448 to 43,472 before.)
 
 So loading would work once the RLD is streamed (a load peak of the
-body plus the def table, about 34.3K), but running wouldn't: cccomp is
-1 to 2K over, before FILEIO and the C library (phase 5), not yet
-measured, which could plausibly add 2K or more. The goal: cut 3 to 5K,
+body plus the def table, about 35.1K), but running wouldn't: cccomp is
+about 1.6 to 2.6K over, before FILEIO and the C library (phase 5), not
+yet measured, which could plausibly add 2K or more. The goal: cut
+about 4 to 5K,
 and measure each step with tools/measure.py (and keep this table up
 to date). Anything added meanwhile, such as issue 23, widens the gap.
 
@@ -4372,6 +4376,30 @@ issue. In summary:
     the CMDSYS ones for the cross tests. Cost: ccpp +61 bytes (the
     fixed names' spellings), cccomp +3, ccrel +50 (its init's names,
     and stripping the `__`).
+    Imports from other modules are done too (2026-11-07, phase 4 of
+    doc/bootstrap-test.md; ccish-guide.md 11.1; OBJECT.md, "PLASMA
+    imports"). An extern or prototype with an asm label, or after a
+    `#pragma plasma import` in the same file, is a PLASMA import if
+    nothing defines it; any other undefined one is still error 172.
+    Decided with it: the pragma covers the rest of its own file only,
+    so a header's doesn't turn the including file's externs into
+    imports; a CMDSYS function declared after a pragma stays CMDSYS's;
+    a module is a dependency only if an import from it is used.
+    How: ccpp makes the pragma the tokens `__plasma_import NAME` and an
+    asm label's string an identifier (two new fixed ids, so name file
+    version 2), since cccomp keeps no strings but passes ids along;
+    cccomp keeps only the few import symbols (MAX_IMPORTS 16, MAX_DEPS
+    4) and writes them in its summary (IR version 10, `.syms` version
+    7); ccrel resolves them to ESD entries, for data as well as
+    functions (an imported global's words get RLD `$91` entries
+    holding the addend, and never move to the heap), and writes the
+    used modules after `CMDSYS` in the header. Tests: run test
+    imports (CMDSYS's data and FILEIO's table under plvm), link tests
+    imports and pragma_scope, and three error tests. Cost (small
+    build, measure.py): ccpp code +165, cccomp code +721 (ptop.c +602,
+    irout.c +110) and data +96, ccgen +59, ccrel +640 and data +181,
+    and its heap tables +582 (each shared name's PLASMA name and
+    module). cccomp's cost is about twice the 300 to 400 estimated.
 36. **The exit status** (decided in discussion, 2026-11-07; issue
     22). ccrel's init returns `-(status & 255)` of `main`'s result,
     PLASMA's own error convention, which can't be read as "keep the

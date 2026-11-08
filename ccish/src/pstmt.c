@@ -556,7 +556,7 @@ static void parse_declaration(int is_static)
     int s, name;
     int type = parse_declarator(base, 0, &name), braced;
     if (is_func(type)) {
-      declare_function(name, type, 0);
+      note_import(declare_function(name, type, 0), parse_asm_label());
       if (tok != ',')
         break;
       next();

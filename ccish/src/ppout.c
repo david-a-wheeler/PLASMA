@@ -20,6 +20,7 @@
 #include "diag.h"
 #include "bio.h"
 #include "token.h"
+#include "fixed.h"
 #include "ppname.h"
 #include "pplex.h"
 #include "ppout.h"
@@ -32,6 +33,7 @@ static unsigned char str[MAX_STR];  /* the string being joined */
 static int str_len;
 static int str_held;                /* a string is in str[] */
 static int last;                    /* the last code written, but lines' */
+static int asm_seen;                /* 1 after __asm__, 2 after its '(' */
 static int out_file;                /* the file and line a reader of the */
 static int out_line;                /* stream is at */
 
@@ -122,12 +124,28 @@ static void sync(void)
   out_line = src_line;
 }
 
-/* Write the held string, if any. */
+/* Write the held string, if any. In an asm label, __asm__("PERR"), it
+ * is written as the identifier PERR (interned now), since cccomp keeps
+ * no strings but passes ids along for ccgen to spell (approach.md
+ * issue 22). */
 static void flush_str(void)
 {
+  int id;
   if (!str_held)
     return;
   str_held = 0;
+  if (asm_seen == 2) {
+    id = pp_intern((const char *)str, str_len);
+#ifdef CCISH_TEXT
+    if (pp_opt_text) {
+      put_text(TC_ID, id, NULL, 0);
+      return;
+    }
+#endif
+    bputc(&out, TC_ID);
+    bputw(&out, id);
+    return;
+  }
 #ifdef CCISH_TEXT
   if (pp_opt_text) {
     put_text(TC_STR, 0, str, str_len);
@@ -161,6 +179,8 @@ void pp_out(int code, int val, const unsigned char *s, int n)
   }
   sync();
   flush_str();
+  asm_seen = code == TC_ID && val == ID_ASM ? 1
+             : code == '(' && asm_seen == 1 ? 2 : 0;
 #ifdef CCISH_TEXT
   if (pp_opt_text) {
     put_text(code, val, s, n);

@@ -38,14 +38,17 @@ static int nids;                /* identifiers in the pool */
  * function's C name is its PLASMA name with "__" in front (__puts for
  * PUTS), a name C reserves to the implementation, so the standard names
  * (puts, memset, ...) stay free for a C library with C's meanings; ccrel
- * drops the "__" in the import (approach.md issue 22, decision 35). */
+ * drops the "__" in the import (approach.md issue 22, decision 35).
+ * Last, __asm__ and __plasma_import, for imports from other modules
+ * (pp.c, ppout.c). */
 static const char *const fixed[NFIXED] = {
   "__putc", "__putln", "__puts", "__puti", "__putb", "__puth", "__getc",
   "__gets", "__call", "__syscall", "__heapmark", "__heapallocalign",
   "__heapalloc", "__heaprelease", "__heapavail", "__memset", "__memcpy",
   "__strcpy", "__strcat", "__toupper", "__sext", "__isugt", "__isuge",
   "__isult", "__isule", "main", "pstr",
-  "__CCISH__", "__FILE__", "__LINE__", "defined"
+  "__CCISH__", "__FILE__", "__LINE__", "defined", "__asm__",
+  "__plasma_import"
 };
 
 /* The length of the entry at pool offset i. */

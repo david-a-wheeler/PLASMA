@@ -9,7 +9,7 @@
 #define SUFFIX_I     ".i"
 #define SUFFIX_NAM   ".nam"
 #define TOK_VERSION  4        /* NAME.i's format, after its "CTK" */
-#define NAM_VERSION  1        /* NAME.nam's, in its stamp line */
+#define NAM_VERSION  2        /* NAME.nam's, in its stamp line */
 
 /* The codes of NAME.i. A one-character token ($20-$7E) is itself.
  * TC_ID through TC_KEYWORD are the tokens that carry a 16-bit value

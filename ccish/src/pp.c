@@ -17,6 +17,7 @@
 #include "diag.h"
 #include "bio.h"
 #include "token.h"
+#include "fixed.h"
 #include "ppname.h"
 #include "pplex.h"
 #include "ppmac.h"
@@ -108,6 +109,27 @@ static void end_directive(const char *name)
 {
   if (pp_lex() != TC_NL)
     error(246 /* "extra tokens at the end of the directive:" */, name);
+}
+
+/* #pragma. "#pragma plasma import NAME" names the PLASMA module to load
+ * for the externs declared after it in the same file (approach.md issue
+ * 22, decision 35): it becomes the tokens __plasma_import NAME, which
+ * cccomp reads. Any other pragma is ignored, as C allows. */
+static void do_pragma(void)
+{
+  char w[8];
+  if (pp_lex_word(w, sizeof(w)) == 6 && !strcmp(w, "plasma")
+      && pp_lex_word(w, sizeof(w)) == 6 && !strcmp(w, "import")) {
+    if (pp_lex() != TC_ID)
+      error(13 /* "expected a module name after #pragma plasma"
+                  " import" */, NULL);
+    pp_out(TC_ID, ID_PIMPORT, NULL, 0);
+    pp_out(TC_ID, pt_val, NULL, 0);
+    end_directive("pragma");
+    return;
+  }
+  while (pp_lex() != TC_NL)
+    ;
 }
 
 /* Read a macro's name, an identifier (or a keyword ccish doesn't
@@ -374,8 +396,7 @@ static void directive(void)
     do_include();
     return;
   } else if (!strcmp(name, "pragma")) {
-    while (pp_lex() != TC_NL)
-      ;                         /* ignored, for now */
+    do_pragma();
   } else if (!strcmp(name, "error")) {
     do_error();
   } else if (!strcmp(name, "line")) {

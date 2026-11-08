@@ -29,6 +29,8 @@ __CCISH__
 __FILE__
 __LINE__
 defined
+__asm__
+__plasma_import
 @tests/pp/example.c
 
-=1 001F ssss
+=2 0021 ssss

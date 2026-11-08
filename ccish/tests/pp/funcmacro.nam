@@ -29,6 +29,8 @@ __CCISH__
 __FILE__
 __LINE__
 defined
+__asm__
+__plasma_import
 F
 a
 b
@@ -44,4 +46,4 @@ x1
 y
 @tests/pp/funcmacro.c
 
-=1 002C ssss
+=2 002E ssss

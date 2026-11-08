@@ -260,6 +260,13 @@ int  func_sym(int f, int *hash);
 int  data_sym_count(void);
 int  bss_size(void);                /* the zero-filled space's bytes */
 int  data_sym(int v, int *off, int *size, int *hash, int *name);
+/* Imports (ptop.c): whether function f, or global v as IMP_DATA + v,
+ * is one, with its PLASMA name (name, an id, if it has no label) and
+ * module; and the modules. */
+#define IMP_DATA 0x4000
+int  sym_import(int key, int name, int *label);
+int  dep_count(void);
+int  dep_name(int i);
 void compile_file(const char *in, const char *base);   /* the front end */
 void compile_abort(void);                   /* after an error */
 

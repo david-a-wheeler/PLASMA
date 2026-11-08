@@ -214,7 +214,8 @@ int data_zero(int n)
  * spells it). */
 void ir_finish(void)
 {
-  int i, flags, off, size, hash, name, nsyms = data_sym_count();
+  int i, flags, off, size, hash, name, dep, label;
+  int nsyms = data_sym_count();
 
   flush_data();
   bputc(&out, REC_SUMMARY);
@@ -224,6 +225,9 @@ void ir_finish(void)
   bputw(&out, bss_size());
   bputw(&out, nfuncs);
   bputw(&out, nsyms);
+  bputc(&out, dep_count());       /* the modules pragmas named */
+  for (i = 0; i < dep_count(); i++)
+    bputw(&out, dep_name(i));
   for (i = 0; i < nfuncs; i++) {
     flags = func_sym(i, &hash);
     bputc(&out, flags);
@@ -231,6 +235,11 @@ void ir_finish(void)
     bputw(&out, 0);
     bputw(&out, hash);
     bputw(&out, fn_name[i]);
+    dep = sym_import(i, fn_name[i], &label);
+    if (dep >= 0) {               /* SYM_FIMPORT: its module and name */
+      bputc(&out, dep);
+      bputw(&out, label);
+    }
   }
   for (i = 0; i < nsyms; i++) {
     flags = data_sym(i, &off, &size, &hash, &name);
@@ -239,6 +248,11 @@ void ir_finish(void)
     bputw(&out, size);
     bputw(&out, hash);
     bputw(&out, name);
+    dep = sym_import(IMP_DATA + i, name, &label);
+    if (dep >= 0) {               /* SYM_DIMPORT */
+      bputc(&out, dep);
+      bputw(&out, label);
+    }
   }
   if (bclose(&out) != 0)
     fatal(187 /* "error writing" */, stream_name(base_name, SUFFIX_IR));

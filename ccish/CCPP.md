@@ -107,8 +107,16 @@ steps 4-6):
   `__FILE__` and the line records).
 - **`__LINE__`** is the current line's number, and **`__FILE__`** the
   current file's name, as a string.
-- **`#pragma`** is ignored, for now. A **`#`** alone does nothing. Any
-  other directive is an error.
+- **`#pragma plasma import NAME`** names a PLASMA module to load for
+  the externs declared after it in the same file (approach.md issue 22,
+  decision 35). It becomes two tokens, the fixed id `__plasma_import`
+  and `NAME`, for `cccomp`. Any other **`#pragma`** is ignored (its
+  first word is read as text, and gets no id). A **`#`** alone does
+  nothing. Any other directive is an error.
+- **An asm label**, `__asm__("PERR")`: the string after the fixed id
+  `__asm__` and `(` is written as an identifier (`PERR`, given an id
+  then), not a string, so that `cccomp`, which keeps no strings, can
+  pass the PLASMA name along by id.
 - A line that ends in a backslash is joined to the next (C's phase 2).
 
 Known differences from C, so far:
@@ -237,7 +245,7 @@ identifier can't contain a newline, and nor can a ProDOS path, so
 nothing is escaped.
 
 ```
-__putc          id 1: the fixed ids, 1-31, in every file
+__putc          id 1: the fixed ids, 1-33, in every file
 __putln         id 2
 ...
 __isule         id 25
@@ -245,12 +253,14 @@ main            id 26
 pstr            id 27
 ...
 defined         id 31
-count           id 32: then every other name, in the order ccpp met it
+__asm__         id 32
+__plasma_import id 33
+count           id 34: then every other name, in the order ccpp met it
 ...
 @t.c            file 1: the source
 @stdio.h        file 2, and so on, in the order first included
                 a blank line
-=1 0020 3F7C    the stamp: the format version, the id count, the checksum
+=2 0022 3F7C    the stamp: the format version, the id count, the checksum
 ```
 
 **Names.** Line *n* is the spelling of id *n*, from 1 (id 0 is "no
@@ -273,8 +283,9 @@ front (`__putc`, `__putln`, `__puts`, `__puti`, `__putb`, `__puth`,
 decision 35), then `main` (26) and `pstr` (27): every
 name C-ish gives a meaning of its own; then `__CCISH__` (28),
 `__FILE__` (29), `__LINE__` (30) and `defined` (31), which `ccpp`
-gives one. So `cccomp` and `ccpp` know them by number (`src/fixed.h`),
-with no spellings.
+gives one; then `__asm__` (32) and `__plasma_import` (33), for imports
+from other modules. So `cccomp` and `ccpp` know them by number
+(`src/fixed.h`), with no spellings.
 
 **Files.** After the names, one line for each source file, starting
 with `@`: file *k* is the *k*-th of them, and file 1 is the source
@@ -287,7 +298,7 @@ checked when the file is read, so that an off-by-one or other damage
 (a lost or extra line, the stamp read as a name) is found rather than
 quietly giving the wrong names.
 
-**The stamp** is the last line: `=`, the format version (**1**, in
+**The stamp** is the last line: `=`, the format version (**2**, in
 decimal), a space, the id count (4 hex digits, upper case), a space,
 and the checksum (4 hex digits). Nothing follows its newline.
 
@@ -372,3 +383,6 @@ programs fit too.
   the `$02` and `$03` records, all reserved from the start. Step 4
   added four fixed ids (`__CCISH__`, `__FILE__`, `__LINE__`,
   `defined`: 28-31), which a version-1 reader takes as it finds them.
+- **`NAME.nam` version 2** (2026-11-07, phase 4 of
+  doc/bootstrap-test.md): two more fixed ids, `__asm__` (32) and
+  `__plasma_import` (33), so every other id is 2 higher.
