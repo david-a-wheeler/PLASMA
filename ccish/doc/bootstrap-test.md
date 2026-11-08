@@ -524,11 +524,11 @@ decision 35).**
     `fputs`), and no `exit` (R8 part 3), with xrun tests against the
     host's library and tests/spec/lib.sh under plvm. Measured with
     the library linked in (each program links only the objects it
-    needs): cccomp's library is 790 bytes of code and 179 of data
+    needs): cccomp's library is 760 bytes of code and 179 of data
     (the 128-byte path buffer, the 50-byte `argv`), its module file
-    49,081 bytes (+981); ccpp's own code grew 55 bytes (the
-    `<syspath>ccinc` branch) and its library is 888 bytes of code;
-    ccgen's 854; ccrel's 852.
+    49,051 bytes (+951); ccpp's own code grew 55 bytes (the
+    `<syspath>ccinc` branch) and its library is 858 bytes of code;
+    ccgen's 824; ccrel's 822.
 
 **Phase 6: the bootstrap.**
 11. ccrel's `@list` file (R10), then rewrite tests/spec/bootstrap.sh

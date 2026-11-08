@@ -3762,23 +3762,23 @@ a measurement (E1 still needs a 64K emulator). cccomp, small build,
 
 | | Bytes |
 |---|---|
-| Code (pexpr 8,917, parse 5,774, pstmt 4,942, ptop 4,286, type 1,144, irout 1,065, diag 920, tokin 898, nam 539, bio 512, name 223, cccomp 186; the library 790) | 30,196 |
+| Code (pexpr 8,917, parse 5,774, pstmt 4,942, ptop 4,286, type 1,144, irout 1,065, diag 920, tokin 898, nam 539, bio 512, name 223, cccomp 186; the library 760) | 30,166 |
 | Data (parse 1,241 of it; the library 179: `path`'s 128-byte buffer, `start`'s 50-byte `argv`) | 3,657 |
 | Strings | 565 |
 | The loader's def table (5 bytes per function, 331 functions, 18 of them the library's) | 1,655 |
 | Zero-filled tables moved to the heap (parse 2,361, name 812, tokin 778, irout 522) | 4,473 |
 | Frame stack, worst case (measure.py; 1,763 before diag.c's buffers shrank) | 1,685 |
 | ProDOS buffers, 2 or 3 open files | 2,048 to 3,072 |
-| **Total** | **44,279 to 45,303** |
+| **Total** | **44,249 to 45,273** |
 
-(Updated 2026-11-08 after phase 5, whose library cost 790 bytes of
+(Updated 2026-11-08 after phase 5, whose library cost 760 bytes of
 code, 179 of data and 18 functions; it was 43,300 to 44,324 after
 phase 4, and 42,448 to 43,472 before. The 336 functions before
 counted tools/libstub.c's stand-ins.)
 
 So loading would work once the RLD is streamed (a load peak of the
 body plus the def table, about 36.1K), but running wouldn't: cccomp is
-about 2.6 to 3.6K over, before FILEIO itself, which on an Apple II is
+about 2.5 to 3.6K over, before FILEIO itself, which on an Apple II is
 a module of its own in the same memory. The goal: cut about 4 to 5K,
 and measure each step with tools/measure.py (and keep this table up
 to date). Anything added meanwhile, such as issue 23, widens the gap.
