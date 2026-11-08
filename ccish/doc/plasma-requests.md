@@ -8,6 +8,23 @@ the 6502 VMs, and xplasm. The most useful are first. (Started
 2026-11-07; the details behind each are in approach.md, issues 21 and
 22, and doc/bootstrap-test.md's "Verified VM facts".)
 
+## What each would let ccish drop
+
+ccish's workarounds all live in ccish (decided 2026-11-08: get ccish
+working first, and make the case for these with it). Each request
+below would remove one:
+
+| Request | The ccish workaround it removes |
+|---|---|
+| 1. Stream the RLD | None possible: cccomp can't load on a 64K Apple II |
+| 2. plvm exits with the status | tools/ccstat.pla, its marker, and tools/ccrun's parsing (and xplasm and acme in ccish's build) |
+| 3. Unsigned comparison ops | The sign-flip on every unsigned and pointer comparison (4 to 8 bytes each); counted loops limited to `int` |
+| 4. Reject a bad import | Nothing to drop, but import mistakes found at load, not at run time |
+| 5. Stop on an eval stack error | Nothing to drop, but a compiler bug can't pass a test |
+| 6. A way to unwind | tools/plvmexit.c, the BRK stand-in for `exit()`; the library could then define `exit` |
+| 7. FILEIO fidelity | The library's ignoring of `create` and `destroy` results (lib/fopen.c) |
+| 11. A stderr route | Error messages mixed into stdout under plvm |
+
 ## 1. The loaders: stream the RLD (needed to run ccish on an Apple II)
 
 **What they do.** Every loader (`loadmod` in src/vmsrc/apple/cmd.pla,
@@ -146,13 +163,28 @@ can't unwind those C frames: a test of it crashed plvm ("stack
 smashing detected").
 
 **Why it's a problem.** C's `exit()` from inside a nested call (and
-later `longjmp`) needs to unwind. On plvm, ccish can only stop the VM
-with a 6502 `BRK`, which plvm reports as an error and exits 255.
+later `longjmp`) needs to unwind. ccish's passes call `exit` on every
+fatal error, from deep in the call tree (diag.c's `stop()`). On plvm,
+ccish can only stop the VM with a 6502 `BRK`, which plvm reports as an
+error and exits 255; tools/plvmexit.c does that, after printing
+ccstat's marker so the status still gets out. Nothing written in a
+module can do better: each caller's IP is a local of a C frame
+(`vm_interp`), out of the program's reach (checked 2026-11-08).
 
 **The fix.** Either make except/throw work in plvm (natively, with C's
 `setjmp`/`longjmp` around `vm_interp`), or add a native exit that
 flushes output and exits with a status. The first is more general and
-keeps PLASMA programs portable between plvm and the 6502 VMs.
+keeps PLASMA programs portable between plvm and the 6502 VMs. With 2
+and a native exit, plvmexit.c would shrink to one call.
+
+The 6502 VMs don't need a change: there the return IPs are on the
+6502 stack, the eval stack is in zero page (X), and the frames are
+IFP and PP, so a 6502 save and restore, like except/throw, can unwind
+(doc/bootstrap-test.md, step 14). A program can tell plvm apart by
+`MACHID`, which plvm sets to $08 (an Apple 1). plvm's Apple 1 mode
+(`initApple1` in a1cffa.c) runs the real 6502 VM, plvm01.s, under
+emulation, with no C recursion, so it may be a place to test such code
+without an Apple II; untried.
 
 ## 7. plvm: FILEIO fidelity
 
@@ -212,3 +244,19 @@ behavior on real machines.
   (`/home/dwheeler/projects/...` loads `/home/dwheeler/pr`). You
   have to run a module from its own directory, by a short name.
   Accepting a full host path for the first module would be easier.
+
+## 11. plvm: a stderr route
+
+**What it does.** A PLASMA program has one output, the console
+(CMDSYS's `cout` and `puts`), and plvm writes it to the host's
+stdout. So ccish's library sends `stderr` to the console too.
+
+**Why it's a problem.** Under plvm, a pass's error messages are mixed
+into its stdout: a script can't separate them, and a test can't check
+that a successful run printed no errors except by its output as a
+whole.
+
+**The fix.** A second output in plvm that goes to the host's stderr:
+for example, a CMDSYS or CONIO entry, or a reserved FILEIO reference
+number. On the Apple II it would just be the screen, so programs stay
+portable.

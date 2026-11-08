@@ -12,7 +12,8 @@ commits 7d986620 and 42cc5148.)
 the four programs three times (on the host, then twice under plvm),
 and every object and module is the same each time (step 4, below).
 What's left before the Apple II is steps 14 and 15: an `exit()` that
-unwinds, and the machine itself, with cccomp fitting its memory (B7).
+unwinds (deferred: under plvm, today's stand-in reports failure well
+enough), and the machine itself, with cccomp fitting its memory (B7).
 
 The first attempt got useful data (the per-file sweep and the
 capacity blockers below), but several of its choices work against
@@ -333,7 +334,9 @@ Done without changing PLASMA (approach.md issue 22 has the options):
    ccstat's marker and runs a BRK (a function pointer to a 0 byte;
    plvm doesn't implement `__call`). plvm exits at a BRK, so nothing
    needs unwinding there; on an Apple II, a BRK drops into the monitor,
-   which is why it isn't the library's.
+   which is why it isn't the library's. **Deferred** (2026-11-08,
+   step 14): plvmexit.c stays, since it's enough to tell failure from
+   success under plvm, and a real `exit` waits for the Apple II.
 
 ### R9. No six-argument `printf` (done)
 
@@ -654,7 +657,31 @@ file, so the bootstrap should be quick.
 14. `exit()` that unwinds (R8 part 3), in the library, replacing
     tools/plvmexit.c; and a stderr route. A successful stage never
     calls `exit`, so the bootstrap under plvm doesn't wait for it, but
-    the passes can't run on an Apple II without it.
+    the passes can't run on an Apple II without it. **Deferred**
+    (decided in discussion, 2026-11-08): under plvm we only need to
+    tell failure from success, and today's stand-in does that (a
+    failing pass gives tools/ccrun status 1, and bootstrap.sh stops
+    and names it). The better fix is in plvm (doc/plasma-requests.md,
+    6 and 11), and it's easier to ask for once ccish is something
+    PLASMA wants. What we found, for when we come back to it:
+    - On plvm, nothing in a module can unwind. Each bytecode `CALL`
+      re-enters `vm_interp` through `M6502_exec` in C, and each
+      caller's IP is a C local (src/vmsrc/plvm.c), which is also why
+      longjmp.pla's except/throw smashes the stack there.
+    - On the Apple II it can be done in ccish: plvm02.s's `CALL` and
+      `ICAL` push the return IP on the 6502 stack, the eval stack is
+      zero page indexed by X, and the frames are IFP and PP. So a small
+      6502 routine (bytes called through a function pointer, as
+      plvmexit.c's BRK is) can save S, X, IFP, PP and the stack bytes
+      above S around `main`, and `exit` can restore them, close the
+      files fopen opened, and return the status as `main` would.
+    - A program can tell which: plvm sets `MACHID` to $08 (an Apple 1).
+      So the library's `exit` could unwind on a 6502 VM and fall back
+      to plvmexit.c's way on plvm.
+    - There's no Apple II emulator here. plvm's Apple 1 mode
+      (`initApple1`, src/vmsrc/a1cffa.c) runs the real 6502 VM,
+      plvm01.s, under emulation, with no C recursion, so it may be a
+      test bed for that routine; untried.
 15. The Apple II itself: CR line ends in ccpp, ProDOS file names
     (`ccinc` is lowercase today), a disk layout matching R2's `sys/`
     directories, and cccomp fitting in free memory (B7).
