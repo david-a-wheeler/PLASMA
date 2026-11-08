@@ -16,7 +16,7 @@
 # stage 2's (a host-only miscompile shows here: the ccgen of
 # 15008d8c), and stage 2's stage 3's. On a difference, or a pass that
 # fails, it says which and keeps the directories; else it removes them.
-# It prints each stage as it goes, a dot per file compiled.
+# It says what each stage is, then prints a dot per file compiled.
 #
 # The Makefile gives the sources: BOOT_ccpp, BOOT_cccomp, BOOT_ccgen and
 # BOOT_ccrel (each program's, as it builds them), and BOOT_LIB (the
@@ -105,6 +105,8 @@ echo "bootstrap: 3 stages of $nfiles files each, a dot per file"
 stage=1
 setup 1
 cd "$BOOT/1" || exit 1
+echo "bootstrap: stage 1: the host's passes, built by cc, compile ccish's"
+echo "bootstrap:   sources and its library, and link ccish's 4 programs"
 begin 1 host
 compile 1 host
 for p in $PROGS; do
@@ -124,6 +126,13 @@ for stage in 2 3; do
     for p in $PROGS; do
         cp "../$prev/$p" "v$p" && cp "../1/$p.objs" . || exit 1
     done
+    if [ $stage = 2 ]; then
+        echo "bootstrap: stage 2: stage 1's programs, PLASMA modules, run under"
+        echo "bootstrap:   plvm and do the same"
+    else
+        echo "bootstrap: stage 3: stage 2's programs, compiled by ccish itself,"
+        echo "bootstrap:   do it again; every stage's output must be identical"
+    fi
     begin $stage plvm
     compile $stage vm
     for p in $PROGS; do
