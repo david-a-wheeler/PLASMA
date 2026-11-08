@@ -287,8 +287,11 @@ everything. The small build, for the 64K Apple II, is made with
 `-DCCISH_SMALL`: it leaves out `-l` and `-d`, and checks that only a compiler
 bug or a damaged file would fail (so far `ccgen`'s check of the
 blocks it moves; later, diagnostics that a valid program never
-triggers). `ccgen -i` is in both. So the small build should compile
-only code the full build (or gcc) has already accepted. It writes
+triggers). `ccgen -i` is in both. The small `cccomp` gives no
+warnings, and each error only its file, line, number and text: for
+example `a.c:3: error 64: undeclared identifier`, where the full build
+adds `'y'`. So the small build should compile only code the full build
+(or gcc) has already accepted. It writes
 exactly the same objects and modules; the tests check that.
 
 ## 3. Lexical conventions

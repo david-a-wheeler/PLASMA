@@ -27,7 +27,7 @@ int tok_hmul;
 static Bfile in;            /* NAME.i */
 static const char *base_name;
 static int at_end;          /* the end code has been read */
-static char source[MAX_PATH];   /* file 1's name, for messages */
+static char source[MAX_PATH];   /* tok_file's name, for messages */
 int tok_file = 1;           /* the file the token is in (the name file's
                              * number), for #pragma plasma import */
 
@@ -53,9 +53,18 @@ static int get_word(void)
   return lo | (get_byte() << 8);
 }
 
+/* Look up the name of the current token's file, for a message
+ * (diag.c's src_name_hook): only then, so that a correct compile reads
+ * the name file just once, at the start, and has it open only then. */
+static void name_source(void)
+{
+  strcpy(source, nam_file(tok_file));
+  nam_close();
+}
+
 /* Open the token stream and name file of base, check the stream's
- * header and the name file, and read the first token. Messages give the
- * source's name, file 1 of the name file, from now on. */
+ * header and the name file (which is closed again), and read the first
+ * token. Messages give the token's file and line from now on. */
 void tok_open(const char *base)
 {
   base_name = base;
@@ -67,8 +76,9 @@ void tok_open(const char *base)
     fatal(230 /* "not a token file from ccpp, or the wrong version:" */,
           stream_name(base, SUFFIX_I));
   nam_open(base);
-  strcpy(source, nam_file(1));
+  tok_file = 1;
   src_name = source;
+  src_name_hook = name_source;
   src_line = 1;
   next();
 }
@@ -100,7 +110,6 @@ void next(void)
     } else if (c == TC_FILE) {
       c = get_byte();
       tok_file = c;
-      strcpy(source, nam_file(c));
       src_line = get_word();
     } else {
       break;
@@ -192,6 +201,7 @@ int next_is_colon(void)
 #define MSG_KEYWORDS 262
 #define MSG_OPS      288
 
+#ifdef CCISH_DIAG
 /* Describe the current token for an error message, e.g. "'while'" or
  * "a number". The result is in a static buffer. Without the message
  * file, a keyword or operator is its message's number. */
@@ -218,3 +228,4 @@ const char *tok_desc(void)
   strcat(buf, "'");
   return buf;
 }
+#endif

@@ -94,6 +94,7 @@ int cur_fn = -1;     /* the function being parsed, or -1 */
 int in_params;       /* parsing a function's parameter list */
 int nest;            /* current nesting depth, to limit recursion */
 
+#ifdef CCISH_DIAG
 /* Return the spelling of name (an id) in single quotes, for error
  * messages. The result is in a static buffer. */
 const char *quote(int name)
@@ -104,6 +105,7 @@ const char *quote(int name)
   strcat(buf, "'");
   return buf;
 }
+#endif
 
 /* Report that the current token starts a C feature that isn't
  * supported yet. */
@@ -440,6 +442,7 @@ int is_type_start(void)
          || (tok == T_ID && typedef_type(tok_val) >= 0);
 }
 
+#ifdef CCISH_DIAG
 /* Describe tag for a message: 'struct name' or 'union name', or an
  * unnamed struct or union. The result may be in a static buffer. */
 const char *tag_desc(int tag)
@@ -452,6 +455,7 @@ const char *tag_desc(int tag)
   strcat(buf, "'");
   return buf;
 }
+#endif
 
 /* Report error msg (such as "a variable can't have the incomplete
  * type") if t is an incomplete struct type, which has no size yet. */

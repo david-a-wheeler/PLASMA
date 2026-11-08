@@ -354,9 +354,11 @@ int parse_struct(void)
   }
   if (tag < 0) {
     tag = tag_new(name, depth, hsum, hmul);
+#ifdef CCISH_DIAG
     if (in_params && name >= 0)
       warning(103 /* "declared in a parameter list, so not visible "
                      "outside it:" */, tag_desc(tag));
+#endif
   }
   if (tok == '{') {
     if (tag_size(tag) != -1)
@@ -396,9 +398,11 @@ int parse_union(void)
   }
   if (tag < 0) {
     tag = tag_new(name, depth, hsum, hmul);
+#ifdef CCISH_DIAG
     if (in_params && name >= 0)
       warning(103 /* "declared in a parameter list, so not visible "
                      "outside it:" */, tag_desc(tag));
+#endif
   }
   tag_mark_union(tag);
   if (tok == '{') {

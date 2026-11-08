@@ -14,6 +14,7 @@
 #include "obj.h"
 
 const char *src_name = "";
+void (*src_name_hook)(void);
 int src_line;
 #ifdef CCISH_LISTING
 int opt_list;
@@ -163,8 +164,14 @@ static void put_part(int part)
 static void report(const char *kind, int msg, int part, const char *detail)
 {
   char text[MAX_MSG];
+  void (*hook)(void) = src_name_hook;
   fflush(stdout);
   if (src_line > 0) {
+    if (hook) {
+      src_name_hook = 0;        /* a stop inside it reports without it */
+      hook();
+      src_name_hook = hook;
+    }
     put_err(src_name);
     put_err(":");
     put_err(num_text(src_line));

@@ -227,6 +227,7 @@ $(OUT)/spec/back.stamp: tests/run/hello.c tests/run/global_init.c
 $(OUT)/spec/ccrel.stamp: tests/run/hello.c tests/run/global_init.c \
                          tests/link/helpers/a.c tests/link/helpers/b.c
 $(OUT)/spec/msgs.stamp: ccish.msg
+$(OUT)/spec/smalldiag.stamp: tests/run/const.c
 
 # The compiler bootstrap test: the seed, this source's $(CC) build,
 # compiles the compiler's source into a VM module (stage 1); stage 1,

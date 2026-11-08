@@ -201,7 +201,13 @@ extern int want_addr;       /* a global's initializer, for an address */
  * message and token helpers, the tables' operations, the type-name
  * parsing, put (IR output with the pending constants), and the
  * operand machinery. */
+#ifdef CCISH_DIAG
 const char *quote(int name);
+const char *tag_desc(int tag);
+#else
+#define quote(name) ((const char *)0)   /* no detail in the small build */
+#define tag_desc(tag) ((const char *)0)
+#endif
 void not_yet(void);
 void expect(int t, int msg);
 int  find_func(int name);
@@ -223,7 +229,6 @@ void set_param_types(int f, int n);
 int  is_type_start(void);
 int  parse_base_type(void);
 int  parse_quals(void);
-const char *tag_desc(int tag);
 void need_complete(int t, int msg);
 int  new_label(void);
 void branch(int op, int n);

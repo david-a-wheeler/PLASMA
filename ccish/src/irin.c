@@ -118,6 +118,7 @@ static void read_header(void)
     nam_stale();        /* from another run of ccpp */
   strcpy(source, nam_file(1));
   src_name = source;
+  src_name_hook = 0;          /* not the front end's, in ccish */
 }
 
 /* Read a name, an id, which must be in the name file. */

@@ -49,7 +49,9 @@ build, the default, has everything. The small build, for the 64K Apple
 II, is made with `-DCCISH_SMALL`: it leaves out `-l`, and checks that
 only a compiler bug or a damaged file would fail (`CCISH_CHECKS`: so
 far `ccgen`'s check of the blocks it moves; later, diagnostics that a
-valid program never triggers); `ccgen -i` is in both. So the small
+valid program never triggers); `ccgen -i` is in both. Its `cccomp`
+gives no warnings, and each error only its file, line, number and
+text, without the name or token it's about (`CCISH_DIAG`). So the small
 build should compile only code the full build (or gcc) has already
 accepted. It writes exactly the same objects and modules; the tests
 check that.

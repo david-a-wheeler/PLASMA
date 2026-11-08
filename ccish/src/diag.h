@@ -7,6 +7,8 @@
 #define DIAG_H
 
 extern const char *src_name;
+extern void (*src_name_hook)(void);  /* if set, fills in src_name when a
+                                      * message needs it (tokin.c) */
 extern int src_line;
 #ifdef CCISH_LISTING
 extern int opt_list;        /* -l: print a listing of the generated code */

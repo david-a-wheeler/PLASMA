@@ -46,9 +46,15 @@
 static const char *base_name;
 static const char *module_name;
 
-/* After an error: close the open files, and remove partial output. */
+/* After an error: look up the source's name for the message (while
+ * NAME.nam is there), close the open files, and remove partial output. */
 void clean_up(void)
 {
+  void (*hook)(void) = src_name_hook;
+  if (hook) {
+    src_name_hook = 0;          /* the front end's lookup (tokin.c): */
+    hook();                     /* now, before NAME.nam is removed */
+  }
   pp_abort();
   compile_abort();
   gen_abort();

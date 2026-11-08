@@ -69,6 +69,10 @@ void tok_close(void);
 void next(void);                    /* advance to the next token */
 int  next_is_rbracket(void);        /* is the token after this one ']'? */
 int  next_is_colon(void);           /* is the token after this one ':'? */
+#ifdef CCISH_DIAG
 const char *tok_desc(void);         /* the current token, for messages */
+#else
+#define tok_desc() ((const char *)0)
+#endif
 
 #endif

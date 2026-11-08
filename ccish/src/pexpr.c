@@ -62,7 +62,7 @@ static int compatible(int a, int b)
 void check_assign(int to, Operand *o, int where,
                          const char *detail)
 {
-  int from = value_type(o->type), lost;
+  int from = value_type(o->type);
   if (o->kind == K_VOID)
     error(38 /* "void value used in an expression" */, NULL);
   if (is_struct(to) || is_struct(from)) {
@@ -78,13 +78,15 @@ void check_assign(int to, Operand *o, int where,
     } else if (!compatible(from, to)) {
       error_in(48 /* "incompatible pointer types in" */, where, detail);
     } else {
-      lost = type_sub(from) & ~type_sub(to) & Q_ALL;
+#ifdef CCISH_DIAG
+      int lost = type_sub(from) & ~type_sub(to) & Q_ALL;
       if (lost & Q_CONST)
         warning_in(49 /* "'const' qualifier discarded from pointer "
                       "target type in" */, where, detail);
       if (lost & Q_VOLATILE)
         warning_in(50 /* "'volatile' qualifier discarded from pointer "
                       "target type in" */, where, detail);
+#endif
     }
   } else if (is_pointer(from)) {
     error_in(51 /* "integer from pointer without a cast in" */,
@@ -298,7 +300,9 @@ static int ncalls;
  * their types if f's are known. Returns their count. */
 static int parse_args(int f)
 {
+#ifdef CCISH_DIAG
   char where[MAX_NAME + 16];
+#endif
   Operand a;
   int nargs = 0;
   next();                         /* '(' */
@@ -306,11 +310,16 @@ static int parse_args(int f)
     for (;;) {
       parse_expr(PREC_ASSIGN, &a);
       if (f >= 0 && fn_ptypes[f] >= 0 && nargs < nparams_of(f)) {
+#ifdef CCISH_DIAG
         strcpy(where, num_text(nargs + 1));
         strcat(where, " of ");
         strcat(where, quote(fn_name[f]));
         check_assign(param_types[fn_ptypes[f] + nargs], &a,
                      200 /* "argument" */, where);
+#else
+        check_assign(param_types[fn_ptypes[f] + nargs], &a,
+                     200 /* "argument" */, NULL);
+#endif
       }
       if (is_struct(a.type)) {
         if (f >= 0 && fn_ptypes[f] < 0)
@@ -766,7 +775,9 @@ static void offset_place(Operand *o, int off)
  * I/O block, the offset is added at compile time. */
 static void parse_member(Operand *o, int arrow)
 {
+#ifdef CCISH_DIAG
   char msg[2 * MAX_NAME + 16];
+#endif
   int t = arrow ? value_type(o->type) : o->type, tag, m, off;
 
   next();                         /* '.' or '->' */
@@ -784,10 +795,14 @@ static void parse_member(Operand *o, int arrow)
           tag_desc(tag));
   m = member_find(tag, tok_val);
   if (m < 0) {
+#ifdef CCISH_DIAG
     strcpy(msg, quote(tok_val));
     strcat(msg, " in ");
     strcat(msg, tag_desc(tag));
     error(214 /* "no member named" */, msg);
+#else
+    error(214 /* "no member named" */, NULL);
+#endif
   }
   next();
   off = member_off(m);

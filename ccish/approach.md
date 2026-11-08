@@ -3829,9 +3829,38 @@ well as meet the running budget. Two more limits these checks found:
   `MAX_INCLUDE` 3 allows, would need 5, and fails with error 236
   ("too many files open").
 
-So the goal, with streaming: shed at least 4.5K of running memory
-(about 6K, for a margin), and the deepest call chain. The old
-conclusion, below, stands, with those numbers.
+**Done the same day: `CCISH_DIAG`** (decided in discussion: "only
+open .nam when needed"; "a much simpler error message, say focusing
+on just line and file, would be adequate"; "drop the warnings from
+the small build"). In the small build, cccomp's messages give the
+file, line, number and text only (`quote()`, `tag_desc()` and
+`tok_desc()` are null details), and it has no warnings. Its source
+file's name is looked up only when a message is printed
+(`src_name_hook`, diag.c and tokin.c), which for an error is after
+`clean_up()` has closed NAME.i and NAME.ir. So a correct compile reads
+NAME.nam once, at the start, closed before NAME.ir is opened, and
+holds two files open, so it needs one heap buffer, not two. Before
+this, cccomp reopened NAME.nam for every name in an argument's
+"argument N of 'f'" text, built for every argument of every
+prototyped call: 627 times for pexpr.c, 315 for parse.c, which on a
+floppy would have been very slow. The full build is unchanged (and
+the ccish driver looks the name up before it removes NAME.nam).
+Measured: cccomp's own code 28,635 (771 less), data 3,428 (120 less),
+strings 442 (116 less), 329 functions (2 fewer), a module file of
+47,512 (1,711 less, 704 of it RLD and ESD), a worst-case frame stack
+of 1,642 (45 less), and a deepest chain of 70 calls (3 fewer, 280
+bytes of 6502 stack). Each other program gains about 22 bytes of code
+for the hook. Running, with the RLD streamed, cccomp now needs
+33,866 + 1,645 + 4,473 + 2,011 + 1,024 + 1,642 = 44,661 bytes: **about
+2.5K over** the 42,176, down from 3.5 to 4.5K. Its load without
+streaming is about 7.3K over (FILEIO's 2,011 and the 47,512-byte
+file). link.c now sees 77 of `MAX_VARS` 79 (the hook's declaration
+in diag.h) and 50 of `MAX_TYPES` 54, the tightest tables left.
+
+So the goal, with streaming: shed at least 2.5K more of running
+memory (about 4K, for a margin), and shorten the deepest call chain
+to about 50 calls. The old conclusion, below, stands, with these
+numbers.
 
 So loading would work once the RLD is streamed (a load peak of the
 body plus the def table, about 36.1K), but running wouldn't: cccomp is
