@@ -71,6 +71,7 @@
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
+#include "diagsrc.h"
 #include "fixed.h"
 #include "tokin.h"
 #include "obj.h"

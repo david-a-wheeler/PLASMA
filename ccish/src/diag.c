@@ -3,7 +3,8 @@
  * (every pass), cccomp (the front end), ccgen (the back end; approach.md
  * 18.7) and ccrel (the final pass; approach.md, "B3"). Each program
  * supplies clean_up(), which closes and removes its partial output
- * after an error.
+ * after an error. What this file exports is declared in two headers,
+ * diag.h and diagsrc.h (the source position; diag.h says why).
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,7 @@
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
+#include "diagsrc.h"
 #include "obj.h"
 
 const char *src_name = "";
@@ -246,6 +248,7 @@ void error(int msg, const char *detail)
   error_in(msg, 0, detail);
 }
 
+#ifdef CCISH_DIAG
 /* Report warning msg, followed by part and detail: a likely mistake in
  * the program being compiled that C still allows, as gcc would warn
  * about it (such as discarding const). Compiling goes on. */
@@ -259,6 +262,7 @@ void warning(int msg, const char *detail)
 {
   warning_in(msg, 0, detail);
 }
+#endif
 
 /* Report problem msg, with detail: one that isn't the program's fault
  * (a compiler limit or a file error). Remove partial output, and exit. */

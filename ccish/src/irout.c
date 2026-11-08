@@ -18,6 +18,7 @@
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
+#include "diagsrc.h"
 #include "bio.h"
 #include "nam.h"
 #include "obj.h"
