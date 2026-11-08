@@ -3638,6 +3638,200 @@ VMs or CMDSYS (the plvm change is in doc/plasma-requests.md).
   except/throw (6502 code, untested there). The compiler calls `exit`
   only on failure, so this can follow the first stage 2 run.
 
+### 23. Designated initializers, in order only (possible, not committed)
+
+Raised in discussion (2026-11-07), after nested braces were done
+("Nested initializer design", under Milestones). The user: "The
+in-order designators are tempting." Not now: cccomp doesn't fit yet
+(issue 24), and neither the bootstrap nor the planned C library needs
+them. If we do them, they should be *in order only*.
+
+**What they are (C99, C11 6.7.9).** A designator names the element or
+member an initializer goes to: `.member` or `[constant]`, chained to
+reach deeper (`.pos.x`, `[2].name`, `[1][0]`), then `=`. An
+initializer without one goes to the next subobject after the last one
+initialized, at the deepest level the designator reached
+(`{[1].x = 5, 6}` puts 6 in `[1].y`). Designators may go backward, and
+a later initializer of the same object overrides an earlier one. An
+array of unknown size is one past the highest index initialized. A
+designator may pick a union member other than the first. What's not
+initialized is zero.
+
+**What they're for.** Tables indexed by an enum that survive
+reordering (`[OP_ADD] = "ADD"`: the shape of lower.c's `lw_kind[]`,
+`lw_op[]` and `ir_names[]` and irin.c's `stk_effect[]`, which nearly
+broke when phase 3 added two IR ops); structs initialized by member
+name (`.open = d_open`), which survive added members; sparse arrays;
+and a union initialized through a member other than the first.
+ccish's own sources are C89, so they could use designators only if
+that policy changed.
+
+**Why in order only: space.** A global's initializer streams to the
+IR file's D, R and Z records as it's parsed, and every file is written
+once, in order, with no seeking (18.1). A designator that
+goes backward, or overrides, would need bytes already written to
+change. Full C would mean buffering the whole object and its
+relocations in cccomp until its last initializer: as much memory as
+the largest initialized object (ccish's own tables run to hundreds of
+bytes; link.c's `opinfo[]` is about 400), in the program that already
+doesn't fit. (A variant puts records at explicit offsets in the
+object and has ccrel place them; that moves the buffering to ccrel
+and changes the object format.) In order only, a forward designator
+just zeroes the gap, exactly as a short inner brace list does, and
+needs no memory at all. What it rejects, backward designators and
+overrides, is rare in practice: enum tables and named fields almost
+always go forward. gcc accepts both, so this is one more place where
+ccish rejects valid C, with a message that says so.
+
+**How to implement it** (from studying ptop.c in 2026-11; see "Nested
+initializer design"):
+- *The current machinery.* parse_aggr_init() reads the outer braces
+  and calls init_flat(t, off). init_flat() walks the type
+  recursively: an array loops over its elements, a struct over its
+  members (member_next()), a union takes its first member only, and a
+  char array may take a string (init_string()). Each element or member
+  goes through init_sub(), which reads the subobject's own brace list
+  if the next token is `{`, and otherwise lets the subobject take the
+  enclosing list's next items (brace elision). after_leaf() skips a
+  `,` and sets init_done at `}`, and init_done unwinds the recursion
+  to the list's owner. init_end is the end of what's initialized, and
+  everything before it is initialized; init_zero() writes zeros (data
+  for a global, frame stores or `__memset` for a local), and
+  init_sub() zeroes what a short inner list leaves out when it closes.
+- *Where a designator applies.* It resets the position in the
+  current object, which is the one of the closest surrounding brace
+  pair (6.7.9p17), not wherever elision has recursed to. So: in
+  after_leaf(), after a `,`, if the next token is `.` or `[`, set a
+  flag, init_desig, which makes the loops of every init_flat() call
+  return, as init_done does, until the call that owns the braces.
+  init_flat() needs a parameter saying it owns the braces (set when
+  called from init_sub() after its `{`, and from parse_aggr_init()).
+  The owner then reads the designator and continues from there. A
+  designator can also come first in a list, so the owner checks for
+  one before its first item too.
+- *Reading a designator and descending.* The owner reads the chain's
+  first step: `[` constant `]` for an array (a constant expression,
+  parsed as an array size is; it must be below the count, if the
+  count is known), or `.` name for a struct or union (member_find();
+  an unknown name is error 214, "no member named"). That sets the
+  owner's loop index or member. If the chain goes on, the subobject is
+  initialized by a call that reads the next step the same way, and so
+  on down, before `=`; each level then continues its own loop from
+  the designated position, which gives C's rule that the next
+  initializer goes to the next subobject at the deepest level. So
+  init_flat() takes a starting position (an index, or a member), and
+  a flag saying a designator step comes next.
+- *The order rule.* Compute the designated subobject's offset before
+  initializing it. If it's below init_end, it goes backward or
+  overrides: error ("designated initializers must go forward in
+  ccish"). Otherwise init_zero() the gap from init_end to it, then
+  carry on. A union member chosen by name is initialized, and the
+  rest of the union is zeroed when the union's list closes (init_sub()
+  already zeroes to the end of the subobject).
+- *Arrays of unknown size* need nothing new: in order, the last item
+  is the highest, so init_end gives the count, as now.
+- *Locals* use the same code and the same rule. Their stores could go
+  in any order, but the zeroing relies on init_end, so the rule stays.
+- *Messages:* a backward or overriding designator, an index out of
+  range, and a designator step that doesn't fit the type (`.x` on an
+  array, `[1]` on a struct).
+- *Tests:* a cross test against gcc (forward designators only: enum
+  tables, chains, unions by member, gaps, mixed with braces and plain
+  items, globals, statics and locals); error tests for going backward,
+  an override, an index out of range, and a bad step.
+- *Cost:* estimated 300 to 500 bytes of cccomp code, all in ptop.c,
+  plus the messages. Measure it, as every change.
+
+### 24. Putting cccomp on a diet (needed)
+
+Raised in discussion (2026-11-07). The question was whether cccomp
+fits on a 64K Apple II once the loader streams the RLD
+(doc/plasma-requests.md, item 1). Streaming is needed, but it isn't
+enough.
+
+**The budget.** PLASMA's 64K Apple II system (src/vmsrc/apple/)
+starts the frame stack at `$BF00`, growing down (cmdstub.s), and the
+heap right after CMDSYS (`heap = @lastdef`, cmd.pla), which is moved
+to `$0C00` and is at most 4K. So the heap starts at or below `$1C00`,
+and at most about 41.7K is shared by the module, its tables, the frame
+stack, other modules (FILEIO, the C library) and ProDOS's 1,024-byte
+buffer for each open file. That's an upper bound from the source, not
+a measurement (E1 still needs a 64K emulator). cccomp, small build,
+2026-11-07, after nested braces:
+
+| | Bytes |
+|---|---|
+| Code (pexpr 8,917, parse 5,774, pstmt 4,936, ptop 3,678, type 1,144, irout 955, diag 917, tokin 895, nam 539, bio 512, name 223, cccomp 187) | 28,677 |
+| Data (parse 1,241 of it) | 3,382 |
+| Strings | 558 |
+| The loader's def table (5 bytes per function, 329 functions) | 1,645 |
+| Zero-filled tables moved to the heap (parse 2,361, name 812, tokin 778, irout 522) | 4,473 |
+| Frame stack, worst case (measure.py) | 1,763 |
+| ProDOS buffers, 2 or 3 open files | 2,048 to 3,072 |
+| **Total** | **42,546 to 43,570** |
+
+So loading would work once the RLD is streamed (a load peak of the
+body plus the def table, about 34.3K), but running wouldn't: cccomp is
+1 to 2K over, before FILEIO and the C library (phase 5), not yet
+measured, which could plausibly add 2K or more. The goal: cut 3 to 5K,
+and measure each step with tools/measure.py (and keep this table up
+to date). Anything added meanwhile, such as issue 23, widens the gap.
+
+**Ways to do it**, roughly from most likely to least:
+- **Drop diagnostics that only reject bad programs** (the user: "we
+  want ccish to correctly process correct programs, but it's okay if
+  we don't give good diagnosis for bad programs as input"). Much of
+  cccomp's code checks for errors that a correct program never has:
+  type compatibility of pointers and qualifiers (errors 46 to 51, the
+  lost-`const` and lost-`volatile` warnings), lvalue checks (40 to
+  43, including `holds_const()`, which recurses through structs),
+  `const` objects assigned to, error 201 and the `nonice` tracking it
+  needs (a `const` variable's value isn't a constant expression in
+  C), incomplete-type checks (need_complete()), argument count and
+  type checks against prototypes, redeclaration and conflicting-type
+  checks, a duplicate member, a local hiding a block extern (163), the
+  declarator checks (87, 112, 114), an initializer string too long
+  (156), an initializer address out of range (155), a constant zero
+  divisor and a shift count out of range, and the like. The way to do
+  it without losing them: a feature macro, say `CCISH_DIAG`, in the
+  full build only, beside CCISH_CHECKS and CCISH_LISTING
+  (src/build.h; decision 21, "two builds"). The full build keeps every
+  check and runs tests/errors; the small build, the one that must fit
+  on the Apple II, compiles correct programs the same (its objects
+  must stay byte-identical on them, which the tests can check) and
+  says less, or nothing, about bad ones. A program can always be
+  checked with the full build or gcc on the host first. Keep the
+  checks a correct program needs to compile right: types that choose
+  the code (char against int, pointer scaling, unsigned operations,
+  struct sizes), the limits that would otherwise overflow a table, and
+  anything whose absence would silently generate wrong code rather
+  than reject the program. Measure each group (remove it, run
+  measure.py) and drop the ones that pay. Some messages may go with
+  them; texts are in ccish.msg already, so that saves only code.
+- **Fewer functions.** Each costs 5 bytes in the def table on top of
+  its code, so merging small functions with one caller saves twice
+  (C5).
+- **Smaller frames.** `stop()` in diag.c has the largest frame, 208
+  bytes, nearly all a 200-byte copy buffer that could be static (it
+  runs once, as the program stops); then report() 136, parse_expr()
+  148, copy_struct() 96 and parse_conditional() 92. The frame stack's
+  worst case is a sum along the deepest call chain, so the frames on
+  it matter most.
+- **Fewer open files** (B6): each saves 1K of ProDOS buffer.
+- **Cold code out of memory**: diag.c (about 1.4K with its data and
+  strings) runs only on an error, so it's a candidate for an overlay
+  (D4), as is anything that runs once at startup.
+- **Static locals** (the compiled-stack report in measure.py): 730
+  bytes saved with new opcodes (issue 21), but a loss with today's
+  LAW and SAW, so only with the VM change.
+- **Look at parse.c's 1,241 bytes of data** for tables that could be
+  smaller or computed.
+- **Drop C semantics that cost compiler code** (C3), and smaller
+  message handling (C2, already mostly done).
+- **Not the tables' sizes**: some of ccish's own sources already
+  overflow them (measure.py: irin.c needs 87 variables against 79,
+  link.c 43 types against 40), so they need to grow, not shrink (B2).
+
 ## Decisions so far
 
 The first round of answers is recorded inline as "Answer:" under each
@@ -4332,7 +4526,8 @@ scalars); an inner `{` was error 158.
   braces' level, so init_flat()'s recursion must unwind to there (as
   init_done does) and descend along the path. Estimate 300 to 500
   bytes of cccomp code. ccish's sources are C89, so they could use
-  designators only if that policy changed.
+  designators only if that policy changed. Possible later, in order
+  only: issue 23, which has the implementation notes.
 
 **`ccpp` design (decided in discussion, 2026-10-31; decision 24; F9
 and A6 in 18.6; this is M8).** The user: "Currently cccomp is too
