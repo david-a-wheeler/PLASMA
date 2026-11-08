@@ -26,6 +26,9 @@ int tok_hsum;
 int tok_hmul;
 
 static Bfile in;            /* NAME.i */
+#ifdef CCISH_DIAG
+static Bfile nam_in;        /* lent to nam.c: NAME.i may still be open */
+#endif
 static const char *base_name;
 static int at_end;          /* the end code has been read */
 static char source[MAX_PATH];   /* tok_file's name, for messages */
@@ -62,6 +65,9 @@ static int get_word(void)
  * more I/O buffers. */
 static void name_source(void)
 {
+#ifndef CCISH_DIAG
+  nam_bf = &in;             /* closed by now: an error closes it first */
+#endif
   nam_open(base_name);
   strcpy(source, nam_file(tok_file));
   nam_close();
@@ -80,6 +86,7 @@ void tok_open(const char *base)
     fatal(230 /* "not a token file from ccpp, or the wrong version:" */,
           stream_name(base, SUFFIX_I));
 #ifdef CCISH_DIAG
+  nam_bf = &nam_in;         /* names are spelled before an error stops */
   nam_base(base);           /* for a message's details (nam_name()) */
 #endif
   tok_file = 1;

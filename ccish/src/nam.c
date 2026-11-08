@@ -1,10 +1,12 @@
 /*
  * The reader of the name file, NAME.nam (../CCPP.md), for cccomp and
  * ccgen: it checks the whole file once, when it is opened (ccgen opens
- * it at the start, cccomp only for a message), and then looks spellings up by id. It reads through stdio,
- * as the message file is read, so that it needs no bio buffer of its
- * own, and it
- * keeps its place: a lookup reads on from the last one, and starts
+ * it at the start, cccomp only for a message), and then looks
+ * spellings up by id. It reads through a bio buffer that its caller
+ * lends it (nam_bf): ccgen's own, and cccomp's for NAME.i, which
+ * is closed by the time a message needs a name, so that cccomp spends
+ * no memory on it. It keeps its place: a lookup reads on from the last
+ * one, and starts
  * again from the top only for an earlier line (bio can't seek). Ids are
  * given in the order names are first met, which is nearly the order of
  * the functions and globals a symbol summary lists, so writing all their
@@ -14,26 +16,26 @@
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
+#include "bio.h"
 #include "token.h"
 #include "nam.h"
 
 int nam_ids;
 int nam_sum;
 
-static FILE *nf;                /* the name file, while open */
+Bfile *nam_bf;                  /* the lent buffer */
 static const char *base_name;
 #ifdef CCISH_DIAG
 static char checked;            /* nam_open() has checked it */
 #endif
-static int at;                  /* the number of the line nf reads next */
+static int at;                  /* the number of the line read next */
 static char line[MAX_PATH];     /* the line last read */
 
-/* Close the name file, if it is open. */
+/* Close the name file, if it is open (bclose() does nothing if not). */
 void nam_close(void)
 {
-  if (nf)
-    fclose(nf);
-  nf = NULL;
+  if (nam_bf)
+    bclose(nam_bf);
 }
 
 /* The name file is damaged, or from another run of ccpp: stop. */
@@ -48,8 +50,7 @@ void nam_stale(void)
 static void reopen(void)
 {
   nam_close();
-  nf = fopen(stream_name(base_name, SUFFIX_NAM), "rb");
-  if (!nf)
+  if (!bopen(nam_bf, stream_name(base_name, SUFFIX_NAM), 0))
     fatal(171 /* "cannot open" */, stream_name(base_name, SUFFIX_NAM));
   at = 1;
 }
@@ -61,7 +62,7 @@ static int read_line(int *h)
 {
   int c, n = 0;
   for (;;) {
-    c = getc(nf);
+    c = bgetc(nam_bf);
     if (c == EOF || (n >= MAX_PATH - 1 && c != '\n'))
       nam_stale();
     *h = (*h * 31 + c) & 0xFFFF;
@@ -116,7 +117,7 @@ void nam_open(const char *base)
   if (read_line(&d) != 12 || line[0] != '='
       || line[1] != '0' + NAM_VERSION || line[2] != ' ' || line[7] != ' '
       || hex4(line + 3) != ids || hex4(line + 8) != h || files == 0
-      || getc(nf) != EOF)
+      || bgetc(nam_bf) != EOF)
     nam_stale();
   nam_close();
   nam_ids = ids;
@@ -141,7 +142,7 @@ void nam_base(const char *base)
 static void line_at(int n)
 {
   int d = 0;
-  if (!nf || n < at)
+  if (!nam_bf->f || n < at)
     reopen();
   while (at <= n)
     read_line(&d);

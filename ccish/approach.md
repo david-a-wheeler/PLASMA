@@ -3888,6 +3888,18 @@ Its module file grew 438 bytes, to 47,865, though: five tables (`in`
 and `out`, now 138 bytes, and three of 242) fell below `BSS_MIN`
 (256), so their zeros are in the file instead of on the heap.
 
+**The name file through bio, 2026-11-08** (decided in discussion: "an
+8-bit computer is not fast, so we *do* care about speed"). nam.c read
+NAME.nam through the library's unbuffered `getc`, one FILEIO call per
+byte, and ccgen reads the whole file twice (its check, then the
+spellings). It now reads through a bio buffer its caller lends it
+(`nam_bf`): ccgen's own (135 bytes), and in cccomp's small build the
+buffer of NAME.i, which an error has closed before a message needs a
+name, so cccomp is 3 bytes smaller, not larger. Under `plvm -t`, the
+self-compiled ccgen on pexpr.c makes 384 FILEIO reads, not 33,041.
+diag.c still reads ccish.msg a byte at a time, but only to print a
+message.
+
 So the goal, with streaming: shed at least 2.5K more of running
 memory (about 4K, for a margin), and shorten the deepest call chain
 to about 50 calls. The old conclusion, below, stands, with these

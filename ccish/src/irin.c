@@ -33,6 +33,7 @@
 
 /* The IR file, and its output name (for messages). */
 static Bfile in;
+static Bfile nam_in;            /* lent to nam.c, for NAME.nam */
 static const char *base_name;
 
 /* The source file's name, file 1 of the name file, for messages. */
@@ -111,6 +112,7 @@ static void read_header(void)
   if (get_byte() != 'C' || get_byte() != 'I' || get_byte() != 'R'
       || get_byte() != IR_VERSION)
     ir_damaged();
+  nam_bf = &nam_in;
   nam_open(base_name);
   strcpy(source, nam_file(1));
   src_name = source;

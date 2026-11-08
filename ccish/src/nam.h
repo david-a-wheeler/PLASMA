@@ -1,6 +1,7 @@
 /*
  * The reader of the name file, NAME.nam (nam.c, ../CCPP.md), for cccomp
- * and ccgen.
+ * and ccgen. nam_bf is declared only after bio.h, its type's
+ * header, which parse.c, say, doesn't need.
  */
 #ifndef NAM_H
 #define NAM_H
@@ -8,6 +9,10 @@
 extern int nam_ids;                 /* its stamp: the id count */
 extern int nam_sum;                 /* and the checksum */
 
+#ifdef BIO_H
+extern Bfile *nam_bf;               /* the buffer to read it through,
+                                     * which the caller lends */
+#endif
 void nam_open(const char *base);    /* check it, and keep its stamp */
 #ifdef CCISH_DIAG
 void nam_base(const char *base);    /* or open it when first used */
