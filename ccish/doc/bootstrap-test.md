@@ -143,9 +143,10 @@ for each program p in ccpp, cccomp, ccgen, ccrel:
 - tools/measure.py already does most of this (it compiles every
   source with the passes and links each program with the library
   objects it needs). The bootstrap script should share that
-  preparation rather than grow a second copy, and its workarounds (no
-  `long`, the full build's `printf`) should shrink as ccish catches
-  up.
+  preparation rather than grow a second copy. The small build now
+  compiles `src/` unchanged: the `short` casts are masks, and the
+  struct `?:` is an `if`. The full build's `printf` is the one
+  workaround left.
 
 ### R2. Standard includes through a directory we control (done)
 

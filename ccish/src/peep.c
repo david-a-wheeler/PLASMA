@@ -552,7 +552,7 @@ static int rewrite_dup_const(Mop *a, Mop *b)
  * unsigned arithmetic works whether the host's int has 16 or 32 bits. */
 static int signed_word(int v)
 {
-  unsigned u = (unsigned)(unsigned short)v;
+  unsigned u = (unsigned)v & 0xFFFF;
   if (u & 0x8000)
     return -(int)(0xFFFF - u) - 1;
   return (int)u;
@@ -563,7 +563,7 @@ static int signed_word(int v)
  * count is small, so a shift at a time is the whole op. */
 static int shr_word(int c, int y)
 {
-  unsigned u = (unsigned)(unsigned short)c;
+  unsigned u = (unsigned)c & 0xFFFF;
   while (y-- > 0)
     u = (u >> 1) | ((u & 1) != 0 ? 0x8000 : 0);
   return signed_word((int)u);
@@ -592,7 +592,7 @@ static int fold_pair(int op, int c, int a, int *v)
   case OP_XOR:    r = c ^ a; break;
   case OP_SHL:
     if (y < 0 || y > 15) return 0;
-    r = (int)((unsigned)(unsigned short)c << y); break;
+    r = (int)(((unsigned)c & 0xFFFF) << y); break;
   case OP_SHR:    if (y < 0 || y > 15) return 0; r = shr_word(c, y); break;
   case OP_ISEQ:   r = c == a ? 0xFFFF : 0; break;
   case OP_ISNE:   r = c != a ? 0xFFFF : 0; break;

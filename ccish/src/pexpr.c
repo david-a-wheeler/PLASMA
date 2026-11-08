@@ -1084,7 +1084,10 @@ static void parse_conditional(Operand *o)
       error(82 /* "only one side of '?:' is void" */, NULL);
     type = cond_type(&b, is_null(&b), &c, is_null(&c));
     b_null = o->nonice;
-    *o = take_b ? b : c;
+    if (take_b)
+      *o = b;                   /* not a struct ?:, which ccish lacks */
+    else
+      *o = c;
     if (is_place(o))
       rvalue(o);              /* the result is not an lvalue */
     o->type = type;

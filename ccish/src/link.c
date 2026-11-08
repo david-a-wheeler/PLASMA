@@ -786,6 +786,13 @@ static const char *reloc_note(int at)
   return "";
 }
 
+/* The signed 16-bit word at fbuf offset at, low byte first. The
+ * arithmetic gives the same value whether int has 16 or 32 bits. */
+static int signed_at(int at)
+{
+  return ((fbuf[at] | (fbuf[at + 1] << 8)) ^ 0x8000) - 0x8000;
+}
+
 /* List the case table at fbuf offset pc (code-segment offset start +
  * pc): its count, then each case's value and where it goes. Returns its
  * size in bytes. */
@@ -795,11 +802,11 @@ static int list_table(int pc, int start)
   printf("  %04X  %02X        CASES %d\n", subseg + start + pc, n, n);
   for (i = 0; i < n; i++) {
     at = pc + 1 + 4 * i;
-    w = (short)(fbuf[at] | (fbuf[at + 1] << 8));
+    w = signed_at(at);
     printf("  %04X  %02X %02X     CASE %d\n", subseg + start + at,
            fbuf[at], fbuf[at + 1], w);
     at += 2;
-    w = (short)(fbuf[at] | (fbuf[at + 1] << 8));
+    w = signed_at(at);
     printf("  %04X  %02X %02X     TO %+d  ; to %04X\n",
            subseg + start + at, fbuf[at], fbuf[at + 1], w,
            subseg + start + at + w);
@@ -858,7 +865,7 @@ static void list_code(const char *label, int len, int start)
       break;
     case F_REL: {
       /* The offset is relative to the offset word itself. */
-      int off = (short)(fbuf[pc + 1] | (fbuf[pc + 2] << 8));
+      int off = signed_at(pc + 1);
       printf(" %+d  ; to %04X", off, subseg + start + pc + 1 + off);
       if (op == OP_SEL && ntables < MAX_SEL_TABLES)
         tables[ntables++] = pc + 1 + off;

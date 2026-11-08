@@ -4,8 +4,8 @@
 Usage: tools/measure.py [-full]   (after `make`; writes tools/out/)
 
 Each file in src/, and the headers it includes, is copied to
-tools/out/src/ with its comments taken out and worked around where
-ccish still lacks something, then compiled with ccpp (whose default
+tools/out/src/ (for the full build, with the one workaround below),
+then compiled with ccpp (whose default
 include directory is the library's, lib/include), cccomp and ccgen, as
 the small build (-DCCISH_SMALL, approach.md decision 21; or the full
 build, with -full). The C library (lib/*.c) and tools/plvmexit.c's
@@ -18,21 +18,16 @@ program's totals and link workload (from ccrel's listing), and how full
 ccpp's tables got (from a ccpp built with CCISH_STATS). See approach.md
 18.5 and 18.6 E2.
 
-The workarounds, each something ccish doesn't accept yet:
-  - long and short become int, and l and L number suffixes go (ccish
-    has unsigned, and u suffixes, but no long);
-  - in the full build, the printf family becomes 0 (a #define at the
-    top of each file: the library has no printf, and only the full
-    build's listings call it);
-  - parse.c's one struct ?: becomes an if.
+The workaround: in the full build, the printf family becomes 0 (a
+#define at the top of each file: the library has no printf, and only
+the full build's listings call it). The small build compiles src/
+unchanged.
 A file that stops on one of ccish's own limits (say, "too many
 variables") is compiled again by a cccomp and ccgen built from a copy of the
 sources with those limits raised (BIG_LIMITS), and marked so in the
 report: a limit ccish itself must raise to compile that file.
 For parse.c, the largest source, the report also gives the sizes of
 ccpp's token stream and name file beside the source text's.
-(Comments are taken out only so that the workarounds, which are
-regular expressions, can't match inside one; ccpp would skip them.)
 """
 import os
 import re
@@ -85,42 +80,11 @@ PROGRAMS = [
 ]
 
 
-def strip_comments(text):
-    """Take out text's comments (each becomes a space, keeping its
-    newlines), but not what looks like one in a literal."""
-    out, i, n = [], 0, len(text)
-    while i < n:
-        c = text[i]
-        if c in "\"'":
-            j = i + 1
-            while j < n and text[j] != c and text[j] != "\n":
-                j += 2 if text[j] == "\\" else 1
-            out.append(text[i:j + 1])
-            i = j + 1
-        elif text.startswith("/*", i):
-            j = text.index("*/", i + 2)
-            out.append(" " + "\n" * text.count("\n", i, j))
-            i = j + 2
-        elif text.startswith("//", i):
-            while i < n and text[i] != "\n":
-                i += 1
-        else:
-            out.append(c)
-            i += 1
-    return "".join(out)
-
-
 def prepare(path, dest):
-    """Copy the file at path to dest, with its comments taken out and
-    the workarounds made."""
+    """Copy the file at path to dest, with the full build's workaround
+    made."""
     with open(path) as f:
-        text = strip_comments(f.read())
-    text = re.sub(r"\b(long|short)\b", "int", text)
-    text = re.sub(r"\bint int\b", "int", text)    # unsigned long int
-    text = re.sub(r"\b(0[xX][0-9A-Fa-f]+|[0-9]+)([uU]?)[lL]+([uU]?)\b",
-                  r"\1\2\3", text)
-    text = text.replace("*o = take_b ? b : c;",
-                        "if (take_b) *o = b; else *o = c;")
+        text = f.read()
     if FULL and dest.endswith(".c"):
         text = ("#define printf(...) 0\n#define fprintf(...) 0\n"
                 "#define sprintf(...) 0\n" + text)
@@ -131,6 +95,8 @@ def prepare(path, dest):
 def prepare_all():
     """Prepare every source and header (src/) into OUT/src/."""
     os.makedirs(os.path.join(OUT, "src"), exist_ok=True)
+    for name in os.listdir(os.path.join(OUT, "src")):
+        os.remove(os.path.join(OUT, "src", name))   # none left over
     for name in os.listdir(os.path.join(CCOMP, "src")):
         if name.endswith((".c", ".h")):
             prepare(os.path.join(CCOMP, "src", name),
