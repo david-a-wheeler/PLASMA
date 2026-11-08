@@ -100,8 +100,8 @@ the zeros that end an initializer (`char buf[100] = "hi";`).
 | Size | Field |
 |------|-------|
 | byte | tag `R` |
-| byte | kind: 1 = data address, 3 = string address, 4 = data symbol address |
-| word | target: a data offset (kind 1), a string pool offset (kind 3), or a data symbol index (kind 4) |
+| byte | kind: 1 = data address, 2 = function address, 3 = string address, 4 = data symbol address |
+| word | target: a data offset (kind 1), a function symbol index (kind 2), a string pool offset (kind 3), or a data symbol index (kind 4) |
 | word | kind 4 only: the addend, bytes added to the symbol's address |
 
 It stands for the next two bytes of the data (`char *p = "hi";`,
@@ -109,7 +109,10 @@ It stands for the next two bytes of the data (`char *p = "hi";`,
 records. The final pass writes the address there, and adds an RLD entry
 so that the loader can adjust it. Kind 4 is the address of a global
 declared `extern` and not (yet) defined in this file, or of a zero-filled one,
-plus the addend (`int *q = &ext[3];`).
+plus the addend (`int *q = &ext[3];`). Kind 2 is a function's address
+(`int (*fp)(int) = f;`), resolved as in code (the `F` record, below):
+the function's stub, or an import. (`ccrel` always read kind 2 here,
+so allowing it changed no format version.)
 
 Data offsets elsewhere count from the first byte of the data. Its
 length is the data size.

@@ -143,7 +143,7 @@ static void cast(Operand *o, int type)
     o->kind = K_VOID;
   } else if (type == TY_CHAR) {
     to_char(o);
-  } else if (is_pointer(type) && addr_const(o)) {
+  } else if (is_pointer(type) && (addr_const(o) || o->kind == K_FUNC)) {
     ;                           /* still an address constant */
   } else if (o->kind != K_CONST) {
     rvalue(o);

@@ -97,7 +97,7 @@ enum {
                    * disp to val, its NUL's end) */
   K_FUNC          /* function val's address, not emitted yet: type is
                    * the function's (a function designator), or a
-                   * pointer to it (&f) */
+                   * pointer type (&f, or a cast) */
 };
 
 #define G_STR (-1)      /* K_ADDR's global field: the string pool */

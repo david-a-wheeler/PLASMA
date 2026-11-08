@@ -98,7 +98,8 @@ int init_known, init_val;
  * goes through the expression parser with code output off, and must
  * fold to a constant, or, for a pointer, to an address constant
  * (K_ADDR): a string literal or a global's address, with any constant
- * indexes, members, casts to pointers, and + or - a constant (C6).
+ * indexes, members, casts to pointers, and + or - a constant (C6), or
+ * a function's address (K_FUNC: f, &f, a cast of either to a pointer).
  * Anything else (&*p, a pointer variable's value) is an error. */
 
 /* Parse the initializer of one scalar of type type (an int, char or
@@ -115,7 +116,7 @@ static void parse_scalar_init(int type)
   want_addr--;
   if (is_pointer(type))
     addr_const(&o);
-  if (o.kind != K_CONST && o.kind != K_ADDR)
+  if (o.kind != K_CONST && o.kind != K_ADDR && o.kind != K_FUNC)
     error(206 /* "initializer is not a constant ccish supports" */, NULL);
   if (o.nonice && o.kind == K_CONST)
     error_in(201 /* "a const variable's value isn't a constant"
@@ -124,6 +125,13 @@ static void parse_scalar_init(int type)
   check_assign(type, &o, 198 /* "initialization" */, NULL);
   init_known = o.kind == K_CONST;
   init_val = o.val;
+  if (o.kind == K_FUNC) {
+    /* A function's address: a relocation to its symbol, which links
+     * it, as a call does (approach.md, "Function pointer design"). */
+    fn_flags[o.val] |= FN_CALLED;
+    data_addr(REL_FUNC, o.val, 0);
+    return;
+  }
   if (o.kind == K_CONST) {
     if (type_size(type) == 1)
       data_byte(o.val);

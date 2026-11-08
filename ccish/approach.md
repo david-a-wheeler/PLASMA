@@ -4226,7 +4226,8 @@ compiler, but have a lot of error-checking ignored in ccish."
   value (IR_FUNCADDR) and calls through a pointer (IR_ICALL, ICAL,
   with the address put on top of the arguments, C11 6.5.2.2p10 leaving
   their order open); (3) function addresses in initializers (a data
-  relocation of kind 2, object format 7); (4) the docs.
+  relocation of kind 2; planned as object format 7, but ccrel already
+  read kind 2 in data, so no version changed); (4) the docs.
 - **Step 1 is done** (2026-11-07). tests/run/declarators.c declares
   each form, with its sizes and a block extern among locals, and seven
   error tests cover the new messages (29, 92, 112, 114, 125, 163,
@@ -4257,6 +4258,21 @@ compiler, but have a lot of error-checking ignored in ccish."
   +91, irout.c +7), module file 46,002 to 46,712; ccgen's irin.c +53
   and lower.c +67 code, +8 data, +38 strings (emit.c gains an ICAL
   mnemonic but still can't be measured: blocker B4).
+- **Step 3 is done** (2026-11-07). A K_FUNC initializer
+  (parse_scalar_init(), ptop.c) is an R record of kind 2, a function
+  symbol, which marks the function used so that it links; a cast to a
+  pointer keeps it a K_FUNC (cast(), pexpr.c), as it keeps an address
+  constant. The rest of the pipeline already carried a kind 2 in
+  data: ccgen copies R records whole, and ccrel's add_reloc() and
+  reloc_entry() resolve REL_FUNC wherever the word is, so OBJ_VERSION
+  stays 6. A local's initializer is code, which step 2 covered. Tests:
+  tests/xrun/xfuncinit.c against gcc (a global pointer, a table, a
+  const table, structs of pointers, a static local, a function named
+  before its definition, and locals), the link test funcdata (an
+  import named only in data; a static function's address in another
+  object's data), and the error test func_init_int. Cost (small
+  build, measure.py against step 2): cccomp code +41 bytes (ptop.c
+  +34, pexpr.c +7), module file 46,712 to 46,761.
 
 **`ccpp` design (decided in discussion, 2026-10-31; decision 24; F9
 and A6 in 18.6; this is M8).** The user: "Currently cccomp is too

@@ -164,8 +164,9 @@ void data_word(int v)
 }
 
 /* Append a word to the data that holds an address, plus add bytes: of
- * data (kind REL_DATA) or of a string (REL_STR), at offset target, or
- * of data symbol target (REL_DSYM, an extern global). It is an R record
+ * data (kind REL_DATA) or of a string (REL_STR), at offset target, of
+ * data symbol target (REL_DSYM, an extern global), or of function
+ * target (REL_FUNC; add is 0). It is an R record
  * in place of the word's two bytes; the final pass writes the address
  * there. */
 void data_addr(int kind, int target, int add)

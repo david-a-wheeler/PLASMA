@@ -1,8 +1,8 @@
 /* xfuncptr.c: function pointers. Taking a function's address, calling
  * through a pointer (in a variable, an array, a struct, a parameter,
  * a call's result), comparing pointers, and the forms that call a named
- * function directly ((*f)(x), (&f)(x)). Global initializers come later
- * (step 3), so tables are filled in at run time. */
+ * function directly ((*f)(x), (&f)(x)). Tables are filled in at run
+ * time here; xfuncinit.c has them in initializers. */
 #include "ptest.h"
 
 typedef int binop(int, int);

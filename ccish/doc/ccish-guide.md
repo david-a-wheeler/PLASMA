@@ -676,12 +676,18 @@ n = fp(5) + (*fp)(6);       /* 10 + 12 */
 ops[k](n);                  /* through an element, or a member */
 ```
 
+A function's address is a constant, so it can initialize a global or
+a static, a table of them, or a struct's members:
+
+```c
+int (*ops[])(int, int) = {add, sub, &mul, 0};
+struct io { int (*open)(int); int (*close)(int); } dev = {d_open, d_close};
+```
+
 Since a function type is only its return type, a call through a
 pointer checks neither its argument count nor the arguments' types:
 passing the wrong number corrupts PLASMA's stack, as it would in K&R
-C. A function's address in a global's initializer
-(`int (*fp)(int) = twice;` at file scope) isn't supported yet
-(section 9.1); assign it at run time instead.
+C.
 
 ## 5. Declarations and storage
 
@@ -1336,11 +1342,9 @@ directive is an error.
 ### 9.1 Not implemented, expected soon
 
 * `signed char`
-* A function's address in a global's initializer (section 4.12)
 
-`signed char` gives a "not supported yet" error that names the token,
-and a function's address in a global's initializer gives "initializer
-is not a constant ccish supports".
+`signed char` gives a "not supported yet" error that names the
+token.
 
 ### 9.2 Out of scope
 
