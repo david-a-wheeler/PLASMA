@@ -692,25 +692,6 @@ static void loop_body(int brk, int cont)
   nloops--;
 }
 
-/* if (c) s1 [else s2]:  c BRFLS Lelse  s1  [BRNCH Lend]  Lelse: [s2  Lend:] */
-static void parse_if(void)
-{
-  int else_l = new_label(), end_l;
-  next();                         /* "if" */
-  parse_paren_cond(else_l, 0);
-  parse_statement();
-  if (tok == T_ELSE) {
-    next();
-    end_l = new_label();
-    branch(IR_JUMP, end_l);
-    place_forward(else_l);
-    parse_statement();
-    place_forward(end_l);
-  } else {
-    place_forward(else_l);
-  }
-}
-
 /*
  * Loops (approach.md, "Loop design"). The parser writes a loop's parts
  * in source order between loop markers, which name its labels, and
@@ -989,6 +970,7 @@ static void parse_switch(void)
 static void parse_statement(void)
 {
   Operand o;
+  int else_l, end_l;
   if (tok == T_ID && next_is_colon()) {
     parse_label();              /* label: (before the typedef check, as
                                   a label may spell a typedef) */
@@ -1000,7 +982,33 @@ static void parse_statement(void)
   }
   switch (tok) {
   case T_IF:
-    parse_if();
+    /* if (c) s1 [else s2]:  c BRFLS Lelse  s1  [BRNCH Lend]  Lelse:
+     * [s2  Lend:]. Here, not in a function of its own, and an else-if
+     * chain is a loop that shares one Lend, not a recursion through
+     * this function: the parser's recursion costs the 6502 stack 4
+     * bytes a call, and nothing else bounds a chain's length. */
+    end_l = -1;
+    for (;;) {
+      else_l = new_label();
+      next();                     /* "if" */
+      parse_paren_cond(else_l, 0);
+      parse_statement();
+      if (tok != T_ELSE) {
+        place_forward(else_l);
+        break;
+      }
+      next();                     /* "else" */
+      if (end_l < 0)
+        end_l = new_label();
+      branch(IR_JUMP, end_l);
+      place_forward(else_l);
+      if (tok != T_IF) {
+        parse_statement();
+        break;
+      }
+    }
+    if (end_l >= 0)
+      place_forward(end_l);
     return;
   case T_WHILE:
     parse_while();

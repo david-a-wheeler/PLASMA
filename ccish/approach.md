@@ -3922,6 +3922,27 @@ of module file, and 2 calls of 6502 stack (68). Step 2, merging the
 large one-caller functions on the recursive parser chain into their
 callers for the 6502 stack, is to be discussed first.
 
+**Step 2 of merging one-caller functions, 2026-11-08** (decided in
+discussion: parse_if first, then parse_struct with parse_union, then
+parse_primary, measuring each). The parser's recursion is bounded by
+`MAX_NEST` (32) for expressions, parentheses, blocks and declarators,
+since each counts a level (`enter_nest()`), but an else-if chain
+wasn't counted at all: each link was parse_statement, parse_if,
+parse_statement, 8 bytes of 6502 stack and 46 of frame. And measure.py
+counts the expression recursion once, so its deepest chain is a lower
+bound: 32 parenthesized levels would be 3 calls each (parse_expr,
+parse_unary, parse_primary), 384 bytes of 6502 stack, more than its
+page, and 32 of parse_expr's 148-byte frames, about 4.7K.
+- **parse_if** is now in parse_statement, and an else-if chain is a
+  loop that shares one end label, so a chain of any length is one
+  level. It costs 24 bytes of code (the loop's bookkeeping) less the 5
+  of a def-table entry, 19 in all: making the end label at the top
+  would save 7 more, but every if without an else would then spend a
+  label, and tests/run/loops.c's main ran out of its 103 (error 36).
+  The deepest chain measure.py sees is one call shorter (67).
+  tests/run/else_if.c tests chains with and without a final else, a
+  dangling else, and a chain of 40.
+
 So the goal, with streaming: shed at least 2.5K more of running
 memory (about 4K, for a margin), and shorten the deepest call chain
 to about 50 calls. The old conclusion, below, stands, with these
