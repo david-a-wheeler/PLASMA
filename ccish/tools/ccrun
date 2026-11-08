@@ -40,6 +40,14 @@ if [ ! -e sys/ccstat ]; then
   ln -s "$CCSTAT" "sys/.ccstat.$$" && mv -f "sys/.ccstat.$$" sys/ccstat
 fi
 
+# plvm sets its stdin to raw mode. If that's a terminal, plvm under
+# timeout (in a process group of its own) gets SIGTTOU for it and
+# stops, and so does timeout, so the run hangs; and a plvm that's
+# killed leaves the terminal raw. So a terminal is replaced by
+# /dev/null (none of ccish's programs reads the console); piped input
+# still goes to the module.
+[ -t 0 ] && exec </dev/null
+
 # After plvm, a second marker, ^A "plvm N", carries plvm's own status,
 # for when the module's marker never came. A marker may follow output
 # that doesn't end its line; the text before it is kept.
