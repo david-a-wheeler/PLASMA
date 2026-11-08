@@ -1796,7 +1796,7 @@ Not yet. Two separate kinds of things stand in the way.
 | `printf` family (varargs) | 31 | M9 library + M11 |
 | stdio files (`fopen`, `fread`, `fwrite`, `fclose`, `remove`) | 7 | M9 library |
 | `string.h` / `exit` | 59 / 11 | M9 library |
-| Nested initializers (`cmdsys_funcs[]`: an array of structs) | a few | M11 |
+| Nested initializers (`cmdsys_funcs[]`: an array of structs) | a few | M11 (done 2026-11-07) |
 | `extern`, and linking 9 `.c` files | 11 | issue 11 (decision 20) |
 | `long` | 1 (`lex.c`, number overflow) | none: rewrite it |
 
@@ -1905,8 +1905,9 @@ replaces E2's lost script and is in the repository so it can be rerun.
 It preprocesses each file with gcc and the stand-in headers in
 `tools/inc/`, applies the workarounds listed at its top (`unsigned`,
 `long`, `short` to `int`; suffixes dropped; the `printf` family to 0;
-`main(argc, argv)` renamed `main_args`; nested initializer braces
-dropped; parse.c's struct `?:` as an `if`), compiles each file with
+`main(argc, argv)` renamed `main_args`; parse.c's struct `?:` as an
+`if`; nested initializer braces were dropped until ccish took them,
+2026-11-07), compiles each file with
 cccomp, and links the Apple II programs, cccomp and ccrel, with
 ccrel, using `tools/libstub.c` (empty C library functions, and a
 `main` that calls `main_args`). ccish, both passes in one, is too large
@@ -4285,6 +4286,53 @@ compiler, but have a lot of error-checking ignored in ccish."
   22's "Other modules" option B, whose pointer type carried the
   parameter count, and decision 29's "candidate"). Phase 3 is complete: all of it cost cccomp 1,771
   bytes of code, module file 44,147 to 46,761.
+
+**Nested initializer design (2026-11-07; done).** The user: "We need
+to accept nested braces in initializers, and test for that." Brace
+elision alone worked since M5 (one flat list over an aggregate's
+scalars); an inner `{` was error 158.
+
+- *Where a `{` applies* (C11 6.7.9p20): each element or member is
+  initialized by init_sub() (ptop.c), which, if the next token is
+  `{`, reads that subobject's own list and then counts it as one item
+  of the enclosing list; otherwise the subobject takes the enclosing
+  list's next items, as before. So braces and elision mix as C says
+  (`int m[2][2] = {1, {2}, 3};` braces the scalar m[0][1]), braces
+  around a scalar work at any level, and so do a string in braces and
+  `{}`.
+- *Zeros where a short inner list stops*: init_sub() writes them when
+  its list closes (init_zero()), so everything before init_end is
+  still initialized and a global's data is still written in order,
+  with no seeking or buffering. Globals, statics and locals share the
+  code.
+- Error 158 is gone (a gap in ccish.msg); too many items in an inner
+  list is 161, as at the top.
+- Tests: tests/xrun/xinitnest.c against gcc (every inner list
+  braced, since gcc's -Wall warns about elision; its .flags allows
+  short struct lists), tests/run/initnest.c for the mixes and braces
+  around scalars (hand-worked, checked with gcc outside the suite),
+  and error tests init_inner_many and init_inner_close. measure.py no
+  longer flattens ccish's own initializers (link.c's opinfo[] is
+  nested); every object and symbol file is byte-identical to the
+  flattened build's.
+- Cost (small build, measure.py): cccomp code +82 bytes (ptop.c), its
+  module file 46,761 to 46,911 (the rest is RLD and ESD).
+- *Designated initializers (C99), not done; analyzed 2026-11-07.*
+  Their use: enum-indexed tables that survive reordering
+  (`[OP_ADD] = "ADD"`, the shape of lower.c's and irin.c's parallel
+  tables), structs initialized by member name, sparse arrays, and a
+  union initialized through a member other than the first. The
+  problem is order: a global's initializer streams to the data file,
+  so a designator that goes backward, or overrides, needs the whole
+  object buffered in cccomp (memory it lacks). Restricted to forward
+  designators, a gap is zeroed as a short inner list's is, and only
+  backward designators and overrides (which gcc accepts) are
+  rejected. The work is parsing `.name` and `[expr]` chains, and
+  repositioning: a designator resets the position at its enclosing
+  braces' level, so init_flat()'s recursion must unwind to there (as
+  init_done does) and descend along the path. Estimate 300 to 500
+  bytes of cccomp code. ccish's sources are C89, so they could use
+  designators only if that policy changed.
 
 **`ccpp` design (decided in discussion, 2026-10-31; decision 24; F9
 and A6 in 18.6; this is M8).** The user: "Currently cccomp is too

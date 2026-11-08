@@ -342,12 +342,41 @@ static void after_leaf(void)
   init_done = tok == '}';
 }
 
+static void init_flat(int t, int off);
+
+/* Initialize the subobject of type t at offset off, an element or a
+ * member, as one item of the enclosing brace list (C11 6.7.9p20): from
+ * its own brace list if one starts here, else from the enclosing
+ * list's next items (brace elision). What its own list leaves out is
+ * zero, written now, so that everything before init_end stays
+ * initialized and a global's data stays in order. */
+static void init_sub(int t, int off)
+{
+  int end = off + type_size(t);
+  if (tok != '{') {
+    init_flat(t, off);
+    return;
+  }
+  next();
+  init_done = tok == '}';       /* {}: all zero */
+  init_flat(t, off);
+  if (!init_done)
+    error(161 /* "too many initializers for" */, quote(init_name));
+  next();                       /* '}' */
+  init_zero(end - init_end, init_end);
+  init_end = end;
+  init_done = 0;
+  after_leaf();
+}
+
 /* Initialize the object of type t at offset off (of the variable being
- * initialized) from a brace list, as far as the list goes. The list is
- * flat, as C allows: the scalars of arrays and structs, in order, at any
- * depth (struct pt ps[2] = {1, 2, 3, 4};). A char array in it may be
- * given a string literal instead ({"abc", 5}). An array of unknown size
- * (count 0, only at the top) takes as many elements as the list gives. */
+ * initialized) from a brace list, as far as the list goes. Each element
+ * or member may have its own brace list (init_sub()), or the scalars
+ * may be flat, as C allows: the scalars of arrays and structs, in
+ * order, at any depth (struct pt ps[2] = {1, 2, 3, 4};). A char array
+ * may be given a string literal instead ({"abc", 5}). An array of
+ * unknown size (count 0, only at the top) takes as many elements as the
+ * list gives. */
 static void init_flat(int t, int off)
 {
   int n, i, m, tag;
@@ -360,22 +389,18 @@ static void init_flat(int t, int off)
   } else if (is_array(t)) {
     n = type_count(t);
     for (i = 0; (n == 0 || i < n) && !init_done; i++)
-      init_flat(type_sub(t), off + i * type_size(type_sub(t)));
+      init_sub(type_sub(t), off + i * type_size(type_sub(t)));
   } else if (is_struct(t)) {
     tag = struct_tag(t);
     for (m = member_next(tag, -1); m >= 0 && !init_done;
          m = member_next(tag, m)) {
-      init_flat(member_type(m), off + member_off(m));
+      init_sub(member_type(m), off + member_off(m));
       if (tag_is_union(tag))
         break;   /* as in C, a union is initialized by its first
                    * member only; a further initializer hits the
                    * "too many" error below */
     }
   } else {
-    if (tok == '{')
-      error(158 /* "nested braces in initializers are not supported "
-                   "yet" */,
-            NULL);
     init_elem(unqual(t), off);
     init_end = off + type_size(t);
     after_leaf();

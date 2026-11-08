@@ -946,19 +946,28 @@ stored in the module, so they cost no code. The forms:
   in code too, so `buf + 10` is one address push. Casting an address
   to an integer (`(int)&x`) gives "initializer is not a constant
   ccish supports".
-* Arrays: a brace list, one level deep (`int t[5] = {1, 2, 3};`),
-  with the rest zero and an optional trailing comma. The size may come
-  from the list (`int t[] = {1, 2};`). A two-dimensional array takes
-  a flat list (`int m[2][3] = {1, 2, 3, 4, 5, 6};`); nested braces
-  aren't supported yet. A `char` array may be a string
-  (`char s[] = "hi";` has 3 elements), and so may each row of a
-  `char` array of arrays (`char kw[][6] = {"int", "char"};`).
-* Structs: a flat brace list over the struct's scalar members in
-  order (`struct pt p = {1, 2};`), and the same for arrays of structs
-  and structs holding arrays or structs, all as one flat list
-  (`struct pt ps[] = {1, 2, 3, 4};` is 2 points). A `char` array
-  member may be a string (`{"nut", 40}`).
-* A scalar may be in braces (`int x = {5};`).
+* Arrays: a brace list (`int t[5] = {1, 2, 3};`), with the rest zero
+  and an optional trailing comma. The size may come from the list
+  (`int t[] = {1, 2};`). A `char` array may be a string
+  (`char s[] = "hi";` has 3 elements, and so does `{"hi"}`), and so
+  may each row of a `char` array of arrays
+  (`char kw[][6] = {"int", "char"};`).
+* Structs: a brace list over the members in order
+  (`struct pt p = {1, 2};`). A `char` array member may be a string
+  (`{"nut", 40}`). A union's list initializes its first member.
+* Arrays of arrays or structs, and structs holding them, may have a
+  brace list for each element or member, at any depth, as in C:
+  `int m[2][3] = {{1, 2, 3}, {4}};`,
+  `struct pt ps[] = {{1, 2}, {3}};`. A short inner list leaves the
+  rest of its element zero (`m[1]` is 4, 0, 0, and `ps[1].y` is 0),
+  and `{}` is all zero. The braces may also be left out (brace
+  elision): `{1, 2, 3, 4}` fills a `struct pt ps[2]` in order. The two
+  mix as C says: where the next item is `{`, it starts the list of the
+  subobject about to be initialized, so `int m[2][2] = {1, {2}, 3};`
+  is 1, 2, 3, 0 (gcc warns about such mixes).
+* A scalar may be in braces (`int x = {5};`), also inside a list.
+* Designated initializers (C99's `.x = 1`, `[2] = 5`) aren't
+  supported.
 
 Local initializers may be any expression, and run when the
 declaration is reached.
@@ -1371,8 +1380,6 @@ These are deliberate limits, each a clear compile-time error:
 * Variable argument lists (`...` in a function's parameters; the
   preprocessor's `...`/`__VA_ARGS__` is separate, section 8.2).
 * `main` with parameters, and `extern` with an initializer.
-* Nested braces in initializers (`int m[2][3] = {{1,2,3},{4,5,6}};`
-  takes a flat list, section 5.6).
 * Structs over 8 bytes passed or returned by value (pass a pointer).
 * `==` and `!=` on structs (as in C).
 * Anything that needs more than 16 bits of address or 8 bits of

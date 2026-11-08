@@ -153,7 +153,6 @@
 155 initializer address is out of range
 156 initializer string is too long for
 157 expected '}' or ',' in an initializer, not
-158 nested braces in initializers are not supported yet
 159 expected '{' to start an array initializer, not
 160 expected '{' to start a struct initializer, not
 161 too many initializers for

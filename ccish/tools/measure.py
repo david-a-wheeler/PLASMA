@@ -22,8 +22,6 @@ The workarounds, each something ccish doesn't accept yet:
   - the printf family becomes 0 (in tools/inc/stdio.h), so its calls
     and the C library itself aren't counted;
   - main(argc, argv) is renamed main_args; libstub.c's main calls it;
-  - nested braces in an initializer are dropped (C's brace elision
-    gives the same values);
   - parse.c's one struct ?: becomes an if.
 A file that stops on one of ccish's own limits (say, "too many
 variables") is compiled again by a cccomp and ccgen built from a copy of the
@@ -85,35 +83,6 @@ PROGRAMS = [
 ]
 
 
-def flatten_braces(text):
-    """Drop braces nested inside an initializer's outer braces."""
-    out, depth, i, n = [], 0, 0, len(text)
-    in_init = False
-    while i < n:
-        c = text[i]
-        if c in "\"'":                      # copy a literal whole
-            j = i + 1
-            while text[j] != c:
-                j += 2 if text[j] == "\\" else 1
-            out.append(text[i:j + 1])
-            i = j + 1
-            continue
-        if c == "{":
-            if depth == 0:
-                in_init = re.search(r"=\s*$", "".join(out[-3:])) is not None
-            depth += 1
-            if not (in_init and depth > 1):
-                out.append(c)
-        elif c == "}":
-            if not (in_init and depth > 1):
-                out.append(c)
-            depth -= 1
-        else:
-            out.append(c)
-        i += 1
-    return "".join(out)
-
-
 def strip_comments(text):
     """Take out text's comments (each becomes a space, keeping its
     newlines), but not what looks like one in a literal."""
@@ -151,7 +120,6 @@ def prepare(path, dest):
     text = re.sub(r"\bint main\(int argc", "int main_args(int argc", text)
     text = text.replace("*o = take_b ? b : c;",
                         "if (take_b) *o = b; else *o = c;")
-    text = flatten_braces(text)
     with open(dest, "w") as f:
         f.write(text)
 

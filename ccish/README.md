@@ -207,19 +207,20 @@ $ ./ccrel -o prog main util && ../src/plvm prog
     folds these in code too, so `buf + 10` is one address push. Casting
     an address to an integer (`(int)&x`) gives "initializer is not a
     constant ccish supports".
-  - Arrays: a brace list, one level deep (`int t[5] = {1, 2, 3};`),
-    with the rest zero and an optional trailing comma. The size may
-    come from the list (`int t[] = {1, 2};`). A two-dimensional array
-    takes a flat list (`int m[2][3] = {1, 2, 3, 4, 5, 6};`); nested
-    braces aren't supported yet. A `char` array may be a string
+  - Arrays: a brace list (`int t[5] = {1, 2, 3};`), with the rest
+    zero and an optional trailing comma. The size may come from the
+    list (`int t[] = {1, 2};`). A two-dimensional array may have a
+    list for each row (`int m[2][3] = {{1, 2, 3}, {4}};`, the rest of
+    each row zero), or one flat list. A `char` array may be a string
     (`char s[] = "hi";` has 3 elements), and so may each row of a
     `char` array of arrays (`char kw[][6] = {"int", "char"};`).
-  - Structs: a brace list too, over the struct's scalar members in
-    order (`struct pt p = {1, 2};`), and the same for arrays of structs
-    and structs holding arrays or structs, all as one flat list
-    (`struct pt ps[] = {1, 2, 3, 4};` is 2 points). A `char` array
-    member may be a string (`{"nut", 40}`). Nested braces aren't
-    supported yet.
+  - Structs: a brace list too, over the members in order
+    (`struct pt p = {1, 2};`). Arrays of structs and structs holding
+    arrays or structs may nest lists at any depth, as in C
+    (`struct pt ps[] = {{1, 2}, {3}};`), or use one flat list
+    (`{1, 2, 3, 4}` is 2 points). A `char` array member may be a
+    string (`{"nut", 40}`). Designated initializers aren't
+    supported.
   - A scalar may be in braces (`int x = {5};`).
 * `static`:
   - A static local (`static int n = 10;`) keeps its value between
