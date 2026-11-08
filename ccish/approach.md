@@ -3781,6 +3781,58 @@ code, 179 of data and 18 functions; it was 43,300 to 44,324 after
 phase 4, and 42,448 to 43,472 before. The 336 functions before
 counted tools/libstub.c's stand-ins.)
 
+**Rechecked 2026-11-08, with FILEIO and CMD measured.** Assembling
+CMD (cmd.pla with cmdstub.s) puts `lastdef`, where the heap starts, at
+$1A40, so 42,176 bytes are free up to the frame stack at $BF00 (still
+from the source, not a measurement on a machine). Assembling the Apple
+II's FILEIO (src/libsrc/apple/fileio.pla) gives a 2,727-byte module
+file: a 1,756-byte body, 971 bytes of RLD and ESD, and 51 functions,
+so 2,011 bytes resident. FILEIO opens the first file into ProDOS's
+system buffer at $0800, outside the heap, and each one open beside it
+into a 1K buffer from the heap (`iobufs`, at most 4 buffers in all).
+cccomp holds NAME.i and NAME.ir open together, and NAME.nam at times.
+So cccomp's needs while running, with the RLD streamed:
+
+| | Bytes |
+|---|---|
+| Module body (49,121-byte file less 14,310 of RLD and ESD) | 34,811 |
+| The loader's def table (331 functions) | 1,655 |
+| Zero-filled tables moved to the heap | 4,473 |
+| FILEIO, resident | 2,011 |
+| I/O buffers beyond the system one (1 or 2) | 1,024 to 2,048 |
+| Frame stack, worst case (a lower bound) | 1,685 |
+| **Total** | **45,659 to 46,683** |
+
+That's 3.5 to 4.5K over the 42,176. (The `iobufs` fix below then
+added 102 bytes to the module file, 62 of them to the body.) Streaming the RLD fixes only the
+load: the peak drops from about 51K (FILEIO and the whole file) to
+about 38.5K. Without streaming, the load is the worse limit, about
+8.9K over, so a ccish-only route must cut about 9K from the module
+file (its RLD and ESD are 14.3K of it, so fewer relocations count) as
+well as meet the running budget. Two more limits these checks found:
+
+- **The 6502 stack.** measure.py gives cccomp's deepest chain as at
+  least 73 calls at 4 bytes each, 292 bytes, and the 6502 stack is one
+  256-byte page, shared with CMD and the VM. The chain is the
+  recursive expression parser, so a deeply nested expression could
+  overflow it on a real machine; plvm can't show this, since its
+  calls are C recursion. It needs to come down to about 50 levels.
+- **`iobufs`.** ccish's library never asked FILEIO for buffers, so on
+  an Apple II a second file open at once would have failed. Fixed the
+  same day (lib/fopen.c: one more buffer each time all are in use; 58
+  bytes of code and 4 of data in each program). plvm's `iobufs` does
+  nothing, which is why no test showed it; under `plvm -t` the
+  self-compiled ccpp asks for 3 on diag.c. FILEIO's limit of 4 open
+  files is exactly ccpp's peak (traced on every file in src/ and lib/:
+  the source, two levels of headers, and NAME.i; NAME.nam is written
+  only after the source is closed). A third level of headers, which
+  `MAX_INCLUDE` 3 allows, would need 5, and fails with error 236
+  ("too many files open").
+
+So the goal, with streaming: shed at least 4.5K of running memory
+(about 6K, for a margin), and the deepest call chain. The old
+conclusion, below, stands, with those numbers.
+
 So loading would work once the RLD is streamed (a load peak of the
 body plus the def table, about 36.1K), but running wouldn't: cccomp is
 about 2.5 to 3.6K over, before FILEIO itself, which on an Apple II is
