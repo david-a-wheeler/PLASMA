@@ -47,8 +47,9 @@
  * valid program doesn't need (approach.md decision 21 and 18.6 C1,
  * "Two builds: the plan"). Code tests these feature macros, never
  * CCISH_SMALL itself:
- *   CCISH_LISTING  -l (ccrel's listing), and what only it uses. ccgen's
- *                  -i is in both builds (approach.md decision 22).
+ *   CCISH_LISTING  -l (ccrel's listing) and -d (ccgen's, whose buffer is
+ *                  12K), and what only they use. ccgen's -i is in both
+ *                  builds (approach.md decision 22).
  *   CCISH_CHECKS   checks that only a compiler bug or a damaged file
  *                  would fail: so far, ccgen's check of each IR_SWAP's
  *                  and unsigned comparison's blocks (irin.c). Both

@@ -19,7 +19,9 @@ int src_line;
 int opt_list;
 #endif
 int opt_ir;
+#ifdef CCISH_LISTING
 int opt_dump;
+#endif
 int opt_keep;
 
 /* Return base followed by suffix, in a static buffer that the next

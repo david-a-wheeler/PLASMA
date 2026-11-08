@@ -14,7 +14,10 @@ extern int opt_list;        /* -l: print a listing of the generated code */
 #define opt_list 0          /* no listing in the small build */
 #endif
 extern int opt_ir;          /* -i: print the IR as ccgen reads it */
-extern int opt_dump;        /* -d: print the machine ops after peephole */
+#ifdef CCISH_LISTING
+extern int opt_dump;        /* -d: print the machine ops after peephole
+                             * (full build only) */
+#endif
 extern int opt_keep;        /* -k: keep the stream files */
 
 /* Diagnostics take a message number: its text is in the message file,

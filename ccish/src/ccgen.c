@@ -9,7 +9,8 @@
  *
  * Usage: ccgen [-d] [-i] [-k] output
  *   output  the output name given to cccomp
- *   -d      print the machine ops after the peephole stage
+ *   -d      print the machine ops after the peephole stage (full
+ *           build only: the listing needs a 12K buffer)
  *   -i      print the IR as it is read
  *   -k      keep the IR file and name file, and the stream files even
  *           after an error
@@ -37,7 +38,11 @@ void clean_up(void)
 /* Print the command-line syntax and exit. */
 static void usage(void)
 {
+#ifdef CCISH_LISTING
   fputs("usage: ccgen [-d] [-i] [-k] output\n", stderr);
+#else
+  fputs("usage: ccgen [-i] [-k] output\n", stderr);
+#endif
   exit(2);
 }
 
@@ -48,9 +53,12 @@ int main(int argc, char **argv)
 
   msg_init(argv[0]);
   for (i = 1; i < argc; i++) {
+#ifdef CCISH_LISTING
     if (!strcmp(argv[i], "-d"))
       opt_dump = 1;
-    else if (!strcmp(argv[i], "-i"))
+    else
+#endif
+    if (!strcmp(argv[i], "-i"))
       opt_ir = 1;
     else if (!strcmp(argv[i], "-k"))
       opt_keep = 1;

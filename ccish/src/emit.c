@@ -56,14 +56,16 @@ int helper_sum[NHELPERS];
  * function arrays), or -1. */
 static int fn = -1;
 
-/* For the listing (-d): the current function's ops, kept so they are
- * printed when the function ends, once its frame size is known. A
- * function has at most one op per code byte, plus a label or a join
- * per label. */
+#ifdef CCISH_LISTING
+/* For the listing (-d, full build only, since this buffer alone is 12K):
+ * the current function's ops, kept so they are printed when the
+ * function ends, once its frame size is known. A function has at most
+ * one op per code byte, plus a label or a join per label. */
 #define NLBUF (MAX_FUNC_CODE + 2 * MAX_LABELS)
 static Mop lbuf[NLBUF];
 static int nlbuf;
 static int nlisted;            /* functions listed so far */
+#endif
 static unsigned char fbuf[MAX_FUNC_CODE];
 static int nfbuf;
 
@@ -339,8 +341,10 @@ static void end_function(int frame_size)
   fn = -1;
 }
 
+#ifdef CCISH_LISTING
 /*
- * The listing (-d): the machine ops as the back end's final stream,
+ * The listing (-d, in the full build only): the machine ops as the back
+ * end's final stream,
  * one per line, after the peephole stage (the code-generation tests
  * in tests/gen compare it against a hand-written expectation).
  * A function's ops are kept until it ends, so ENTER and LEAVE show
@@ -478,27 +482,35 @@ static void list_fn(int frame)
     list_op(&lbuf[i], frame);
   nlbuf = 0;
 }
+#endif
 
 /* Stage 4's entry: encode one machine op into the function buffer. The
  * pseudo-ops start a function, or end it and write it out. */
 void emit_put(Mop *m)
 {
   int i, op;
+#ifdef CCISH_LISTING
   if (opt_dump && m->op != OP_FUNC_BEGIN && m->op != OP_FUNC_END
       && nlbuf < NLBUF)
     lbuf[nlbuf++] = *m;
+#endif
   switch (m->op) {
   case OP_FUNC_BEGIN:
     fn = m->fn;
-    nfbuf = nrelocs = nframe = ntemp = temp_words = nlbuf = 0;
+    nfbuf = nrelocs = nframe = ntemp = temp_words = 0;
+#ifdef CCISH_LISTING
+    nlbuf = 0;
+#endif
     for (i = 0; i < MAX_LABELS; i++) {
       label_word[i] = NO_LINK;
       label_placed[i] = 0;
     }
     return;
   case OP_FUNC_END:
+#ifdef CCISH_LISTING
     if (opt_dump)
       list_fn(m->a);
+#endif
     end_function(m->a);
     return;
   case OP_LABEL:
