@@ -136,7 +136,7 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   then every object's code. `-o` is required with more than one.
 * `@file` names the objects in `file` instead, one per line (a CR or
   LF ends a line, and blank lines are skipped): `ccrel -o prog
-  @prog.lst`. The VM's command line holds only 127 characters. The
+  @prog.objs`. The VM's command line holds only 127 characters. The
   names may total 512 bytes, and a link may have 32 objects. It's
   GCC's and the linkers' `@file` syntax, but not their format: theirs
   holds arguments, options included, split at white space and quoted;

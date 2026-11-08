@@ -154,7 +154,8 @@ files of the sessions so far, before a move to a new computer.)
 - `python3 tools/measure.py` (8 seconds) compiles ccish's own sources
   with ccish (small build) and reports each file's code, data and
   strings, each program's totals and module file, table peaks, stack
-  depth. It writes `tools/out/PROGRAM.lst`, ccrel's listings.
+  depth. It writes `tools/out/PROGRAM.lst`, ccrel's listings, and
+  `tools/out/PROGRAM.objs`, the objects tools/cclink linked.
 - `python3 tools/loops.py` (after measure.py): accesses to globals moved
   to the heap, in loops, by global and function.
 - **Compare against the previous commit** with a git worktree at a

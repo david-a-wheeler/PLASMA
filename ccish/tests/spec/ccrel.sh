@@ -143,8 +143,8 @@ fi
 # LF ending a line, blank lines skipped, and no newline needed at the
 # end; the module is the same as the command line's.
 printf '\r\n%s\r\n\n%s' "$OUT/link/many_a" "$OUT/link/many_b" \
-    >"$OUT/link/many.lst"
-if ./ccrel -o "$OUT/link/many_lst" "@$OUT/link/many.lst" \
+    >"$OUT/link/many.objs"
+if ./ccrel -o "$OUT/link/many_lst" "@$OUT/link/many.objs" \
        2>"$OUT/link/many_lst.err" \
    && cmp -s "$OUT/link/many" "$OUT/link/many_lst"; then
     :
@@ -153,7 +153,7 @@ else
     sed 's/^/    /' "$OUT/link/many_lst.err"; bad=1
 fi
 rm -f "$OUT"/link/many_[ab].obj "$OUT"/link/many_[ab].syms \
-    "$OUT/link/many_lst" "$OUT/link/many.lst"
+    "$OUT/link/many_lst" "$OUT/link/many.objs"
 
 # A list file that can't be opened, one whose names overflow ccrel's
 # 512-byte buffer, and one that names more than 32 objects.
@@ -168,20 +168,20 @@ want_fail() {   # want_fail what message args...
         sed 's/^/    /' "$OUT/link/list.err"; bad=1
     fi
 }
-want_fail "a missing list file" "cannot open $OUT/link/nolist.lst" \
-    -o "$OUT/link/x" "@$OUT/link/nolist.lst"
-i=0; : >"$OUT/link/long.lst"
+want_fail "a missing list file" "cannot open $OUT/link/nolist.objs" \
+    -o "$OUT/link/x" "@$OUT/link/nolist.objs"
+i=0; : >"$OUT/link/long.objs"
 while [ $i -lt 20 ]; do
-    echo "$OUT/link/a_rather_long_object_name_$i" >>"$OUT/link/long.lst"
+    echo "$OUT/link/a_rather_long_object_name_$i" >>"$OUT/link/long.objs"
     i=$((i + 1))
 done
 want_fail "a list file too long" "names in the list file too long" \
-    -o "$OUT/link/x" "@$OUT/link/long.lst"
-i=0; : >"$OUT/link/many33.lst"
-while [ $i -lt 33 ]; do echo "o$i" >>"$OUT/link/many33.lst"; i=$((i + 1)); done
+    -o "$OUT/link/x" "@$OUT/link/long.objs"
+i=0; : >"$OUT/link/many33.objs"
+while [ $i -lt 33 ]; do echo "o$i" >>"$OUT/link/many33.objs"; i=$((i + 1)); done
 want_fail "33 objects" "too many objects to link" \
-    -o "$OUT/link/x" "@$OUT/link/many33.lst"
-rm -f "$OUT/link/long.lst" "$OUT/link/many33.lst" "$OUT/link/list.err"
+    -o "$OUT/link/x" "@$OUT/link/many33.objs"
+rm -f "$OUT/link/long.objs" "$OUT/link/many33.objs" "$OUT/link/list.err"
 
 # More relocations than ccrel once kept in memory (2432; B4 rereads them
 # instead): f1..f25 each store to the global g 100 times, one data

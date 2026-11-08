@@ -8,6 +8,12 @@ commits 7d986620 and 42cc5148.)
 
 ## Summary
 
+**Status (2026-11-08): the bootstrap passes.** `make bootstrap` builds
+the four programs three times (on the host, then twice under plvm),
+and every object and module is the same each time (step 4, below).
+What's left before the Apple II is steps 14 and 15: an `exit()` that
+unwinds, and the machine itself, with cccomp fitting its memory (B7).
+
 The first attempt got useful data (the per-file sweep and the
 capacity blockers below), but several of its choices work against
 where ccish is going. In short, we recommend:
@@ -123,7 +129,7 @@ for each source file f of the compiler:
     cccomp f        -> f.ir
     ccgen f         -> f.obj, f.syms
 for each program p in ccpp, cccomp, ccgen, ccrel:
-    ccrel -o p @p.lst     (p's objects, then the library's)
+    ccrel -o p @p.objs    (p's objects, then the library's)
 ```
 
 - Stage 1 runs that with the host-built passes; stage 2 runs it under
@@ -349,7 +355,7 @@ compiles) leaves out. A real `printf` waits for varargs (approach.md,
 plvm's command line holds 127 characters, and an Apple II's isn't
 bigger. The per-file pass lines are short. A link line naming a
 program's objects plus the library's can approach the limit, so give
-ccrel a list file (`ccrel -o cccomp @cccomp.lst`, one name per line)
+ccrel a list file (`ccrel -o cccomp @cccomp.objs`, one name per line)
 rather than one-letter output names. The source and object names stay
 real names, and the list files are the same at every stage. **Done**
 (2026-11-08): `@file` in ccrel.c, read into a 512-byte buffer, one
@@ -357,7 +363,11 @@ name per line, CR or LF ending a line. ccrel's `bases[]` shrank from
 256 entries to `MAX_OBJS` (32, now in link.h), so its module file
 grew only 374 bytes (code +180, data +68, strings +10). Under plvm,
 the self-compiled ccrel links cccomp's 30 objects from a list (187
-bytes) to the same module as the host's.
+bytes) to the same module as the host's. The list files are PROG.objs,
+not .lst, which is a listing everywhere else in ccish (tools/out's,
+the run tests'). It's GCC's `@file` syntax but not its format: only
+names, a whole line each, with no options, quoting or white space
+splitting.
 
 ## What to keep, and what to undo, from the first attempt
 
@@ -565,7 +575,7 @@ decision 35).**
     `<syspath>ccinc` branch) and its library is 858 bytes of code;
     ccgen's 824; ccrel's 822.
 
-**Phase 6: the bootstrap (in progress, status as of 2026-11-08).**
+**Phase 6: the bootstrap (done, 2026-11-08).**
 11. ccrel's `@list` file (R10), then rewrite tests/spec/bootstrap.sh
     for R1 and R2, sharing measure.py's preparation.
 12. B2 to B5, each measured against B7.
@@ -608,7 +618,7 @@ The order agreed on 2026-11-08, as five steps:
   are `MAX_IDS`, 200 of 203 in irin.c, and `MAX_VARS`,
   76 of 79 in link.c).
 - **Step 3: ccrel's `@list` file (R10; done).** `ccrel -o cccomp
-  @cccomp.lst`, one object name per line, read into a static buffer
+  @cccomp.objs`, one object name per line, read into a static buffer
   in ccrel only; cccomp's link names 30 objects, over the 127-character
   command line.
 - **Step 4: tests/spec/bootstrap.sh.** Stage 1: the host passes
@@ -621,7 +631,19 @@ The order agreed on 2026-11-08, as five steps:
   stage 2's and stage 3's modules and objects identical, and stage
   1's objects equal to stage 2's too (that's the check that caught
   ccgen); on a difference, name the first object that differs and
-  keep the directories.
+  keep the directories. **Done** (2026-11-08), with one script for
+  the library objects (decided in discussion): tools/cclink links a
+  program, adds the library object each undefined reference calls
+  for, and writes PROG.objs, the objects linked. measure.py's own loop
+  (`lib_object`) is gone; it calls cclink too, and its report is
+  unchanged. The Makefile gives the script each program's sources
+  (`CCPP_SRC` and the rest, which the program rules use too) and the
+  library's, so no list is written by hand. The stages are in
+  tests/out/boot/1 to 3, removed when they match. All three stages'
+  49 objects (27 of src/, 22 of the library) and four modules are the
+  same: the modules are 28,011 (ccpp), 49,121 (cccomp), 32,678 (ccgen)
+  and 16,405 (ccrel) bytes, as measure.py reports. `make bootstrap`
+  takes about 36 seconds.
 
 Each step: discuss any design change first, then test (`make`, which
 runs the 413 tests), measure, update the docs, and commit with

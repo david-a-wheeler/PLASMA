@@ -10,9 +10,9 @@ include directory is the library's, lib/include), cccomp and ccgen, as
 the small build (-DCCISH_SMALL, approach.md decision 21; or the full
 build, with -full). The C library (lib/*.c) and tools/plvmexit.c's
 exit are compiled too, unchanged. Then each of the Apple II programs
-(ccpp, cccomp, ccgen, ccrel) is linked with ccrel, with only the
-library objects it needs: each undefined reference ccrel reports adds
-the object that defines it, until none is left. The report gives each
+(ccpp, cccomp, ccgen, ccrel) is linked by tools/cclink, which adds
+only the library objects it needs, and writes OUT/PROGRAM.objs, the
+objects linked. The report gives each
 file's code, data and string sizes (from its .syms header) and each
 program's totals and link workload (from ccrel's listing), and how full
 ccpp's tables got (from a ccpp built with CCISH_STATS). See approach.md
@@ -36,6 +36,7 @@ import sys
 
 CCOMP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(CCOMP, "tools")
+CCLINK = os.path.join(TOOLS, "cclink")
 OUT = os.path.join(TOOLS, "out")
 FULL = "-full" in sys.argv[1:]      # measure the full build instead
 
@@ -111,14 +112,6 @@ def lib_sources():
             if n.endswith(".c")}
     srcs["plvmexit"] = os.path.join(TOOLS, "plvmexit.c")
     return srcs
-
-
-def lib_object(symbol):
-    """The library object that defines symbol: each defines the function
-    it's named for, less a leading __ (__start, __path), but fclose is
-    fopen's and exit is plvmexit's."""
-    return {"exit": "plvmexit", "fclose": "fopen"}.get(
-        symbol, symbol.lstrip("_"))
 
 
 def pp_args():
@@ -544,17 +537,13 @@ def main():
         # A file compiled with raised limits may be over ccrel's too.
         raised = [n for n in files if n in over]
         ccrel = os.path.join(big if raised else CCOMP, "ccrel")
-        # Add the library object for each undefined reference (ccrel
-        # stops at the first), until none is left.
-        libs = []
-        while True:
-            objs = [os.path.join(OUT, n) for n in files + libs]
-            ok, msg = run([ccrel, "-l", "-o", module] + objs)
-            m = re.search(r"undefined reference to '(\w+)'", msg)
-            if ok or not m or lib_object(m.group(1)) in libs \
-               or lib_object(m.group(1)) not in sizes:
-                break
-            libs.append(lib_object(m.group(1)))
+        # tools/cclink adds the library objects the program needs, and
+        # writes the list of the objects it linked.
+        def link(ccrel):
+            return run([CCLINK, "-r", ccrel, "-l", "-L", OUT, "-o", module,
+                        "-w", module + ".objs"]
+                       + [os.path.join(OUT, n) for n in files])
+        ok, msg = link(ccrel)
         if not ok and any(m in msg for m in LIMIT_MSGS):
             # Over one of ccrel's own limits: link with raised limits,
             # and say which.
@@ -562,13 +551,16 @@ def main():
                           .split(": ", 1)[-1])
             big = big or build_big()
             ccrel = os.path.join(big, "ccrel")
-            ok, msg = run([ccrel, "-l", "-o", module] + objs)
+            ok, msg = link(ccrel)
         with open(module + ".lst", "w") as f:
             f.write(msg)
         if not ok:
             print("%s: link FAILED: %s" % (prog, msg.strip().splitlines()[-1]))
             failed = True
             continue
+        with open(module + ".objs") as f:
+            objs = f.read().split("\n")[:-1]
+        libs = [os.path.basename(o) for o in objs[len(files):]]
         code = sum(sizes[n][2] for n in files)
         data = sum(sizes[n][0] for n in files)
         strs = sum(sizes[n][1] for n in files)

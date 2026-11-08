@@ -1,0 +1,70 @@
+#!/bin/sh
+# cclink: link a program with ccrel, adding the C library objects it
+# needs, and write the list of the objects linked, for `ccrel @list`
+# (doc/bootstrap-test.md, R10 and step 4). It's the one place that
+# knows which library object defines a name; tools/measure.py and
+# tests/spec/bootstrap.sh both use it.
+#
+# Usage: cclink [-r ccrel] [-l] [-L libdir] -o module -w list object...
+#
+# Links the objects (output names, as ccrel takes them), then the
+# library object that each undefined reference calls for, one at a
+# time (ccrel reports only the first), until none is left. A library
+# object is named for the function it defines, less any leading
+# underscores (__start is start), but fclose is fopen's and exit is
+# plvmexit's. On success, writes list (the objects linked, one per
+# line) and prints ccrel's output (its listing, with -l). If the link
+# fails for another reason, or wants an object libdir doesn't have,
+# prints ccrel's messages to stderr and fails.
+#   -r ccrel   the ccrel to run (default: this script's ../ccrel)
+#   -l         pass -l to ccrel, for its listing
+#   -L libdir  where the library objects are (default: the current
+#              directory, whose objects are named bare: start, not
+#              ./start)
+
+here=$(cd "$(dirname "$0")/.." && pwd)
+ccrel=$here/ccrel
+listing= libdir=. module= list=
+usage() {
+  echo "usage: cclink [-r ccrel] [-l] [-L libdir] -o module -w list object..." >&2
+  exit 2
+}
+while [ $# -gt 0 ]; do
+  case $1 in
+  -r) [ $# -ge 2 ] || usage; ccrel=$2; shift 2 ;;
+  -l) listing=-l; shift ;;
+  -L) [ $# -ge 2 ] || usage; libdir=$2; shift 2 ;;
+  -o) [ $# -ge 2 ] || usage; module=$2; shift 2 ;;
+  -w) [ $# -ge 2 ] || usage; list=$2; shift 2 ;;
+  -*) usage ;;
+  *) break ;;
+  esac
+done
+[ -n "$module" ] && [ -n "$list" ] && [ $# -gt 0 ] || usage
+
+# The objects to link are "$@"; each library object found is appended.
+while :; do
+  out=$("$ccrel" $listing -o "$module" "$@" 2>&1) && break
+  sym=$(printf '%s\n' "$out" |
+        sed -n "s/.*undefined reference to '\([A-Za-z0-9_]*\)'.*/\1/p" |
+        head -n 1)
+  case $sym in
+  "") obj= ;;
+  fclose) obj=fopen ;;
+  exit) obj=plvmexit ;;
+  *) obj=$sym
+     while :; do case $obj in _*) obj=${obj#_} ;; *) break ;; esac; done ;;
+  esac
+  [ "$libdir" = . ] && path=$obj || path=$libdir/$obj
+  for o in "$@"; do
+    [ "$o" = "$path" ] && obj=      # linked already, yet still wanted
+  done
+  if [ -z "$obj" ] || [ ! -f "$path.obj" ]; then
+    printf '%s\n' "$out" >&2
+    rm -f "$list"
+    exit 1
+  fi
+  set -- "$@" "$path"
+done
+printf '%s\n' "$@" >"$list"
+[ -z "$out" ] || printf '%s\n' "$out"

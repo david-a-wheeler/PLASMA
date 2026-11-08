@@ -31,6 +31,12 @@ FRONT  = src/tokin.c src/name.c src/type.c src/parse.c src/pexpr.c \
          src/pstmt.c src/ptop.c src/irout.c
 BACK   = src/irin.c src/irloop.c src/lower.c src/peep.c src/emit.c src/helper.c
 LINK   = src/link.c
+# Each Apple II program's sources, in link order (also the bootstrap's,
+# below).
+CCPP_SRC   = src/ccpp.c $(COMMON) $(PP)
+CCCOMP_SRC = src/cccomp.c $(COMMON) $(NAM) $(FRONT)
+CCGEN_SRC  = src/ccgen.c $(COMMON) $(NAM) $(BACK)
+CCREL_SRC  = src/ccrel.c $(COMMON) $(LINK)
 HEADERS= $(wildcard src/*.h)
 # The library's headers: ccpp's default include directory, compiled in
 # for the host (on the VM it's <syspath>ccinc; src/pp.c).
@@ -54,33 +60,33 @@ all: ccish ccpp cccomp ccgen ccrel
 ccish: src/main.c $(COMMON) $(PP) $(NAM) $(FRONT) $(BACK) $(LINK) $(HEADERS)
 	$(CC) $(CFLAGS) $(CCINC) -o $@ src/main.c $(COMMON) $(PP) $(NAM) $(FRONT) $(BACK) $(LINK)
 
-ccpp: src/ccpp.c $(COMMON) $(PP) $(HEADERS)
-	$(CC) $(CFLAGS) $(CCINC) -o $@ src/ccpp.c $(COMMON) $(PP)
+ccpp: $(CCPP_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) $(CCINC) -o $@ $(CCPP_SRC)
 
-cccomp: src/cccomp.c $(COMMON) $(NAM) $(FRONT) $(HEADERS)
-	$(CC) $(CFLAGS) -o $@ src/cccomp.c $(COMMON) $(NAM) $(FRONT)
+cccomp: $(CCCOMP_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ $(CCCOMP_SRC)
 
-ccgen: src/ccgen.c $(COMMON) $(NAM) $(BACK) $(HEADERS)
-	$(CC) $(CFLAGS) -o $@ src/ccgen.c $(COMMON) $(NAM) $(BACK)
+ccgen: $(CCGEN_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ $(CCGEN_SRC)
 
-ccrel: src/ccrel.c $(COMMON) $(LINK) $(HEADERS)
-	$(CC) $(CFLAGS) -o $@ src/ccrel.c $(COMMON) $(LINK)
+ccrel: $(CCREL_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ $(CCREL_SRC)
 
 # The small build (approach.md decision 21), for the host: the tests check
 # that it writes the same objects and modules as the full build.
 small: ccpp-small cccomp-small ccgen-small ccrel-small
 
-ccpp-small: src/ccpp.c $(COMMON) $(PP) $(HEADERS)
-	$(CC) $(CFLAGS) $(CCINC) -DCCISH_SMALL -o $@ src/ccpp.c $(COMMON) $(PP)
+ccpp-small: $(CCPP_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) $(CCINC) -DCCISH_SMALL -o $@ $(CCPP_SRC)
 
-cccomp-small: src/cccomp.c $(COMMON) $(NAM) $(FRONT) $(HEADERS)
-	$(CC) $(CFLAGS) -DCCISH_SMALL -o $@ src/cccomp.c $(COMMON) $(NAM) $(FRONT)
+cccomp-small: $(CCCOMP_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) -DCCISH_SMALL -o $@ $(CCCOMP_SRC)
 
-ccgen-small: src/ccgen.c $(COMMON) $(NAM) $(BACK) $(HEADERS)
-	$(CC) $(CFLAGS) -DCCISH_SMALL -o $@ src/ccgen.c $(COMMON) $(NAM) $(BACK)
+ccgen-small: $(CCGEN_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) -DCCISH_SMALL -o $@ $(CCGEN_SRC)
 
-ccrel-small: src/ccrel.c $(COMMON) $(LINK) $(HEADERS)
-	$(CC) $(CFLAGS) -DCCISH_SMALL -o $@ src/ccrel.c $(COMMON) $(LINK)
+ccrel-small: $(CCREL_SRC) $(HEADERS)
+	$(CC) $(CFLAGS) -DCCISH_SMALL -o $@ $(CCREL_SRC)
 
 $(PLVM):
 	$(MAKE) -C ../src plvm
@@ -226,10 +232,13 @@ $(OUT)/spec/msgs.stamp: ccish.msg
 # stage 2 does it again into stage 3; and the test is that stage 2 and
 # stage 3 are byte-for-byte the same module. It's its own target, not
 # in the regular suite (full-test runs both), because it's slow. The
-# script is being rewritten (doc/bootstrap-test.md, R1); until then it
-# fails.
-$(OUT)/spec/bootstrap.stamp: tests/spec/bootstrap.sh $(PASSES) tests/lib.sh
-	@mkdir -p $(dir $@) && BOOTSTRAP_VM="$(BOOTSTRAP_VM)" sh $< && touch $@
+# sources come from here: each program's, and the library's.
+$(OUT)/spec/bootstrap.stamp: tests/spec/bootstrap.sh $(PASSES) tests/lib.sh \
+                             tools/cclink ccish.msg $(wildcard lib/include/*.h)
+	@mkdir -p $(dir $@) && BOOTSTRAP_VM="$(BOOTSTRAP_VM)" \
+	 BOOT_ccpp="$(CCPP_SRC)" BOOT_cccomp="$(CCCOMP_SRC)" \
+	 BOOT_ccgen="$(CCGEN_SRC)" BOOT_ccrel="$(CCREL_SRC)" \
+	 BOOT_LIB="$(LIBSRC) tools/plvmexit.c" sh $< && touch $@
 
 bootstrap: $(OUT)/spec/bootstrap.stamp
 full-test: test $(OUT)/spec/bootstrap.stamp
