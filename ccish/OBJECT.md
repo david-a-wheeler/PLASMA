@@ -15,8 +15,12 @@ For output `NAME`, the files are `NAME.obj` and `NAME.syms`. `ccish`
 removes them after the module is written, and after any error, unless
 `-k` is given; `ccgen` leaves them for `ccrel`, which keeps them.
 `NAME.obj` and `NAME.syms` are format version 7 (`OBJ_VERSION`), and
-the IR file, `NAME.ir`, is IR format version 10 (`IR_VERSION`); the
-history below gives both. Object version 7 and IR version 10 add
+the IR file, `NAME.ir`, is IR format version 11 (`IR_VERSION`); the
+history below gives both. IR version 11 moved the name file's stamp
+from the header to the start of the `Y` record, the summary, since
+`cccomp` now has it only at the end of the token stream, where `ccpp`
+writes it: so a correct compile never reads the name file (CCPP.md,
+"The stamp"). Object version 7 and IR version 10 add
 imports from other PLASMA modules (approach.md issue 22, decision 35):
 in `NAME.syms` (and the IR's `Y` record), the modules to import from,
 and for each symbol that may be an import, its module and PLASMA name.
@@ -317,14 +321,14 @@ starts with a header:
 | Size | Field |
 |------|-------|
 | 3 bytes | magic `CIR` |
-| byte | IR format version: 10 |
-| word | the name file's stamp: its id count |
-| word | and its checksum |
+| byte | IR format version: 11 |
 
-`ccgen` checks the name file as `cccomp` does (CCPP.md, "What `cccomp`
-checks"), and that its stamp is this one, before it reads any name;
+`ccgen` opens the name file at the start, and checks it as CCPP.md
+says ("What `cccomp` checks"); then, at the summary, that its stamp
+is the one there, before it spells any name into `NAME.syms`;
 otherwise it stops with message 232, "name file is stale or damaged".
-The source file's name, for its messages, is the name file's file 1.
+(Version 10 had the stamp here.) The source file's name, for its
+messages, is the name file's file 1.
 (Version 2 had the source file's name here, and spelled every name in
 the file.)
 
@@ -430,6 +434,8 @@ how many values a `CALL` leaves.
 | Size | Field |
 |------|-------|
 | byte | tag `Y` |
+| word | the name file's stamp: its id count |
+| word | and its checksum |
 | ... | the rest of the file: `NAME.syms` after its magic and version, with the code size and every function's code offset 0, and each name (a length byte and its characters there) as its id, a word: a symbol's, a PLASMA name, or a module's |
 
 `ccgen` writes `NAME.syms` from it: the magic and version, then the

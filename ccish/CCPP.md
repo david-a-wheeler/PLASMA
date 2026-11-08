@@ -44,9 +44,12 @@ NAME.c --ccpp--> NAME.i + NAME.nam --cccomp--> NAME.ir --ccgen--> NAME.obj + NAM
   removes them all, unless `-k`.
 
 `cccomp` never needs an identifier's spelling: it reads one only to
-print a message. `ccgen` is the first to need spellings, since the
-objects it writes are linked by name; it checks the name file, and its
-stamp against the IR file's, before it reads a name. A struct's type
+print a message, so it doesn't open the name file at all unless it
+prints one. It copies the stamp from the end of the token stream to
+the end of the IR file. `ccgen` is the first to need spellings, since
+the objects it writes are linked by name; it checks the name file when
+it starts, and its stamp against the IR file's before it spells a name
+into `NAME.syms`. A struct's type
 hash, which includes its tag's spelling so that it agrees between
 files, comes from the hash `ccpp` writes with each tag (`$09`): adding
 the *n* bytes one at a time to a hash *h* gives *h* × 31^*n* + the
@@ -55,7 +58,8 @@ spelling's own hash.
 **Open files.** `ccpp` has the source, the include files being read,
 and `NAME.i` open; it writes `NAME.nam` last, after closing the
 others. `cccomp` has `NAME.i` and `NAME.ir` open, and opens
-`NAME.nam` to look a name up for a message; `ccgen` has `NAME.ir`,
+`NAME.nam` only to look a name up for a message: in the small build,
+after closing the others (src/build.h, `CCISH_DIAG`); `ccgen` has `NAME.ir`,
 its output and `NAME.nam` open. PLASMA's Apple II file library allows
 4 open files.
 
@@ -321,20 +325,24 @@ another run of `ccpp` (say, after the source changed and only `ccpp`
 was run again) is never trusted with the ids in `NAME.i`.
 
 **What `cccomp` checks** (and `ccgen`, of the name file, against the
-IR file's stamp):
+IR file's stamp, which `cccomp` copies from the token stream's):
 - `NAME.i`: its header and version (else message 230, "not a token
   file from ccpp, or the wrong version"); that each code is known,
   that the file doesn't end before `$00`, and that nothing follows its
   stamp (else 231, "token file is damaged").
-- `NAME.nam`, when it opens the token stream, before using any name:
-  that its names come before its files, none longer than 31
-  characters; that at least one file follows them, then the blank
-  line, then a stamp of the right form and version whose count and
-  checksum match the file itself, and then nothing; and, for each id
-  used, that there is such a name. At the end of the token stream:
-  that its stamp is the token stream's, so that a well-formed name
-  file from another run of `ccpp` is refused too. Any of these failing
-  is message 232, "name file is stale or damaged".
+- At the end of the token stream: that no id it held is over the
+  stamp's id count (else 231).
+- `NAME.nam`, only if it opens it, for a message, before using any
+  name (`ccgen` always, when it starts): that its names come before
+  its files, none longer than 31 characters; that at least one file
+  follows them, then the blank line, then a stamp of the right form
+  and version whose count and checksum match the file itself, and
+  then nothing; and, for each id used, that there is such a name. And
+  that its stamp is the token stream's (`ccgen`: the IR file's), so
+  that a well-formed name file from another run of `ccpp` is refused
+  too. Any of these failing is message 232, "name file is stale or
+  damaged". So a damaged or stale name file passes `cccomp`, when it
+  prints nothing, and `ccgen` refuses it.
 
 ## An example
 

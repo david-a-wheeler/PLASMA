@@ -103,20 +103,15 @@ static void copy_record(int t)
   }
 }
 
-/* Read the header: the magic, the version, and the stamp of the name
- * file, which must match it; then the source file's name, which
- * messages give from now on. */
+/* Read the header: the magic and the version; then check the name file
+ * (its stamp is checked against the IR file's at the summary) and get
+ * the source file's name, which messages give from now on. */
 static void read_header(void)
 {
-  int ids, sum;
   if (get_byte() != 'C' || get_byte() != 'I' || get_byte() != 'R'
       || get_byte() != IR_VERSION)
     ir_damaged();
-  ids = get_word();
-  sum = get_word();
   nam_open(base_name);
-  if (ids != nam_ids || sum != nam_sum)
-    nam_stale();        /* from another run of ccpp */
   strcpy(source, nam_file(1));
   src_name = source;
   src_name_hook = 0;          /* not the front end's, in ccish */
@@ -1038,13 +1033,19 @@ static void do_op(int op, int a, int f)
  * the code size and the defined functions' offsets filled in, then the
  * helpers this object holds (written first, after its functions): each
  * one's number, size, checksum and name. Each function the summary says
- * is defined must have been written, and no other. */
+ * is defined must have been written, and no other. It starts with the
+ * name file's stamp, which must be the name file's, before any name is
+ * spelled from it. */
 static void read_summary(void)
 {
   int nf, nd, i, flags, n, ndefined = 0;
   const char *s;
   if (in_func)
     ir_damaged();
+  i = get_word();               /* the name file's stamp */
+  n = get_word();
+  if (i != nam_ids || n != nam_sum)
+    nam_stale();                /* from another run of ccpp */
   gen_helpers();
   emit_summary();
   emit_word(get_word());        /* data size */

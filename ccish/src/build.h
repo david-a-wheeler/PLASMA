@@ -61,10 +61,11 @@
  *                  messages (names, tags and tokens, from NAME.nam and
  *                  ccish.msg) and its warnings. Without it a message
  *                  gives its file, line, number and text, and nothing
- *                  more, so a correct compile reads NAME.nam only once,
- *                  at the start, and holds two files open, not three
- *                  (approach.md issue 24). Both builds write the same
- *                  files.
+ *                  more, and each is printed after cccomp has closed
+ *                  its other files, so it holds two files open, not
+ *                  three (approach.md issue 24). Either way, a correct
+ *                  compile never opens NAME.nam (CCPP.md, "The
+ *                  stamp"). Both builds write the same files.
  * And ones that neither build has: tools/measure.py builds a ccpp with
  *   CCISH_STATS    report how full ccpp's tables got, for sizing them.
  * and

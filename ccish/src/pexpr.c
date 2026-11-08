@@ -51,6 +51,29 @@ static int compatible(int a, int b)
   return same_target(a, b) || is_void_ptr(a) || is_void_ptr(b);
 }
 
+#ifdef CCISH_DIAG
+/* The argument parse_args() has check_assign() check: its number and
+ * its function, spelled ("1 of 'f'") only for a message, since the
+ * spelling comes from the name file, which a correct compile never
+ * reads (CCPP.md, "The stamp"). */
+static int arg_no, arg_fn;
+
+/* The detail of a message from check_assign(): its own, or for an
+ * argument (where "argument", with none), "N of 'f'". */
+static const char *assign_detail(int where, const char *detail)
+{
+  static char buf[MAX_NAME + 16];
+  if (detail || where != 200 /* "argument" */)
+    return detail;
+  strcpy(buf, num_text(arg_no));
+  strcat(buf, " of ");
+  strcat(buf, quote(fn_name[arg_fn]));
+  return buf;
+}
+#else
+#define assign_detail(where, detail) (detail)
+#endif
+
 /* Check that o can be assigned (or passed, or returned) to type to, as
  * C requires: integers and pointers don't mix without a cast, except
  * the constant 0, and pointer types must be compatible. A pointer may
@@ -67,30 +90,34 @@ void check_assign(int to, Operand *o, int where,
     error(38 /* "void value used in an expression" */, NULL);
   if (is_struct(to) || is_struct(from)) {
     if (unqual(to) != unqual(from))
-      error_in(46 /* "incompatible types in" */, where, detail);
+      error_in(46 /* "incompatible types in" */, where,
+               assign_detail(where, detail));
     return;
   }
   if (is_pointer(to)) {
     if (!is_pointer(from)) {
       if (!is_null(o))
         error_in(47 /* "pointer from integer without a cast in" */,
-                 where, detail);
+                 where, assign_detail(where, detail));
     } else if (!compatible(from, to)) {
-      error_in(48 /* "incompatible pointer types in" */, where, detail);
+      error_in(48 /* "incompatible pointer types in" */, where,
+               assign_detail(where, detail));
     } else {
 #ifdef CCISH_DIAG
       int lost = type_sub(from) & ~type_sub(to) & Q_ALL;
       if (lost & Q_CONST)
         warning_in(49 /* "'const' qualifier discarded from pointer "
-                      "target type in" */, where, detail);
+                      "target type in" */, where,
+                   assign_detail(where, detail));
       if (lost & Q_VOLATILE)
         warning_in(50 /* "'volatile' qualifier discarded from pointer "
-                      "target type in" */, where, detail);
+                      "target type in" */, where,
+                   assign_detail(where, detail));
 #endif
     }
   } else if (is_pointer(from)) {
     error_in(51 /* "integer from pointer without a cast in" */,
-             where, detail);
+             where, assign_detail(where, detail));
   }
 }
 
@@ -300,9 +327,6 @@ static int ncalls;
  * their types if f's are known. Returns their count. */
 static int parse_args(int f)
 {
-#ifdef CCISH_DIAG
-  char where[MAX_NAME + 16];
-#endif
   Operand a;
   int nargs = 0;
   next();                         /* '(' */
@@ -311,15 +335,11 @@ static int parse_args(int f)
       parse_expr(PREC_ASSIGN, &a);
       if (f >= 0 && fn_ptypes[f] >= 0 && nargs < nparams_of(f)) {
 #ifdef CCISH_DIAG
-        strcpy(where, num_text(nargs + 1));
-        strcat(where, " of ");
-        strcat(where, quote(fn_name[f]));
-        check_assign(param_types[fn_ptypes[f] + nargs], &a,
-                     200 /* "argument" */, where);
-#else
+        arg_no = nargs + 1;
+        arg_fn = f;
+#endif
         check_assign(param_types[fn_ptypes[f] + nargs], &a,
                      200 /* "argument" */, NULL);
-#endif
       }
       if (is_struct(a.type)) {
         if (f >= 0 && fn_ptypes[f] < 0)

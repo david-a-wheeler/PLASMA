@@ -1,5 +1,6 @@
 #!/bin/sh
-# The front-end checks: cccomp finds a damaged or stale name file or
+# The front-end checks: cccomp never reads a correct program's name
+# file, so ccgen finds a damaged or stale one; cccomp finds a damaged
 # token stream (CCPP.md), the per-function limits fail, cccomp/ccpp leave
 # no IR/output on error, and an output name over MAX_PATH is refused.
 # The passes-as-programs handoff (ccpp -> cccomp -> ccgen -> ccrel keeps
@@ -9,22 +10,37 @@ OUT=tests/out
 bad=0
 mkdir -p "$OUT"
 
-# cccomp finds a damaged or stale name file (CCPP.md, "What cccomp
-# checks"): each change below is made to hello.c's, which must then be
-# refused with message 232, leaving no IR file.
-nam_damaged_test() {
-    if ./cccomp "$OUT/$1" 2>"$OUT/$1.err"; then
-        echo "FAIL cccomp: accepted a name file $2"; bad=1
-    elif ! grep -qF "error 232: name file is stale or damaged: $OUT/$1.nam" \
-            "$OUT/$1.err" && \
-         ! grep -qF "fatal 232: name file is stale or damaged: $OUT/$1.nam" \
-            "$OUT/$1.err"; then
-        echo "FAIL cccomp: wrong message for a name file $2:"
-        sed 's/^/    /' "$OUT/$1.err"; bad=1
-    elif [ -e "$OUT/$1.ir" ]; then
-        echo "FAIL cccomp: a name file $2 left an IR file"; bad=1
+# cccomp never reads the name file of a correct program (CCPP.md, "The
+# stamp"): either build compiles hello.c, which calls a prototyped
+# function, with the name file gone.
+for b in "" -small; do
+    ./ccpp -o "$OUT/nam_gone" tests/run/hello.c
+    rm -f "$OUT/nam_gone.nam"
+    if ! ./cccomp$b "$OUT/nam_gone" 2>"$OUT/nam_gone.err"; then
+        echo "FAIL cccomp$b: needed the name file of a correct program:"
+        sed 's/^/    /' "$OUT/nam_gone.err"; bad=1
     fi
-    rm -f "$OUT/$1.i" "$OUT/$1.nam"
+    rm -f "$OUT/nam_gone.ir" "$OUT/nam_gone.err"
+done
+
+# So a damaged or stale name file passes cccomp, and ccgen, which spells
+# names from it, refuses it (CCPP.md, "What cccomp checks"): each change
+# below is made to hello.c's, which ccgen must then refuse with message
+# 232, leaving no object.
+nam_damaged_test() {
+    if ! ./cccomp "$OUT/$1" 2>"$OUT/$1.err"; then
+        echo "FAIL cccomp: read a name file $2:"
+        sed 's/^/    /' "$OUT/$1.err"; bad=1
+    elif ./ccgen "$OUT/$1" 2>"$OUT/$1.err"; then
+        echo "FAIL ccgen: accepted a name file $2"; bad=1
+    elif ! grep -qF "fatal 232: name file is stale or damaged: $OUT/$1.nam" \
+            "$OUT/$1.err"; then
+        echo "FAIL ccgen: wrong message for a name file $2:"
+        sed 's/^/    /' "$OUT/$1.err"; bad=1
+    elif [ -e "$OUT/$1.obj" ]; then
+        echo "FAIL ccgen: a name file $2 left an object"; bad=1
+    fi
+    rm -f "$OUT/$1.i" "$OUT/$1.nam" "$OUT/$1.ir"
 }
 nam_edit() {
     ./ccpp -o "$OUT/$1" tests/run/hello.c

@@ -46,8 +46,8 @@ static int ndrun;
 static int nops;                /* IR ops written so far */
 
 /* Create the IR file for output name base, and write its header: the
- * magic, the version, and the stamp of the name file its ids are from
- * (nam_ids, nam_sum: ../CCPP.md), which ccgen reads too. */
+ * magic and the version. (The name file's stamp is in the summary, at
+ * the end, since it's at the end of the token stream too.) */
 void ir_open(const char *base)
 {
   base_name = base;
@@ -55,8 +55,6 @@ void ir_open(const char *base)
     fatal(176 /* "cannot create" */, stream_name(base, SUFFIX_IR));
   bwrite(&out, (const unsigned char *)"CIR", 3);
   bputc(&out, IR_VERSION);
-  bputw(&out, nam_ids);
-  bputw(&out, nam_sum);
 }
 
 /* Write a name record for function f, if it has none yet: its name's
@@ -210,7 +208,9 @@ int data_zero(int n)
 /* ---------- The end ---------- */
 
 /* Write the symbol summary as the last record, and close the file: the
- * functions, then the global variables (data symbols), in NAME.syms's
+ * name file's stamp (../CCPP.md), which ccgen checks against the name
+ * file before it spells a name into NAME.syms; then the functions,
+ * then the global variables (data symbols), in NAME.syms's
  * layout after its magic and version, but with the code size and
  * offsets 0 (ccgen fills them in) and each name as its id (ccgen
  * spells it). */
@@ -221,6 +221,8 @@ void ir_finish(void)
 
   flush_data();
   bputc(&out, REC_SUMMARY);
+  bputw(&out, nam_ids);           /* the stamp of the name file the ids */
+  bputw(&out, nam_sum);           /* are from, from the token stream */
   bputw(&out, ndata);
   bputw(&out, nstrs);
   bputw(&out, 0);

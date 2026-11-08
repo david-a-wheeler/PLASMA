@@ -3839,7 +3839,19 @@ file's name is looked up only when a message is printed
 (`src_name_hook`, diag.c and tokin.c), which for an error is after
 `clean_up()` has closed NAME.i and NAME.ir. So a correct compile reads
 NAME.nam once, at the start, closed before NAME.ir is opened, and
-holds two files open, so it needs one heap buffer, not two. Before
+holds two files open, so it needs one heap buffer, not two. Then
+(also 2026-11-08, decided in discussion: "One of the key *reasons* to
+have the .nam file was for cccomp to be able to never look at it
+unless there was compilation error") IR version 11 moved the name
+file's stamp from the IR file's header to its summary, at the end,
+copied from the token stream's end, and the full build's argument
+text ("1 of 'f'") is spelled only for a message: so in either build
+a correct compile never opens NAME.nam (checked with strace on
+pexpr.c, parse.c, ptop.c and link.c), and a damaged or stale one is
+found by ccgen. tests/spec/front.sh compiles hello.c with its name
+file gone. It costs cccomp 167 bytes of module file (47,620), 87 of
+them resident (nam.c opens and checks the file when a name is first
+looked up, and tokin.c checks the stamp at the end), and ccgen 91. Before
 this, cccomp reopened NAME.nam for every name in an argument's
 "argument N of 'f'" text, built for every argument of every
 prototyped call: 627 times for pexpr.c, 315 for parse.c, which on a
