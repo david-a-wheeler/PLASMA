@@ -145,7 +145,7 @@ void next(void)
     // A struct's or union's tag, and only that, has its spelling's
     // hash.
     if ((c == TC_TAG)
-        != ((tok == T_STRUCT || tok == T_UNION) && c != TC_KEYWORD))
+        != (T_IS_STRUCT_UNION(tok) && c != TC_KEYWORD))
       damaged();
     tok = c == TC_KEYWORD ? T_KEYWORD : T_ID;
     tok_val = get_word();

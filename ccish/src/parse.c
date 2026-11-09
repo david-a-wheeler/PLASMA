@@ -499,7 +499,7 @@ int parse_base_type(void)
 {
   int q = parse_quals(), t = TY_INT;
   int tagged = T_IS_TAGGED(tok);  // after the quals
-  if (tok == T_STRUCT || tok == T_UNION) {
+  if (T_IS_STRUCT_UNION(tok)) {
     t = parse_struct(tok == T_UNION);
   } else if (tok == T_ENUM) {
     t = parse_enum();
@@ -710,16 +710,9 @@ int fold(int op, int a, int b, int uns)
 // swapped (op itself if it is commutative, > for <, ...), or -1.
 int swapped_op(int op)
 {
-  switch (op) {
-  case IR_ADD: case IR_MUL: case IR_AND: case IR_OR: case IR_XOR:
-  case IR_EQ: case IR_NE:
+  if (IR_IS_COMMUTATIVE(op))
     return op;
-  case IR_LT: return IR_GT;
-  case IR_GT: return IR_LT;
-  case IR_LE: return IR_GE;
-  case IR_GE: return IR_LE;
-  }
-  return -1;
+  return IR_IS_RELATIONAL(op) ? IR_COMPARE_MIRROR(op) : -1;
 }
 
 // Is IR op a comparison (its result is always 1 or 0)?

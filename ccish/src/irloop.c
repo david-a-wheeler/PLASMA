@@ -256,7 +256,7 @@ static int limit_ok(int from, int to)
     case IR_LOAD: case IR_LOADB: case IR_NEG: case IR_COMP:
       if (depth < 1)
         return 0;
-      cl_load |= op == IR_LOAD || op == IR_LOADB;
+      cl_load |= IR_WORD_FORM(op) == IR_LOAD;
       break;
     case IR_ADD: case IR_SUB: case IR_MUL: case IR_DIV: case IR_MOD:
     case IR_AND: case IR_OR: case IR_XOR: case IR_SHL: case IR_SHR:
@@ -375,7 +375,7 @@ static int counted_shape(int d, int lbody)
   } else if (lp_op[st - 3] == IR_LOCAL && lp_a[st - 3] == cl_var) {
     cl_ls = t;                  // the limit, then v
     cl_le = st - 3;
-    cl_cmp = ir_mirror(cl_cmp);
+    cl_cmp = IR_COMPARE_MIRROR(cl_cmp);
   } else {
     return 0;
   }

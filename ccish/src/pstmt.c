@@ -714,7 +714,7 @@ static void parse_for(void)
   next();                         /* "for" */
   expect('(', 124 /* "expected '(' after 'for', not" */);
   depth++;
-  if (tok == T_STATIC || tok == T_EXTERN)
+  if (T_IS_STORAGE(tok))
     error(125 /* "a 'for' loop can't declare a static or extern"
                  " variable" */, NULL);
   if (is_type_start()) {
@@ -922,8 +922,8 @@ static void parse_statement(void)
                                   a label may spell a typedef) */
     return;
   }
-  if (tok == T_ID && typedef_type(tok_val) >= 0) {
-    parse_declaration(0);       // T x; with a typedef name T
+  if (is_type_start()) {
+    parse_declaration(0);       // int x; or T x; with a typedef name T
     return;
   }
   switch (tok) {
@@ -1011,18 +1011,6 @@ static void parse_statement(void)
     }
     expect(';', 146 /* "expected ';' after return value, not" */);
     put(IR_RETURN, result_words(fn_type[cur_fn]), -1);
-    return;
-  case T_INT:
-  case T_CHAR:
-  case T_SIGNED:
-  case T_UNSIGNED:
-  case T_VOID:
-  case T_CONST:
-  case T_VOLATILE:
-  case T_STRUCT:
-  case T_ENUM:
-  case T_UNION:
-    parse_declaration(0);
     return;
   case T_TYPEDEF:
   case T_CONSTEXPR:

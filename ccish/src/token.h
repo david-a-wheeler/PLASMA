@@ -56,6 +56,13 @@ enum {
 };
 #define NKEYWORDS    (TC_CONSTEXPR - TC_KEYWORDS + 1)   // supported keywords
 #define NOPS         22       // operators: == ... "..."
+// struct or union, after which an identifier is a tag (TC_TAG), and
+// && or ||, which #if evaluates lazily. (Smaller and faster as ranges.)
+#define TC_IS_STRUCT_UNION(c) ((c) == TC_STRUCT || (c) == TC_UNION)
+#define TC_IS_LOGICAL(c)      ((c) == TC_ANDAND || (c) == TC_OROR)
+_Static_assert(TC_IS_STRUCT_UNION(TC_STRUCT) && TC_IS_STRUCT_UNION(TC_UNION)
+               && TC_IS_LOGICAL(TC_ANDAND) && TC_IS_LOGICAL(TC_OROR),
+               "TC_IS_STRUCT_UNION or TC_IS_LOGICAL lost a member");
 // The keywords' codes, TC_KEYWORDS up, end before the operators', and
 // those fit in a byte.
 _Static_assert(TC_KEYWORDS + NKEYWORDS <= TC_EQ,

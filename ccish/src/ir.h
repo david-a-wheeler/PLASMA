@@ -189,6 +189,15 @@ _Static_assert(IR_IS_COMPARE(IR_EQ) && IR_IS_COMPARE(IR_ULE)
 // sense for LT <-> GT and LE <-> GE: that is irin.c's mirror, not
 // this.)
 #define IR_COMPARE_FLIP(op)  ((op) ^ 1)
+// The relational comparison that means the same with its operands
+// exchanged (LT <-> GT, GE <-> LE); valid only on an IR_IS_RELATIONAL
+// op. In the order above, it's 2 places away in the 4.
+#define IR_COMPARE_MIRROR(op) (IR_LT + (((op) - IR_LT) ^ 2))
+_Static_assert(IR_COMPARE_MIRROR(IR_LT) == IR_GT
+               && IR_COMPARE_MIRROR(IR_GT) == IR_LT
+               && IR_COMPARE_MIRROR(IR_GE) == IR_LE
+               && IR_COMPARE_MIRROR(IR_LE) == IR_GE,
+               "IR_COMPARE_MIRROR doesn't exchange LT and GT, GE and LE");
 _Static_assert(IR_COMPARE_FLIP(IR_EQ) == IR_NE
                && IR_COMPARE_FLIP(IR_LT) == IR_GE
                && IR_COMPARE_FLIP(IR_GT) == IR_LE
@@ -198,6 +207,11 @@ _Static_assert(IR_COMPARE_FLIP(IR_EQ) == IR_NE
                " and the next");
 #define IR_IS_DIVMOD(op)     ((op) >= IR_DIV && (op) <= IR_MOD)
 #define IR_IS_S_SHIFT(op)    ((op) >= IR_SHL && (op) <= IR_SHR)
+// Any shift, signed or unsigned. (Smaller and faster as one range.)
+#define IR_IS_SHIFT(op)      (IR_IS_S_SHIFT(op) || (op) == IR_USHR)
+_Static_assert(IR_IS_SHIFT(IR_SHL) && IR_IS_SHIFT(IR_SHR)
+               && IR_IS_SHIFT(IR_USHR) && !IR_IS_SHIFT(IR_UDIV),
+               "IR_IS_SHIFT isn't SHL, SHR and USHR");
 #define IR_IS_U_COMPARE(op)  ((op) >= IR_ULT && (op) <= IR_ULE)
 #define IR_IS_U_ARITH(op)    ((op) >= IR_UDIV && (op) <= IR_USHR)
 _Static_assert(IR_IS_DIVMOD(IR_DIV) && IR_IS_DIVMOD(IR_MOD)
@@ -225,6 +239,36 @@ _Static_assert(IR_REFS_LABEL(IR_JUMP) && IR_REFS_LABEL(IR_BRFALSE)
                && !IR_REFS_LABEL(IR_JOIN),
                "IR_REFS_LABEL isn't JUMP, BRFALSE, BRTRUE, SEL and CASETO");
 #define IR_IS_LOOP_MARKER(op) ((op) >= IR_LOOP && (op) <= IR_LOOPEND)
+// The commutative binary ops and comparisons: x op y is y op x.
+// (Smaller and faster as one range of a power-of-2 size, which ccgen
+// tests with one AND.)
+#define IR_IS_COMMUTATIVE(op) ((op) == IR_ADD || (op) == IR_MUL \
+                               || ((op) >= IR_AND && (op) <= IR_XOR) \
+                               || (op) == IR_EQ || (op) == IR_NE)
+_Static_assert(IR_IS_COMMUTATIVE(IR_ADD) && IR_IS_COMMUTATIVE(IR_MUL)
+               && IR_IS_COMMUTATIVE(IR_AND) && IR_IS_COMMUTATIVE(IR_OR)
+               && IR_IS_COMMUTATIVE(IR_XOR) && IR_IS_COMMUTATIVE(IR_EQ)
+               && IR_IS_COMMUTATIVE(IR_NE) && IR_XOR - IR_AND == 2
+               && !IR_IS_COMMUTATIVE(IR_SUB) && !IR_IS_COMMUTATIVE(IR_LT),
+               "IR_IS_COMMUTATIVE isn't ADD, MUL, AND, OR, XOR, EQ and NE");
+// The ops whose operands ccgen can exchange at no cost: the
+// commutative, SUB (as SUB then NEG), and the signed relationals (as
+// their mirror, below). (Smaller and faster as one range.)
+#define IR_IS_REVERSIBLE(op) (IR_IS_COMMUTATIVE(op) || (op) == IR_SUB \
+                              || IR_IS_RELATIONAL(op))
+_Static_assert(IR_IS_REVERSIBLE(IR_ADD) && IR_IS_REVERSIBLE(IR_SUB)
+               && IR_IS_REVERSIBLE(IR_LT) && IR_IS_REVERSIBLE(IR_LE)
+               && IR_IS_REVERSIBLE(IR_NE) && !IR_IS_REVERSIBLE(IR_DIV)
+               && !IR_IS_REVERSIBLE(IR_SHL) && !IR_IS_REVERSIBLE(IR_ULT),
+               "IR_IS_REVERSIBLE isn't the commutative, SUB and the signed"
+               " relationals");
+// The ops whose f is a function: FUNC, CALL and FUNCADDR. (Smaller
+// and faster as one range.)
+#define IR_NAMES_FUNC(op)    ((op) == IR_FUNC || (op) == IR_CALL \
+                              || (op) == IR_FUNCADDR)
+_Static_assert(IR_NAMES_FUNC(IR_FUNC) && IR_NAMES_FUNC(IR_CALL)
+               && IR_NAMES_FUNC(IR_FUNCADDR) && !IR_NAMES_FUNC(IR_ICALL),
+               "IR_NAMES_FUNC isn't FUNC, CALL and FUNCADDR");
 _Static_assert(IR_IS_LOOP_MARKER(IR_LOOP) && IR_IS_LOOP_MARKER(IR_LOOPSTEP)
                && IR_IS_LOOP_MARKER(IR_LOOPBODY)
                && IR_IS_LOOP_MARKER(IR_LOOPEND)
@@ -262,6 +306,7 @@ _Static_assert(IR_BR_IF(0) == IR_BRFALSE && IR_BR_IF(1) == IR_BRTRUE,
 #define IR_IS_VOLATILE(op)   ((op) >= (IR_LOCAL | IR_VOLATILE) \
                               && (op) <= (IR_STOREB | IR_VOLATILE))
 #define IR_CHAR_FORM(op, c)  ((op) | (c))
+#define IR_WORD_FORM(op)     ((op) & ~IR_ACC_BYTE)
 #define IR_STORE_FORM(op)    ((op) | IR_ACC_STORE)
 #define IR_PLAIN_FORM(op)    ((op) & ~IR_VOLATILE)
 #define IR_FORM(op, form)    ((op) | (form))
@@ -276,6 +321,9 @@ _Static_assert(IR_CHAR_FORM(IR_LOCAL, 1) == IR_LOCALB
                && IR_CHAR_FORM(IR_STORE, 1) == IR_STOREB
                && IR_ACC_BYTE == 1,
                "IR_CHAR_FORM: a char access isn't its word access | 1");
+_Static_assert(IR_WORD_FORM(IR_LOADB) == IR_LOAD
+               && IR_WORD_FORM(IR_LOAD) == IR_LOAD,
+               "IR_WORD_FORM isn't IR_CHAR_FORM undone");
 _Static_assert(IR_STORE_FORM(IR_LOCAL) == IR_SETLOCAL
                && IR_STORE_FORM(IR_LOCALB) == IR_SETLOCALB
                && IR_STORE_FORM(IR_GLOBAL) == IR_SETGLOBAL

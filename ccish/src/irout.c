@@ -80,7 +80,7 @@ void ir_put(int op, int a, int f)
     bputc(&out, IR_REC(REC_LINE));
     bputw(&out, src_line);
   }
-  if (op == IR_FUNC || op == IR_CALL || op == IR_FUNCADDR)
+  if (IR_NAMES_FUNC(op))
     name_func(f);
   if (f >= 0) {
     bputc(&out, IR_REC(REC_SECOND));

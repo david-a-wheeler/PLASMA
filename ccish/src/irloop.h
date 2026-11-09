@@ -13,7 +13,6 @@ extern int nbuf;
 
 void ir_hold(int op, int a, int f);     // hold an op for lowering
 void ir_damaged(void);                  // stop: the IR file is damaged
-int ir_mirror(int cmp);         // the comparison, operands exchanged
 
 int loop_take(int op, int a, int f);    // 1 if a loop's layout took it
 void loop_reset(void);                  // before each file

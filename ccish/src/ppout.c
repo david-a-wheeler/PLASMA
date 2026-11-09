@@ -186,7 +186,7 @@ void pp_out(int code, int val, const unsigned char *s, int n)
     return;
   }
 #endif
-  if (code == TC_ID && (last == TC_STRUCT || last == TC_UNION)) {
+  if (code == TC_ID && TC_IS_STRUCT_UNION(last)) {
     hash = pp_name_hash(val, &mul);
     bputc(&out, TC_TAG);
     bputw(&out, val);

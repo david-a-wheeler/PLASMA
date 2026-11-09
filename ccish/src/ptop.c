@@ -839,7 +839,7 @@ static void parse_toplevel(void)
     parse_static_assert();
     return;
   }
-  if (tok == T_TYPEDEF || tok == T_CONSTEXPR) {
+  if (T_IS_ID_DECL(tok)) {
     parse_typedef();
     return;
   }

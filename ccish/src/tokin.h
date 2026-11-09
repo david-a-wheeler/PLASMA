@@ -49,6 +49,18 @@ enum {
 #define T_IS_TAGGED(t)      (((t) >= T_STRUCT && (t) <= T_ENUM) || (t) == T_UNION)
 #define T_IS_STORAGE(t)     ((t) >= T_STATIC && (t) <= T_EXTERN)
 #define T_IS_CASE_LABEL(t)  ((t) >= T_CASE && (t) <= T_DEFAULT)
+// struct or union: a tagged type with members. (Smaller and faster as
+// one range of a power-of-2 size, which ccgen tests with one AND.)
+#define T_IS_STRUCT_UNION(t) ((t) == T_STRUCT || (t) == T_UNION)
+// typedef or constexpr: names in the enum and typedef table (name.h).
+// (Smaller and faster as one range.)
+#define T_IS_ID_DECL(t)     ((t) == T_TYPEDEF || (t) == T_CONSTEXPR)
+// The compound assignments, +=, -=, ... >>=, in the order of the
+// binary IR ops they do (pexpr.c's T_ASSIGN_IR() relies on it).
+#define T_IS_ASSIGN_OP(t)   ((t) >= T_ADDEQ && (t) <= T_SHREQ)
+#define T_IS_INCDEC(t)      ((t) >= T_INC && (t) <= T_DEC)     // ++ --
+#define T_IS_LOGICAL(t)     ((t) >= T_ANDAND && (t) <= T_OROR) // && ||
+
 // Each set is exactly its members: each is in its range, and the range
 // has room for no other token.
 _Static_assert(T_IS_TYPE_START(T_INT) && T_IS_TYPE_START(T_CHAR)
@@ -75,6 +87,23 @@ _Static_assert(T_IS_STORAGE(T_STATIC) && T_IS_STORAGE(T_EXTERN)
 _Static_assert(T_IS_CASE_LABEL(T_CASE) && T_IS_CASE_LABEL(T_DEFAULT)
                && T_DEFAULT - T_CASE == 1,
                "T_IS_CASE_LABEL isn't case and default");
+_Static_assert(T_IS_STRUCT_UNION(T_STRUCT) && T_IS_STRUCT_UNION(T_UNION)
+               && !T_IS_STRUCT_UNION(T_ENUM),
+               "T_IS_STRUCT_UNION isn't struct and union");
+_Static_assert(T_IS_ID_DECL(T_TYPEDEF) && T_IS_ID_DECL(T_CONSTEXPR),
+               "T_IS_ID_DECL isn't typedef and constexpr");
+_Static_assert(T_IS_ASSIGN_OP(T_ADDEQ) && T_IS_ASSIGN_OP(T_SUBEQ)
+               && T_IS_ASSIGN_OP(T_MULEQ) && T_IS_ASSIGN_OP(T_DIVEQ)
+               && T_IS_ASSIGN_OP(T_MODEQ) && T_IS_ASSIGN_OP(T_ANDEQ)
+               && T_IS_ASSIGN_OP(T_OREQ) && T_IS_ASSIGN_OP(T_XOREQ)
+               && T_IS_ASSIGN_OP(T_SHLEQ) && T_IS_ASSIGN_OP(T_SHREQ)
+               && T_SHREQ - T_ADDEQ == 9,
+               "T_IS_ASSIGN_OP isn't the 10 compound assignments");
+_Static_assert(T_IS_INCDEC(T_INC) && T_IS_INCDEC(T_DEC) && T_DEC - T_INC == 1,
+               "T_IS_INCDEC isn't ++ and --");
+_Static_assert(T_IS_LOGICAL(T_ANDAND) && T_IS_LOGICAL(T_OROR)
+               && T_OROR - T_ANDAND == 1,
+               "T_IS_LOGICAL isn't && and ||");
 // A one-character token is its character code ($20-$7E), so no other
 // token may be one.
 _Static_assert(T_EOF < ' ' && T_ID > '~',

@@ -165,7 +165,7 @@ static int binary(int min)
     if (p < min)
       break;
     advance();
-    if (op == TC_ANDAND || op == TC_OROR) {
+    if (TC_IS_LOGICAL(op)) {
       saved = live;
       if ((op == TC_ANDAND) == !a)
         live = 0;               // the result is known

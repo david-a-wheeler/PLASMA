@@ -383,24 +383,13 @@ static void check_block(int start, int len, int want)
 }
 #endif
 
-// Is IR op op one whose operands can be reversed at no cost?
-static int reversible(int op)
-{
-  switch (op) {
-  case IR_ADD: case IR_MUL: case IR_AND: case IR_OR: case IR_XOR:
-  case IR_EQ: case IR_NE: case IR_SUB:
-  case IR_LT: case IR_GT: case IR_LE: case IR_GE:
-    return 1;
-  }
-  return 0;
-}
 
 // Choose how to do the pending SWAP at held index s, now that the op
 // after it, next, is known.
 static void decide(int s, int next)
 {
   int len = buf_f[s] >> 1, values = 1 + (buf_f[s] & 1), i;
-  if (values == 1 && reversible(next)) {
+  if (values == 1 && IR_IS_REVERSIBLE(next)) {
     buf_a[s] = SW_FREE;
     return;
   }
@@ -421,15 +410,6 @@ static void decide(int s, int next)
   buf_f[s] = values;
 }
 
-// The relational comparison that means the same with its operands
-// exchanged; valid only on an IR_IS_RELATIONAL op. (Not IR_COMPARE_FLIP:
-// that is the opposite comparison, the one ! gives.
-int ir_mirror(int cmp)
-{
-  return cmp == IR_LT ? IR_GT : cmp == IR_GT ? IR_LT
-         : cmp == IR_LE ? IR_GE : IR_LE;
-}
-
 // Lower the SW_FREE SWAP at held index i with the op after it, and
 // return how many ops that took: just the SWAP (which needs no code)
 // before a commutative op, or both.
@@ -443,7 +423,7 @@ static int lower_free_swap(int i)
   }
   if (IR_IS_RELATIONAL(next)) {
     // The operands are exchanged, so is the comparison.
-    lower_op(ir_mirror(next), 0, -1);
+    lower_op(IR_COMPARE_MIRROR(next), 0, -1);
     return 2;
   }
   return 1;

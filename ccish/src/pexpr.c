@@ -247,24 +247,26 @@ static int binary_prec(int *ir_op, int *supported)
   return 0;
 }
 
+// The binary IR op a compound assignment token t does (T_ADDEQ's
+// IR_ADD, ...), and the one ++ or -- does: by offset, so each token
+// must be at its op's place. Here, as the one file that maps them.
+#define T_ASSIGN_IR(t)  (IR_ADD + ((t) - T_ADDEQ))
+#define T_INCDEC_IR(t)  (IR_ADD + ((t) - T_INC))
+#define SAME_AOP(x) _Static_assert(T_ASSIGN_IR(T_##x##EQ) == IR_##x, \
+                                   "T_" #x "EQ isn't at IR_" #x "'s place")
+SAME_AOP(ADD); SAME_AOP(SUB); SAME_AOP(MUL); SAME_AOP(DIV); SAME_AOP(MOD);
+SAME_AOP(AND); SAME_AOP(OR); SAME_AOP(XOR); SAME_AOP(SHL); SAME_AOP(SHR);
+#undef SAME_AOP
+_Static_assert(T_INCDEC_IR(T_INC) == IR_ADD && T_INCDEC_IR(T_DEC) == IR_SUB,
+               "T_INCDEC_IR: ++ and -- aren't at ADD's and SUB's places");
+
 // Assignment operators: returns 1 if tok is one. *ir_op is the
-// arithmetic for a compound assignment, or -1 for plain '='.
+// arithmetic for a compound assignment, or -1 for plain '=' (and
+// meaningless for anything else, but always set).
 static int assign_op(int *ir_op)
 {
-  switch (tok) {
-  case '=':     *ir_op = -1;     return 1;
-  case T_ADDEQ: *ir_op = IR_ADD; return 1;
-  case T_SUBEQ: *ir_op = IR_SUB; return 1;
-  case T_MULEQ: *ir_op = IR_MUL; return 1;
-  case T_DIVEQ: *ir_op = IR_DIV; return 1;
-  case T_MODEQ: *ir_op = IR_MOD; return 1;
-  case T_ANDEQ: *ir_op = IR_AND; return 1;
-  case T_OREQ:  *ir_op = IR_OR;  return 1;
-  case T_XOREQ: *ir_op = IR_XOR; return 1;
-  case T_SHLEQ: *ir_op = IR_SHL; return 1;
-  case T_SHREQ: *ir_op = IR_SHR; return 1;
-  }
-  return 0;
+  *ir_op = tok == '=' ? -1 : T_ASSIGN_IR(tok);
+  return tok == '=' || T_IS_ASSIGN_OP(tok);
 }
 
 // Push the struct o by value (approach.md, "M6 design"): the words of
@@ -925,7 +927,7 @@ static void parse_unary(Operand *o)
   case T_INC: case T_DEC:
     next();
     parse_unary(o);             // ++N: the folded N's Q_CONST, error 42
-    pre_incdec(o, t == T_INC ? IR_ADD : IR_SUB);
+    pre_incdec(o, T_INCDEC_IR(t));
     return;
   case '*': case '&':
     next();
@@ -957,7 +959,7 @@ static void parse_postfix(Operand *o)
     case T_DEC:
       t = tok;
       next();
-      post_incdec(o, t == T_INC ? IR_ADD : IR_SUB);
+      post_incdec(o, T_INCDEC_IR(t));
       continue;
     case '[':
       parse_index(o);
@@ -1301,8 +1303,7 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
       return;
     }
     if (!is_compare(op))
-      result = op == IR_SHL || op == IR_SHR || op == IR_USHR
-               ? promoted(lt) : arith_type(lt, rt);
+      result = IR_IS_SHIFT(op) ? promoted(lt) : arith_type(lt, rt);
   } else if (is_pointer(lt) && !is_pointer(rt)
              && (op == IR_ADD || op == IR_SUB)) {
     push_scaled(r, lt);         // p + i, p - i
@@ -1703,7 +1704,7 @@ void parse_expr(int min_prec, Operand *o)
       break;
     if (!supported)
       not_yet();
-    if (tok == T_ANDAND || tok == T_OROR) {
+    if (T_IS_LOGICAL(tok)) {
       parse_logical(o, prec);
       continue;
     }
