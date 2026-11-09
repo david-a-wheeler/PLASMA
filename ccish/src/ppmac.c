@@ -31,9 +31,9 @@
 #include "pplex.h"
 #include "ppmac.h"
 
-#define MAX_MACROS   119    // macros defined at once (108, ptop.c,
+#define MAX_MACROS   131    // macros defined at once (119, ptop.c,
                             // about 20 of them include guards)
-#define MAX_MACRO_BYTES 976 // their bodies, as tokens (887, pexpr.c)
+#define MAX_MACRO_BYTES 1284 // their bodies, as tokens (1166, pexpr.c)
 #define MAX_EXPAND   16     // macro expansions inside one another (2)
 #define MAX_EXP_BYTES 256   // bytes of the expansions and arguments
                             // being read, and of the arguments' own
