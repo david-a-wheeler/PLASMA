@@ -2,7 +2,7 @@
  * Master disk, in C for ccish, written plainly: the original's loops
  * (src/samplesrc/rod.bas and rod.pla), plot by plot, with lores.h's
  * LORES_PLOT. Press any key to exit. rod.c is the same program
- * optimized, about 8 times faster; comparing the two shows what ccish
+ * optimized, about 7 times faster; comparing the two shows what ccish
  * does with plain code, and what it leaves to the programmer.
  *
  * Build with -DROD_TEST=N (and lores.c with -DLORES_TEST) to run N

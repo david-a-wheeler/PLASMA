@@ -17,9 +17,9 @@ their larger count). A frame is one pass over i, for one w. Measured
 
 | Version | VM ops a frame | Seconds a frame at 1.023 MHz |
 |---|---|---|
-| rodsimple.c | 65,300 | 4.33 |
+| rodsimple.c | 62,300 | 4.11 |
 | rod.c | 10,200 | 0.57 (and 1.25 once, at the start, for its tables) |
-| rod.pla (PLASMA) | | about 2.3, estimated: its `conio:grplot` is native code, which plvm doesn't run |
+| rod.pla (PLASMA) | | about 2.6, estimated from `xplasm -AMOS`'s inner loop (73 ops, about 5,830 cycles) and the native code it calls (about 1,140): plvm doesn't run `conio:grplot`'s 6502 code |
 
 Most of rod's gain is algorithmic: it draws only the 1,520 pixels a
 frame that show at the frame's end, not 3,040 plots, and only those
@@ -45,16 +45,25 @@ listed here.
    constants, are the case worth doing first.
 
 2. **Common subexpressions in a read-modify-write.** `LORES_PLOT`'s
-   `*(p) = (*(p) & m) | n`, with `p` = `lores_row[y] + x`, computes the
+   `*(p) = (*(p) & m) | n`, with `p` = `lores_row[y] + x`, computed the
    address twice: `LA lores_row IDXLW y LW ADDLW x`, 4 ops and about
-   256 cycles each time. Kept in a temporary instead (DLW once, LLW
-   after), the second costs about 116 cycles less. That's about 10% of
-   rodsimple's time. For a 2-op address (`LLW p ADDLW x`, as in rod's
-   loops) it doesn't pay. Also in rodsimple: `c << LORES_HI_SHIFT` is
-   computed for each of the up to 8 odd-row plots of an (i, j), about
-   4%. ccgen would need to recognize the same pure expression twice
-   within a statement (or a basic block) and to own a frame slot for
-   the temporary.
+   256 cycles each time. The VM can't keep the first copy for the
+   store, which takes the value below the address, and there's no
+   `SWAP`. Kept in a temporary instead, the address costs a store and
+   two loads (`SLW`, then `LLW` twice; the parity test between them
+   keeps the store from being a `DLW`), about 77 cycles a plot less.
+   I first estimated 10% of rodsimple's time, assuming a `DLW` and
+   one `LLW`; measured, it's 5% (4.33 s a frame to 4.11).
+   `LORES_PLOT` now does this itself, in a block-local pointer. For a
+   2-op address (`LLW p ADDLW x`, as in rod's loops) it doesn't pay.
+   Also in rodsimple: `c << LORES_HI_SHIFT` is computed for each of the
+   up to 8 odd-row plots of an (i, j), about 4%. In the compiler, this
+   belongs in ccgen, which would need to recognize the same pure
+   address twice (13 ops or more apart, past the peephole's 10-op
+   window, so on the IR) and own a frame slot for the temporary: a few
+   hundred bytes, I guess, for 5 to 10% in code like this. A VM store
+   with its operands the other way round, or `SWAP`, would do better
+   with no temporary (about 250 cycles a plot; "The VM", item 2).
 
 3. **Counted loops nested in other loops, with stores through
    pointers.** Every inner loop in both programs stores through a
