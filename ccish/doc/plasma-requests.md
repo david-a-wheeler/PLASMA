@@ -29,6 +29,29 @@ below would remove one:
 | 14. Call bytecode directly | A 5-byte def entry for each function (1,465 bytes in cccomp, kept while it runs) |
 | 15. A map of free memory | Guesses about what a 64K Apple II has free |
 
+## Priorities
+
+For getting cccomp to fit on a 64K Apple II, these matter most, in
+this order:
+
+1. **Item 1, streaming the RLD.** Without it cccomp can't load at all:
+   its whole 44K file must fit in memory at once. With it, the load
+   peak drops to the module body, about 32K.
+2. **Item 14, calling bytecode directly.** It's the one that shrinks
+   what cccomp needs while it runs, by about 1.4K (the def entries),
+   where the margin after streaming is under 2K. It also makes every
+   call faster.
+3. **Item 12, zero runs in the data segment.** It cuts cccomp's file
+   by about 4.3K, which lowers the load peak by as much (useful until
+   streaming exists, and in any loader that reads whole files), and
+   ccish's four files by about 12.4K on a 140K floppy. Once the RLD
+   streams, it doesn't change the memory cccomp needs while running.
+
+Item 15, measuring free memory, says how much of this is needed;
+item 13 would add margin too. The rest (2 to 11) make ccish simpler,
+faster or easier to test, but don't affect the fit. Item 3 is mainly
+for speed.
+
 ## 1. The loaders: stream the RLD (needed to run ccish on an Apple II)
 
 **What they do.** Every loader (`loadmod` in src/vmsrc/apple/cmd.pla,
