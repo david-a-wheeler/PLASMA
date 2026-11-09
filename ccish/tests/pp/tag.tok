@@ -1,7 +1,7 @@
 # A struct or union tag (CCPP.md, $09): an identifier after "struct"
 # or "union", with its spelling's hash h (each byte b: h = h * 31 + b,
 # from 0) and 31^length.
-43 54 4b 04     # "CTK", version 4
+43 54 4b 05     # "CTK", version 5
 87              # struct
 09 22 00 73 00 1f 00    # s: id 34, h = 's' = 115, 31^1 = 31
 2a

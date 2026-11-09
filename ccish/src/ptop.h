@@ -37,4 +37,7 @@ void note_import(int key, int label);   // a function or IMP_DATA + v
 // An extern declaration in a block, after the "extern".
 void parse_block_extern(void);
 
+// A _Static_assert declaration, at its keyword.
+void parse_static_assert(void);
+
 #endif

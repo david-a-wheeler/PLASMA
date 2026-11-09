@@ -164,7 +164,7 @@ All words are 16-bit little-endian. The file is written once, in
 order, through a 512-byte block buffer (`src/bio.c`).
 
 **The header**: the 3 bytes `CTK`, then the format version, a byte:
-**4**. The source file's name is not here: it is file 1 in
+**5**. The source file's name is not here: it is file 1 in
 `NAME.nam`.
 
 **Then the tokens**, each a code byte, followed by its operands:
@@ -188,7 +188,7 @@ order, through a 512-byte block buffer (`src/bio.c`).
 Any other code is a damaged file.
 
 **The keywords**, `$80` up, in this order (the order of `T_INT` to
-`T_UNION` in `cccomp`, and of `keywords[]` in `src/pplex.c`). The
+`T_STATIC_ASSERT` in `cccomp`, and of `keywords[]` in `src/pplex.c`). The
 type-name keywords come first, in the groups the parser tests: the
 int-type specifiers, then `void`, the qualifiers, the tagged types
 (approach.md, decision 26):
@@ -198,7 +198,7 @@ int-type specifiers, then `void`, the qualifiers, the tagged types
 | `$80` | `int` | `char` | `signed` | `unsigned` | `void` | `const` | `volatile` | `struct` |
 | `$88` | `enum` | `return` | `if` | `else` | `while` | `do` | `for` | `break` |
 | `$90` | `continue` | `sizeof` | `static` | `extern` | `switch` | `case` | `default` | `typedef` |
-| `$98` | `goto` | `union` | | | | | | |
+| `$98` | `goto` | `union` | `_Static_assert` | | | | | |
 
 **The operators**, `$C0` up (the order of `T_EQ` to `T_ELLIPSIS`):
 
@@ -351,7 +351,7 @@ For `t.c` holding the one line `int main() { return 0; }`, `ccpp`
 writes `t.i`:
 
 ```
-43 54 4B 04    "CTK", version 4
+43 54 4B 05    "CTK", version 5
 80             int
 04 1A 00       an identifier: id 26, main
 28 29 7B       ( ) {

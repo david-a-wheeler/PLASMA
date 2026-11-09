@@ -1,5 +1,5 @@
 # CCPP.md's example: int main() { return 0; }
-43 54 4b 04     # "CTK", version 4
+43 54 4b 05     # "CTK", version 5
 80              # int
 04 1a 00        # main, a fixed id: 26
 28 29 7b        # ( ) {

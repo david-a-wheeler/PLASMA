@@ -28,11 +28,11 @@ enum {
   T_SWITCH, T_CASE, T_DEFAULT,
   T_TYPEDEF,
   T_GOTO,
-  // union takes the first spare supported-keyword code, so a new
-  // keyword takes one of the rest instead of renumbering T_KEYWORD
+  // union and _Static_assert took spare supported-keyword codes, so a
+  // new keyword takes the one left instead of renumbering T_KEYWORD
   // and the operators (ccpp never writes a spare: NKEYWORDS stops
-  // below them)
-  T_UNION, T_KW_SPARE1, T_KW_SPARE2,
+  // below it)
+  T_UNION, T_STATIC_ASSERT, T_KW_SPARE2,
   // any other C keyword: reported as "not supported yet"
   T_KEYWORD,
   // multi-character operators (not all are supported by the parser yet)

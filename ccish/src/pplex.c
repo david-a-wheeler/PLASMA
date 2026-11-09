@@ -446,6 +446,7 @@ static const char *const keywords[] = {
   "typedef",
   "goto",
   "union",
+  "_Static_assert",
   // the rest of C89's keywords: recognized so the error is clear
   "auto", "double",
   "float", "long", "register",

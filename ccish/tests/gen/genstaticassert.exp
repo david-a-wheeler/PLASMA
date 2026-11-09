@@ -1,0 +1,16 @@
+    ; f
+    ENTER 6 1
+    ; label 103
+    LLW 0
+    INCR
+    DUP
+    ADD
+    LEAVE 6
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CB 20
+    CALL f
+    SUBI 42
+    LEAVE 0

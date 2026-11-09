@@ -46,6 +46,7 @@
 //     its value at compile time (see parse_primary()), but that value
 //     isn't a C constant expression (Operand.nonice);
 //   - casts;
+//   - _Static_assert, at file scope or as a statement in a block;
 //   - statements: return, if/else, while, do, for, switch (with case
 //     and default labels anywhere in its body), break, continue,
 //     expression statements, empty statements and nested blocks;
@@ -797,6 +798,30 @@ int begin_function(int name)
   return n;
 }
 
+// Parse a _Static_assert declaration (C11 6.7p6): a constant
+// expression that must be nonzero, a string-literal message, and a ';'
+// (as gcc and clang require; C's grammar leaves it out). It emits
+// nothing: parse_const() parses with the code off, and the message is
+// only checked, so it takes no data. As in C, a const variable's value
+// isn't a constant here (parse_const() says how to accept one).
+void parse_static_assert(void)
+{
+  int v;
+  next();                         // _Static_assert
+  expect('(', 320 /* "bad _Static_assert, at" */);
+  v = parse_const(321 /* "a _Static_assert's expression must be an"
+                         " integer constant" */,
+                  322 /* "(a _Static_assert's expression must be one)" */);
+  expect(',', 320 /* "bad _Static_assert, at" */);
+  if (tok != T_STR)
+    error(320 /* "bad _Static_assert, at" */, tok_desc());
+  if (v == 0)                     // before next(): tok_text is the message
+    error(323 /* "static assertion failed:" */, tok_text);
+  next();                         // the message
+  expect(')', 320 /* "bad _Static_assert, at" */);
+  expect(';', 320 /* "bad _Static_assert, at" */);
+}
+
 // Parse one top-level item: global variable declarations, a function
 // prototype, or a function definition. Any may start with "static",
 // which makes it local to the file, or "extern", which declares a
@@ -808,6 +833,10 @@ static void parse_toplevel(void)
   depth = 0;                      // file scope, for tags and names
   if (tok == T_ID && tok_val == ID_PIMPORT) {
     parse_pimport();
+    return;
+  }
+  if (tok == T_STATIC_ASSERT) {
+    parse_static_assert();
     return;
   }
   if (tok == T_TYPEDEF) {

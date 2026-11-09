@@ -1,0 +1,1 @@
+:2: error 201: a const variable's value isn't a constant expression in C (a _Static_assert's expression must be one)

@@ -283,28 +283,7 @@
 285 typedef
 286 goto
 287 union
-288 ==
-289 !=
-290 <=
-291 >=
-292 <<
-293 >>
-294 &&
-295 ||
-296 ++
-297 --
-298 +=
-299 -=
-300 *=
-301 /=
-302 %=
-303 &=
-304 |=
-305 ^=
-306 <<=
-307 >>=
-308 ->
-309 ...
+288 _Static_assert
 310 too many large globals to move to the heap
 311 too much data to move to the heap
 312 too many goto labels in
@@ -315,3 +294,29 @@
 317 expected ';' after 'goto', not
 318 expected a union name or '{' after 'union', not
 319 names in the list file too long (512 bytes in all):
+320 bad _Static_assert, at
+321 a _Static_assert's expression must be an integer constant
+322 (a _Static_assert's expression must be one)
+323 static assertion failed:
+324 ==
+325 !=
+326 <=
+327 >=
+328 <<
+329 >>
+330 &&
+331 ||
+332 ++
+333 --
+334 +=
+335 -=
+336 *=
+337 /=
+338 %=
+339 &=
+340 |=
+341 ^=
+342 <<=
+343 >>=
+344 ->
+345 ...

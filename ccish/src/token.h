@@ -6,7 +6,7 @@
 
 #define SUFFIX_I     ".i"
 #define SUFFIX_NAM   ".nam"
-#define TOK_VERSION  4        // NAME.i's format, after its "CTK"
+#define TOK_VERSION  5        // NAME.i's format, after its "CTK"
 #define NAM_VERSION  2        // NAME.nam's, in its stamp line
 
 // The codes of NAME.i. A one-character token ($20-$7E) is itself.
@@ -40,7 +40,7 @@ enum {
 
 #define TC_STRUCT    (TC_KEYWORDS + 7)    // struct, for TC_TAG
 #define TC_UNION     (TC_KEYWORDS + 25)   // union, for TC_TAG
-#define NKEYWORDS    26       // supported keywords: int ... union
+#define NKEYWORDS    27       // supported keywords: int ... _Static_assert
 #define NOPS         22       // operators: == ... "..."
 
 #endif

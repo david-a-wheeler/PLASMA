@@ -20,7 +20,7 @@ else
     sed 's/^/    /' "$OUT/nomsg/t.err"; bad=1
 fi
 # A keyword in a message is its number (tok_desc(): 'while' is 274, the
-# keywords being 262-285 in T_INT's order).
+# keywords being 262-288 in T_INT's order).
 printf 'int main() { return while; }\n' > "$OUT/nomsg/k.c"
 if "$OUT/nomsg/ccish" -o "$OUT/nomsg/k" "$OUT/nomsg/k.c" 2>"$OUT/nomsg/k.err"
 then

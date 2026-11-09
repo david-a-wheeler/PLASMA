@@ -1013,6 +1013,9 @@ static void parse_statement(void)
   case T_TYPEDEF:
     parse_typedef();
     return;
+  case T_STATIC_ASSERT:
+    parse_static_assert();
+    return;
   case T_EXTERN:
     next();
     if (!is_type_start())
