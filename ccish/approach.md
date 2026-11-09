@@ -8636,9 +8636,12 @@ large or that other programs wouldn't use). Built:
   `pp_join.c` (a macro of 428 characters, literals spliced, `a\` then
   `b`, comments with quotes), `pp_error_join.c`.
 
-Sizes (small build, code): ccpp 13,545 to 13,609, cccomp 25,854 to
-25,882 (module file 44,017 to 44,044), ccgen 19,726 to 19,868, ccrel
-unchanged.
+Sizes (small build, code), by change: the `DUP` rule is in ccgen,
+19,726 to 19,868 (+142), and shrinks the code of ccpp (-6) and cccomp
+(-7) a little; the pointer fold is in cccomp, +35, so cccomp 25,854 to
+25,882 in all (module file 44,017 to 44,044); the line join is in ccpp
+only (pplex.c isn't in cccomp), 13,539 to 13,609 (+70), so ccpp 13,545
+to 13,609 in all. ccrel is unchanged.
 
 Not done: **a `?:` statement dropping its sides' values** (built,
 cccomp +71 bytes, then dropped in discussion: `c ? (a = x) : (a = y);`
