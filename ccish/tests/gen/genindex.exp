@@ -1,0 +1,118 @@
+    ; prev
+    ENTER 2 1
+    ; label 103
+    LA data +-1
+    ADDLW 0
+    LB
+    LEAVE 2
+
+    ; next2
+    ENTER 2 1
+    ; label 103
+    LA data +2
+    ADDLW 0
+    LB
+    LEAVE 2
+
+    ; wprev
+    ENTER 2 1
+    ; label 103
+    LA data +6
+    IDXLW 0
+    LW
+    LEAVE 2
+
+    ; sum
+    ENTER 4 2
+    ; label 103
+    LA data +-1
+    LLW 0
+    ADDLW 2
+    ADD
+    LB
+    LEAVE 4
+
+    ; str
+    ENTER 2 1
+    ; label 103
+    LA str +2
+    ADDLW 0
+    LB
+    LEAVE 2
+
+    ; local
+    ENTER 6 1
+    ; label 103
+    CN 9
+    SLB 2
+    CN 8
+    SLB 3
+    CN 7
+    SLB 4
+    CN 6
+    SLB 5
+    LLA 1
+    ADDLW 0
+    LB
+    LEAVE 6
+
+    ; ptr
+    ENTER 4 2
+    ; label 103
+    LLW 0
+    LLW 2
+    INCR
+    ADD
+    LB
+    LEAVE 4
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CN 1
+    CALL prev
+    CN 1
+    BRNE 0
+    CN 5
+    CALL next2
+    CN 8
+    BRNE 2
+    ; join 0 to 2
+    ; label 1
+    CN 4
+    CALL wprev
+    CB 40
+    BRNE 4
+    ; join 2 to 4
+    ; label 3
+    CN 3
+    CN 4
+    CALL sum
+    CN 7
+    BRNE 6
+    ; join 4 to 6
+    ; label 5
+    CN 0
+    CALL str
+    CB 98
+    BRNE 8
+    ; join 6 to 8
+    ; label 7
+    CN 2
+    CALL local
+    CN 8
+    BRNE 10
+    ; join 8 to 10
+    ; label 9
+    LA data +0
+    CN 0
+    CALL ptr
+    CN 2
+    BREQ 11
+    ; label 10
+    CN 1
+    LEAVE 0
+    ; label 11
+    CN 0
+    ; label 12
+    LEAVE 0

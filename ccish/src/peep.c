@@ -75,6 +75,14 @@
  *   DROP  CN 0               -> ANDI 0     one op pops it and pushes 0
  *   const MUL, const = 2^n   -> CN n SHL   for n from 2 to 15
  *   DUP  ADD  ADD            -> IDXW       p + 2*i
+ *   LA a  expr  add c  ADD   -> LA a+c  expr  ADD   a[i + c] (add c is
+ *        INCR, DECR, ADDI or SUBI c, expr any index with no effect): the
+ *        constant goes into the array's address, twice it before IDXW
+ *        (an int's a[i + c]), so the index is one load and ADD fuses
+ *        (LA a+c ADDLW i: 2 bytes and 2 ops less). For a data or string
+ *        address (ccrel wraps an offset outside the object, which the
+ *        index brings back), and for LLA n while n+c is a frame offset;
+ *        not an extern's, which ccrel may move to the heap.
  *   DUP  update  store  DROP -> update  store   x++ whose old value is
  *        unused, or (with no update) an assignment's. update is INCR,
  *        DECR, NEG, COMP, ADDI, SUBI, or a constant then ADD or SUB;
@@ -389,6 +397,29 @@ static int rewrite_load_store(Mop *a, Mop *b)
     return 1;
   }
   return 0;
+}
+
+static int add_value(Mop *m, int *v);
+
+/* With b an ADD or IDXW and a a constant add, the a[i + c] pattern
+ * (the list at the top): fold c into the array's address. Returns 1 if
+ * it did. */
+static int rewrite_index(Mop *a, Mop *b)
+{
+  int v, n, d;
+  Mop *base;
+  if ((b->op != OP_ADD && b->op != OP_IDXW) || !add_value(a, &v)
+      || (n = expr_len(nwin - 2)) == 0 || nwin - 3 - n < 0)
+    return 0;
+  base = &win[nwin - 3 - n];
+  d = b->op == OP_IDXW ? 2 * v : v;
+  if (base->op == OP_LA ? base->fix != FIX_DATA && base->fix != FIX_STR
+      : base->op != OP_LLA || base->a + d < 0 || base->a + d > 255)
+    return 0;
+  base->a += d;
+  *a = *b;                      /* the add goes */
+  nwin--;
+  return 1;
 }
 
 /* The patterns on a constant (a) and the op that uses it (b). Returns
@@ -825,7 +856,8 @@ static int rewrite(void)
       || rewrite_branch(a, b) || rewrite_mul(a, b)
       || rewrite_andi(a, b) || rewrite_addsub(a, b)
       || rewrite_noop(a, b) || rewrite_load_andi(a, b)
-      || rewrite_drop_zero(a, b) || rewrite_dup_const(a, b))
+      || rewrite_drop_zero(a, b) || rewrite_dup_const(a, b)
+      || rewrite_index(a, b))
     return 1;
   /* DUP ADD ADD -> IDXW: adding twice x is PLASMA's word index op
    * (p + i for a pointer to 2-byte elements). */

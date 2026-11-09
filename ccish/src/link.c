@@ -978,13 +978,11 @@ static int add_reloc(int kind, int at, int target, int add, int list)
     kind = REL_DATA;
     target = (dmap[target] + add) & 0xFFFF;
   } else if (kind == REL_DATA) {
-    if (target > data_size)
-      bad_obj();
-    target += obj_data[cur];
+    /* Any offset, wrapped: ccgen folds a[i - 1]'s -1 into a's address
+     * (peep.c, rewrite_index), which the index brings back inside. */
+    target = (target + obj_data[cur]) & 0xFFFF;
   } else if (kind == REL_STR) {
-    if (target > strs_size)
-      bad_obj();
-    target += obj_strs[cur];
+    target = (target + obj_strs[cur]) & 0xFFFF;
   } else if (kind == REL_HELPER) {
     if (target >= NHELPERS || h_def[target] == NO_OBJ)
       bad_obj();
