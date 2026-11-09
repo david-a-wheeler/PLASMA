@@ -1282,20 +1282,25 @@ void finish_store(Operand *o, int keep)
   o->kind = keep ? K_VALUE : K_VOID;
 }
 
-/* Does type t hold a const object: is it a struct with a const member,
- * at any depth (in a member struct, or as an array's elements)? Such a
- * struct can't be assigned to as a whole. */
-static int holds_const(int t)
+/* q (Q_CONST or Q_VOLATILE) if type t has it, or holds an object that
+ * does, at any depth (a struct's member, an array's element); else 0.
+ * A struct with a const member can't be assigned to as a whole; if any
+ * part of an object is volatile, all its words are when it's copied,
+ * passed, or initialized a word at a time, as an access too many kept
+ * volatile does no harm. */
+int holds_qual(int t, int q)
 {
   int m, tag;
+  if (t & q)
+    return q;
   if (is_array(t))
-    return is_const(type_sub(t)) || holds_const(type_sub(t));
+    return holds_qual(type_sub(t), q);
   if (!is_struct(t))
     return 0;
   tag = struct_tag(t);
   for (m = member_next(tag, -1); m >= 0; m = member_next(tag, m))
-    if (is_const(member_type(m)) || holds_const(member_type(m)))
-      return 1;
+    if (holds_qual(member_type(m), q))
+      return q;
   return 0;
 }
 
@@ -1310,7 +1315,7 @@ void need_lvalue(Operand *o, int what)
     error_in(41 /* "lvalue required as" */, what, NULL);
   if (o->quals & Q_CONST)
     error_in(42 /* "a 'const' object can't be the" */, what, NULL);
-  if (holds_const(o->type))
+  if (holds_qual(o->type, Q_CONST))  /* (a const o stopped above) */
     error_in(43 /* "a struct with a 'const' member can't be the" */,
              what, NULL);
 }

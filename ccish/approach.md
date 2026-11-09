@@ -4306,7 +4306,8 @@ issue updated as each step lands.
      variable is read where it is written (`deref()`,
      `pending_base()`, `parse_index()` and `var_volatile()`), since a
      pending element would load it later, and twice for `x op= e`.
-     A local's initializer stores plainly. Three operands built by hand
+     A local's initializer stored plainly then (see "Volatile inside
+     aggregates" below). Three operands built by hand
      (a struct's temporaries, a local's and an aggregate initializer's
      store) never set `quals`, which only `const` checks had read: the
      small and full builds then disagreed on which stores were volatile
@@ -4338,6 +4339,26 @@ issue updated as each step lands.
      estimated 55 bytes; they save 11: `keep_copy()` is 32 bytes, for 42
      out of its callers, and the late index check, which must set up
      `binary()`'s markers, is 34, for `var_volatile()`'s 35.
+   - **Volatile inside aggregates** (decided in discussion: the
+     general case, a volatile member of a struct type and not just a
+     volatile instance, for 20 to 40 bytes). If any part of an object
+     is volatile, `holds_qual()` (`holds_const()`, generalized; it
+     now tests the type itself too) says so, and every word it's
+     pushed by (`push_struct_words()`), copied by (`copy_struct()`'s
+     word loops) or initialized by (ptop.c's local initializer) is a
+     volatile access: an access too many kept volatile does no harm.
+     `struct_word()` now does what those three loops each did (copy
+     the operand, offset it, type it a word or a last byte). A local's
+     initializer still pairs two chars into one word and zeros by word
+     or by `memset`: a frame can't be a device whose access width
+     matters, so all a local volatile needs (for a debugger, or a
+     future `setjmp`) is that no store goes. A larger copy still calls
+     `memcpy`. Test: tests/run/volatile_init.c (which also shows a
+     plain store the dead-stores pass already missed). Objects of
+     every file without volatile are unchanged. Cost: cccomp 21 bytes
+     (17 of code, 4 of data). My first version, a byte at a time with
+     its own initializer paths, was 175; reusing the existing paths and
+     `struct_word()` (which saves more than it costs) brought it down.
 5. Later, apart from volatile: **constants as one pseudo-op until
    emit.c** (discussed 2026-11-08), so that no peephole pattern can
    miss a constant, and one function chooses `CN`, `MINUS1`, `CB`,

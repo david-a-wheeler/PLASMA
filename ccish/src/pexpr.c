@@ -29,6 +29,7 @@ static void parse_postfix(Operand *o);
 static void parse_sizeof(Operand *o);
 static void binary(Operand *o, Operand *r, int op, int lstart, int mid);
 static void offset_place(Operand *o, int off);
+static void struct_word(Operand *w, Operand *o, int k);
 
 /* Do pointer types a and b point to the same type, apart from that
  * type's own qualifiers (const char * and char *)? */
@@ -264,9 +265,7 @@ void push_struct_words(Operand *o)
   if (o->kind == K_DEREF && n > 2)
     spill(o);
   for (k = 0; k < n; k += 2) {
-    v = *o;
-    offset_place(&v, k);
-    v.type = n - k == 1 ? TY_CHAR : TY_INT;
+    struct_word(&v, o, k);
     rvalue(&v);
   }
   o->kind = K_VALUE;
@@ -794,6 +793,17 @@ static void offset_place(Operand *o, int off)
     put(IR_CONST, off, -1);
     put(IR_ADD, 0, -1);
   }
+}
+
+/* Make w the word at offset k of the struct place o (its last byte
+ * alone, if that's odd), a place: volatile if any part of o is, as an
+ * access too many kept volatile does no harm. */
+static void struct_word(Operand *w, Operand *o, int k)
+{
+  *w = *o;
+  w->quals |= holds_qual(o->type, Q_VOLATILE);
+  offset_place(w, k);
+  w->type = type_size(o->type) - k == 1 ? TY_CHAR : TY_INT;
 }
 
 /* Parse ".member" or "->member" (arrow set) after o: o becomes the
@@ -1454,9 +1464,7 @@ void copy_struct(Operand *o, Operand *r, int start)
   if (r->kind == K_VALUE && o->kind != K_DEREF) {
     /* Its words are on the stack: store them, last word first. */
     for (k = struct_words(o->type) - 1; k >= 0; k--) {
-      d = *o;
-      offset_place(&d, 2 * k);
-      d.type = n - 2 * k == 1 ? TY_CHAR : TY_INT;
+      struct_word(&d, o, 2 * k);
       if (d.kind == K_VAR) {
         store_var(&d);
         put(IR_DROP, 0, -1);
@@ -1475,11 +1483,8 @@ void copy_struct(Operand *o, Operand *r, int start)
       cost += access_cost(o, k) + access_cost(r, k);
     if (cost <= addr_cost(o) + addr_cost(r) + (n < 16 ? 1 : 2) + 3) {
       for (k = 0; k < n; k += 2) {
-        v = *r;
-        d = *o;
-        offset_place(&v, k);
-        offset_place(&d, k);
-        v.type = d.type = n - k == 1 ? TY_CHAR : TY_INT;
+        struct_word(&v, r, k);
+        struct_word(&d, o, k);
         rvalue(&v);
         if (d.kind == K_VAR) {
           store_var(&d);

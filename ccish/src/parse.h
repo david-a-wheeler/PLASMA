@@ -289,6 +289,7 @@ int  movable(int global);
 void push_var_addr(int off, int global);
 int  max_offset(int global);
 int  store_op(int t, int quals);
+int  holds_qual(int t, int q);      /* q if t is or holds a q */
 int  acc_form(int t, int quals);    /* an access's IR_FORM bits */
 int  is_place(Operand *o);
 int  addr_op(Operand *o, int *a, int *f);

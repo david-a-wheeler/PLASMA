@@ -629,10 +629,15 @@ Both qualifiers go before or after the type (`const char`,
   no access is dropped, merged, added, or narrowed (C11 5.1.2.3,
   6.7.3). So `x;` reads a volatile `x`; `vx >= '0' && vx <= '7'` reads
   it twice; a counted loop whose limit is volatile reads it each pass;
-  and an assignment's value isn't read back from a volatile object. A
-  local's initializer, though, is stored as an ordinary store. It is
-  checked as part of the type. Its use is the I/O registers (section
-  4.5), where `*sp` is still one `LAB`.
+  and an assignment's value isn't read back from a volatile object.
+  It is checked as part of the type. Its use is the I/O registers
+  (section 4.5), where `*sp` is still one `LAB`.
+* What an access is, C leaves to the implementation. In ccish, a
+  struct with any volatile member is passed and copied a word at a
+  time with every word volatile, or by `memcpy` if it's large. A
+  local volatile's initializer is never dropped, but two chars may be
+  stored as one word and the rest zeroed by word or by `memset`: a
+  local is in the frame, so it can't be a device register.
 
 ### 4.11 Unions
 

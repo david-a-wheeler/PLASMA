@@ -381,7 +381,12 @@ has the details.
     an assignment's value isn't read back from a volatile object. The
     optimizations that change accesses leave volatile ones alone
     (approach.md issue 25). It is checked as part of the type, as
-    above.
+    above. C leaves what an access is to the implementation; ccish's
+    choices: a struct with any volatile part is pushed and copied a
+    word at a time with all its words volatile, or by `memcpy` when
+    it's large; a local's initializer is never dropped, but may store
+    two chars as one word and zero the rest by word or by `memset`,
+    since a local can't be a device register.
 * Warnings are printed like errors (`file:line: warning 49: ...`), and
   compilation continues.
 * Casts between any of these types. `(void)` discards a value.

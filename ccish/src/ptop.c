@@ -170,9 +170,13 @@ static void parse_scalar_init(int type)
  * each element's offset: CN 1 SLW t. Two neighboring char constants are
  * stored as one word (CW SLW, 5 bytes, not 8), and the zeros after the
  * last initializer are stored with a chain of DLWs, or by memset when
- * that is shorter.
+ * that is shorter. If the local holds a volatile, its stores are all
+ * volatile, so none is removed; pairing and memset stay, as a frame
+ * can't be a device whose access width matters (README).
  */
 static int init_local;          /* initializing a local array */
+static int init_vol;            /* and it holds a volatile: Q_VOLATILE */
+static int init_set;            /* then IR_SETLOCAL's form to use */
 static int init_base;           /* its frame offset */
 static int init_name;           /* its name (an id), for messages */
 static int held_char = -1;      /* a char constant to be stored with the
@@ -200,7 +204,7 @@ static void flush_char(void)
   if (held_char < 0)
     return;
   put(IR_CONST, held_char, -1);
-  put(IR_SETLOCALB, held_at, -1);
+  put(IR_CHAR_FORM(init_set, 1), held_at, -1);
   put(IR_DROP, 0, -1);
   held_char = -1;
 }
@@ -219,7 +223,7 @@ static void init_byte(int off, int v)
   v &= 0xFF;
   if (held_char >= 0 && held_at == at - 1) {
     put(IR_CONST, held_char | (v << 8), -1);
-    put(IR_SETLOCAL, held_at, -1);
+    put(init_set, held_at, -1);
     put(IR_DROP, 0, -1);
     held_char = -1;
     return;
@@ -274,9 +278,9 @@ static void init_zero(int n, int off)
   }
   put(IR_CONST, 0, -1);
   for (i = 0; i < words; i++)
-    put(IR_SETLOCAL, at + 2 * i, -1);
+    put(init_set, at + 2 * i, -1);
   if (n % 2)
-    put(IR_SETLOCALB, at + n - 1, -1);
+    put(IR_CHAR_FORM(init_set, 1), at + n - 1, -1);
   put(IR_DROP, 0, -1);
 }
 
@@ -301,7 +305,7 @@ static void init_elem(int type, int off)
     rvalue(&e);
     v.kind = K_VAR;
     v.type = type;
-    v.quals = 0;                /* an initializer's store: plain */
+    v.quals = init_vol;         /* a volatile's store is volatile */
     v.off = at;
     v.global = 0;
     store_var(&v);
@@ -474,11 +478,14 @@ int parse_global_init(int type, int name)
 }
 
 /* Parse the brace initializer of a local array or struct of type type,
- * named name, at frame offset base, as stores into the frame. Returns
- * the type, with an array size that was left out filled in. */
+ * named name, at frame offset base, as stores into the frame: volatile
+ * ones if it holds a volatile (holds_qual()). Returns the type, with an
+ * array size that was left out filled in. */
 int parse_local_init(int type, int name, int base)
 {
   init_local = 1;
+  init_vol = holds_qual(type, Q_VOLATILE);
+  init_set = IR_FORM(IR_SETLOCAL, acc_form(TY_INT, init_vol));
   init_base = base;
   held_char = -1;
   type = parse_aggr_init(type, name);
