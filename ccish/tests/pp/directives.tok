@@ -1,7 +1,7 @@
 # Object-like macros, conditional groups, a joined line, the null
 # directive and #pragma (CCPP.md; approach.md, "ccpp design", step 4).
 # Lines 1-3 define N (id 34), S (35) and E (36), and write nothing.
-43 54 4b 05     # "CTK", version 5
+43 54 4b 06     # "CTK", version 6
 01 01 01        # up to line 4: 3 lines, so next-line codes
 # line 4: int x = N;
 80

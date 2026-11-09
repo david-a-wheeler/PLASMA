@@ -5,11 +5,15 @@
 #ifndef NAME_H
 #define NAME_H
 
-// Enum constants and typedef names: the ordinary identifiers that
-// aren't variables or functions. Each has a value (a constant's value,
-// or a typedef's type handle) and the block depth it was declared at
-// (0: file scope), and is visible until that block ends.
-enum { ID_CONST, ID_TYPEDEF };
+// Enum constants, constexpr names and typedef names: the ordinary
+// identifiers that aren't variables or functions. Each has a value (a
+// constant's value, or a typedef's type handle) and the block depth it
+// was declared at (0: file scope), and is visible until that block
+// ends. A constant's kind is its type: TY_CHAR, TY_INT (ID_CONST, an
+// enum constant's) or TY_UINT, so reading it gives its type for free;
+// a typedef's kind is TY_VOID's number, which no constant has
+// (pexpr.c asserts both).
+enum { ID_TYPEDEF = 0, ID_CONST = 2 };
 int id_add(int name, int kind, int val, int depth);
 int id_find(int name);              // the innermost visible, or -1
 int id_kind(int i);

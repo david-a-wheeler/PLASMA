@@ -108,9 +108,9 @@
 108 an enum value must be an integer constant
 109 enum value too large for an int (over 32767)
 110 expected ',' or '}' in an enum, not
-111 expected a type after 'typedef', not
+111 expected a type after 'typedef' or 'constexpr', not
 112 a function can't return an array or a function
-113 expected ';' after a typedef, not
+113 expected ';' after a typedef or constexpr, not
 114 a function type isn't allowed here (use a pointer to a function)
 115 local array doesn't fit in the 255-byte frame (make it static or global):
 116 local struct doesn't fit in the 255-byte frame (make it static or global):
@@ -284,6 +284,7 @@
 286 goto
 287 union
 288 _Static_assert
+289 constexpr
 310 too many large globals to move to the heap
 311 too much data to move to the heap
 312 too many goto labels in
@@ -320,3 +321,6 @@
 343 >>=
 344 ->
 345 ...
+346 expected '=' after a constexpr's name, not
+347 a constexpr's value must be an integer constant
+348 (a constexpr's value must be one)

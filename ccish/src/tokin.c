@@ -208,10 +208,9 @@ int next_is_colon(void)
 
 // The spellings of the supported keywords and the multi-character
 // operators, for messages, are in the message file, as messages' texts
-// are, not in cccomp (approach.md, "C2 design"): messages 262-288 are
-// the keywords, in T_INT's order (the next keyword's, T_KW_SPARE2's,
-// will be 289, kept free), and messages 324-345 the operators, in
-// T_EQ's.
+// are, not in cccomp (approach.md, "C2 design"): messages 262-289 are
+// the keywords, in T_INT's order, and messages 324-345 the operators,
+// in T_EQ's.
 #define MSG_KEYWORDS 262
 #define MSG_OPS      324
 

@@ -177,6 +177,12 @@ static void cast(Operand *o, int type)
   o->type = type;
 }
 
+// A constant's kind in the name table is its type (name.h). (The casts
+// keep gcc from warning about comparing two enums' constants.)
+_Static_assert((int)ID_CONST == (int)TY_INT, "an enum constant is an int");
+_Static_assert((int)ID_TYPEDEF == (int)TY_VOID,
+               "no constant has a typedef's kind");
+
 // Parse an expression whose code can never run (such as the x in
 // 0 && x): check it, but emit nothing.
 void parse_skipped(int min_prec, Operand *o)
@@ -531,7 +537,8 @@ static void parse_primary(Operand *o)
       if (tok == '(')
         error(62 /* "called object is not a function:" */,
               quote(name));
-      o->kind = K_CONST;      // an enum constant
+      o->kind = K_CONST;      // an enum or constexpr constant
+      o->type = id_kind(c);   // its kind is its type (name.h)
       o->val = id_val(c);
       return;
     }

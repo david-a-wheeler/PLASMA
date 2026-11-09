@@ -5,7 +5,7 @@
 #define TOKIN_H
 
 // Single-character tokens are their character code; others start at
-// 256. T_INT ... T_TYPEDEF are in the order of the token stream's
+// 256. T_INT ... T_CONSTEXPR are in the order of the token stream's
 // keyword codes, and T_EQ ... T_ELLIPSIS of its operator codes
 // (token.h). The type-name keywords are grouped, so that the T_IS_*
 // sets below are ranges.
@@ -28,11 +28,10 @@ enum {
   T_SWITCH, T_CASE, T_DEFAULT,
   T_TYPEDEF,
   T_GOTO,
-  // union and _Static_assert took spare supported-keyword codes, so a
-  // new keyword takes the one left instead of renumbering T_KEYWORD
-  // and the operators (ccpp never writes a spare: NKEYWORDS stops
-  // below it)
-  T_UNION, T_STATIC_ASSERT, T_KW_SPARE2,
+  // union, _Static_assert and constexpr took the spare codes after
+  // goto; the next keyword renumbers T_KEYWORD and the operators,
+  // which changes only cccomp (their stream codes have room)
+  T_UNION, T_STATIC_ASSERT, T_CONSTEXPR,
   // any other C keyword: reported as "not supported yet"
   T_KEYWORD,
   // multi-character operators (not all are supported by the parser yet)

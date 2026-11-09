@@ -418,32 +418,46 @@ int parse_enum(void)
 
 // typedef type name, ...; declares each name (with its own '*'s and
 // array sizes) as a name for its type, in the current block. A typedef
-// may be repeated with the same type, as C11 allows.
+// may be repeated with the same type, as C11 allows. C23's constexpr
+// type name = value, ...; shares it: each name is a named constant, as
+// an enum constant is, with no storage, whose kind is its type
+// (name.h). So, unlike C, a constexpr has no address, and must be a
+// char, int or unsigned; its value isn't checked to fit the type.
 void parse_typedef(void)
 {
-  int name, base, t, i;
+  int name, base, t, i, kw = tok, kind = ID_TYPEDEF;
 
-  next();                         // typedef
+  next();                         // typedef or constexpr
   if (!is_type_start())
-    error(111 /* "expected a type after 'typedef', not" */, tok_desc());
+    error(111 /* "expected a type after 'typedef' or 'constexpr', not" */,
+          tok_desc());
   base = parse_base_type();
   for (;;) {
     t = parse_declarator(base, 0, &name);
-    if (is_array(t) && type_count(t) == 0)
+    if (kw == T_CONSTEXPR) {
+      kind = unqual(t);
+      if (!IS_INT_TYPE(kind))
+        not_yet();
+      expect('=', 346 /* "expected '=' after a constexpr's name, not" */);
+      t = parse_const(347 /* "a constexpr's value must be an integer"
+                             " constant" */,
+                      348 /* "(a constexpr's value must be one)" */);
+    } else if (is_array(t) && type_count(t) == 0) {
       error(87 /* "array size missing" */, NULL);
+    }
     i = id_find(name);
     if (i >= 0 && id_depth(i) == depth) {
-      if (id_kind(i) != ID_TYPEDEF || id_val(i) != t)
+      if (id_kind(i) != kind || id_val(i) != t)
         error(27 /* "redeclaration of" */, quote(name));
     } else {
       check_not_var(name);
-      id_add(name, ID_TYPEDEF, t, depth);
+      id_add(name, kind, t, depth);
     }
     if (tok != ',')
       break;
     next();
   }
-  expect(';', 113 /* "expected ';' after a typedef, not" */);
+  expect(';', 113 /* "expected ';' after a typedef or constexpr, not" */);
 }
 
 // Initialize the local struct s from a struct expression (after the
@@ -1011,6 +1025,7 @@ static void parse_statement(void)
     parse_declaration(0);
     return;
   case T_TYPEDEF:
+  case T_CONSTEXPR:
     parse_typedef();
     return;
   case T_STATIC_ASSERT:

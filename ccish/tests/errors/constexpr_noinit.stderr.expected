@@ -1,0 +1,1 @@
+:1: error 346: expected '=' after a constexpr's name, not ';'

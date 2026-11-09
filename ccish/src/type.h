@@ -20,6 +20,9 @@ enum { TK_VOID, TK_CHAR, TK_INT, TK_PTR, TK_ARRAY, TK_STRUCT, TK_UINT,
        TK_FUNC };
 // the basic types' indexes: TY_UINT is unsigned int
 enum { TY_VOID, TY_CHAR, TY_INT, TY_UINT };
+// Is the unqualified type t char, int or unsigned? (Every other type's
+// index is higher.)
+#define IS_INT_TYPE(t)  ((t) >= TY_CHAR && (t) <= TY_UINT)
 #define Q_CONST    0x100
 #define Q_VOLATILE 0x200   // IR_VOLATILE << 4 (ir.h): parse.c's
                            // acc_form() relies on it
