@@ -4243,6 +4243,17 @@ issue updated as each step lands.
 #### Order of work, each step tested and committed
 
 1. **The lowercase tags** (`IR_TAG_END` `$60`). Objects identical.
+   **Done** (2026-11-08, IR version 12): irout.c writes `IR_REC(tag)`
+   (the letter `| $20`); irin.c clears that bit from a record's tag, so
+   its comparisons and `copy_record()`'s write to the stream are
+   unchanged. The objects are the same for all 171 source, library and
+   test files. tests/spec/back.sh refuses an uppercase tag and one past
+   the letters, and its SWAP test now takes SWAP's tag from src/ir.h:
+   it had looked for `$B2`, SWAP's byte form before the function
+   pointer ops moved it (now `$B6`), found none, and so damaged the
+   magic number instead, passing without testing the check. OBJECT.md's
+   table of op numbers, out of date since then too, is regenerated
+   from src/ir.h.
 2. **The new op numbers and their macros**, with the code that can use
    the bit tricks. Objects identical: checked on every source, library
    and test file, as fold_held() was.

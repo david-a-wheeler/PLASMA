@@ -81,8 +81,8 @@ static void copy(int n)
     emit_byte(get_byte());
 }
 
-/* Copy a D, R or S record, whose tag t has just been read, to the
- * stream file as it is. */
+/* Copy a D, R, S or Z record, whose tag t (its letter: the IR file's
+ * is in lowercase) has just been read, to the stream file as it is. */
 static void copy_record(int t)
 {
   int n;
@@ -1133,12 +1133,12 @@ void gen_file(const char *base)
   for (;;) {
     t = get_byte();
     /* Prefixes: X (f), then W (a word a), just before their op. */
-    if (t == REC_SECOND && !prefixed) {
+    if (t == IR_REC(REC_SECOND) && !prefixed) {
       f = get_word();
       prefixed = 1;
       continue;
     }
-    if (t == REC_WORD && prefixed < 2) {
+    if (t == IR_REC(REC_WORD) && prefixed < 2) {
       a = (get_word() ^ 0x8000) - 0x8000;   /* sign-extended */
       prefixed = 2;
       continue;
@@ -1159,6 +1159,7 @@ void gen_file(const char *base)
     }
     if (prefixed)
       ir_damaged();             /* a prefix not followed by its op */
+    t &= ~IR_REC_CASE;          /* a record: its letter, as the stream's */
     if (REC_IS_PASSTHROUGH(t)) {
       copy_record(t);
     } else if (t == REC_LINE) {

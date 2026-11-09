@@ -56,18 +56,36 @@ ir_damaged_test ir_version "with a wrong version"
 cc_ir "$OUT/ir_tag" tests/run/hello.c
 printf 'Q' >> "$OUT/ir_tag.ir"
 ir_damaged_test ir_tag "with something after the summary"
+# A record's tag is its letter in lowercase (IR version 12, OBJECT.md):
+# the first record, hello.c's line record (l) after the 4-byte header,
+# with an uppercase L, as before, or with a tag past the letters ($E0).
+cc_ir "$OUT/ir_upper" tests/run/hello.c
+printf 'L' | dd of="$OUT/ir_upper.ir" bs=1 seek=4 conv=notrunc 2>/dev/null
+ir_damaged_test ir_upper "with an uppercase record tag"
+cc_ir "$OUT/ir_high" tests/run/hello.c
+printf '\340' | dd of="$OUT/ir_high.ir" bs=1 seek=4 conv=notrunc 2>/dev/null
+ir_damaged_test ir_high "with a tag past the record letters"
 # The full build's ccgen checks each block it moves (CCISH_CHECKS): a
 # SWAP whose length is wrong is a damaged file, not wrong code. The SWAP
-# is the first $B2 byte after the 8-byte header; its length is the byte
-# after it. The small build doesn't check.
+# is the first byte after the 4-byte header that is SWAP's tag with a
+# byte operand (IR_BYTE_OP + IR_SWAP, from src/ir.h, so a renumbering
+# can't make this test miss it); its length is the byte after it. The
+# small build doesn't check.
+printf '#include "build.h"\n#include "cclimits.h"\n#include "ir.h"\n#include <stdio.h>\nint main(void) { printf("%%d", IR_BYTE_OP + IR_SWAP); return 0; }\n' \
+    >"$OUT/ir_swaptag.c"
+${CC:-cc} -I src -o "$OUT/ir_swaptag" "$OUT/ir_swaptag.c" && swap=$("$OUT/ir_swaptag")
+rm -f "$OUT/ir_swaptag" "$OUT/ir_swaptag.c"
 printf 'int g;\nint *f(void) { return &g; }\nint main() { *f() = 5; return 0; }\n' \
     >"$OUT/ir_badswap.c"
 cc_ir "$OUT/ir_badswap" "$OUT/ir_badswap.c"
 at=$(od -An -v -tu1 "$OUT/ir_badswap.ir" \
-     | awk '{ for (i = 1; i <= NF; i++) {
-                if ($i == 178 && n >= 8) { print n; exit }
+     | awk -v t="${swap:-none}" '{ for (i = 1; i <= NF; i++) {
+                if ($i == t && n >= 4) { print n; exit }
                 n++ } }')
-printf '\002' | dd of="$OUT/ir_badswap.ir" bs=1 seek=$((at + 1)) \
+if [ -z "$at" ]; then
+    echo "FAIL back: no SWAP (tag ${swap:-unknown}) in ir_badswap.ir"; bad=1
+fi
+printf '\002' | dd of="$OUT/ir_badswap.ir" bs=1 seek=$((${at:-0} + 1)) \
     conv=notrunc 2>/dev/null
 ir_damaged_test ir_badswap "with a wrong SWAP length"
 # ccgen spells the names from the name file, so it checks it too (CCPP.md,

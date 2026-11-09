@@ -223,7 +223,7 @@ $(OUT)/spec/%.stamp: tests/spec/%.sh tests/lib.sh $(PASSES)
 $(OUT)/spec/small.stamp: $(wildcard tests/run/*.c tests/xrun/*.c tests/xrun/*.lib \
                          tests/gen/*.c tests/link/*/*.c)
 $(OUT)/spec/front.stamp: tests/run/hello.c tests/errors/const_assign.c
-$(OUT)/spec/back.stamp: tests/run/hello.c tests/run/global_init.c
+$(OUT)/spec/back.stamp: tests/run/hello.c tests/run/global_init.c src/ir.h
 $(OUT)/spec/ccrel.stamp: tests/run/hello.c tests/run/global_init.c \
                          tests/link/helpers/a.c tests/link/helpers/b.c
 $(OUT)/spec/msgs.stamp: ccish.msg

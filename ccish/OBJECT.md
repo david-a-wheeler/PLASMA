@@ -15,8 +15,12 @@ For output `NAME`, the files are `NAME.obj` and `NAME.syms`. `ccish`
 removes them after the module is written, and after any error, unless
 `-k` is given; `ccgen` leaves them for `ccrel`, which keeps them.
 `NAME.obj` and `NAME.syms` are format version 7 (`OBJ_VERSION`), and
-the IR file, `NAME.ir`, is IR format version 11 (`IR_VERSION`); the
-history below gives both. IR version 11 moved the name file's stamp
+the IR file, `NAME.ir`, is IR format version 12 (`IR_VERSION`); the
+history below gives both. IR version 12 made the IR's record tags
+lowercase letters (`y` for the summary, and so on), so that an op may
+be numbered up to `$5F` (`$DF` with a byte operand), room for 96 ops
+(approach.md issue 25); the stream file keeps its capital letters, and
+ccgen copies a data record to it with its capital letter. IR version 11 moved the name file's stamp
 from the header to the start of the `Y` record, the summary, since
 `cccomp` now has it only at the end of the token stream, where `ccpp`
 writes it: so a correct compile never reads the name file (CCPP.md,
@@ -333,19 +337,20 @@ messages, is the name file's file 1.
 the file.)
 
 Then records, until the summary, which is last. Each starts with a
-one-byte tag: a capital letter for most records, as in `NAME.obj`,
-and for an IR op a byte below `$44` or from `$80` to `$C3`:
+one-byte tag: for a record, its letter in `NAME.obj` in lowercase (the
+letter `| $20`), and for an IR op a byte below `$60` or from `$80` to
+`$DF`; any other byte is damage:
 
 | Tag | Record |
 |-----|--------|
-| `D`, `R`, `Z`, `S` | data bytes, an address in the data, zero bytes, a string literal: exactly as in `NAME.obj`, which `ccgen` copies them to whole |
-| `L` | a source line |
-| `N` | a function's name |
-| `W` | prefix: the next op's operand *a*, as a word |
-| `X` | prefix: the next op's second operand *f* |
-| `Y` | the symbol summary; the last record |
-| `$00`-`$43` | an IR op, with no one-byte operand |
-| `$80`-`$C3` | an IR op plus `$80`, followed by a one-byte operand *a* |
+| `d`, `r`, `z`, `s` | data bytes, an address in the data, zero bytes, a string literal: exactly as `NAME.obj`'s `D`, `R`, `Z` and `S`, which `ccgen` copies them to whole, with the capital letter |
+| `l` | a source line |
+| `n` | a function's name |
+| `w` | prefix: the next op's operand *a*, as a word |
+| `x` | prefix: the next op's second operand *f* |
+| `y` | the symbol summary; the last record |
+| `$00`-`$5F` | an IR op, with no one-byte operand |
+| `$80`-`$DF` | an IR op plus `$80`, followed by a one-byte operand *a* |
 
 ### IR ops
 
@@ -355,16 +360,16 @@ bit 7 is set). Its operands come from the tag and from the prefixes
 just before it:
 
 - *a* is 0, or the byte after the tag if bit 7 is set, or the word of
-  a `W` prefix. The writer uses the byte form for 1 to 255, `W` for
+  a `w` prefix. The writer uses the byte form for 1 to 255, `w` for
   any other value except 0, and neither for 0. *a* is a 16-bit value,
-  and the reader sign-extends a `W` word, so `CONST -1` is `W FF FF`
+  and the reader sign-extends a `w` word, so `CONST -1` is `w FF FF`
   then `$02`, and reads back as -1.
-- *f* is -1, or the word of an `X` prefix: a function index (`FUNC`,
+- *f* is -1, or the word of an `x` prefix: a function index (`FUNC`,
   `CALL`), a data symbol index (`DATAADDR` and the global ops, for an
   `extern` global), or a label (`JOIN`).
 
-The prefixes come in the order `X`, then `W`, right before their op,
-with no other record between. Bit 7 and `W` are never both used for
+The prefixes come in the order `x`, then `w`, right before their op,
+with no other record between. Bit 7 and `w` are never both used for
 one op. So the reader needs no table of which ops take which
 operands, and neither does the writer: it chooses the form from the
 values.
@@ -379,46 +384,47 @@ The op numbers are the order of the `IR_*` enum in `src/ir.h`
 | `$0A`-`$0D` | `GLOBAL`, `SETGLOBAL`, `GLOBALB`, `SETGLOBALB` |
 | `$0E`-`$15` | `LOAD`, `LOADB`, `STORE`, `STOREB`, `CALL`, `DROP`, `DUP`, `RETURN` |
 | `$16`-`$1F` | `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, `AND`, `OR`, `XOR`, `SHL`, `SHR` |
-| `$20`-`$25` | `EQ`, `NE`, `LT`, `GT`, `LE`, `GE` |
-| `$26`-`$28` | `NEG`, `COMP`, `NOT` |
-| `$29`-`$2D` | `LABEL`, `JUMP`, `BRFALSE`, `BRTRUE`, `JOIN` |
-| `$2E`-`$31` | `SEL`, `CASES`, `CASEVAL`, `CASETO` |
-| `$32` | `SWAP` (*a* = top block's length in ops, *f* = the block below's, or -1: don't move code; approach.md 18.7, A) |
-| `$33`-`$36` | `ULT`, `UGT`, `ULE`, `UGE` (*a* = the right operand's block length in ops, or 0; 18.7, C) |
+| `$20`-`$25` | `EQ`, `NE`, `LT`, `GE`, `GT`, `LE` |
+| `$26`-`$29` | `ULT`, `UGE`, `UGT`, `ULE` (*a* = the right operand's block length in ops, or 0; 18.7, C) |
+| `$2A`-`$2C` | `NEG`, `COMP`, `NOT` |
+| `$2D`-`$32` | `LABEL`, `JUMP`, `BRFALSE`, `BRTRUE`, `SEL`, `JOIN` |
+| `$33`-`$35` | `CASES`, `CASEVAL`, `CASETO` |
+| `$36` | `SWAP` (*a* = top block's length in ops, *f* = the block below's, or -1: don't move code; approach.md 18.7, A) |
 | `$37`-`$39` | `UDIV`, `UMOD`, `USHR` (*a* = 1 if the right operand is a constant) |
 | `$3A` | `HEAPADDR` (*f* = a data symbol index; version 4) |
-| `$3B`-`$3E` | `LOOP`, `LOOPSTEP`, `LOOPBODY`, `LOOPEND` (*a*, *f* = labels; version 5; IR.md, "Loops") |
+| `$3B`-`$3C` | `FUNCADDR`, `ICALL` |
+| `$3D`-`$40` | `LOOP`, `LOOPSTEP`, `LOOPBODY`, `LOOPEND` (*a*, *f* = labels; version 5; IR.md, "Loops") |
 
-The rest, to `$3F`, are free for new ops, and `$60`-`$7F` (with
-`$E0`-`$FF`) could be added if those run out.
+The rest, to `$5F`, are free for new ops (issue 25 of approach.md
+plans a renumbering that uses them).
 
 Examples: `IR_ADD` is `16`. `IR_CONST 0` is `02`. `IR_LOCAL 4` is
-`85 04`. `IR_CONST 1000` is `57 E8 03 02` (`W` $03E8, then `CONST`).
-`IR_CALL` of function 12 with 2 arguments is `58 0C 00 92 02` (`X`
+`85 04`. `IR_CONST 1000` is `77 E8 03 02` (`w` $03E8, then `CONST`).
+`IR_CALL` of function 12 with 2 arguments is `78 0C 00 92 02` (`x`
 12, then `CALL` with *a* = 2).
 
 Every op is inside a function, from its `FUNC` to its `ENDFUNC`, and
-functions don't nest. `D`, `R`, `Z` and `S` records may come anywhere
+functions don't nest. `d`, `r`, `z` and `s` records may come anywhere
 between ops, in a function or not (a string literal, a `static`
 local), but not between a prefix and its op.
 
-### `L`: a source line
+### `l`: a source line
 
 | Size | Field |
 |------|-------|
-| byte | tag `L` |
+| byte | tag `l` |
 | word | line number |
 
 The source line that `ccgen`'s messages give from here on: one comes
-right before each function's records (its `N`, prefixes and `FUNC`),
+right before each function's records (its `n`, prefixes and `FUNC`),
 with the line where the function starts. So a back-end error reads
 `x.c:120: error 177: function too large: f`.
 
-### `N`: a function's name
+### `n`: a function's name
 
 | Size | Field |
 |------|-------|
-| byte | tag `N` |
+| byte | tag `n` |
 | word | function index |
 | byte | flags: bit 7 set if the function returns a value; the others 0 |
 | word | the name's id |
@@ -429,11 +435,11 @@ each function's id, and spells it from the name file for its messages
 and for `-i`. Bit 7 is for the full build's checks, which need to know
 how many values a `CALL` leaves.
 
-### `Y`: the symbol summary
+### `y`: the symbol summary
 
 | Size | Field |
 |------|-------|
-| byte | tag `Y` |
+| byte | tag `y` |
 | word | the name file's stamp: its id count |
 | word | and its checksum |
 | ... | the rest of the file: `NAME.syms` after its magic and version, with the code size and every function's code offset 0, and each name (a length byte and its characters there) as its id, a word: a symbol's, a PLASMA name, or a module's |
@@ -452,7 +458,7 @@ It reports "compiler stream file is damaged" (188) for a wrong magic
 or version; an unknown tag; a prefix not followed by an op; an op
 outside a function; a label of `MAX_LABELS` or more; a function index
 of `MAX_FUNCS` or more (or, at the end, at or beyond the summary's
-count), or one used without an `N` record before it; a name id of 0
+count), or one used without an `n` record before it; a name id of 0
 or beyond the name file's count; a missing summary, or anything after
 it; and a function that the summary says is defined but has no `FUNC`,
 or the reverse.

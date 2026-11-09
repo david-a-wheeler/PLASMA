@@ -119,7 +119,7 @@ enum {
   IR_LOOPBODY,    /* a = the body's label, f = the test's: the body
                    * follows */
   IR_LOOPEND,     /* a = the continue label, f = the break label */
-  IR_NOPS,        /* the number of IR ops: at most IR_TAG_END (68),
+  IR_NOPS,        /* the number of IR ops: at most IR_TAG_END (96),
                    * since an op's tag is a byte below it (below) */
   /* not in the IR file: ccgen's own, for a counted loop's branches
    * (irin.c), which have no IR op: machine op a, with label f */
@@ -129,7 +129,7 @@ enum {
 /* The IR file: the output name plus this suffix, and its format's
  * version (in its header, after the magic "CIR"). */
 #define SUFFIX_IR   ".ir"
-#define IR_VERSION  11
+#define IR_VERSION  12
 
 /* The sets of ops the compiler tests in more than one place, and its
  * value manipulations on ops, each defined here next to the values it
@@ -158,10 +158,15 @@ enum {
 #define IR_IS_LOOP_MARKER(op) ((op) >= IR_LOOP && (op) <= IR_LOOPEND)
 
 /* The bit that marks an IR op followed by a one-byte operand. An IR
- * op's tag is its number, below IR_TAG_END: 'D', the lowest record
- * letter (obj.fmt.h has the IR file's record tags). */
+ * op's tag is its number, below IR_TAG_END ($60), so up to 96 ops; a
+ * record's tag is its letter (obj.fmt.h) in lowercase, IR_REC(), $61
+ * to $7A, so that the ops can have the numbers the uppercase letters
+ * would take. ccgen copies a data record to the stream file with its
+ * uppercase letter. */
 #define IR_BYTE_OP  0x80
-#define IR_TAG_END  0x44
+#define IR_TAG_END  0x60
+#define IR_REC_CASE 0x20
+#define IR_REC(rec) ((rec) | IR_REC_CASE)
 
 /* A name record's flags byte: NAME_RETURNS set if the function returns
  * a value. */

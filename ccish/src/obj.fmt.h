@@ -15,8 +15,9 @@
 enum { REC_DATA = 'D', REC_DREL = 'R', REC_STR = 'S', REC_FUNC = 'F',
        REC_HELPER = 'H', REC_ZERO = 'Z' };
 
-/* The IR file's own record tags, besides the stream's D, R and S
- * (above), which it uses too. */
+/* The IR file's own record tags, besides the stream's D, R, S and Z
+ * (above), which it uses too. In the IR file every record tag is in
+ * lowercase (ir.h, IR_REC()). */
 enum { REC_LINE = 'L', REC_NAME = 'N', REC_WORD = 'W', REC_SECOND = 'X',
        REC_SUMMARY = 'Y' };
 

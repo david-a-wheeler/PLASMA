@@ -65,7 +65,7 @@ static void name_func(int f)
   if (fn_flags[f] & FN_NAMED)
     return;
   fn_flags[f] |= FN_NAMED;
-  bputc(&out, REC_NAME);
+  bputc(&out, IR_REC(REC_NAME));
   bputw(&out, f);
   bputc(&out, fn_type[f] != TY_VOID ? NAME_RETURNS : 0);
   bputw(&out, fn_name[f]);
@@ -79,13 +79,13 @@ void ir_put(int op, int a, int f)
 {
   nops++;
   if (op == IR_FUNC) {
-    bputc(&out, REC_LINE);
+    bputc(&out, IR_REC(REC_LINE));
     bputw(&out, src_line);
   }
   if (op == IR_FUNC || op == IR_CALL || op == IR_FUNCADDR)
     name_func(f);
   if (f >= 0) {
-    bputc(&out, REC_SECOND);
+    bputc(&out, IR_REC(REC_SECOND));
     bputw(&out, f);
   }
   if (a == 0) {
@@ -94,7 +94,7 @@ void ir_put(int op, int a, int f)
     bputc(&out, op | IR_BYTE_OP);
     bputc(&out, a);
   } else {
-    bputc(&out, REC_WORD);
+    bputc(&out, IR_REC(REC_WORD));
     bputw(&out, a);
     bputc(&out, op);
   }
@@ -121,7 +121,7 @@ int data_string(const char *s, int len)
   /* In the pool it is [len][chars][NUL] (the final pass adds the length
    * byte and the NUL): the C pointer is to the first character, and the
    * byte before it makes it a PLASMA string as well. */
-  bputc(&out, REC_STR);
+  bputc(&out, IR_REC(REC_STR));
   bputw(&out, len);
   bwrite(&out, (const unsigned char *)s, len);
   nstrs += len + 2;
@@ -133,7 +133,7 @@ static void flush_data(void)
 {
   if (ndrun == 0)
     return;
-  bputc(&out, REC_DATA);
+  bputc(&out, IR_REC(REC_DATA));
   bputc(&out, ndrun);
   bwrite(&out, drun, ndrun);
   ndrun = 0;
@@ -168,7 +168,7 @@ void data_addr(int kind, int target, int add)
   if (ndata > 0x7FFF - 2)
     error(182 /* "too much data: globals over 32767 bytes" */, NULL);
   flush_data();
-  bputc(&out, REC_DREL);
+  bputc(&out, IR_REC(REC_DREL));
   bputc(&out, kind);
   if (kind == REL_DSYM) {
     bputw(&out, target);
@@ -193,7 +193,7 @@ int data_zero(int n)
     return first;
   }
   flush_data();
-  bputc(&out, REC_ZERO);
+  bputc(&out, IR_REC(REC_ZERO));
   bputw(&out, n);
   ndata += n;
   return first;
@@ -214,7 +214,7 @@ void ir_finish(void)
   int nsyms = nglobals;           /* the data symbols */
 
   flush_data();
-  bputc(&out, REC_SUMMARY);
+  bputc(&out, IR_REC(REC_SUMMARY));
   bputw(&out, nam_ids);           /* the stamp of the name file the ids */
   bputw(&out, nam_sum);           /* are from, from the token stream */
   bputw(&out, ndata);
