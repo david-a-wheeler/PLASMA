@@ -106,12 +106,17 @@ static void after_directive(void)
   pp_mode = taking() ? PM_TEXT : PM_SKIP;
 }
 
-// The rest of the directive's line must be empty.
+// The rest of the directive's line must be empty. name, the
+// directive's, is only for the message, which the small build prints
+// without it (diag.h): there, a macro drops it, not evaluated, from
+// each call, as here and in macro_name() and do_ifdef().
+#ifdef CCISH_DIAG
 static void end_directive(const char *name)
-{
-#ifndef CCISH_DIAG
-  (void)name;                       // for the message, which drops it
+#else
+#define end_directive(name) end_directive_()
+static void end_directive_(void)
 #endif
+{
   if (pp_lex() != TC_NL)
     error(246 /* "extra tokens at the end of the directive:" */, name);
 }
@@ -138,13 +143,16 @@ static void do_pragma(void)
 }
 
 // Read a macro's name, an identifier (or a keyword ccish doesn't
-// support, which is one too), after directive name; return its id.
+// support, which is one too), after directive name (for the message,
+// as end_directive()'s); return its id.
+#ifdef CCISH_DIAG
 static int macro_name(const char *name)
+#else
+#define macro_name(name) macro_name_()
+static int macro_name_(void)
+#endif
 {
   int c = pp_lex();
-#ifndef CCISH_DIAG
-  (void)name;                       // for the message, which drops it
-#endif
   if (c != TC_ID && c != TC_KEYWORD)
     error(238 /* "expected a macro name after" */, name);
   return pt_val;
@@ -276,8 +284,14 @@ static void open_group(int is_true)
 #endif
 }
 
-// #ifdef name or #ifndef name (want 0): open a group.
+// #ifdef name or #ifndef name (want 0): open a group. name, the
+// directive's, is for the messages, as end_directive()'s.
+#ifdef CCISH_DIAG
 static void do_ifdef(int want, const char *name)
+#else
+#define do_ifdef(want, name) do_ifdef_(want)
+static void do_ifdef_(int want)
+#endif
 {
   int id = macro_name(name), def = pp_is_macro(id);
   end_directive(name);
