@@ -5011,6 +5011,18 @@ issue. In summary:
     constant check is parse_const(), shared with array sizes, enum
     values and case labels, which saved 54 bytes and so paid for half
     of the 107 the keyword costs cccomp.
+38. **constexpr, as a named constant** (decided in discussion,
+    2026-11-09). C23's constexpr gives a named value that's a constant
+    expression, so a _Static_assert can use it, where a const
+    variable can't. ccish makes it an entry in the enum-constant and
+    typedef table, not an object, so it takes no storage (a header's
+    constants cost each file nothing), at the price of no address.
+    parse_typedef() parses both keywords, and a constant's kind in the
+    table is its type, so a constexpr unsigned or char reads with its
+    type for free. Narrower than C23: a char, int or unsigned only, no
+    storage class, and no check that the value fits; looser: several
+    names per declaration. It cost cccomp 85 bytes, ccpp 13, and took
+    the last spare keyword slot.
 
 
 ## Milestones

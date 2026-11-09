@@ -308,7 +308,7 @@ The supported keywords are:
 break    const    continue default do     else     enum   extern
 for      goto     if       int    return   sizeof   short    static
 struct   switch   typedef  union    unsigned void     volatile while
-_Static_assert
+_Static_assert   constexpr
 ```
 
 plus `signed`, as in `signed int`, which is `int`, and `short`, a
@@ -624,8 +624,10 @@ Both qualifiers go before or after the type (`const char`,
   compile time: with `const int N = 10;`, `x < N` loads `x` and
   compares with the constant 10, and `N * 2` is 20.
   `&N` still works. As in C, `N` isn't a constant expression, so it
-  can't size an array or initialize a global, and a `const int`
-  holding 0 isn't a null pointer.
+  can't size an array, initialize a global, or be used in a
+  `_Static_assert`, and a `const int` holding 0 isn't a null pointer.
+  For a named value that is a constant expression, use `constexpr`
+  (section 5.8).
 * A `volatile` object is read and written just as the program says:
   no access is dropped, merged, added, or narrowed (C11 5.1.2.3,
   6.7.3). So `x;` reads a volatile `x`; `vx >= '0' && vx <= '7'` reads
@@ -1042,7 +1044,9 @@ declaration is reached.
 
 ```c
 enum { T_FIRST = 0x20, T_LAST = 0x3F };
+constexpr int WIDTH = 40;
 _Static_assert((T_FIRST & 0x1F) == 0, "T_FIRST starts a block of 32");
+_Static_assert(WIDTH % 8 == 0, "WIDTH is whole bytes");
 ```
 
 A `_Static_assert` checks a constant expression when the program is
@@ -1052,12 +1056,62 @@ message takes no space. Use them to state what code relies on, such
 as the values of constants chosen for bit tricks, next to the
 constants.
 
-As in C, the expression must be an integer constant expression: an
-enum constant, `sizeof` and the like work, but a const variable's
-value doesn't (gcc rejects it too). As gcc and clang do, ccish
-requires the `;` after the `)`. A `_Static_assert` may be at file
-scope or in a block, but not in a `for` initializer or a struct or
-union's member list (C allows those).
+As in C, the expression must be an integer constant expression:
+integer and character constants, enum constants, `constexpr` names,
+`sizeof`, casts, and the operators over them. A `const` variable's
+value doesn't count (gcc rejects it too), so **to use a named value
+in a `_Static_assert`, declare it `constexpr`** (section 5.8), or use
+an enum constant or a macro.
+
+To compare constants of two different enums, cast them to `int`
+(`(int)A == (int)B`): gcc warns about comparing two enums' constants,
+and ccish's own sources build with gcc too.
+
+What ccish leaves out of C11's `_Static_assert`:
+
+* It may be at file scope or in a block, but not in a `for`
+  initializer or in a struct or union's member list.
+* A pointer constant expression (`&g != 0`) isn't accepted: the
+  expression must be an integer.
+* The `;` after the `)` is required, as gcc and clang require it.
+
+### 5.8 constexpr
+
+```c
+constexpr int SIZE = 8;
+constexpr unsigned MASK = 0xF000;
+char buf[SIZE];
+_Static_assert((MASK & 0x0FFF) == 0, "MASK is the top 4 bits");
+```
+
+C23's `constexpr` names a constant. Its value must be a constant
+expression (a `const` variable's value isn't one, but another
+`constexpr`'s is), and its name is then a constant expression too, so
+it works wherever a constant does: a `_Static_assert`, an array size,
+an enum value, a case label or a global initializer. It has its type:
+`MASK` above is unsigned, so it compares as unsigned. It has block
+scope, as a variable does, and a `constexpr` at file scope is local to
+the file, so a header may declare one and each file that includes it
+gets its own.
+
+ccish makes a `constexpr` a named constant, as an enum constant is, so
+it takes no storage at all: using `SIZE` compiles exactly as using
+`8` does. That's why it differs from C23, which makes it a read-only
+object:
+
+* It has no address: `&SIZE` is an error ("lvalue required").
+* It must be a `char`, `int` or `unsigned` (with any qualifiers). A
+  `constexpr` pointer, array, struct or union is "not supported yet".
+* Its value isn't checked to fit its type: C23 rejects
+  `constexpr char C = 300;`, but ccish accepts it, and `C` is 300.
+* It may not have a storage class (`static constexpr`, which C23
+  allows).
+* One declaration may name several (`constexpr int A = 1, B = 2;`),
+  where C23 and gcc allow only one. Write one per declaration if the
+  code must also build with gcc.
+
+gcc 15 accepts `constexpr` by default (its default is C23); clang
+needs `-std=c23`.
 
 ## 6. Expressions and operators
 

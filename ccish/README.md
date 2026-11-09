@@ -322,6 +322,9 @@ has the details.
 * `_Static_assert(expr, "message");`, at file scope or in a block: a
   compile-time check of an integer constant expression, which emits
   nothing.
+* C23's `constexpr int N = 10;`: a named constant, usable wherever a
+  constant expression is (a `_Static_assert` included), with no
+  storage and so no address; a `char`, `int` or `unsigned` only.
 * Enum constants and typedef names have block scope, as in C: one
   declared in a block hides a variable of the same name declared
   outside it, and the other way around.
