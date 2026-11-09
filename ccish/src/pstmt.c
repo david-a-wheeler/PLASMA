@@ -15,6 +15,7 @@
 #include "obj.h"
 #include "ir.h"
 #include "name.h"
+#include "name.tab.h"
 #include "type.h"
 #include "type.tag.h"
 #include "parse.h"
@@ -447,8 +448,8 @@ void parse_typedef(void)
       error(87 /* "array size missing" */, NULL);
     }
     i = id_find(name);
-    if (i >= 0 && id_depth(i) == depth) {
-      if (id_kind(i) != kind || id_val(i) != t)
+    if (i >= 0 && ID_DEPTH(i) == depth) {
+      if (id_k[i] != kind || id_v[i] != t)
         error(27 /* "redeclaration of" */, quote(name));
     } else {
       check_not_var(name);

@@ -17,6 +17,7 @@
 #include "obj.h"
 #include "ir.h"
 #include "name.h"
+#include "name.tab.h"
 #include "type.h"
 #include "type.tag.h"
 #include "parse.h"
@@ -534,15 +535,15 @@ static void parse_primary(Operand *o)
     next();
     c = find_id(name);
     if (c >= 0) {
-      if (id_kind(c) == ID_TYPEDEF)
+      if (id_k[c] == ID_TYPEDEF)
         error(61 /* "a type name can't be used as a value:" */,
               quote(name));
       if (tok == '(')
         error(62 /* "called object is not a function:" */,
               quote(name));
       o->kind = K_CONST;      // an enum or constexpr constant
-      o->type = id_kind(c);   // its kind is its type (name.h)
-      o->val = id_val(c);
+      o->type = id_k[c];   // its kind is its type (name.h)
+      o->val = id_v[c];
       return;
     }
     v = find_var(name);

@@ -71,6 +71,7 @@
 #include "obj.h"
 #include "ir.h"
 #include "name.h"
+#include "name.tab.h"
 #include "type.h"
 #include "type.tag.h"
 #include "parse.h"
@@ -274,7 +275,7 @@ int find_id(int name)
   if (i < 0)
     return -1;
   v = find_var(name);
-  if (v >= 0 && var_depth(v) >= id_depth(i))
+  if (v >= 0 && var_depth(v) >= ID_DEPTH(i))
     return -1;
   return i;
 }
@@ -284,7 +285,7 @@ int find_id(int name)
 int typedef_type(int name)
 {
   int i = find_id(name);
-  return i >= 0 && id_kind(i) == ID_TYPEDEF ? id_val(i) : -1;
+  return i >= 0 && id_k[i] == ID_TYPEDEF ? id_v[i] : -1;
 }
 
 // Report a redeclaration if an enum constant or typedef named name was
@@ -293,7 +294,7 @@ int typedef_type(int name)
 void check_not_id(int name)
 {
   int i = id_find(name);
-  if (i >= 0 && id_depth(i) == depth)
+  if (i >= 0 && ID_DEPTH(i) == depth)
     error(27 /* "redeclaration of" */, quote(name));
 }
 

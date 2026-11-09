@@ -5,6 +5,9 @@
 #ifndef NAME_H
 #define NAME_H
 
+// (With name.tab.h, one header: the table itself, for the files that
+// read it directly.)
+//
 // Enum constants, constexpr names and typedef names: the ordinary
 // identifiers that aren't variables or functions. Each has a value (a
 // constant's value, or a typedef's type handle) and the block depth it
@@ -16,9 +19,6 @@
 enum { ID_TYPEDEF = 0, ID_CONST = 2 };
 int id_add(int name, int kind, int val, int depth);
 int id_find(int name);              // the innermost visible, or -1
-int id_kind(int i);
-int id_val(int i);
-int id_depth(int i);
 void id_hide(int depth);            // hide those declared deeper
 #ifdef CCISH_STATS
 int id_peak(void);

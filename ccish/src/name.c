@@ -10,14 +10,12 @@
 #include "build.h"
 #include "diag.h"
 #include "name.h"
-
-#define MAX_IDS      203    // enum constants and typedef names (184, in
-                            // parse.c)
+#include "name.tab.h"
 
 static int id_nm[MAX_IDS];
-static int id_v[MAX_IDS];
-static char id_k[MAX_IDS];
-static char id_d[MAX_IDS];
+int id_v[MAX_IDS];                  // (name.tab.h)
+char id_k[MAX_IDS];
+char id_d[MAX_IDS];
 static int nids;
 #ifdef CCISH_STATS
 static int nids_peak;               // the most at once
@@ -49,24 +47,6 @@ int id_find(int name)
     if (id_nm[i] == name && id_d[i] != 0)
       return i;
   return -1;
-}
-
-// The kind of entry i (ID_*).
-int id_kind(int i)
-{
-  return id_k[i];
-}
-
-// The value of entry i: a constant's value, or a typedef's type.
-int id_val(int i)
-{
-  return id_v[i];
-}
-
-// The block depth entry i was declared at (visible entries only).
-int id_depth(int i)
-{
-  return id_d[i] - 1;
 }
 
 // Hide the entries declared deeper than depth, at the end of their
