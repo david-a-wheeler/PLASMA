@@ -285,12 +285,12 @@ tests/xrun/%.ref: tests/xrun/%.c tests/xrun/%.flags inc/ptest.h
 measure: all
 	python3 tools/measure.py
 
-# Each source file's functions, C then machine ops, in tools/out/lst/
+# Put each source file's functions, C then machine ops, in tools/out/lst/
 # (tools/listings.py); tools/opstats.py counts the ops in them.
 listings: all
 	python3 tools/listings.py
 
-# The sources, for tools/measure.py: a line for each Apple II program,
+# Generate the sources, for tools/measure.py: a line for each Apple II program,
 # its name and its sources in link order, and a line "lib" and the
 # library's. measure.py asks for these, so they're kept only here.
 print-sources:
@@ -299,6 +299,14 @@ print-sources:
 	@echo ccgen $(CCGEN_SRC)
 	@echo ccrel $(CCREL_SRC)
 	@echo lib $(CCLIB_SRC)
+
+# Print some common ops and op sequences (e.g., peephole targets)
+# This counts cccomp's ops and its most common runs of 2 to 4 ops,
+# reading the listings from step 1.
+# Add -o to keep operands, so that LLW 0 and LLW 2 count separately.
+common-ops: tools/opstats.py ccomp listings
+	python3 tools/opstats.py -p cccomp -n 30 -l 4
+
 
 clean:
 	rm -f ccish ccpp cccomp ccgen ccrel
