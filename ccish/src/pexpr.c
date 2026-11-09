@@ -1632,7 +1632,8 @@ static void parse_assign(Operand *o, int ir_op, int m0, int h0)
 // After parse_expr() has parsed r, the right operand of o's binary
 // operator ir_op, with o's constant still held back (hold()) because
 // r emitted nothing: fold what can be folded now (a + c and a - c, for
-// o the address constant *addr, or addr NULL; c + p; c op c; c op x).
+// o the address constant *addr, or a constant pointer; c + p; c op c;
+// c op x).
 // Returns 1 if it did, so the operator needs nothing more, else 0. It
 // is apart from parse_expr() so that its locals aren't in the frame of
 // every level of parse_expr()'s recursion.
@@ -1641,16 +1642,21 @@ static int fold_held(Operand *o, Operand *rp, int ir_op, Operand *addr)
   Operand r = *rp;       // a copy: cheaper to reach, and off the
                          // recursion's frames; *rp is unchanged when
                          // this returns 0
-  int a;
-  if (addr) {
-    // The left operand is an address constant: a + c and a - c fold.
+  int a, *p;
+  if (addr || is_pointer(o->type)) {
+    // The left operand is an address constant, or a constant pointer
+    // (a cast integer, (char *)0x400): a + c and a - c fold.
     if (r.kind != K_CONST || is_pointer(r.type))
       return 0;
     nheld--;
-    *o = *addr;
-    a = wrap16((unsigned)r.val * (unsigned)elem_size(o->type));
-    o->off = wrap16((unsigned)o->off
-                    + (ir_op == IR_ADD ? (unsigned)a : 0u - (unsigned)a));
+    p = &o->val;
+    if (addr) {
+      *o = *addr;
+      p = &o->off;
+    }
+    a = (unsigned)r.val * (unsigned)elem_size(o->type);
+    *p = wrap16((unsigned)*p + (ir_op == IR_ADD ? (unsigned)a
+                                                : 0u - (unsigned)a));
     return 1;
   }
   if (is_pointer_value(r.type)) {
@@ -1744,8 +1750,10 @@ void parse_expr(int min_prec, Operand *o)
       parse_conditional(o);
       continue;
     }
-    if (o->kind == K_CONST && !is_pointer(o->type) && nheld < MAX_HELD) {
-      // Hold it back: it may fold with the right operand.
+    if (o->kind == K_CONST && nheld < MAX_HELD
+        && (!is_pointer(o->type) || ir_op == IR_ADD || ir_op == IR_SUB)) {
+      // Hold it back: it may fold with the right operand (a pointer
+      // only with + or -, fold_held()).
       mark = hold(IR_CONST, o->val, -1);
     } else if ((ir_op == IR_ADD || ir_op == IR_SUB) && nheld < MAX_HELD
                && addr_const(o)

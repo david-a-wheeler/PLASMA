@@ -38,6 +38,14 @@
 //   CW v   CW v              -> CW v DUP     two equal WORD constants: a CW
 //                                          loads two operand bytes, so a stack
 //                                          DUP beats a second CW (4 cyc, 2B)
+//   LLW n  LLW n  op         -> LLW n  DUP  op  a load repeated (also LLB,
+//                                          LAW, LAB, or after a keeping
+//                                          store, DLW n LLW n): DUP is
+//                                          10-28 cycles faster. Not for a
+//                                          volatile, and only once op is
+//                                          there and no rule joined it to
+//                                          the load (LLW n ADD -> ADDLW n
+//                                          is better)
 //   const OP const           -> const      for ADD, SUB, MUL, DIV, MOD,
 //                                          AND, IOR, XOR, SHL, SHR and the
 //                                          six comparisons: a backstop
@@ -646,6 +654,20 @@ static int rewrite_dup_const(Mop *a, Mop *b)
   return 0;
 }
 
+// Whether b loads again the value a left on the stack: the same load
+// of a local or global twice (LLW n LLW n, also LLB, LAW and LAB, the
+// even ops from LLB to LAW), or a keeping store then a load of what it
+// stored (DLW n LLW n, also DLB, DAW and DAB). Neither may be
+// volatile, which must be read each time; a volatile op is odd.
+static int repeats_load(Mop *a, Mop *b)
+{
+  int op = b->op;
+  if (op < OP_LLB || op > OP_LAW || (op & MOP_VOLATILE)
+      || a->a != b->a || a->fix != b->fix || a->fn != b->fn)
+    return 0;
+  return a->op == op || keeping_store(plain_store(a->op), op) == a->op;
+}
+
 // The 16-bit pattern in v as a signed int, as parse.c's wrap16: the
 // unsigned arithmetic works whether the host's int has 16 or 32 bits.
 static int signed_word(int v)
@@ -916,6 +938,16 @@ static int rewrite(void)
       && b->op == OP_ADD) {
     win[nwin - 3].op = OP_IDXW;
     nwin -= 2;
+    return 1;
+  }
+  // LLW n LLW n op -> LLW n DUP op (repeats_load()): the second load is
+  // a DUP, 10 to 28 cycles faster and a byte or two smaller. Only once
+  // an op follows that no rule above joined to it, since a load that
+  // fuses with what follows (LLW n ADD -> ADDLW n) beats DUP ADD.
+  if (nwin >= 3 && repeats_load(&win[nwin - 3], a)) {
+    a->op = OP_DUP;
+    a->a = 0;
+    a->fix = FIX_NONE;
     return 1;
   }
   // DUP update store DROP -> update store: x++ (or a similar update)

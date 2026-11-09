@@ -56,7 +56,7 @@
     CN 0
     ; label 0
     DLW 2
-    LLW 2
+    DUP
     LLW 0
     BRNE 4
     LLW 2

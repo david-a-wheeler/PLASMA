@@ -191,7 +191,7 @@
     CN 0
     ; label 0
     DLW 0
-    LLW 0
+    DUP
     SAW.v data +0
     INCBRLE 0
     DROP

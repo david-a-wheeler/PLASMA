@@ -71,6 +71,19 @@ listed here.
    address is taken (`&x`, or an array decaying), which it could put
    in the IR at the function's end.
 
+   *Status (2026-11-09):* not done. Neither cccomp nor ccgen sees the
+   rest of the function when it decides (both stream), so "never taken"
+   needs a look ahead over each function, more than it's worth. A
+   cheaper route is C's `register`: `&` on a register variable is a
+   constraint violation (C11 6.5.3.2p1), and a register array can't
+   decay to a pointer, so no pointer can reach one. A nested loop whose
+   variable and local limit are `register` could be counted even with
+   stores through pointers. ccish rejects `register` today (guide 9.2).
+   Proposed, not built: cccomp would accept it, reject `&` on it (also
+   in the small build, since C requires the diagnostic), and mark the
+   local in the IR; ccgen would relax the nested-loop rule for marked
+   locals. My estimate is 60 to 100 bytes in each of cccomp and ccgen.
+
 4. **A `?:` whose value isn't used.** In an expression statement,
    `c ? (a = x) : (a = y);` computes the chosen assignment's value and
    drops it (`DUP` before the store, `ANDI 255` after, `DROP` at the
@@ -79,6 +92,14 @@ listed here.
    `?:`; as `do { if ... else ... } while (0)` it costs nothing extra,
    and rodsimple got 7% faster. The fix is to pass "value unused" into
    both arms, as for a plain assignment statement.
+
+   *Status (2026-11-09):* built and tested, but not applied: it costs
+   cccomp 71 bytes of code (113 in its module file), cccomp doesn't fit
+   yet, and only a `?:` used as a whole statement gains (no change in
+   ccish's own programs). The patch is `../,void-cond.patch`, kept for
+   a decision: parse_conditional() drops each side's value when the
+   `?:` is the statement's own operator (its nesting depth, set by
+   parse_expr_statement()), so an assignment side just stores.
 
 5. **A store, then a load of the same local, apart.** rod's row loop
    computes the color word `s2`, stores it (`SLW`), loads the screen
@@ -97,6 +118,16 @@ listed here.
    DUP": either the guide or peep.c should change. Safe for a local
    that isn't volatile. Small for rod (once a ring), but cheap to add.
 
+   *Status (2026-11-09):* done (peep.c, `repeats_load()`): two equal
+   loads of a local or global (`LLB`, `LLW`, `LAB`, `LAW`), or a keeping
+   store and a load of what it kept (`DLW n LLW n`), make the second a
+   `DUP`, once a third op follows that no other rule joined to the
+   load, so `x + x` stays `LLW ADDLW`. A volatile op is odd, and
+   matches none of them. ccgen +142 bytes; ccpp's code -6, cccomp's -7.
+   New test: `tests/gen/gendup.c`. Where the repeated load was a
+   local's last read, the store before it is then dead at a `LEAVE`,
+   and goes: `y = x + 1; return y * y;` is `LLW INCR DUP MUL`.
+
 7. **Multiplying a byte by 257.** `b * 0x0101` (a byte in both bytes
    of a word) is a MUL, about 580 cycles; for a `char` b,
    `b | (b << 8)` is about 230. rod writes the shift itself. Possible
@@ -109,6 +140,14 @@ listed here.
    constant is still an address constant (C11 6.6p9), so cccomp should
    fold it like the others.
 
+   *Status (2026-11-09):* done (pexpr.c, `fold_held()`): a constant
+   pointer before `+` or `-` is held back like an integer constant, and
+   folds with a constant right side, scaled by the element size, in a
+   global's initializer as in code. cccomp +28 bytes of code (+35 for
+   the fold, -7 from the DUP rule). New tests: `tests/run/ptr_const.c`,
+   and `tests/errors/ptr_const_void.c` (`void *` arithmetic is still an
+   error). lores.c now writes `(char *)PAGE1 + OFF(r)`.
+
 9. **ccpp's 255-character limits.** A macro's continuation lines,
    joined, must fit ccpp's 255-character line, padding included, and
    its expansion has a limit too ("macro expansion too long"). Macros
@@ -116,6 +155,11 @@ listed here.
    splits its drawing macros into six small ones. Raising the limits
    costs ccpp memory; dropping the padding before a `\` when joining
    would ease the first at no cost.
+
+   *Status (2026-11-09):* not done. A backslash-newline may splice a
+   string literal, where the spaces are part of the string, so
+   collapsing them safely means knowing whether the join is inside a
+   literal.
 
 ## The VM
 

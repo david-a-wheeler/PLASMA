@@ -1,0 +1,72 @@
+    ; sq
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    DUP
+    MUL
+    LEAVE 2
+
+    ; sqc
+    ENTER 2 1
+    ; label 103
+    LLB 0
+    DUP
+    MUL
+    LEAVE 2
+
+    ; sqg
+    ENTER 0 0
+    ; label 103
+    LAW data +0
+    DUP
+    MUL
+    LEAVE 0
+
+    ; sq1
+    ENTER 4 1
+    ; label 103
+    LLW 0
+    INCR
+    DUP
+    MUL
+    LEAVE 4
+
+    ; dbl
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    ADDLW 0
+    LEAVE 2
+
+    ; sqv
+    ENTER 0 0
+    ; label 103
+    LAW.v data +2
+    LAW.v data +2
+    MUL
+    LEAVE 0
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CN 2
+    SAW data +0
+    CN 3
+    CALL sq
+    CN 4
+    CALL sqc
+    ADD
+    CALL sqg
+    ADD
+    CN 4
+    CALL sq1
+    ADD
+    CN 3
+    CALL dbl
+    ADD
+    CALL sqv
+    ADD
+    CB 60
+    ISEQ
+    NEG
+    LEAVE 0

@@ -1098,8 +1098,9 @@ stored in the module, so they cost no code. The forms:
   (or `static` local's) address, with any constant indexes and
   members (`&m[1][2]`, `&s.y`, `&ps[1].x`), an array's name, casts to
   pointer types, and `+` or `-` a constant (`buf + 10`, `2 + buf`,
-  `"abc" + 1`, `(char *)0xC030`). The expression parser folds these
-  in code too, so `buf + 10` is one address push. Casting an address
+  `"abc" + 1`, `(char *)0xC030`, `(char *)0x400 + 128`, which is
+  `(char *)0x480`; an `int *` adds twice the constant). The expression
+  parser folds these in code too, so `buf + 10` is one address push. Casting an address
   to an integer (`(int)&x`) gives "initializer is not a constant
   ccish supports".
 * Arrays: a brace list (`int t[5] = {1, 2, 3};`), with the rest zero
@@ -1784,7 +1785,9 @@ ccgen works in stages over the IR stream:
    to optimize it  until nothing changes. For example,
    unreachable code after a `RET` or branch is
    dropped, a store followed by a load of the same variable is one
-   `DLW`, a duplicate load is a `DUP`, `+0` and friends are removed,
+   `DLW`, a load repeated (`x * x`) is a `DUP`, unless it fuses with
+   what follows (`x + x` is `LLW ADDLW`) or is volatile, `+0` and
+   friends are removed,
    a multiply by 0, 1, 3 or a power of two avoids `MUL`, and a test
    followed by a branch becomes the single branch op
    (`ISEQ BRFLS` to `BRNE`, `NOT BRFLS` to `BRTRU`). This optimization runs to

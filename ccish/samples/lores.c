@@ -22,14 +22,12 @@ _Static_assert(GROUPS * GROUP_STRIDE <= ROW_STRIDE, "groups fit");
 #define OFF(r) (((r) & (GROUP_ROWS - 1)) * ROW_STRIDE \
                 + ((r) >> GROUP_SHIFT) * GROUP_STRIDE)
 
-/* Text row r's address. (ccish doesn't yet fold a cast constant plus
- * an offset, (char *)0x400 + 128, in an initializer, so the real
- * screen's addresses add first, then cast.) */
+/* Text row r's address. */
 #ifdef LORES_TEST
 char lores_screen[PAGE_SIZE];
 #define R(r) (lores_screen + OFF(r))
 #else
-#define R(r) ((char *)(PAGE1 + OFF(r)))
+#define R(r) ((char *)PAGE1 + OFF(r))
 #endif
 
 /* Two entries, for text row r's two lores rows. */

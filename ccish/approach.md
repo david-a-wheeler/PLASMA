@@ -8602,3 +8602,34 @@ bigger; for a "prefer speed" option).
 for scope is NAME.SCOPE.h (AGENTS.md, "Split headers"), so diagsrc.h
 is now diag.src.h, and objfmt.h and objsym.h, split from obj.h for
 B5, are obj.fmt.h and obj.sym.h. Earlier entries use the old names.
+
+**Optimizations from Rod's Colors, 2026-11-09** (asked for in
+discussion: "duplicate loads become DUP", fold `(char *)0x400 + 128`,
+and the reasonable rest of doc/rod-optimizing.md's list, but nothing
+large or that other programs wouldn't use). Built:
+- **A repeated load is a `DUP`** (peep.c, `repeats_load()`): `LLW n
+  LLW n` and the `LLB`, `LAW` and `LAB` forms, and a keeping store then
+  its load (`DLW n LLW n`). It waits for a third op that no rule joins
+  to the load, since `x + x` is better as `LLW ADDLW`; a volatile op is
+  odd and matches none. Test `gendup.c`; `genret`, `gentail` and
+  `genvolprobe` each gain one `DUP` (in `vbodyset`, the counted loop's
+  refresh of `i` then `vg = i`: the volatile store stays).
+- **A constant pointer plus or minus a constant folds** (pexpr.c,
+  `fold_held()`, the same branch as an address constant's), so it's an
+  address constant in an initializer. Tests `ptr_const.c`,
+  `ptr_const_void.c`.
+
+Sizes (small build, code): ccpp 13,545 to 13,539, cccomp 25,854 to
+25,882 (module file 44,017 to 44,044), ccgen 19,726 to 19,868, ccrel
+unchanged. 447 tests pass.
+
+Built and set aside for a decision: **a `?:` statement drops its
+sides' values** (`../,void-cond.patch`): cccomp +71 bytes of code, for
+`?:` used as a statement only. Not done: loop-invariant code motion,
+common subexpressions in read-modify-writes, and the commutative
+reordering of a store and its reload (each needs temporaries and a
+bigger matcher, for programs written plainly; rod.c shows the source
+can do them); collapsing spaces at a joined line in ccpp (unsafe inside
+a string literal). Proposed: `register`, which guarantees no address,
+so a nested counted loop over register locals could allow stores
+through pointers (doc/rod-optimizing.md, item 3).

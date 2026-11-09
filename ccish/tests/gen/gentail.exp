@@ -115,7 +115,7 @@
     LEAVE 2
     ; label 0
     LLW 0
-    LLW 0
+    DUP
     DECR
     CALL gt4
     MUL
