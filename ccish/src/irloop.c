@@ -64,9 +64,9 @@ static char lab_ref[MAX_LABELS];    // a branch to it has been read
 // take the addresses of the variable or the limit's locals, call anything
 // (the two values stay on the eval stack across a call, and a body
 // that recursed would fill it), or hold a loop; nor, in a loop
-// inside another loop, store through a pointer (a pointer to the
-// variable might be taken later in the outer loop, before this one
-// runs again). Their addresses mustn't have been taken earlier in the
+// inside another loop, or after a goto label (goto_seen), store
+// through a pointer (a pointer to the variable might be taken later in
+// the outer loop, before this one runs again). Their addresses mustn't have been taken earlier in the
 // function either (addr_taken[]). Anything else in the body, or a body
 // too big for lp_op[], makes it a loop like any other (body_plain()).
 // A return in the body first drops the two values under its result,
@@ -97,6 +97,11 @@ static int cl_ls, cl_le, cl_const, cl_lim, cl_load;
 static int cl_loc[LIM_NAMES], cl_nloc;
 static int cl_gf[LIM_NAMES], cl_ga[LIM_NAMES], cl_ngl;
 static unsigned char addr_taken[32];    // frame offsets: a bit each
+// A goto label has been placed in this function: a goto back to it
+// makes a loop around what follows, as an enclosing loop does, so a
+// loop after it counts as nested (code after the loop may take its
+// variable's address before the goto runs it again).
+static char goto_seen;
 
 // Hold a jump to label n.
 static void jump(int n)
@@ -384,7 +389,7 @@ static int counted_shape(int d, int lbody)
   if (!limit_ok(cl_ls, cl_le) || taken(cl_var) || cl_step == 0
       || (cl_step > 0) != (cl_cmp == IR_LT || cl_cmp == IR_LE))
     return 0;
-  cl_nested = d > 0;
+  cl_nested = d > 0 || goto_seen;
   return 1;
 }
 
@@ -671,9 +676,12 @@ int loop_take(int op, int a, int f)
       lab_ref[i] = 0;
     for (i = 0; i < 32; i++)
       addr_taken[i] = 0;
+    goto_seen = 0;
   } else if (op == IR_ENDFUNC && lp_depth) {
     ir_damaged();               // a loop not ended
   }
+  if (op == IR_LABEL && IS_GOTO_LABEL(a))
+    goto_seen = 1;
   if (IR_REFS_LABEL(op))
     lab_ref[a] = 1;
   else if (op == IR_JOIN)
