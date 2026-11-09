@@ -22,7 +22,11 @@ int parse_const(int msg, int part);
 // to, as C requires (the rules in pexpr.c's check_assign). where is
 // a message part saying where: "assignment", or "argument" with a
 // detail.
+#ifdef CCISH_LINT
 void check_assign(int to, Operand *o, int where, const char *detail);
+#else
+#define check_assign(to, o, where, detail)
+#endif
 
 // Convert the value *o to char: keep the low byte. A constant stays
 // pending; anything else ends up on the stack.

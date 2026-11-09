@@ -15,16 +15,16 @@ mkdir -p "$OUT"
 printf 'int main()\n{\n  return y;\n}\n' >"$OUT/a.c"
 printf 'int f(void);\nint g(void) { return zz; }\n' >"$OUT/h.h"
 printf '#include "h.h"\nint main()\n{\n  return 0;\n}\n' >"$OUT/b.c"
-printf 'int main(void)\n{\n  switch (1) { case 3: case 3: return 0; }\n  return 1;\n}\n' >"$OUT/c.c"
+printf '#frobnicate\nint main(void) { return 0; }\n' >"$OUT/c.c"
 printf '_Static_assert(0, "kept here");\nint main(void) { return 0; }\n' >"$OUT/s.c"
 printf '#error stop here\nint main(void) { return 0; }\n' >"$OUT/e.c"
 
 # $1 the source's tag, $2 the full build's message, $3 its detail.
 check() {
-    full=$(cd "$OUT" && ../../../ccpp -o "f$1" "$1.c" \
-           && ../../../cccomp "f$1" 2>&1)
-    small=$(cd "$OUT" && ../../../ccpp-small -o "s$1" "$1.c" \
-            && ../../../cccomp-small "s$1" 2>&1)
+    full=$(cd "$OUT" && { ../../../ccpp -o "f$1" "$1.c" \
+           && ../../../cccomp "f$1"; } 2>&1)
+    small=$(cd "$OUT" && { ../../../ccpp-small -o "s$1" "$1.c" \
+            && ../../../cccomp-small "s$1"; } 2>&1)
     driver=$(cd "$OUT" && ../../../ccish -o "d$1" "$1.c" 2>&1)
     if [ "$full" != "$2 $3" ] || [ "$driver" != "$2 $3" ]; then
         echo "FAIL smalldiag $1: wanted '$2 $3' from the full build, got:"
@@ -37,7 +37,7 @@ check() {
 }
 check a "a.c:3: error 64: undeclared identifier" "'y'"
 check b "h.h:2: error 64: undeclared identifier" "'zz'"
-check c "c.c:3: error 137: duplicate case value" "3"
+check c "c.c:1: error 234: unknown preprocessor directive:" "#frobnicate"
 
 # $1 the source's tag, $2 the message, the same in both builds, its
 # detail kept.

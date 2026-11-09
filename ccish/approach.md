@@ -5116,6 +5116,27 @@ issue. In summary:
     in #error and _Static_assert. Measured (code, data and strings):
     cccomp 329 bytes smaller, ccpp 118, ccgen 10; ccrel 17 bigger,
     for its kept details. A detail must now have no side effect.
+44. **The small build leaves out checks that only reject invalid
+    programs** (decided in discussion, 2026-11-09: "We simply don't
+    have the space"). A feature macro, CCISH_LINT (build.h), on in the
+    full build only, holds the checks a correct program never fails
+    and whose absence changes no correct program's code: assignment,
+    initializer, argument and return types, pointer comparisons and
+    subtraction, const, conflicting redeclarations, duplicate cases
+    and labels, undefined labels, incomplete members and array
+    elements, and constant operands with undefined behavior. So the
+    small build doesn't fully conform to C, on purpose: it accepts
+    some incorrect programs (the guide's section 2.7 lists the checks,
+    with their C11 clauses, and says to use the full build or another
+    compiler to find them). Not moved: any check of what ccish can't
+    compile, valid C or not, since without it a valid program would be
+    miscompiled: two definitions with storage (int x; int x;, valid
+    tentative definitions in C), and a variable, by-value parameter
+    or result of an incomplete type (valid in some places in C). For
+    a correct program both builds still write the same objects (the
+    small build's tests check it); the full build still rejects each
+    error (the error tests). cccomp 960 bytes smaller (27,357 to
+    26,397), the most of any change in this series.
 
 
 ## Milestones

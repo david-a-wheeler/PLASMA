@@ -493,6 +493,7 @@ int parse_local_init(int type, int name, int base)
   return type;
 }
 
+#ifdef CCISH_LINT
 // Can a global of type a be declared again with type b? They must be
 // the same, except that one array may leave its size out.
 static int same_global_type(int a, int b)
@@ -502,6 +503,7 @@ static int same_global_type(int a, int b)
   return is_array(a) && is_array(b) && type_sub(a) == type_sub(b)
          && (type_count(a) == 0 || type_count(b) == 0);
 }
+#endif
 
 // Declare a global named name of type type, with storage class storage
 // (T_STATIC, T_EXTERN or 0), and return it. An extern one has no
@@ -523,15 +525,21 @@ static int declare_global(int name, int type, int storage)
     }
     return s;
   }
+  // Not a validity check only: two with storage (int x; int x;, valid
+  // C, tentative definitions) are something ccish can't compile.
   if (storage != T_EXTERN && !(var_link[s] & VL_EXTERN))
     error(27 /* "redeclaration of" */, quote(name));    /* two have storage */
+#ifdef CCISH_LINT
   if (!same_global_type(var_type[s], type))
     error(165 /* "conflicting declaration of" */, quote(name));
+#endif
   if (type_count(type) > 0)
     var_type[s] = type;         // extern int a[]; then int a[10];
+#ifdef CCISH_LINT
   if (storage == T_STATIC && !(var_link[s] & VL_STATIC))
     error(217 /* "static declaration follows a non-static declaration"
                  " of" */, quote(name));
+#endif
   if (storage == T_EXTERN)
     return s;
   var_link[s] &= ~VL_EXTERN;
@@ -728,14 +736,18 @@ int declare_function(int name, int type, int is_static)
   int f;
   type = UNQUAL(type_sub(type));
   check_byval(type, 0);
+#ifdef CCISH_LINT
   if (find_var(name) >= 0)
     error(27 /* "redeclaration of" */, quote(name));
   check_not_id(name);
+#endif
   f = find_func(name);
   if (f < 0)
     f = add_func(name);
+#ifdef CCISH_LINT
   if ((fn_flags[f] & FN_DECLARED) && fn_type[f] != type)
     error(165 /* "conflicting declaration of" */, quote(fn_name[f]));
+#endif
   fn_type[f] = type;
   if (is_static)
     fn_flags[f] |= FN_STATIC;
@@ -783,9 +795,11 @@ static int new_func;
 int begin_function(int name)
 {
   int n;
+#ifdef CCISH_LINT
   if (find_var(name) >= 0)
     error(27 /* "redeclaration of" */, quote(name));
   check_not_id(name);
+#endif
   new_func = find_func(name);
   if (new_func < 0)
     new_func = add_func(name);
@@ -911,8 +925,10 @@ static void parse_toplevel(void)
             quote(fn_name[f]));
   if (fn_flags[f] & FN_DEFINED)
     error(104 /* "redefinition of" */, quote(fn_name[f]));
+#ifdef CCISH_LINT
   if ((fn_flags[f] & FN_DECLARED) && fn_type[f] != type)
     error(165 /* "conflicting declaration of" */, quote(fn_name[f]));
+#endif
   if (nparams_of(f) >= 0 && nparams_of(f) != nparams)
     error(169 /* "parameter count differs from earlier use of" */,
           quote(fn_name[f]));

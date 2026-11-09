@@ -55,6 +55,20 @@
 //   CCISH_TEXT     ccpp -E, the token stream as text (ppout.c): for
 //                  debugging, so in the full build only for now; it can
 //                  be put in the small build if ccpp has room.
+//   CCISH_LINT     the checks that only reject invalid programs, where
+//                  a valid one compiles the same either way: the type
+//                  checks of assignments, initializers, arguments,
+//                  returns and pointer comparisons and subtractions,
+//                  const, conflicting redeclarations, duplicate cases
+//                  and labels, undefined labels, incomplete members and
+//                  array elements, and constant operands with undefined
+//                  behavior (the guide's section 2.7; approach.md
+//                  decision 44). Without them, the small build accepts
+//                  such a program, and compiles something; the full
+//                  build rejects it. Not here: any check of what ccish
+//                  can't compile, valid C or not (two definitions with
+//                  storage, an incomplete variable or by-value type),
+//                  which would be miscompiled without it.
 //   CCISH_DIAG     detailed diagnostics: the spellings in cccomp's
 //                  messages (names, tags and tokens, from NAME.nam and
 //                  ccish.msg), its warnings, and every program's
@@ -78,6 +92,7 @@
 #define CCISH_CHECKS
 #define CCISH_TEXT
 #define CCISH_DIAG
+#define CCISH_LINT
 #endif
 
 // Is x in the block of size numbers from first? With size a power of 2

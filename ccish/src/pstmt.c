@@ -218,8 +218,10 @@ int parse_declarator(int base, int flags, int *name)
       t = func_of(t);
       continue;
     }
+#ifdef CCISH_LINT
     need_complete(t, 209 /* "an array element can't have the incomplete"
                             " type" */);
+#endif
     if (type_size(t) == 0)
       error0(91 /* "array elements can't have type void" */);
     if (step_val[i] == 0 && i != nsteps - 1)
@@ -290,8 +292,10 @@ static void parse_members(int tag, int is_union)
         error0(87 /* "array size missing" */);
       if (UNQUAL(t) == TY_VOID)
         error0(98 /* "a struct or union member can't have type void" */);
+#ifdef CCISH_LINT
       need_complete(t, 208 /* "a struct or union member can't have the"
                               " incomplete type" */);
+#endif
       if (member_find(tag, name) >= 0)
         error(99 /* "duplicate struct or union member" */, quote(name));
       if (off > MAX_OBJECT - type_size(t))
@@ -799,8 +803,11 @@ static int sw_default = -1;
 // expression, not already used in this switch.
 static void parse_case_labels(void)
 {
-  char buf[8];
-  int l, i, v;
+#ifdef CCISH_LINT
+  char buf[8];                      // the duplicate check's
+  int i;
+#endif
+  int l, v;
   while (T_IS_CASE_LABEL(tok)) {
     if (sw_first < 0)
       error(tok == T_CASE ? 133 /* "'case' is not inside a switch" */
@@ -816,12 +823,14 @@ NULL);
       next();
       v = parse_const(136 /* "a case label must be an integer constant" */,
                       204 /* "(a case label must be one)" */);
+#ifdef CCISH_LINT
       for (i = sw_first; i < ncases; i++)
         if (case_val[i] == v) {
           // A copy: reporting uses num_text() too.
           strcpy(buf, num_text(v));
           error(137 /* "duplicate case value" */, buf);
         }
+#endif
       if (ncases >= MAX_CASES)
         fatal0(138 /* "too many case labels in the switches open at "
                       "once" */);

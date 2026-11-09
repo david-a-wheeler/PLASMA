@@ -285,6 +285,7 @@ int typedef_type(int name)
   return i >= 0 && id_k[i] == ID_TYPEDEF ? id_v[i] : -1;
 }
 
+#ifdef CCISH_LINT
 // Report a redeclaration if an enum constant or typedef named name was
 // declared at the current depth (where a variable, function or another
 // of them named name is about to be).
@@ -305,6 +306,7 @@ void check_not_var(int name)
   if (depth == 0 && find_func(name) >= 0)
     error(27 /* "redeclaration of" */, quote(name));
 }
+#endif
 
 // Push a variable named name (an id, or -1 for an unnamed prototype
 // parameter) of type type at the current depth, at offset off, with
@@ -648,6 +650,7 @@ static unsigned magnitude(int v)
   return v < 0 ? 0u - (unsigned)v : (unsigned)v;
 }
 
+#ifdef CCISH_LINT
 // Reject a constant right operand that would make op undefined in C.
 // The VMs disagree on these cases too (division by zero crashes plvm;
 // shift counts use only the low byte on the 6502).
@@ -659,6 +662,7 @@ void check_right_const(int op, int v)
     error(35 /* "shift count out of range (0 to 15):" */,
           v < 0 ? "negative" : "too big");
 }
+#endif
 
 // a op b, as the VM computes it: C's rules for a 16-bit int. / truncates
 // toward zero, % has the dividend's sign, >> is arithmetic, and
@@ -786,8 +790,10 @@ int goto_label(int id, int def)
   for (i = 0; i < nlbls; i++)
     if (lbl_id[i] == id) {
       if (def) {
+#ifdef CCISH_LINT
         if (lbl_def[i])
           error(313 /* "duplicate label" */, quote(id));
+#endif
         lbl_def[i] = 1;
       }
       return lbl_num[i];
@@ -800,6 +806,7 @@ int goto_label(int id, int def)
   return n;
 }
 
+#ifdef CCISH_LINT
 // At a function's end: a goto's target that was never defined.
 void check_goto_labels(void)
 {
@@ -808,6 +815,7 @@ void check_goto_labels(void)
     if (!lbl_def[i])
       error(314 /* "undefined label" */, quote(lbl_id[i]));
 }
+#endif
 
 // Emit branch op (IR_JUMP, IR_BRFALSE, ...) to label n.
 void branch(int op, int n)
@@ -1275,13 +1283,17 @@ void need_lvalue(Operand *o, int what)
 {
   if (is_array(o->type) && is_place(o))
     error_in(40 /* "an array can't be the" */, what, NULL);
+#ifdef CCISH_LINT
   if (o->quals & Q_CONST)      // first: a folded const isn't a place
     error_in(42 /* "a 'const' object can't be the" */, what, NULL);
+#endif
   if (!is_place(o) || o->assigned || is_func(o->type))
     error_in(41 /* "lvalue required as" */, what, NULL);
+#ifdef CCISH_LINT
   if (holds_qual(o->type, Q_CONST))  // (a const o stopped above)
     error_in(43 /* "a struct with a 'const' member can't be the" */,
              what, NULL);
+#endif
 }
 
 // Store the value on the stack into lvalue o, which is K_VAR or

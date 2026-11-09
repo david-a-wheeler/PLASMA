@@ -68,6 +68,12 @@ The working rule is:
     some wrong programs (a variable of an enum type never defined).
   * `struct W` and `union W` share one tag name space, so a name
     can't be both (the standard C lets them coexist; section 4.11).
+* **The small build, for the Apple II, doesn't fully conform to the
+  C standard:** to fit in 64K it intentionally leaves out some
+  compile-time checks the standard requires, so it accepts some
+  invalid programs (section 2.7). This never affects a correct
+  program, which compiles to exactly the same code in both builds.
+  The full build, on the host, makes every check.
 
 ### 1.2 Self-hosting on the Apple II
 
@@ -84,8 +90,10 @@ everything:
 * Every table is a fixed size set just above what ccish's own source
   needs; going past one is a clear error (section 9.3).
 * The same source makes two builds (section 2.6): the full build,
-  with all the checks, and the small build for the 64K machine. The
-  small build writes exactly the same objects and modules.
+  with all the checks, and the small build for the 64K machine. For
+  a correct program, the small build writes exactly the same objects
+  and modules; it leaves out some checks of incorrect ones (section
+  2.7).
 
 ### 1.3 Where it fits
 
@@ -284,15 +292,74 @@ source must print the same under ccish and under a host compiler
 
 The same source makes two builds. The full build, the default, has
 everything. The small build, for the 64K Apple II, is made with
-`-DCCISH_SMALL`: it leaves out `-l` and `-d`, and checks that only a compiler
-bug or a damaged file would fail (so far `ccgen`'s check of the
-blocks it moves; later, diagnostics that a valid program never
-triggers). `ccgen -i` is in both. The small `cccomp` gives no
-warnings, and each error only its file, line, number and text: for
-example `a.c:3: error 64: undeclared identifier`, where the full build
-adds `'y'`. So the small build should compile only code the full build
-(or gcc) has already accepted. It writes
-exactly the same objects and modules; the tests check that.
+`-DCCISH_SMALL`: it leaves out `-l` and `-d`, checks that only a
+compiler bug or a damaged file would fail (`ccgen`'s check of the
+blocks it moves), and the compile-time checks that only an incorrect
+program fails (section 2.7). `ccgen -i` is in both. The small
+`cccomp` gives no warnings, and each error only its file, line,
+number and text: for example `a.c:3: error 64: undeclared
+identifier`, where the full build adds `'y'`. Only a few details stay,
+those that are the only clue to what's wrong: a function's name, a
+file that can't be opened, an undefined symbol, and the program's own
+text in `#error` and `_Static_assert`. So the small build should
+compile only code the full build (or gcc) has already accepted. For a
+correct program it writes exactly the same objects and modules; the
+tests check that.
+
+### 2.7 Checks the small build leaves out
+
+The small build doesn't make some of the compile-time checks the C
+standard requires: there isn't room for them in a 64K Apple II. This
+makes the small build not fully conform to the C standard, on
+purpose. It never affects a correct program: a program the full build
+accepts compiles to exactly the same code in the small build. But the
+small build accepts some incorrect programs, and compiles something
+for them, where a conforming compiler must report an error. The full
+build, on the host (section 2.6), makes every one of these checks.
+
+These are the checks the small build doesn't make, though the
+standard requires a diagnostic for each (C11 clauses given):
+
+1. **Assignment types** (6.5.16.1): assigning, initializing (6.7.9),
+   passing an argument (6.5.2.2) or returning a value (6.8.6.4) of an
+   incompatible type: a struct of another type, a pointer from an
+   integer or the other way around (without a cast), or a pointer to
+   an incompatible type; and using the value of a `void` expression
+   there.
+2. **Pointer comparisons and subtraction** (6.5.8, 6.5.9, 6.5.6):
+   comparing a pointer with an integer other than a null pointer
+   constant, or pointers to incompatible types, and subtracting
+   pointers to incompatible types.
+3. **Assigning to a const object** (6.5.16, 6.3.2.1), or to a struct
+   with a const member. (Assigning to a const variable whose value is
+   known still fails, as "lvalue required".)
+4. **Conflicting declarations** (6.7): a global or function declared
+   again with a different type; an enum constant, typedef name,
+   variable or function declared twice in one scope with different
+   meanings; and `static` after a declaration that isn't (6.2.2,
+   undefined in C).
+5. **Duplicate case values** in one `switch` (6.8.4.2), and **labels
+   defined twice** in one function (6.8.1). (A label defined twice
+   still stops `ccgen`, with an internal error message.)
+6. **A goto to a label never defined** (6.8.6.1). (This also still
+   stops `ccgen`, with an internal error message.)
+7. **A struct member or array element of an incomplete type**
+   (6.7.2.1, 6.7.6.2).
+
+The small build also doesn't reject division by a constant 0, or a
+shift by a constant outside 0 to 15. C doesn't require a diagnostic
+for those (the behavior is undefined), so leaving them out doesn't
+change conformance; the full build reports them.
+
+To find these errors, compile with the full build of ccish on a host
+(section 2.6), or with another C compiler, such as `gcc -fsyntax-only
+-Wall` or `clang -fsyntax-only` (section 1.1 has what to expect of
+ccish's C under them). The checks the small build still makes are
+those of anything ccish can't compile, valid C or not, since without
+them it would compile a valid program wrongly: syntax, the
+constructs it doesn't support, its limits, two definitions of one
+global, and variables and by-value parameters and results of an
+incomplete type.
 
 ## 3. Lexical conventions
 

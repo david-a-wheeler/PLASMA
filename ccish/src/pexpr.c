@@ -59,6 +59,7 @@ static int compatible(int a, int b)
 // reads (CCPP.md, "The stamp").
 static int arg_no, arg_fn;
 
+#ifdef CCISH_LINT
 // The detail of a message from check_assign(): its own, or for an
 // argument (where "argument", with none), "N of 'f'".
 static const char *assign_detail(int where, const char *detail)
@@ -124,6 +125,7 @@ void check_assign(int to, Operand *o, int where,
              where, assign_detail(where, detail));
   }
 }
+#endif
 
 // Make o's value C's truth value: 1 if it is nonzero, else 0. A
 // constant stays pending; anything else ends up on the stack.
@@ -1236,6 +1238,7 @@ static void push_scaled(Operand *i, int p)
 // then push r. Pointers are compared unsigned (binary()).
 static void compare_pointers(Operand *o, Operand *r, int op)
 {
+#ifdef CCISH_LINT
   int lt = o->type, rt = value_type(r->type);
   if (!is_pointer(lt) || !is_pointer(rt)) {
     if (is_relational(op) || !(is_null(o) || is_null(r)))
@@ -1244,6 +1247,10 @@ static void compare_pointers(Operand *o, Operand *r, int op)
                                : !compatible(lt, rt)) {
     error0(84 /* "comparison of incompatible pointer types" */);
   }
+#else
+  (void)o;
+  (void)op;
+#endif
   rvalue(r);
 }
 
@@ -1329,8 +1336,10 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
     result = rt;
   } else if (is_pointer(lt) && is_pointer(rt) && op == IR_SUB) {
     // p - q: the difference in elements.
+#ifdef CCISH_LINT
     if (!same_target(lt, rt))
       error(48 /* "incompatible pointer types in" */, "subtraction");
+#endif
     n = elem_size(lt);
     rvalue(r);
     put_op(IR_SUB);
@@ -1395,8 +1404,10 @@ static void compound_elem(Operand *x, Operand *r, int op)
 {
   int mid = ir_here(), h = nheld, calls = ncalls, start, xm;
   parse_expr(PREC_ASSIGN, r);
+#ifdef CCISH_LINT
   if (r->kind == K_CONST && !suppress)
     check_right_const(op, r->val);
+#endif
   start = code_start(mid, h);
   if (ir_here() == mid) {
     rvalue(x);
@@ -1588,8 +1599,10 @@ static void parse_assign(Operand *o, int ir_op, int m0, int h0)
     x = *o;
     rvalue(&x);
     parse_expr(PREC_ASSIGN, &r);
+#ifdef CCISH_LINT
     if (r.kind == K_CONST && !suppress)
       check_right_const(ir_op, r.val);
+#endif
     binary(&x, &r, ir_op, -1, -1);
     r = x;
   } else {
@@ -1741,8 +1754,10 @@ void parse_expr(int min_prec, Operand *o)
     mid = ir_here();
     next();
     parse_expr(prec + 1, &r);   // all binary ops are left-assoc
+#ifdef CCISH_LINT
     if (r.kind == K_CONST && !suppress)
       check_right_const(ir_op, r.val);
+#endif
     if (mark >= 0 && nheld > mark
         && fold_held(o, &r, ir_op, is_addr ? &addr : NULL))
       continue;

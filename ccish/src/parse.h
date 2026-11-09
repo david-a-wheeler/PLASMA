@@ -216,8 +216,13 @@ int  matches_cmdsys(int f, int c);
 int  find_var(int name);
 int  find_id(int name);
 int  typedef_type(int name);
+#ifdef CCISH_LINT
 void check_not_id(int name);
 void check_not_var(int name);
+#else
+#define check_not_id(name)
+#define check_not_var(name)
+#endif
 int  add_global(int name, int type);
 int  add_local(int name, int type, int size);
 int  push_var(int name, int type, int off, int flags);
@@ -239,7 +244,11 @@ extern int nlbls;                   // goto labels defined or used;
                                     // both reset at a function's start
 
 int  goto_label(int id, int def);   // a goto's (0), or a label's (1)
+#ifdef CCISH_LINT
 void check_goto_labels(void);
+#else
+#define check_goto_labels()
+#endif
 void place_true(Operand *o);
 void cond_branch(Operand *o, int n, int on_true);
 void enter_nest(void);
@@ -277,7 +286,11 @@ void compile_abort(void);                   // after an error
 extern int in_sizeof;        // parsing sizeof's operand (no scaling)
 int  hold(int op, int a, int f);
 int  var_where(int v);
+#ifdef CCISH_LINT
 void check_right_const(int op, int v);
+#else
+#define check_right_const(op, v)
+#endif
 int  fold(int op, int a, int b, int uns);
 int  swapped_op(int op);
 int  is_compare(int op);
