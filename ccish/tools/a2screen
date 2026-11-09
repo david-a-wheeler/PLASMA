@@ -6,11 +6,12 @@
 #
 # Usage: tools/a2screen ROMDIR DISK.po [SECONDS]
 #
-# ROMDIR holds apple2ee/ with the enhanced IIe's ROMs, named as
-# "mame -listroms apple2ee" lists them. The machine is an enhanced IIe
-# with no 80-column card (so 64K, and a 40-column screen in main
-# memory), no card in slot 4, and the Disk II IWM controller in slot 6,
-# which doesn't need the Disk II's state-machine PROM (341-0028-a).
+# ROMDIR holds MAME's ROM sets for the enhanced IIe (apple2ee, in
+# apple2e.zip) and its default cards (a2diskiing.zip, d2fdc.zip and
+# votrsc01a.zip); "mame -verifyroms apple2ee -rompath ROMDIR" checks
+# them. The machine is an enhanced IIe with no 80-column card (so 64K,
+# and a 40-column screen in main memory), with MAME's default cards:
+# the Disk II controller in slot 6.
 #
 # It never touches the desktop: SDL's dummy drivers and no input
 # providers, so MAME opens no window and takes no keyboard or mouse.
@@ -25,9 +26,9 @@ here=$(dirname "$0")
 
 A2SCREEN_AFTER=$after SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
   timeout $((after + 40)) mame apple2ee -rompath "$romdir" \
-  -aux "" -sl4 "" -sl6 diskiiiwm -flop1 "$disk" \
+  -aux "" -flop1 "$disk" \
   -video none -sound none -keyboardprovider none -mouseprovider none \
   -joystickprovider none -lightgunprovider none \
   -nothrottle -skip_gameinfo -seconds_to_run $((after + 5)) \
   -autoboot_script "$here/a2screen.lua" 2>&1 \
-  | grep -v 'CHECKSUMS\|EXPECTED:\|FOUND:\|might not run correctly'
+  | grep -v '^ *$'

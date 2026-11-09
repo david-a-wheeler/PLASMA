@@ -1,0 +1,24 @@
+#!/bin/sh
+# a2run: boot ProDOS disk images on an emulated 64K Apple IIe in MAME,
+# in a window, with its screen and keyboard: to use PLASMA and ccish's
+# programs by hand. tools/a2screen is the headless, scripted relative.
+#
+# Usage: tools/a2run ROMDIR DISK1.po [DISK2.po]
+#
+# The machine: an enhanced IIe (apple2ee) with no 80-column card, so
+# 64K, as tools/a2screen's, with MAME's default cards: the Disk II
+# controller in slot 6, with DISK1 and DISK2 in its drives (140K
+# images). ROMDIR holds MAME's ROM sets for it, as for tools/a2screen.
+#
+# MAME's keyboard: while the window has focus, keys go to the Apple.
+# F12 (MAME's "UI toggle" key, here, since a Mac keyboard has neither
+# Scroll Lock nor Insert) switches to MAME's own keys and back: then Tab
+# opens MAME's menu, and Esc quits. Closing the window quits too.
+set -eu
+[ $# -ge 2 ] || { echo "usage: $0 ROMDIR DISK1.po [DISK2.po]" >&2; exit 2; }
+romdir=$1
+flop2=
+[ $# -ge 3 ] && flop2="-flop2 $3"
+# shellcheck disable=SC2086
+exec mame apple2ee -rompath "$romdir" -aux "" -flop1 "$2" $flop2 \
+  -window -nomaximize -skip_gameinfo -uimodekey F12

@@ -8931,10 +8931,12 @@ swap whose blocks are no longer held is done at run time through
 **Free memory, measured** (2026-11-09; E1, and doc/plasma-requests.md
 item 15). On MAME 0.285 (Ubuntu's `mame` package), emulating an
 enhanced IIe with 64K: no 80-column card (`-aux ""`, which also keeps
-the text screen in main memory), slot 4 empty, and the Disk II IWM
-controller in slot 6 (`-sl6 diskiiiwm`: MAME's usual Disk II
-controller needs the state-machine PROM, 341-0028-a, which a dump of
-the ROM space can't hold). PLASMA 2.20's own install disk
+the text screen in main memory), and MAME's default cards, the Disk II
+controller in slot 6. (First measured with stand-ins for the ROMs a
+dump of the ROM space can't hold, and the IWM controller, which needs
+no Disk II PROM; then confirmed with MAME's complete ROM sets for the
+IIe, in ~/projects/PLASMA/mame/: the same 41,171, and an Apple II+ with
+a language card gave it too.) PLASMA 2.20's own install disk
 (images/apple/PLEIADES-2.20-INST.po, its AUTORUN renamed so that CMD
 reaches its prompt) prints `PLEIADES 64K VM v2.20` and `MEM FREE:$A0D3`:
 **41,171 bytes**, the heap at the prompt, before FILEIO or any module.
@@ -8949,13 +8951,16 @@ init, calling bytecode directly) would add margin.
   (`tools/a2screen.lua`, a MAME autoboot script). It never touches the
   desktop (SDL's dummy drivers, no input providers: an earlier run
   without them took over the session's input) and always ends (MAME's
-  `-seconds_to_run`, the script's exit, and a timeout). The ROMs: an
-  enhanced IIe's ROM space dumped from the user's own machine, 32K, two
-  16K images of `$C000`-`$FFFF` (the slots' ROMs, then the internal
-  ones); its second half is exactly 342-0304-a and 342-0303-a, and its
-  slot 6 holds the Disk II boot ROM, 341-0027-a. The character and
-  keyboard ROMs aren't in such a dump; zero-filled stand-ins work, since
-  the script reads the screen from memory and types nothing.
+  `-seconds_to_run`, the script's exit, and a timeout).
+  `tools/a2run ROMDIR DISK1.po [DISK2.po]` boots the same machine in a
+  window, with its screen and keyboard, to use by hand (F12 toggles
+  MAME's own keys, since a Mac keyboard has neither Scroll Lock nor
+  Insert). ROMDIR holds MAME's ROM sets for `apple2ee` (in
+  `apple2e.zip`) and its cards (`a2diskiing.zip`, `d2fdc.zip`,
+  `votrsc01a.zip`); `mame -verifyroms apple2ee -rompath ROMDIR` checks
+  them. The user's own dump of a IIe's ROM space matches the system ROMs
+  in them; the character and keyboard ROMs and the Disk II PROM can't
+  be read by the CPU, so a dump of the ROM space can't hold them.
 - *Next.* Measure a disk built from this branch, and then run ccish's
   programs: that needs a way to write ProDOS images (the build scripts
   use AppleCommander, a Java jar, not here), and RLD streaming in the
