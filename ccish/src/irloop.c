@@ -658,38 +658,60 @@ static void ho_put(int op, int a, int f)
   ho_f[nho++] = f;
 }
 
+// Put held op op (with a) at index i.
+static void lp_set(int i, int op, int a)
+{
+  lp_op[i] = (char)op;
+  lp_a[i] = a;
+  lp_f[i] = -1;
+}
+
 // Hoist what can be hoisted from held loop d's body (above): from the
 // end back, each costly op (costly()) whose whole expression is
 // invariant goes, with its expression, to ho_op[], and a load of its
-// temporary takes its place.
+// temporary takes its place. The temporaries are FRAME_TEMP(0) and (1),
+// or (2) and (3) if the body holds an IR_SWAP, which may be done at run
+// time through (0) and (1) (irin.c), while a hoisted value must last
+// the whole loop.
 static void hoist(int d)
 {
-  int i, s, k = 0, n;
+  int i, j, start, k = 0, last;
   nho = 0;
   for (i = cl_body; i < nlp; i++)
     if (lp_op[i] == IR_SWAP)
-      return;
-  for (i = nlp - 1; i > cl_body && k < 2; i--) {
+      k = 2;
+  last = k + 1;
+  for (i = nlp - 1; i > cl_body && k <= last; i--) {
     if (!costly(i))
       continue;
-    s = expr_start(d, i);
-    if (s < 0 || nho + i - s + 3 > HOIST_OPS)
+    start = expr_start(d, i);
+    if (start < 0 || nho + i - start + 3 > HOIST_OPS)
       continue;
-    n = i - s;                  // the ops that go, but one
-    for (; s <= i; s++)
-      ho_put(lp_op[s], lp_a[s], lp_f[s]);
+    for (j = start; j <= i; j++)
+      ho_put(lp_op[j], lp_a[j], lp_f[j]);
     ho_put(IR_SETLOCAL, FRAME_TEMP(k), -1);
     ho_put(IR_DROP, 0, -1);
-    i -= n;                     // its place: a load of the temporary
-    lp_op[i] = IR_LOCAL;
-    lp_a[i] = FRAME_TEMP(k++);
-    lp_f[i] = -1;
-    for (s = i + 1; s + n < nlp; s++) {
-      lp_op[s] = lp_op[s + n];
-      lp_a[s] = lp_a[s + n];
-      lp_f[s] = lp_f[s + n];
+    // Its place: a load of the temporary, at start, then padding up to
+    // i, the costly op's place. The padding is here because the body's
+    // length must not change: an IR_SWAP after it counts the ops of the
+    // two blocks it exchanges (its a and f), and the expression may be
+    // in one of them. Each CONST 0, DROP (and, if the count is odd, one
+    // CONST 0, NEG, DROP: an expression has at least 3 ops, so 2 or
+    // more are padded) leaves the stack as it was, and the peephole
+    // stage removes them all (peep.c: a constant then NEG is a
+    // constant, and a constant then DROP is nothing), so none reach
+    // the code.
+    lp_set(start, IR_LOCAL, FRAME_TEMP(k++));
+    if ((i - start) & 1) {
+      lp_set(i - 2, IR_CONST, 0);
+      lp_set(i - 1, IR_NEG, 0);
+      lp_set(i, IR_DROP, 0);
+      i -= 3;
     }
-    nlp -= n;
+    for (; i > start; i -= 2) {
+      lp_set(i - 1, IR_CONST, 0);
+      lp_set(i, IR_DROP, 0);
+    }
   }
 }
 

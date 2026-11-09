@@ -8851,9 +8851,8 @@ counted loops"). As designed above, with these choices:
   against 2.61 without, and rod.pla's 2.59 (cycles from the listings,
   as before). rodsimple gains only the `!=` test (4.11 to 4.09 s): its
   j loop's body is 327 IR ops, past the 128-op buffer.
-- *Open.* Hoisting from bodies with an `IR_SWAP` (array stores, `a[i]
-  = x`: adjust the swap's block lengths, or hoist only what follows
-  the last swap); a bigger loop buffer (each op is 5 bytes of ccgen's
+- *Open.* Hoisting from bodies with an `IR_SWAP` (done: "Hoisting from
+  loop bodies with an `IR_SWAP`", below); a bigger loop buffer (each op is 5 bytes of ccgen's
   data); `char` loop variables in counted loops and `!=` tests (a
   `char` counter can't count past 255); register parameters; and
   common subexpressions among hoisted values (two equal ones take two
@@ -8882,3 +8881,35 @@ wrapping step of 3, which C runs 87 times and a count would 2, `<=` a
 `char`, an `int` limit; `!=` for one that calls). ccgen +233 bytes.
 Op counts: `arrays.c` -1.9%, no other run test changes. 456 tests
 pass; the bootstrap's stages agree.
+
+**Hoisting from loop bodies with an `IR_SWAP`** (2026-11-09; discussed:
+option B's risks, then "Go ahead with padding and temps 2 and 3").
+`hoist()` used to skip a body holding an `IR_SWAP`, for two reasons.
+An `IR_SWAP` counts the ops of the two blocks it exchanges, so
+shortening the body before it would leave its lengths wrong. And a
+swap whose blocks are no longer held is done at run time through
+`FRAME_TEMP(0)` and `(1)`, the temporaries hoisting used. Now:
+- *Padding, not shortening.* The hoisted expression's place keeps its
+  length: a load of the temporary, then ops that leave the stack as it
+  was, `CONST 0 DROP` pairs and, for an odd count, one `CONST 0 NEG
+  DROP` (an expression has at least 3 ops, so at least 2 are padded).
+  No count anywhere changes, so no swap's lengths need fixing, and the
+  peephole stage removes the padding (a constant then `NEG` is a
+  constant; a constant then `DROP` is nothing), so none reaches the
+  code. No IR op was needed (discussed: "we already want to optimize
+  anyway"). This also dropped hoisting's loop that moved the body down.
+- *Temporaries 2 and 3* for a body with an `IR_SWAP`, so that a run-time
+  exchange (a stash or a full exchange) can't overwrite a hoisted
+  value, which must last the whole loop: up to 2 more frame words in
+  such a function. The full build's check of each moved block
+  (`check_block()`) still guards the swaps.
+- *Tests.* `genhoist.c` pins a store with a swap (temporary 2), odd and
+  even padding (none left in the code), two hoists in one body, and a
+  run-time stash (`*q /= g(i)`, an `IR_SWAP` with -1) beside a hoisted
+  value, which would be overwritten in temporary 0. `xhoist.c` crosses
+  with gcc each shape of store: `a[i + 1]`, `*q++`, `int` and `char`
+  elements, an expression in the address, a struct's members, a store
+  through an element (`a[c[i]]`), a 2-D store in nested register loops
+  (where `j * 12`, the row's offset, is hoisted too), and the stash.
+  ccgen +11 bytes. 458 tests pass; the bootstrap's stages agree. No
+  existing run test has such a loop, so no op count changes.

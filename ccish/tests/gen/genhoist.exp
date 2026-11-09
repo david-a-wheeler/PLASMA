@@ -1,0 +1,160 @@
+    ; with_swap
+    ENTER 6 2
+    ; label 103
+    LLW 0
+    LLW 2
+    MUL
+    CN 3
+    DIV
+    SLW -4
+    CN 9
+    CN 0
+    ; label 0
+    DLW 4
+    LLW -4
+    ADDLW 4
+    LA data +1
+    ADDLW 4
+    SB
+    INCBRLE 0
+    DROP2
+    LAB data +5
+    LEAVE 6
+
+    ; odd
+    ENTER 8 2
+    ; label 103
+    CN 0
+    SLW 6
+    LLW 0
+    INCR
+    LLW 2
+    MUL
+    SLW -2
+    CN 9
+    CN 0
+    ; label 0
+    DLW 4
+    LLW 6
+    LLW -2
+    ADDLW 4
+    ADD
+    SLW 6
+    INCBRLE 0
+    DROP2
+    LLW 6
+    LEAVE 8
+
+    ; two
+    ENTER 8 2
+    ; label 103
+    CN 0
+    SLW 6
+    LLW 0
+    CN 5
+    MUL
+    SLW -2
+    LLW 0
+    LLW 2
+    MUL
+    CN 3
+    DIV
+    SLW -3
+    CN 3
+    CN 0
+    ; label 0
+    DLW 4
+    LLW 6
+    LLW -3
+    LLW -2
+    LLW 2
+    DIV
+    ADD
+    ADD
+    SLW 6
+    INCBRLE 0
+    DROP2
+    LLW 6
+    LEAVE 8
+
+    ; g
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    INCR
+    LEAVE 2
+
+    ; stash
+    ENTER 10 2
+    ; label 103
+    CN 0
+    SLW 6
+    CN 0
+    SLW 4
+    LLW 0
+    LLW 2
+    MUL
+    CN 3
+    DIV
+    SLW -4
+    LLW 4
+    BRNCH 1
+    ; label 0
+    LA data +12
+    IDXLW 4
+    SLW 8
+    LLW 4
+    CALL g
+    SLW -2
+    LLW 8
+    LW
+    LLW -2
+    DIV
+    LLW 8
+    SW
+    LLW 6
+    LLW -4
+    LA data +12
+    IDXLW 4
+    LW
+    ADD
+    ADD
+    SLW 6
+    LLW 4
+    INCR
+    DLW 4
+    ; label 1
+    CN 5
+    BRNE 0
+    LLW 6
+    LEAVE 10
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CN 4
+    CN 6
+    CALL with_swap
+    CN 12
+    BRNE 0
+    CN 2
+    CN 5
+    CALL odd
+    CB 195
+    BRNE 0
+    CN 6
+    CN 3
+    CALL two
+    CB 64
+    BRNE 0
+    CN 4
+    CN 6
+    CALL stash
+    CB 90
+    BRNE 0
+    CN 1
+    LEAVE 0
+    ; label 0
+    CN 0
+    ; label 1
+    LEAVE 0

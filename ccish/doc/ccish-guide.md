@@ -2214,8 +2214,8 @@ approach.md section 20 (each measured against the VM's code):
   outermost loop whose variables' addresses are never taken. Hoisting
   takes a multiply (but not by 0 to 3 or a power of 2, which is cheap
   anyway) or a divide by a constant, from the innermost loop, if its
-  body fits ccgen's 128-op loop buffer and moves no store ahead of its
-  address (`a[i] = x` does, so such a loop isn't hoisted from yet).
+  body fits ccgen's 128-op loop buffer: up to two values a loop, each
+  in a temporary of ccgen's own (2 frame bytes in the function).
 * **Pick the loop's test with care** (section 12.2): an `int`
   counter in a loop that can be counted takes `<` with a constant or
   local limit, with calls kept out of the body; otherwise, and for
