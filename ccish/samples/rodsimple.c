@@ -38,23 +38,6 @@ constexpr int MSG_Y = 1;
 #define KBDSTRB (*(volatile char *)0xC010)
 constexpr int KBD_READY = 1 << 7;
 
-#ifdef ROD_SUMS
-constexpr int HASH_MUL = 3;     /* as rodref.c's */
-
-/* Print a checksum of the figure's text rows, as rodref.c does. */
-static void checksum(void)
-{
-  int y, x;
-  unsigned h;
-
-  h = 0;
-  for (y = 0; y < SIZE; y += 2)
-    for (x = 0; x < LORES_WIDTH; x++)
-      h = h * HASH_MUL + lores_row[y][x];
-  __puti((int)h);
-  __putln();
-}
-#endif
 
 /* Run Rod's Colors until a key is pressed (or, for the test, for
  * ROD_TEST rounds of w). */
@@ -94,7 +77,7 @@ int main(void)
         }
       }
 #ifdef ROD_SUMS
-      checksum();
+      lores_checksum(SIZE / 2);
 #endif
     }
   }

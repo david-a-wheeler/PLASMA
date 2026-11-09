@@ -38,3 +38,25 @@ char *const lores_row[LORES_HEIGHT] = {
   R2(8),  R2(9),  R2(10), R2(11), R2(12), R2(13), R2(14), R2(15),
   R2(16), R2(17), R2(18), R2(19), R2(20), R2(21), R2(22), R2(23)
 };
+
+#ifdef LORES_TEST
+constexpr int HASH_MUL = 3;     /* as rodref.c's */
+
+/* Print a checksum of the test screen's text rows 0 to ROWS - 1, each
+ * LORES_WIDTH bytes: h = h * 3 + each byte, as rodref.c computes it. */
+void lores_checksum(int rows)
+{
+  int r, x;
+  unsigned h;
+  char *p;
+
+  h = 0;
+  for (r = 0; r < rows; r++) {
+    p = lores_row[2 * r];
+    for (x = 0; x < LORES_WIDTH; x++)
+      h = h * HASH_MUL + p[x];
+  }
+  __puti((int)h);
+  __putln();
+}
+#endif

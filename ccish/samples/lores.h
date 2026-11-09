@@ -43,6 +43,10 @@ typedef unsigned short lores_word;
  * are the four text lines of the mixed-mode screen. */
 extern char *const lores_row[LORES_HEIGHT];
 
+/* For tests: print a checksum of the screen's text rows 0 to ROWS - 1
+ * (lores.c built with LORES_TEST, whose screen is an array). */
+void lores_checksum(int rows);
+
 /* Set the even row's (low) nibble of the byte at P to N, which has no
  * bits outside the low nibble. */
 #define LORES_SET_LO(p, n) (*(p) = (*(p) & LORES_HI) | (n))

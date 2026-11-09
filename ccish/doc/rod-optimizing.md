@@ -20,6 +20,17 @@ their larger count). A frame is one pass over i, for one w. Measured
 | rodsimple.c | 62,300 | 4.11 |
 | rod.c | 10,200 | 0.57 (and 1.25 once, at the start, for its tables) |
 | rod.pla (PLASMA) | | about 2.6, estimated from `xplasm -AMOS`'s inner loop (73 ops, about 5,830 cycles) and the native code it calls (about 1,140): plvm doesn't run `conio:grplot`'s 6502 code |
+| rodconio.c | | about 2.6 (2.61), estimated the same way: ccish's inner loop (75 ops, about 5,890 cycles) and the same native code |
+
+rodconio.c is rod.pla's program in C: the same loops, calling the same
+CONIO routines, with `char` variables where rod.pla has `byte` ones. So
+on the same work, ccish's code is within 1% of PLASMA's compiler's.
+Its loop over j isn't counted, since its body makes calls (approach.md,
+loop improvement 3), so each pass takes 6 ops of loop work where
+rod.pla's takes 2; ccish's code is otherwise op for op the same.
+rodsimple.c is slower than both only because it plots in bytecode,
+about 1,000 cycles a pixel, where CONIO's `grplot` is 6502 code, about
+360 with its call.
 
 Most of rod's gain is algorithmic: it draws only the 1,520 pixels a
 frame that show at the frame's end, not 3,040 plots, and only those
