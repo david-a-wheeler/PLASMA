@@ -1,11 +1,11 @@
-/* genret.c - a jump to a return is that return (irin.c, jump_return):
- * LEAVE n is a byte smaller than BRNCH, and the jump it saves never
- * runs. The stack at a jump is the same as at its label, so the value
- * a ?: or && leaves is the one returned. Shapes: a ?: and an && as the
- * returned value; an if/else-if chain at a void function's end, whose
- * branches each jump to the end; and a return inside a counted loop,
- * where the loop's values are dropped first (irloop.c, replay_body),
- * so the jump to that code isn't to a return and stays. */
+// genret.c - a jump to a return is that return (irin.c, jump_return):
+// LEAVE n is a byte smaller than BRNCH, and the jump it saves never
+// runs. The stack at a jump is the same as at its label, so the value
+// a ?: or && leaves is the one returned. Shapes: a ?: and an && as the
+// returned value; an if/else-if chain at a void function's end, whose
+// branches each jump to the end; and a return inside a counted loop,
+// where the loop's values are dropped first (irloop.c, replay_body),
+// so the jump to that code isn't to a return and stays.
 int cond(int c, int a, int b)
 {
   return c ? a : b;

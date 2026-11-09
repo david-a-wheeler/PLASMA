@@ -1,9 +1,9 @@
-/* Truth runs (approach.md, decision 31): an if whose arms return 1
- * and 0 is the condition's truth, so it compiles to the condition's
- * value, with no branch or label at all. The while keeps its test
- * branch. The init function adds an ANDI and a NEG, for main's exit
- * status. is_zero's n == 0 is NOT (CN 0 ISEQ, peep.c), as is_neg's !
- * is the other. */
+// Truth runs (approach.md, decision 31): an if whose arms return 1
+// and 0 is the condition's truth, so it compiles to the condition's
+// value, with no branch or label at all. The while keeps its test
+// branch. The init function adds an ANDI and a NEG, for main's exit
+// status. is_zero's n == 0 is NOT (CN 0 ISEQ, peep.c), as is_neg's !
+// is the other.
 // listing-lacks: ISEQ
 // listing-count: 1 ISNE
 // listing-count: 2 NOT

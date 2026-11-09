@@ -1,68 +1,66 @@
-/*
- * Stage 1: the parser (approach.md, issue 5) - this file its top
- * level and initializers (approach.md, "parse.c split design").
- * Recursive descent for declarations and statements, precedence
- * climbing for expressions in pexpr.c; the statements and
- * declarations are in pstmt.c, and the machinery they drive (the
- * output and folding, the labels) is in parse.c. The list below
- * names functions across the parser's four files.
- *
- * Language so far (milestones 1 to 7, and enum and typedef):
- *   - types int, char, void, structs, pointers to them (int *, char **,
- *     struct node *, ...), and arrays of any of these but void
- *     (int m[3][4]);
- *   - struct definitions at file or block scope, with members of any
- *     complete type, laid out in order with no padding; a struct's tag
- *     is visible until the end of its block (see parse_struct()). A
- *     member is a place at a constant offset in its struct, so s.m and
- *     p->m use the same pending operands as variables and array
- *     elements. A struct assignment copies its bytes (copy_struct()),
- *     and the result is the object assigned to, not an lvalue
- *     (Operand.assigned). Struct and array initializers are flat lists
- *     over their scalar members and elements (init_flat()). A struct
- *     of up to MAX_BYVAL bytes can be passed and returned by value,
- *     as the words of its bytes (see push_struct_words()); a bigger
- *     one is an error, so pass a pointer instead;
- *   - function definitions and prototypes returning int, char, void or
- *     a pointer, with parameters of any of these but void; an array
- *     parameter (int a[], int m[][4]) is a pointer, as in C;
- *   - local variables, declared anywhere in a block (or in a for
- *     statement's first clause), with optional initializers (an array's
- *     are stores into the frame), and block scope;
- *   - global variables, declared anywhere between functions, with
- *     optional initializers, computed at compile time (see "Global
- *     initializers" below);
- *   - static: a static local is a variable in the data segment, as a
- *     global is (V_DATA), with block scope, and a global's kind of
- *     initializer; a static global or function is local to the file;
- *   - extern, at file scope: a global declared without storage, which
- *     another file (or a later definition) provides; see var_link[];
- *   - enum constants, which are int constants, and typedef names, both
- *     with block scope (see find_id()); an enum type is int;
- *   - const and volatile, as part of the type (bits in the type handle;
- *     see type.c). Operands carry unqualified types, and a place keeps
- *     its object's qualifiers in Operand.quals. A const object can't be
- *     assigned to; dropping a qualifier from a pointer's target is a
- *     warning. Reading a const scalar with a constant initializer gives
- *     its value at compile time (see parse_primary()), but that value
- *     isn't a C constant expression (Operand.nonice);
- *   - casts;
- *   - statements: return, if/else, while, do, for, switch (with case
- *     and default labels anywhere in its body), break, continue,
- *     expression statements, empty statements and nested blocks;
- *   - expressions: integer and character constants, string literals,
- *     variables, function calls, parentheses, the pstr() builtin,
- *     unary - + ~ ! * & ++ -- and sizeof, postfix ++ -- [] . ->, binary
- *     * / % + - << >> & ^ |, comparisons, && || ?:, and
- *     = += -= *= /= %= &= |= ^= <<= >>=. Pointer arithmetic scales by
- *     the element size, pointers compare unsigned, pointer types are
- *     checked as strictly as C says, and an array used as a value is a
- *     pointer to its first element.
- *
- * Like PLASMA, a function returns exactly as many values as it is
- * declared to: one for int, none for void. So a void call used as a
- * statement needs no DROP, and a void value can't be used.
- */
+// Stage 1: the parser (approach.md, issue 5) - this file its top
+// level and initializers (approach.md, "parse.c split design").
+// Recursive descent for declarations and statements, precedence
+// climbing for expressions in pexpr.c; the statements and
+// declarations are in pstmt.c, and the machinery they drive (the
+// output and folding, the labels) is in parse.c. The list below
+// names functions across the parser's four files.
+//
+// Language so far (milestones 1 to 7, and enum and typedef):
+//   - types int, char, void, structs, pointers to them (int *, char **,
+//     struct node *, ...), and arrays of any of these but void
+//     (int m[3][4]);
+//   - struct definitions at file or block scope, with members of any
+//     complete type, laid out in order with no padding; a struct's tag
+//     is visible until the end of its block (see parse_struct()). A
+//     member is a place at a constant offset in its struct, so s.m and
+//     p->m use the same pending operands as variables and array
+//     elements. A struct assignment copies its bytes (copy_struct()),
+//     and the result is the object assigned to, not an lvalue
+//     (Operand.assigned). Struct and array initializers are flat lists
+//     over their scalar members and elements (init_flat()). A struct
+//     of up to MAX_BYVAL bytes can be passed and returned by value,
+//     as the words of its bytes (see push_struct_words()); a bigger
+//     one is an error, so pass a pointer instead;
+//   - function definitions and prototypes returning int, char, void or
+//     a pointer, with parameters of any of these but void; an array
+//     parameter (int a[], int m[][4]) is a pointer, as in C;
+//   - local variables, declared anywhere in a block (or in a for
+//     statement's first clause), with optional initializers (an array's
+//     are stores into the frame), and block scope;
+//   - global variables, declared anywhere between functions, with
+//     optional initializers, computed at compile time (see "Global
+//     initializers" below);
+//   - static: a static local is a variable in the data segment, as a
+//     global is (V_DATA), with block scope, and a global's kind of
+//     initializer; a static global or function is local to the file;
+//   - extern, at file scope: a global declared without storage, which
+//     another file (or a later definition) provides; see var_link[];
+//   - enum constants, which are int constants, and typedef names, both
+//     with block scope (see find_id()); an enum type is int;
+//   - const and volatile, as part of the type (bits in the type handle;
+//     see type.c). Operands carry unqualified types, and a place keeps
+//     its object's qualifiers in Operand.quals. A const object can't be
+//     assigned to; dropping a qualifier from a pointer's target is a
+//     warning. Reading a const scalar with a constant initializer gives
+//     its value at compile time (see parse_primary()), but that value
+//     isn't a C constant expression (Operand.nonice);
+//   - casts;
+//   - statements: return, if/else, while, do, for, switch (with case
+//     and default labels anywhere in its body), break, continue,
+//     expression statements, empty statements and nested blocks;
+//   - expressions: integer and character constants, string literals,
+//     variables, function calls, parentheses, the pstr() builtin,
+//     unary - + ~ ! * & ++ -- and sizeof, postfix ++ -- [] . ->, binary
+//     * / % + - << >> & ^ |, comparisons, && || ?:, and
+//     = += -= *= /= %= &= |= ^= <<= >>=. Pointer arithmetic scales by
+//     the element size, pointers compare unsigned, pointer types are
+//     checked as strictly as C says, and an array used as a value is a
+//     pointer to its first element.
+//
+// Like PLASMA, a function returns exactly as many values as it is
+// declared to: one for int, none for void. So a void call used as a
+// statement needs no DROP, and a void value can't be used.
 
 #ifdef CCISH_STATS
 #include <stdio.h>
@@ -85,35 +83,35 @@
 #include "pstmt.h"
 #include "pexpr.h"
 
-int bss_next;                       /* the zero-filled space so far
-                                     * (ptop.h) */
+int bss_next;                       // the zero-filled space so far
+                                    // (ptop.h)
 
-/* Set by parse_scalar_init(): whether the initializer it parsed was an
- * integer constant (not an address), and its value. A const variable
- * initialized so has a known value (set_known()). */
+// Set by parse_scalar_init(): whether the initializer it parsed was an
+// integer constant (not an address), and its value. A const variable
+// initialized so has a known value (set_known()).
 int init_known, init_val;
 
-/* ---------- Global initializers ----------
- *
- * A global's initial value is computed at compile time and written to
- * the data stream as the global's bytes (approach.md, "M5 design"). It
- * goes through the expression parser with code output off, and must
- * fold to a constant, or, for a pointer, to an address constant
- * (K_ADDR): a string literal or a global's address, with any constant
- * indexes, members, casts to pointers, and + or - a constant (C6), or
- * a function's address (K_FUNC: f, &f, a cast of either to a pointer).
- * Anything else (&*p, a pointer variable's value) is an error. */
+// ---------- Global initializers ----------
+//
+// A global's initial value is computed at compile time and written to
+// the data stream as the global's bytes (approach.md, "M5 design"). It
+// goes through the expression parser with code output off, and must
+// fold to a constant, or, for a pointer, to an address constant
+// (K_ADDR): a string literal or a global's address, with any constant
+// indexes, members, casts to pointers, and + or - a constant (C6), or
+// a function's address (K_FUNC: f, &f, a cast of either to a pointer).
+// Anything else (&*p, a pointer variable's value) is an error.
 
-/* Append a word, low byte first, to the data (irout.c's data_byte()); v
- * is evaluated twice. A macro, not a function: this is its one user. */
+// Append a word, low byte first, to the data (irout.c's data_byte()); v
+// is evaluated twice. A macro, not a function: this is its one user.
 #define data_word(v) do { data_byte(v); data_byte((v) >> 8); } while (0)
 
-/* Parse the initializer of one scalar of type type (an int, char or
- * pointer), check it as an assignment, and write it to the data stream.
- * It is an ordinary expression, parsed with code off (and its string
- * literals stored, want_addr), which must be a constant or, for a
- * pointer, an address constant (approach.md, "C6 design"). Sets
- * init_known and init_val. */
+// Parse the initializer of one scalar of type type (an int, char or
+// pointer), check it as an assignment, and write it to the data stream.
+// It is an ordinary expression, parsed with code off (and its string
+// literals stored, want_addr), which must be a constant or, for a
+// pointer, an address constant (approach.md, "C6 design"). Sets
+// init_known and init_val.
 static void parse_scalar_init(int type)
 {
   Operand o;
@@ -132,8 +130,8 @@ static void parse_scalar_init(int type)
   init_known = o.kind == K_CONST;
   init_val = o.val;
   if (o.kind == K_FUNC) {
-    /* A function's address: a relocation to its symbol, which links
-     * it, as a call does (approach.md, "Function pointer design"). */
+    // A function's address: a relocation to its symbol, which links
+    // it, as a call does (approach.md, "Function pointer design").
     fn_flags[o.val] |= FN_CALLED;
     data_addr(REL_FUNC, o.val, 0);
     return;
@@ -145,8 +143,8 @@ static void parse_scalar_init(int type)
       data_word(o.val);
     return;
   }
-  /* An address must stay within the data written so far (one past the
-   * end is allowed, as in C), or within its string. */
+  // An address must stay within the data written so far (one past the
+  // end is allowed, as in C), or within its string.
   if ((o.global == 1 && (o.off < 0 || o.off > data_offset()))
       || (o.global == G_STR && (o.off < o.disp || o.off > o.val)))
     error(155 /* "initializer address is out of range" */, NULL);
@@ -155,37 +153,35 @@ static void parse_scalar_init(int type)
   } else if (o.global == 1) {
     data_addr(REL_DATA, o.off, 0);
   } else {
-    /* An extern global's or a zero-filled one's: through its symbol,
-     * and now it can't move to the heap. */
+    // An extern global's or a zero-filled one's: through its symbol,
+    // and now it can't move to the heap.
     var_link[o.global - 2] |= VL_USED | VL_INDATA;
     data_addr(REL_DSYM, o.global - 2, o.off);
   }
 }
 
-/*
- * An array's or struct's initializer is parsed the same way for a
- * global and a local; only where its elements go differs. A global's
- * are written to the data stream, in order. A local's are stores into
- * the frame (approach.md, "M5 design"), at frame offset init_base plus
- * each element's offset: CN 1 SLW t. Two neighboring char constants are
- * stored as one word (CW SLW, 5 bytes, not 8), and the zeros after the
- * last initializer are stored with a chain of DLWs, or by memset when
- * that is shorter. If the local holds a volatile, its stores are all
- * volatile, so none is removed; pairing and memset stay, as a frame
- * can't be a device whose access width matters (README).
- */
-static int init_local;          /* initializing a local array */
-static int init_vol;            /* and it holds a volatile: Q_VOLATILE */
-static int init_set;            /* then IR_SETLOCAL's form to use */
-static int init_base;           /* its frame offset */
-static int init_name;           /* its name (an id), for messages */
-static int held_char = -1;      /* a char constant to be stored with the
-                                 * next one, at frame offset held_at */
+// An array's or struct's initializer is parsed the same way for a
+// global and a local; only where its elements go differs. A global's
+// are written to the data stream, in order. A local's are stores into
+// the frame (approach.md, "M5 design"), at frame offset init_base plus
+// each element's offset: CN 1 SLW t. Two neighboring char constants are
+// stored as one word (CW SLW, 5 bytes, not 8), and the zeros after the
+// last initializer are stored with a chain of DLWs, or by memset when
+// that is shorter. If the local holds a volatile, its stores are all
+// volatile, so none is removed; pairing and memset stay, as a frame
+// can't be a device whose access width matters (README).
+static int init_local;          // initializing a local array
+static int init_vol;            // and it holds a volatile: Q_VOLATILE
+static int init_set;            // then IR_SETLOCAL's form to use
+static int init_base;           // its frame offset
+static int init_name;           // its name (an id), for messages
+static int held_char = -1;      // a char constant to be stored with the
+                                // next one, at frame offset held_at
 static int held_at;
 
-/* Make sure the frame reaches offset end, for a local array whose size
- * comes from its initializer, so that it grows as elements are added
- * (and temporaries come after it). */
+// Make sure the frame reaches offset end, for a local array whose size
+// comes from its initializer, so that it grows as elements are added
+// (and temporaries come after it).
 static void reserve(int end)
 {
   if (end <= frame_next)
@@ -198,7 +194,7 @@ static void reserve(int end)
     frame_max = frame_next;
 }
 
-/* Store the held char constant, if any, by itself. */
+// Store the held char constant, if any, by itself.
 static void flush_char(void)
 {
   if (held_char < 0)
@@ -209,9 +205,9 @@ static void flush_char(void)
   held_char = -1;
 }
 
-/* Initialize the byte at offset off of the array to v: write it to the
- * data stream, or, for a local, store it (with the byte before it, if
- * that is a held constant). */
+// Initialize the byte at offset off of the array to v: write it to the
+// data stream, or, for a local, store it (with the byte before it, if
+// that is a held constant).
 static void init_byte(int off, int v)
 {
   int at = init_base + off;
@@ -233,8 +229,8 @@ static void init_byte(int off, int v)
   held_at = at;
 }
 
-/* The CMDSYS function __memset, declared from the CMDSYS table if the
- * program hasn't used it yet; or -1 if the program has its own. */
+// The CMDSYS function __memset, declared from the CMDSYS table if the
+// program hasn't used it yet; or -1 if the program has its own.
 static int cmdsys_memset(void)
 {
   int f = find_func(ID_MEMSET), c = find_cmdsys(ID_MEMSET);
@@ -247,10 +243,10 @@ static int cmdsys_memset(void)
   return f;
 }
 
-/* Initialize n bytes at offset off of the array to 0: write them to the
- * data stream, or, for a local, store them. Up to 3 words take
- * CN 0 DLW ... SLW (1 + 2 bytes per word); more take
- * LLA CN 0 CB n CALL memset (7 or 8 bytes). */
+// Initialize n bytes at offset off of the array to 0: write them to the
+// data stream, or, for a local, store them. Up to 3 words take
+// CN 0 DLW ... SLW (1 + 2 bytes per word); more take
+// LLA CN 0 CB n CALL memset (7 or 8 bytes).
 static void init_zero(int n, int off)
 {
   int at = init_base + off, words = n / 2, i, f;
@@ -262,7 +258,7 @@ static void init_zero(int n, int off)
     return;
   reserve(at + n);
   if (held_char == 0 && held_at == at - 1) {
-    /* A held 0 just before (a string's NUL) joins the zeros. */
+    // A held 0 just before (a string's NUL) joins the zeros.
     held_char = -1;
     at--;
     n++;
@@ -284,9 +280,9 @@ static void init_zero(int n, int off)
   put(IR_DROP, 0, -1);
 }
 
-/* Parse the initializer of one scalar element of type type, at offset
- * off of the array. A global's must be constant (parse_scalar_init); a
- * local's may be any expression, as C99 allows. */
+// Parse the initializer of one scalar element of type type, at offset
+// off of the array. A global's must be constant (parse_scalar_init); a
+// local's may be any expression, as C99 allows.
 static void init_elem(int type, int off)
 {
   Operand e, v;
@@ -305,7 +301,7 @@ static void init_elem(int type, int off)
     rvalue(&e);
     v.kind = K_VAR;
     v.type = type;
-    v.quals = init_vol;         /* a volatile's store is volatile */
+    v.quals = init_vol;         // a volatile's store is volatile
     v.off = at;
     v.global = 0;
     store_var(&v);
@@ -314,10 +310,10 @@ static void init_elem(int type, int off)
   end_expr();
 }
 
-/* Initialize the array, from offset off, with the string literal (the
- * current token): a char array with room for max chars, or for any
- * number if max is 0. Its NUL is included if there is room, as in C.
- * Returns the number of bytes initialized. */
+// Initialize the array, from offset off, with the string literal (the
+// current token): a char array with room for max chars, or for any
+// number if max is 0. Its NUL is included if there is room, as in C.
+// Returns the number of bytes initialized.
 static int init_string(int max, int off)
 {
   int i, n = tok_len;
@@ -334,15 +330,15 @@ static int init_string(int max, int off)
   return n;
 }
 
-/* Set by init_flat() when the initializer list's '}' is reached. */
+// Set by init_flat() when the initializer list's '}' is reached.
 static int init_done;
-/* The end of what has been initialized so far: the offset after the
- * last scalar (or string). With no padding, the scalars of an
- * aggregate are contiguous, so everything before it is initialized. */
+// The end of what has been initialized so far: the offset after the
+// last scalar (or string). With no padding, the scalars of an
+// aggregate are contiguous, so everything before it is initialized.
 static int init_end;
 
-/* After one scalar (or string) of a brace list: skip a ',', and note
- * whether the list ends here. */
+// After one scalar (or string) of a brace list: skip a ',', and note
+// whether the list ends here.
 static void after_leaf(void)
 {
   if (tok == ',')
@@ -355,12 +351,12 @@ static void after_leaf(void)
 
 static void init_flat(int t, int off);
 
-/* Initialize the subobject of type t at offset off, an element or a
- * member, as one item of the enclosing brace list (C11 6.7.9p20): from
- * its own brace list if one starts here, else from the enclosing
- * list's next items (brace elision). What its own list leaves out is
- * zero, written now, so that everything before init_end stays
- * initialized and a global's data stays in order. */
+// Initialize the subobject of type t at offset off, an element or a
+// member, as one item of the enclosing brace list (C11 6.7.9p20): from
+// its own brace list if one starts here, else from the enclosing
+// list's next items (brace elision). What its own list leaves out is
+// zero, written now, so that everything before init_end stays
+// initialized and a global's data stays in order.
 static void init_sub(int t, int off)
 {
   int end = off + type_size(t);
@@ -369,25 +365,25 @@ static void init_sub(int t, int off)
     return;
   }
   next();
-  init_done = tok == '}';       /* {}: all zero */
+  init_done = tok == '}';       // {}: all zero
   init_flat(t, off);
   if (!init_done)
     error(161 /* "too many initializers for" */, quote(init_name));
-  next();                       /* '}' */
+  next();                       // '}'
   init_zero(end - init_end, init_end);
   init_end = end;
   init_done = 0;
   after_leaf();
 }
 
-/* Initialize the object of type t at offset off (of the variable being
- * initialized) from a brace list, as far as the list goes. Each element
- * or member may have its own brace list (init_sub()), or the scalars
- * may be flat, as C allows: the scalars of arrays and structs, in
- * order, at any depth (struct pt ps[2] = {1, 2, 3, 4};). A char array
- * may be given a string literal instead ({"abc", 5}). An array of
- * unknown size (count 0, only at the top) takes as many elements as the
- * list gives. */
+// Initialize the object of type t at offset off (of the variable being
+// initialized) from a brace list, as far as the list goes. Each element
+// or member may have its own brace list (init_sub()), or the scalars
+// may be flat, as C allows: the scalars of arrays and structs, in
+// order, at any depth (struct pt ps[2] = {1, 2, 3, 4};). A char array
+// may be given a string literal instead ({"abc", 5}). An array of
+// unknown size (count 0, only at the top) takes as many elements as the
+// list gives.
 static void init_flat(int t, int off)
 {
   int n, i, m, tag;
@@ -407,9 +403,9 @@ static void init_flat(int t, int off)
          m = member_next(tag, m)) {
       init_sub(member_type(m), off + member_off(m));
       if (tag_is_union(tag))
-        break;   /* as in C, a union is initialized by its first
-                   * member only; a further initializer hits the
-                   * "too many" error below */
+        break;   // as in C, a union is initialized by its first
+                 // member only; a further initializer hits the
+                 // "too many" error below
     }
   } else {
     init_elem(unqual(t), off);
@@ -418,11 +414,11 @@ static void init_flat(int t, int off)
   }
 }
 
-/* Parse the initializer of an array or struct of type type, named name,
- * for a global or a local (init_local): a brace list (init_flat()), or,
- * for a char array, a string literal. Returns the type, with an array
- * size that was left out filled in from the initializer. Whatever the
- * list doesn't reach is zero. */
+// Parse the initializer of an array or struct of type type, named name,
+// for a global or a local (init_local): a brace list (init_flat()), or,
+// for a char array, a string literal. Returns the type, with an array
+// size that was left out filled in from the initializer. Whatever the
+// list doesn't reach is zero.
 static int parse_aggr_init(int type, int name)
 {
   int esize;
@@ -442,7 +438,7 @@ static int parse_aggr_init(int type, int name)
     init_flat(type, 0);
     if (!init_done)
       error(161 /* "too many initializers for" */, quote(name));
-    next();                     /* '}' */
+    next();                     // '}'
   }
   if (is_array(type) && type_count(type) == 0) {
     if (init_end == 0)
@@ -451,13 +447,13 @@ static int parse_aggr_init(int type, int name)
     esize = type_size(type_sub(type));
     type = array_of(type_sub(type), (init_end + esize - 1) / esize);
   }
-  init_zero(type_size(type) - init_end, init_end);    /* the rest */
+  init_zero(type_size(type) - init_end, init_end);    // the rest
   return type;
 }
 
-/* Parse the initializer of a global of type type, named name, and
- * write its bytes to the data stream. Returns the type, with an array
- * size that was left out filled in. */
+// Parse the initializer of a global of type type, named name, and
+// write its bytes to the data stream. Returns the type, with an array
+// size that was left out filled in.
 int parse_global_init(int type, int name)
 {
   if (is_array(type) || is_struct(type)) {
@@ -465,7 +461,7 @@ int parse_global_init(int type, int name)
     init_base = 0;
     return parse_aggr_init(type, name);
   }
-  if (tok == '{') {                   /* int x = {5}; is valid C */
+  if (tok == '{') {                   // int x = {5}; is valid C
     next();
     parse_scalar_init(type);
     if (tok == ',')
@@ -477,10 +473,10 @@ int parse_global_init(int type, int name)
   return type;
 }
 
-/* Parse the brace initializer of a local array or struct of type type,
- * named name, at frame offset base, as stores into the frame: volatile
- * ones if it holds a volatile (holds_qual()). Returns the type, with an
- * array size that was left out filled in. */
+// Parse the brace initializer of a local array or struct of type type,
+// named name, at frame offset base, as stores into the frame: volatile
+// ones if it holds a volatile (holds_qual()). Returns the type, with an
+// array size that was left out filled in.
 int parse_local_init(int type, int name, int base)
 {
   init_local = 1;
@@ -495,8 +491,8 @@ int parse_local_init(int type, int name, int base)
   return type;
 }
 
-/* Can a global of type a be declared again with type b? They must be
- * the same, except that one array may leave its size out. */
+// Can a global of type a be declared again with type b? They must be
+// the same, except that one array may leave its size out.
 static int same_global_type(int a, int b)
 {
   if (a == b)
@@ -505,13 +501,13 @@ static int same_global_type(int a, int b)
          && (type_count(a) == 0 || type_count(b) == 0);
 }
 
-/* Declare a global named name of type type, with storage class storage
- * (T_STATIC, T_EXTERN or 0), and return it. An extern one has no
- * storage here (VL_EXTERN); otherwise it is at the next data offset, and
- * the caller writes its bytes. A global may be declared again if all but
- * one of its declarations are extern, as in C; the last gives it its
- * storage. Linkage follows C11 6.2.2: extern after static keeps it
- * static, and static after a declaration that isn't is an error. */
+// Declare a global named name of type type, with storage class storage
+// (T_STATIC, T_EXTERN or 0), and return it. An extern one has no
+// storage here (VL_EXTERN); otherwise it is at the next data offset, and
+// the caller writes its bytes. A global may be declared again if all but
+// one of its declarations are extern, as in C; the last gives it its
+// storage. Linkage follows C11 6.2.2: extern after static keeps it
+// static, and static after a declaration that isn't is an error.
 static int declare_global(int name, int type, int storage)
 {
   int s = find_var(name);
@@ -530,7 +526,7 @@ static int declare_global(int name, int type, int storage)
   if (!same_global_type(var_type[s], type))
     error(165 /* "conflicting declaration of" */, quote(name));
   if (type_count(type) > 0)
-    var_type[s] = type;         /* extern int a[]; then int a[10]; */
+    var_type[s] = type;         // extern int a[]; then int a[10];
   if (storage == T_STATIC && !(var_link[s] & VL_STATIC))
     error(217 /* "static declaration follows a non-static declaration"
                  " of" */, quote(name));
@@ -541,39 +537,37 @@ static int declare_global(int name, int type, int storage)
   return s;
 }
 
-/*
- * Imports from other PLASMA modules (approach.md issue 22, decision 35).
- * A function or extern global declared with an asm label,
- * __asm__("PERR") (which ccpp turns into the id PERR), or declared
- * after "#pragma plasma import MODULE" in the same file, is a PLASMA
- * import if no linked object defines it. Its PLASMA name is the label,
- * else its C name (ccrel uppercases it); a pragma also names the
- * module to load first, which ccrel writes only if an import from it is
- * used. A pragma covers the rest of its own file only, so a header's
- * doesn't turn the including file's externs into imports. Only the
- * few symbols involved are kept, here, as parallel arrays: imp_sym[]
- * (a function's index, or IMP_DATA plus a global's), imp_label[] (its
- * label's id, or 0) and imp_dep[] (its module: 1 plus its index in
- * dep_id[], or 0). dep_id[] holds the modules' names, and dep_file[]
- * the file each one's pragma now covers (0 for none: files count
- * from 1).
- */
-#define MAX_IMPORTS  16     /* symbols with a label or a pragma (2) */
+// Imports from other PLASMA modules (approach.md issue 22, decision 35).
+// A function or extern global declared with an asm label,
+// __asm__("PERR") (which ccpp turns into the id PERR), or declared
+// after "#pragma plasma import MODULE" in the same file, is a PLASMA
+// import if no linked object defines it. Its PLASMA name is the label,
+// else its C name (ccrel uppercases it); a pragma also names the
+// module to load first, which ccrel writes only if an import from it is
+// used. A pragma covers the rest of its own file only, so a header's
+// doesn't turn the including file's externs into imports. Only the
+// few symbols involved are kept, here, as parallel arrays: imp_sym[]
+// (a function's index, or IMP_DATA plus a global's), imp_label[] (its
+// label's id, or 0) and imp_dep[] (its module: 1 plus its index in
+// dep_id[], or 0). dep_id[] holds the modules' names, and dep_file[]
+// the file each one's pragma now covers (0 for none: files count
+// from 1).
+#define MAX_IMPORTS  16     // symbols with a label or a pragma (2)
 static int imp_sym[MAX_IMPORTS];
 static int imp_label[MAX_IMPORTS];
 static unsigned char imp_dep[MAX_IMPORTS];
 static int nimports;
-int dep_id[MAX_DEPS];               /* (ptop.h; MAX_DEPS is there) */
+int dep_id[MAX_DEPS];               // (ptop.h; MAX_DEPS is there)
 static unsigned char dep_file[MAX_DEPS];
 static int ndeps;
 
-/* __plasma_import NAME, what ccpp makes of #pragma plasma import NAME:
- * module NAME is to be loaded for what the rest of this file declares
- * (in place of any earlier pragma of the file's). */
+// __plasma_import NAME, what ccpp makes of #pragma plasma import NAME:
+// module NAME is to be loaded for what the rest of this file declares
+// (in place of any earlier pragma of the file's).
 static void parse_pimport(void)
 {
   int i, d = -1;
-  next();                         /* __plasma_import */
+  next();                         // __plasma_import
   if (tok != T_ID)
     error(13 /* "expected a module name after #pragma plasma"
                 " import" */, NULL);
@@ -593,8 +587,8 @@ static void parse_pimport(void)
   next();
 }
 
-/* Parse an asm label, __asm__ (NAME), after a declarator, if there is
- * one: return NAME's id, or 0. */
+// Parse an asm label, __asm__ (NAME), after a declarator, if there is
+// one: return NAME's id, or 0.
 int parse_asm_label(void)
 {
   int label;
@@ -611,11 +605,11 @@ int parse_asm_label(void)
   return label;
 }
 
-/* Note that the function, or extern global, key (a function's index,
- * or IMP_DATA plus a global's) was declared here with asm label label
- * (an id, or 0): it is an import if it has a label, or if a pragma
- * covers this file. A CMDSYS function without a label stays one (a
- * header may declare __puts after a pragma). */
+// Note that the function, or extern global, key (a function's index,
+// or IMP_DATA plus a global's) was declared here with asm label label
+// (an id, or 0): it is an import if it has a label, or if a pragma
+// covers this file. A CMDSYS function without a label stays one (a
+// header may declare __puts after a pragma).
 void note_import(int key, int label)
 {
   int i, d = 0;
@@ -641,10 +635,10 @@ void note_import(int key, int label)
     imp_dep[i] = (unsigned char)d;
 }
 
-/* For the symbol summary: if key (as for note_import()) is an import,
- * set *label to its PLASMA name (its label, else name, its C name) and
- * return its module (0 for none, else 1 plus a dep_id[] index);
- * otherwise return -1. */
+// For the symbol summary: if key (as for note_import()) is an import,
+// set *label to its PLASMA name (its label, else name, its C name) and
+// return its module (0 for none, else 1 plus a dep_id[] index);
+// otherwise return -1.
 int sym_import(int key, int name, int *label)
 {
   int i;
@@ -656,22 +650,22 @@ int sym_import(int key, int name, int *label)
   return -1;
 }
 
-/* For the symbol summary: the number of modules pragmas named. */
+// For the symbol summary: the number of modules pragmas named.
 int dep_count(void)
 {
   return ndeps;
 }
 
-/* Declare the global variable name of type type, with storage class
- * storage (T_STATIC, T_EXTERN or 0), and parse its asm label and its
- * initializer, if any. A global without an initializer is zero when the
- * module loads. Only an extern can be an import (a label on a
- * definition does nothing). */
+// Declare the global variable name of type type, with storage class
+// storage (T_STATIC, T_EXTERN or 0), and parse its asm label and its
+// initializer, if any. A global without an initializer is zero when the
+// module loads. Only an extern can be an import (a label on a
+// definition does nothing).
 static void define_global(int name, int type, int storage)
 {
   int s, label = parse_asm_label();
   type = parse_var_type(type, 1);
-  /* In C, the name is in scope in its own initializer. */
+  // In C, the name is in scope in its own initializer.
   s = declare_global(name, type, storage);
   if (storage == T_EXTERN)
     note_import(IMP_DATA + s, label);
@@ -689,8 +683,8 @@ static void define_global(int name, int type, int storage)
       error(87 /* "array size missing" */, NULL);
     if ((is_array(type) || is_struct(type))
         && type_size(type) >= BSS_MIN) {
-      /* In the zero-filled space, with no data bytes: ccrel places
-       * it, maybe on the heap. */
+      // In the zero-filled space, with no data bytes: ccrel places
+      // it, maybe on the heap.
       if (bss_next > 0x7FFF - type_size(type))
         error(182 /* "too much data: globals over 32767 bytes" */,
               NULL);
@@ -703,10 +697,10 @@ static void define_global(int name, int type, int storage)
   }
 }
 
-/* Parse global declarations, after the base type base and the first
- * declarator's type and name, with storage class storage: int x = 1,
- * *p = &x, buf[100]; A declarator may also declare a function (int x,
- * f(int);). */
+// Parse global declarations, after the base type base and the first
+// declarator's type and name, with storage class storage: int x = 1,
+// *p = &x, buf[100]; A declarator may also declare a function (int x,
+// f(int);).
 static void parse_globals(int base, int type, int name, int storage)
 {
   for (;;) {
@@ -723,12 +717,12 @@ static void parse_globals(int base, int type, int name, int storage)
   expect(';', 118 /* "expected ';' after declaration, not" */);
 }
 
-/* Declare function name of function type type (its return type; the
- * parameter count is fixed by the first call), as int f(); does: a
- * declarator that isn't a file-scope function's own (int x, f(int);
- * fn_t g; int g(int); in a block). In a block it is declared as at
- * file scope, from there on. is_static makes it local to the file.
- * Returns the function. */
+// Declare function name of function type type (its return type; the
+// parameter count is fixed by the first call), as int f(); does: a
+// declarator that isn't a file-scope function's own (int x, f(int);
+// fn_t g; int g(int); in a block). In a block it is declared as at
+// file scope, from there on. is_static makes it local to the file.
+// Returns the function.
 int declare_function(int name, int type, int is_static)
 {
   int f;
@@ -749,11 +743,11 @@ int declare_function(int name, int type, int is_static)
   return f;
 }
 
-/* An extern declaration in a block, after the "extern": each
- * declarator declares a global with no storage here (or a function),
- * as at file scope, from here on. C would hide the name after the
- * block, and ccish doesn't; a visible local of the same name would
- * hide the global in the block, so that's an error. */
+// An extern declaration in a block, after the "extern": each
+// declarator declares a global with no storage here (or a function),
+// as at file scope, from here on. C would hide the name after the
+// block, and ccish doesn't; a visible local of the same name would
+// hide the global in the block, so that's an error.
 void parse_block_extern(void)
 {
   int base = parse_base_type(), type, name, s, label;
@@ -780,13 +774,13 @@ void parse_block_extern(void)
   expect(';', 118 /* "expected ';' after declaration, not" */);
 }
 
-/* The function begin_function() found or added. */
+// The function begin_function() found or added.
 static int new_func;
 
-/* Begin the function named name, declared at file scope, at its own
- * parameter list's '(' (parse_declarator(), D_PARAMS): find or add it,
- * and parse the parameters as its variables. Returns their count, or
- * -1 for "()". */
+// Begin the function named name, declared at file scope, at its own
+// parameter list's '(' (parse_declarator(), D_PARAMS): find or add it,
+// and parse the parameters as its variables. Returns their count, or
+// -1 for "()".
 int begin_function(int name)
 {
   int n;
@@ -796,22 +790,22 @@ int begin_function(int name)
   new_func = find_func(name);
   if (new_func < 0)
     new_func = add_func(name);
-  cur_fn = new_func;              /* for messages about its variables */
+  cur_fn = new_func;              // for messages about its variables
   in_params = 1;
   n = parse_params();
   in_params = 0;
   return n;
 }
 
-/* Parse one top-level item: global variable declarations, a function
- * prototype, or a function definition. Any may start with "static",
- * which makes it local to the file, or "extern", which declares a
- * global without storage, and changes nothing on a function. */
+// Parse one top-level item: global variable declarations, a function
+// prototype, or a function definition. Any may start with "static",
+// which makes it local to the file, or "extern", which declares a
+// global without storage, and changes nothing on a function.
 static void parse_toplevel(void)
 {
   int base, type, nparams, pwords, i, f, name, storage = 0;
 
-  depth = 0;                      /* file scope, for tags and names */
+  depth = 0;                      // file scope, for tags and names
   if (tok == T_ID && tok_val == ID_PIMPORT) {
     parse_pimport();
     return;
@@ -836,7 +830,7 @@ static void parse_toplevel(void)
           tok_desc());
   base = parse_base_type();
   if (tok == ';' && base_tagged) {
-    next();                     /* struct pt { ... }; declares only */
+    next();                     // struct pt { ... }; declares only
     return;
   }
   type = parse_declarator(base, D_PARAMS, &name);
@@ -844,8 +838,8 @@ static void parse_toplevel(void)
     parse_globals(base, type, name, storage);
     return;
   }
-  /* A function, its parameters parsed (begin_function()). Its return
-   * type loses its qualifiers: const int f(void) returns an int. */
+  // A function, its parameters parsed (begin_function()). Its return
+  // type loses its qualifiers: const int f(void) returns an int.
   f = new_func;
   nparams = decl_nparams;
   type = unqual(type_sub(type));
@@ -859,7 +853,7 @@ static void parse_toplevel(void)
   pwords = frame_next / 2;
   i = parse_asm_label();
   if (tok == ';') {
-    /* A prototype. "()" leaves the parameter count unspecified. */
+    // A prototype. "()" leaves the parameter count unspecified.
     note_import(f, i);
     if ((fn_flags[f] & FN_DECLARED) && fn_type[f] != type)
       error(165 /* "conflicting declaration of" */, quote(fn_name[f]));
@@ -875,7 +869,7 @@ static void parse_toplevel(void)
     next();
     cur_fn = -1;
     nvars = nglobals;
-    tag_hide(0);                /* tags declared in the parameters */
+    tag_hide(0);                // tags declared in the parameters
     id_hide(0);
     return;
   }
@@ -903,14 +897,14 @@ static void parse_toplevel(void)
   fn_flags[f] |= FN_DECLARED | FN_DEFINED;
 
   nlabels = 0;
-  ngoto_labels = 0;             /* a new goto label table */
+  ngoto_labels = 0;             // a new goto label table
   nlbls = 0;
-  put(IR_FUNC, pwords, f);        /* ENTER takes the parameters' words */
+  put(IR_FUNC, pwords, f);        // ENTER takes the parameters' words
   parse_block(0);
-  check_goto_labels();            /* every goto's target was defined */
-  /* Falling off the end of an int or char function returns 0. If the
-   * last statement was a return, the peephole stage drops this as
-   * dead code. */
+  check_goto_labels();            // every goto's target was defined
+  // Falling off the end of an int or char function returns 0. If the
+  // last statement was a return, the peephole stage drops this as
+  // dead code.
   if (type != TY_VOID)
     push_zero_result(type);
   put(IR_RETURN, result_words(type), -1);
@@ -922,10 +916,10 @@ static void parse_toplevel(void)
 }
 
 #ifdef CCISH_STATS
-/* Report how full the tables got, on one line of stderr, for
- * tools/measure.py: functions, variables visible at once, parameter
- * types, enum constants and typedef names at once, types, struct tags
- * and struct members. */
+// Report how full the tables got, on one line of stderr, for
+// tools/measure.py: functions, variables visible at once, parameter
+// types, enum constants and typedef names at once, types, struct tags
+// and struct members.
 static void report_stats(void)
 {
   int v[7], i;
@@ -942,23 +936,23 @@ static void report_stats(void)
 }
 #endif
 
-/* Stage 1's entry: parse the whole source file. A function called but
- * not defined here is left to the final pass, which finds it in
- * another file or CMDSYS (approach.md issue 11).
- * A macro, not a function: it has one caller. */
+// Stage 1's entry: parse the whole source file. A function called but
+// not defined here is left to the final pass, which finds it in
+// another file or CMDSYS (approach.md issue 11).
+// A macro, not a function: it has one caller.
 #define parse_program() while (tok != T_EOF) parse_toplevel()
 
-/* After an error in the front end: close its open files (ProDOS needs
- * it), writing out what the IR file holds. */
+// After an error in the front end: close its open files (ProDOS needs
+// it), writing out what the IR file holds.
 void compile_abort(void)
 {
   tok_close();
   ir_abort();
 }
 
-/* The front end: compile the token stream and name file of input
- * name in (ccpp's NAME.i and NAME.nam) into the IR file of output name
- * base (approach.md 18.7), for the back end. */
+// The front end: compile the token stream and name file of input
+// name in (ccpp's NAME.i and NAME.nam) into the IR file of output name
+// base (approach.md 18.7), for the back end.
 void compile_file(const char *in, const char *base)
 {
   tok_open(in);
@@ -972,9 +966,9 @@ void compile_file(const char *in, const char *base)
 #endif
 }
 
-/* Function f's SYM_* flags for the symbol summary, and its type hash
- * in *hash: of its return type and parameter types, or 0 if they
- * aren't known (int f();). */
+// Function f's SYM_* flags for the symbol summary, and its type hash
+// in *hash: of its return type and parameter types, or 0 if they
+// aren't known (int f();).
 int func_sym(int f, int *hash)
 {
   int flags = 0, c, i, h;
@@ -1002,10 +996,10 @@ int func_sym(int f, int *hash)
   return flags;
 }
 
-/* Global v's SYM_* flags for the symbol summary, with its data offset
- * (if defined), size (0 if an array's size is unknown), type hash
- * (leaving out an array's size, so that int a[] matches int a[10]) and
- * name. */
+// Global v's SYM_* flags for the symbol summary, with its data offset
+// (if defined), size (0 if an array's size is unknown), type hash
+// (leaving out an array's size, so that int a[] matches int a[10]) and
+// name.
 int data_sym(int v, int *off, int *size, int *hash, int *name)
 {
   int t = var_type[v], flags = 0, h = 0;
@@ -1019,7 +1013,7 @@ int data_sym(int v, int *off, int *size, int *hash, int *name)
   if (var_link[v] & VL_STATIC)
     flags |= SYM_LOCAL;
   if (var_link[v] & VL_BSS)
-    flags |= SYM_BSS;           /* var_off[] is in the zero-filled space */
+    flags |= SYM_BSS;           // var_off[] is in the zero-filled space
   if (var_link[v] & VL_INDATA)
     flags |= SYM_INDATA;
   *off = flags & SYM_DEFINED ? var_off[v] : 0;

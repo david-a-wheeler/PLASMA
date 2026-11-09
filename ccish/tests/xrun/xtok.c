@@ -1,10 +1,10 @@
-/* xtok.c — token coverage: the literal forms (hex, octal, the u
- * suffix, and hex over $7FFF in its unsigned form), the character
- * escapes, adjacent string concatenation, and the expression forms
- * the other tests leave out: the ternary ?: and the switch
- * statement. The comma operator and the ... token are lexed but the
- * parser doesn't support them yet (errors 24 and 150), so they have
- * no cross tests. */
+// xtok.c — token coverage: the literal forms (hex, octal, the u
+// suffix, and hex over $7FFF in its unsigned form), the character
+// escapes, adjacent string concatenation, and the expression forms
+// the other tests leave out: the ternary ?: and the switch
+// statement. The comma operator and the ... token are lexed but the
+// parser doesn't support them yet (errors 24 and 150), so they have
+// no cross tests.
 #include "ptest.h"
 
 int max3(int x, int y, int z)

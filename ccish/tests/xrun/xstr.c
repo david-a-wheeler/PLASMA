@@ -1,6 +1,6 @@
-/* xstr.c — the I/O itself: puts (which adds no newline, and which
- * takes only a pstr literal - see the contract in ptest.h), pstr,
- * putc, and a "string" built up byte by byte. */
+// xstr.c — the I/O itself: puts (which adds no newline, and which
+// takes only a pstr literal - see the contract in ptest.h), pstr,
+// putc, and a "string" built up byte by byte.
 #include "ptest.h"
 
 int main(void)

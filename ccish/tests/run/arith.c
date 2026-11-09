@@ -1,7 +1,7 @@
-/* Integer operators, precedence and associativity, with C semantics
- * for a 16-bit int. Division truncates toward zero, % takes the sign of
- * the dividend, and >> of a negative value is arithmetic (as in gcc).
- * C's ! must give 1, so it is NOT masked with ANDI 1. */
+// Integer operators, precedence and associativity, with C semantics
+// for a 16-bit int. Division truncates toward zero, % takes the sign of
+// the dividend, and >> of a negative value is arithmetic (as in gcc).
+// C's ! must give 1, so it is NOT masked with ANDI 1.
 // listing-has: ANDI 1
 void show(int n)
 {

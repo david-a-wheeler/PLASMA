@@ -1,6 +1,6 @@
-/* xfunc.c — functions: pass-by-value arguments, returns, nested
- * calls, recursion, and a dead store the peephole drops at the
- * return (nothing reads x back). */
+// xfunc.c — functions: pass-by-value arguments, returns, nested
+// calls, recursion, and a dead store the peephole drops at the
+// return (nothing reads x back).
 #include "ptest.h"
 
 int add(int a, int b)
@@ -22,11 +22,11 @@ int fib(int n)
   return fib(n - 1) + fib(n - 2);
 }
 
-/* The store in pick() is intentionally dead (the peephole drops it
- * at the return), and assign_test() uses an assignment as a
- * condition: the host compilers warn about both, so this file is
- * compiled with the suppressions in xfunc.flags; ccish compiles the
- * same source without them. */
+// The store in pick() is intentionally dead (the peephole drops it
+// at the return), and assign_test() uses an assignment as a
+// condition: the host compilers warn about both, so this file is
+// compiled with the suppressions in xfunc.flags; ccish compiles the
+// same source without them.
 int pick(int n)
 {
   int x;

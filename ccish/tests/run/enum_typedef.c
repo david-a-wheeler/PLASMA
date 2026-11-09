@@ -1,11 +1,11 @@
-/* enum and typedef (pulled forward from M11), used as ccish's own
- * source uses them, and with C's scope rules. */
+// enum and typedef (pulled forward from M11), used as ccish's own
+// source uses them, and with C's scope rules.
 // listing-has: CASES 3
-enum { T_EOF, T_ID = 256, T_NUM, T_STR, };  /* a trailing comma */
+enum { T_EOF, T_ID = 256, T_NUM, T_STR, };  // a trailing comma
 enum { K_A = -2, K_B, K_C, K_D = K_C + 10, K_E };
 enum color { RED, GREEN, BLUE, NCOLORS };
 
-typedef struct Sym Sym;             /* before the struct is defined */
+typedef struct Sym Sym;             // before the struct is defined
 struct Sym { char name[4]; int kind; Sym *next; };
 
 typedef struct {
@@ -16,12 +16,12 @@ typedef const char *str;
 typedef int Vec[3];
 typedef Mop *MopP;
 
-int counts[NCOLORS];                /* an enum constant as array size */
-int start = T_NUM * 2;              /* ... and in a global initializer */
+int counts[NCOLORS];                // an enum constant as array size
+int start = T_NUM * 2;              // ... and in a global initializer
 enum color fav = BLUE;
 Sym table[2];
 
-/* Name a token kind. */
+// Name a token kind.
 str token_name(int t)
 {
   switch (t) {
@@ -32,7 +32,7 @@ str token_name(int t)
   return "?";
 }
 
-/* Sum a vector. */
+// Sum a vector.
 int sum(const Vec v)
 {
   return v[0] + v[1] + v[2];
@@ -40,27 +40,27 @@ int sum(const Vec v)
 
 typedef int T;
 
-/* A variable named like a typedef hides it, and a typedef in a block
- * hides a variable; both end with their block. */
+// A variable named like a typedef hides it, and a typedef in a block
+// hides a variable; both end with their block.
 int scopes(void)
 {
   T a = 1;
   int r;
   {
-    int T = 10;                 /* T is a variable here */
+    int T = 10;                 // T is a variable here
     r = T + a;
     {
-      typedef char T;         /* and a type again here */
-      T c = 300;              /* a char: 44 */
+      typedef char T;         // and a type again here
+      T c = 300;              // a char: 44
       r += c;
     }
-    r += T;                     /* the variable */
+    r += T;                     // the variable
   }
   {
-    enum { a = 1000 };          /* hides the variable a */
+    enum { a = 1000 };          // hides the variable a
     r += a;
   }
-  return r + a + sizeof(T);       /* T is int again */
+  return r + a + sizeof(T);       // T is int again
 }
 
 int main()
@@ -71,7 +71,7 @@ int main()
   const Vec cv = {4, 5, 6};
   Sym *s;
   enum color c = GREEN;
-  T * x;                          /* declares x: T is a type */
+  T * x;                          // declares x: T is a type
   int i = 7;
 
   __puti(T_EOF); __putc(' '); __puti(T_STR); __putc(' ');
@@ -81,8 +81,8 @@ int main()
 
   for (i = 255; i <= 258; i++) {
     __puts(pstr(" "));
-    x = (T *)token_name(i);     /* a cast to a typedef */
-    __puts((str)x - 1);           /* the PLASMA form, one byte before */
+    x = (T *)token_name(i);     // a cast to a typedef
+    __puts((str)x - 1);           // the PLASMA form, one byte before
   }
   __putln();
 

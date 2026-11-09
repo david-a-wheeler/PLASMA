@@ -1,5 +1,5 @@
 
-/* The result of a struct assignment has no address. */
+// The result of a struct assignment has no address.
 struct pt { int x, y; };
 
 int main()

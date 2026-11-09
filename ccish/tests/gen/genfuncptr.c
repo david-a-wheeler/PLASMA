@@ -1,10 +1,10 @@
-/* genfuncptr.c - calls through function pointers (approach.md,
- * "Function pointer design"): ICAL takes the address on top of the
- * arguments, so a pointer in a variable or an element is loaded after
- * them, with no temporary, and a call's result is kept in one; a named
- * function called as (*f)() or (&f)() is a plain CALL; a function's
- * address is an LA; a void call through a pointer leaves nothing to
- * drop, and an int one's unused result is dropped. */
+// genfuncptr.c - calls through function pointers (approach.md,
+// "Function pointer design"): ICAL takes the address on top of the
+// arguments, so a pointer in a variable or an element is loaded after
+// them, with no temporary, and a call's result is kept in one; a named
+// function called as (*f)() or (&f)() is a plain CALL; a function's
+// address is an LA; a void call through a pointer leaves nothing to
+// drop, and an int one's unused result is dropped.
 typedef int binop(int, int);
 binop *table[2];
 

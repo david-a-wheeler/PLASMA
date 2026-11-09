@@ -1,14 +1,14 @@
-/* switch (M7): PLASMA's SEL with a sorted case table after the body.
- * Cases in any order (negative ones too), grouped cases, fall through,
- * a default anywhere or none, nested switches, break and continue in a
- * loop, return from a case, case labels inside a nested block (Duff's
- * device), constant expressions as case values, and switches with no
- * cases. */
+// switch (M7): PLASMA's SEL with a sorted case table after the body.
+// Cases in any order (negative ones too), grouped cases, fall through,
+// a default anywhere or none, nested switches, break and continue in a
+// loop, return from a case, case labels inside a nested block (Duff's
+// device), constant expressions as case values, and switches with no
+// cases.
 // listing-has: SEL
 // listing-has: CASES 5
 // listing-lacks: ISEQ
 
-/* Classify a character. */
+// Classify a character.
 int kind(int c)
 {
   switch (c) {
@@ -23,13 +23,13 @@ int kind(int c)
   }
 }
 
-/* Name a sign, with fall through and negative cases. */
+// Name a sign, with fall through and negative cases.
 void sign(int v)
 {
   switch (v) {
   case -1:
     __putc('-');
-    /* fall through */
+    // fall through
   case 0:
     __putc('0');
     break;
@@ -43,7 +43,7 @@ void sign(int v)
   __putc(' ');
 }
 
-/* Copy n words with Duff's device: case labels inside a loop. */
+// Copy n words with Duff's device: case labels inside a loop.
 void copy(int *to, int *from, int n)
 {
   int k = (n + 3) / 4;
@@ -69,7 +69,7 @@ int main()
   sign(30000);
   __putln();
 
-  /* nested switches, and break and continue in a loop */
+  // nested switches, and break and continue in a loop
   for (i = 0; i < 6; i++) {
     switch (i % 3) {
     case 0:
@@ -80,8 +80,8 @@ int main()
       __putc('.');
       break;
     case 1:
-      continue;               /* the loop's next round */
-    case 2 + sizeof(int) - 2:   /* a constant expression: 2 */
+      continue;               // the loop's next round
+    case 2 + sizeof(int) - 2:   // a constant expression: 2
       __putc('C');
     }
     __putc(';');
@@ -93,11 +93,11 @@ int main()
     __puti(b[i]);
   __putc(' ');
 
-  switch (c) {                    /* a char value */
+  switch (c) {                    // a char value
   case 'q': __puts(pstr("q ")); break;
   case 'Q': __puts(pstr("Q ")); break;
   }
-  switch (i) { }                  /* no cases */
+  switch (i) { }                  // no cases
   switch (i) { default: __putc('D'); }
   switch (kind('a') + 1) { case 2: __putc('2'); }
   __putln();

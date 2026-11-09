@@ -1,5 +1,5 @@
 
-/* An enum constant can't be called. */
+// An enum constant can't be called.
 enum { A, B };
 
 int main()

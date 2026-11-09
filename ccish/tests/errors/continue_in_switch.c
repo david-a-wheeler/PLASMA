@@ -1,5 +1,5 @@
 
-/* continue in a switch goes to the loop around it, so it needs one. */
+// continue in a switch goes to the loop around it, so it needs one.
 int main()
 {
   int x = 1;

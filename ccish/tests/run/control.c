@@ -1,4 +1,4 @@
-/* if/else, while, do, for, break and continue. */
+// if/else, while, do, for, break and continue.
 // listing-lacks: CB 99
 // listing-lacks: CB 98
 void show(int n)
@@ -24,7 +24,7 @@ int fact(int n)
   return r;
 }
 
-/* The first i >= 1 with i * m >= n. */
+// The first i >= 1 with i * m >= n.
 int first_multiple(int n, int m)
 {
   int i;
@@ -41,7 +41,7 @@ int main()
   __putln();
   show(fact(5)); show(fact(7)); show(fact(0));
   __putln();
-  /* for with continue: the odd numbers below 10 */
+  // for with continue: the odd numbers below 10
   sum = 0;
   for (i = 0; i < 10; i++) {
     if (i % 2 == 0)
@@ -49,13 +49,13 @@ int main()
     sum += i;
   }
   show(sum);
-  /* a do loop runs at least once */
+  // a do loop runs at least once
   i = 100;
   do
     i++;
   while (i < 50);
   show(i);
-  /* continue in a do loop goes to the condition */
+  // continue in a do loop goes to the condition
   i = 0;
   sum = 0;
   do {
@@ -69,7 +69,7 @@ int main()
   show(sum);
   show(first_multiple(20, 7));
   __putln();
-  /* nested loops, a declaration in for, break from the inner loop */
+  // nested loops, a declaration in for, break from the inner loop
   for (int j = 1; j <= 3; j++) {
     int k;
     for (k = 1; ; k++) {
@@ -80,21 +80,21 @@ int main()
     __putc(' ');
   }
   __putln();
-  /* a dangling else belongs to the inner if */
+  // a dangling else belongs to the inner if
   i = 0;
   if (i == 0)
     if (i == 1)
       show(1);
     else
       show(2);
-  /* constant conditions: these bodies are never compiled */
+  // constant conditions: these bodies are never compiled
   while (0)
     show(99);
   if (0)
     show(98);
   else
     show(3);
-  /* for with no condition and no step */
+  // for with no condition and no step
   i = 0;
   for (;;) {
     if (++i == 4)

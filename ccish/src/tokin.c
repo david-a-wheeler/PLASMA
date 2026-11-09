@@ -1,11 +1,9 @@
-/*
- * cccomp's token reader (approach.md, "ccpp design"): reads the token
- * stream ccpp wrote, NAME.i (../CCPP.md), a token at a time, keeping
- * only the current one, and counts its lines for messages. An
- * identifier is an id there, and the parser uses the id; a spelling is
- * looked up in the name file, NAME.nam (nam.c), only to be printed in a
- * message.
- */
+// cccomp's token reader (approach.md, "ccpp design"): reads the token
+// stream ccpp wrote, NAME.i (../CCPP.md), a token at a time, keeping
+// only the current one, and counts its lines for messages. An
+// identifier is an id there, and the parser uses the id; a spelling is
+// looked up in the name file, NAME.nam (nam.c), only to be printed in a
+// message.
 #include <stdio.h>
 #include <string.h>
 #include "build.h"
@@ -25,23 +23,23 @@ int tok_len;
 int tok_hsum;
 int tok_hmul;
 
-static Bfile in;            /* NAME.i */
+static Bfile in;            // NAME.i
 #ifdef CCISH_DIAG
-static Bfile nam_in;        /* lent to nam.c: NAME.i may still be open */
+static Bfile nam_in;        // lent to nam.c: NAME.i may still be open
 #endif
 static const char *base_name;
-static int at_end;          /* the end code has been read */
-static char source[MAX_PATH];   /* tok_file's name, for messages */
-int tok_file = 1;           /* the file the token is in (the name file's
-                             * number), for #pragma plasma import */
+static int at_end;          // the end code has been read
+static char source[MAX_PATH];   // tok_file's name, for messages
+int tok_file = 1;           // the file the token is in (the name file's
+                            // number), for #pragma plasma import
 
-/* The token stream is damaged: stop. */
+// The token stream is damaged: stop.
 static void damaged(void)
 {
   fatal(231 /* "token file is damaged:" */, stream_name(base_name, SUFFIX_I));
 }
 
-/* The token stream's next byte, which must be there. */
+// The token stream's next byte, which must be there.
 static int get_byte(void)
 {
   int c = bgetc(&in);
@@ -50,31 +48,31 @@ static int get_byte(void)
   return c;
 }
 
-/* The token stream's next word. */
+// The token stream's next word.
 static int get_word(void)
 {
   int lo = get_byte();
   return lo | (get_byte() << 8);
 }
 
-/* Look up the name of the current token's file, for a message
- * (diag.c's src_name_hook), opening and checking the name file: only
- * then, so that a correct compile never reads it (CCPP.md, "The
- * stamp"). An
- * error is reported after the other files are closed, so this needs no
- * more I/O buffers. */
+// Look up the name of the current token's file, for a message
+// (diag.c's src_name_hook), opening and checking the name file: only
+// then, so that a correct compile never reads it (CCPP.md, "The
+// stamp"). An
+// error is reported after the other files are closed, so this needs no
+// more I/O buffers.
 static void name_source(void)
 {
 #ifndef CCISH_DIAG
-  nam_bf = &in;             /* closed by now: an error closes it first */
+  nam_bf = &in;             // closed by now: an error closes it first
 #endif
   nam_open(base_name);
   strcpy(source, nam_file(tok_file));
   nam_close();
 }
 
-/* Open the token stream of base, check its header, and read the first
- * token. Messages give the token's file and line from now on. */
+// Open the token stream of base, check its header, and read the first
+// token. Messages give the token's file and line from now on.
 void tok_open(const char *base)
 {
   base_name = base;
@@ -86,8 +84,8 @@ void tok_open(const char *base)
     fatal(230 /* "not a token file from ccpp, or the wrong version:" */,
           stream_name(base, SUFFIX_I));
 #ifdef CCISH_DIAG
-  nam_bf = &nam_in;         /* names are spelled before an error stops */
-  nam_base(base);           /* for a message's details (nam_name()) */
+  nam_bf = &nam_in;         // names are spelled before an error stops
+  nam_base(base);           // for a message's details (nam_name())
 #endif
   tok_file = 1;
   src_name = source;
@@ -96,17 +94,17 @@ void tok_open(const char *base)
   next();
 }
 
-/* Close the token stream (and the name file, after an error). */
+// Close the token stream (and the name file, after an error).
 void tok_close(void)
 {
   bclose(&in);
   nam_close();
 }
 
-/* The one-character tokens the stream may hold. */
+// The one-character tokens the stream may hold.
 static const char singles[] = "!%&()*+,-./:;<=>?[]^{|}~";
 
-/* Advance to the next token. */
+// Advance to the next token.
 void next(void)
 {
   int c, n, i;
@@ -134,9 +132,9 @@ void next(void)
     i = get_word();
     if (bgetc(&in) != EOF)
       damaged();
-    nam_ids = n;        /* the name file's stamp, for the IR file; */
-                        /* ccgen checks it, and the ids, against
-                         * the name file */
+    nam_ids = n;        // the name file's stamp, for the IR file;
+                        // ccgen checks it, and the ids, against
+                        // the name file
     nam_sum = i;
     at_end = 1;
     tok = T_EOF;
@@ -144,8 +142,8 @@ void next(void)
   case TC_ID:
   case TC_KEYWORD:
   case TC_TAG:
-    /* A struct's or union's tag, and only that, has its spelling's
-     * hash. */
+    // A struct's or union's tag, and only that, has its spelling's
+    // hash.
     if ((c == TC_TAG)
         != ((tok == T_STRUCT || tok == T_UNION) && c != TC_KEYWORD))
       damaged();
@@ -182,8 +180,8 @@ void next(void)
     damaged();
 }
 
-/* Is the token after the current one a ']' on the same line? The
- * parser uses this to see whether an index is simple. */
+// Is the token after the current one a ']' on the same line? The
+// parser uses this to see whether an index is simple.
 int next_is_rbracket(void)
 {
   int c;
@@ -195,8 +193,8 @@ int next_is_rbracket(void)
   return c == ']';
 }
 
-/* Is the token after the current one a ':'? The parser uses this to
- * tell a label (an identifier followed by ':') from an expression. */
+// Is the token after the current one a ':'? The parser uses this to
+// tell a label (an identifier followed by ':') from an expression.
 int next_is_colon(void)
 {
   int c;
@@ -208,18 +206,18 @@ int next_is_colon(void)
   return c == ':';
 }
 
-/* The spellings of the supported keywords and the multi-character
- * operators, for messages, are in the message file, as messages' texts
- * are, not in cccomp (approach.md, "C2 design"): messages 262-287 are
- * the keywords, in T_INT's order, and messages 288-309 the operators,
- * in T_EQ's. */
+// The spellings of the supported keywords and the multi-character
+// operators, for messages, are in the message file, as messages' texts
+// are, not in cccomp (approach.md, "C2 design"): messages 262-287 are
+// the keywords, in T_INT's order, and messages 288-309 the operators,
+// in T_EQ's.
 #define MSG_KEYWORDS 262
 #define MSG_OPS      288
 
 #ifdef CCISH_DIAG
-/* Describe the current token for an error message, e.g. "'while'" or
- * "a number". The result is in a static buffer. Without the message
- * file, a keyword or operator is its message's number. */
+// Describe the current token for an error message, e.g. "'while'" or
+// "a number". The result is in a static buffer. Without the message
+// file, a keyword or operator is its message's number.
 const char *tok_desc(void)
 {
   static char buf[MAX_NAME + 16];

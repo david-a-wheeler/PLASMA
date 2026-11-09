@@ -1,10 +1,10 @@
-/* Reads of a volatile pointer, a volatile index, and a member of a
- * volatile struct, each once as written. The globals: buf data+0 to
- * +3, vp data+4, vi data+6, vs data+8 (a) and data+10 (b).
- *   *vp, and *vp += 1: vp is read once for each (f1, f4), not again
- *   for the store, so 2 reads of data+4;
- *   buf[vi]: vi read once (f2);
- *   vs.b: one load of data+10 (f3), and none of data+8. */
+// Reads of a volatile pointer, a volatile index, and a member of a
+// volatile struct, each once as written. The globals: buf data+0 to
+// +3, vp data+4, vi data+6, vs data+8 (a) and data+10 (b).
+//   *vp, and *vp += 1: vp is read once for each (f1, f4), not again
+//   for the store, so 2 reads of data+4;
+//   buf[vi]: vi read once (f2);
+//   vs.b: one load of data+10 (f3), and none of data+8.
 // listing-count: 2 ; data+4
 // listing-count: 1 ; data+6
 // listing-count: 1 ; data+10

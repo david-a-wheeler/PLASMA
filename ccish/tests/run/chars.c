@@ -1,7 +1,7 @@
-/* char is one byte and unsigned. A value is converted to char (its low
- * byte kept) when it is stored into a char, passed as a char parameter,
- * returned from a char function, or cast to char. Casts to int and void
- * work too. */
+// char is one byte and unsigned. A value is converted to char (its low
+// byte kept) when it is stored into a char, passed as a char parameter,
+// returned from a char function, or cast to char. Casts to int and void
+// work too.
 // listing-has: LLB
 // listing-has: DLB
 // listing-has: SLB
@@ -33,7 +33,7 @@ int is_a(char c)
   return c == 'A';
 }
 
-/* Two chars take one byte each, so the frame is 4 bytes. */
+// Two chars take one byte each, so the frame is 4 bytes.
 int frame()
 {
   char a = 'A', b = 'B';

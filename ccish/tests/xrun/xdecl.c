@@ -1,8 +1,8 @@
-/* xdecl.c — the declaration and storage keywords: typedef (of a
- * scalar and of an anonymous struct), enum with a skipped value,
- * the signed and unsigned specifiers, const (a compile-time-known
- * scalar), volatile, static locals and globals, and an extern
- * declaration before its definition. */
+// xdecl.c — the declaration and storage keywords: typedef (of a
+// scalar and of an anonymous struct), enum with a skipped value,
+// the signed and unsigned specifiers, const (a compile-time-known
+// scalar), volatile, static locals and globals, and an extern
+// declaration before its definition.
 #include "ptest.h"
 
 typedef int count;

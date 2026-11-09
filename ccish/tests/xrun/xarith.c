@@ -1,13 +1,13 @@
-/* xarith.c — arithmetic: first the constant expressions the parser
- * folds at compile time (the peephole folds what it leaves), then
- * every binary operator at run time through show_ops, the compound
- * assignments one by one, the same operators in multi-level
- * expressions, whose partial results must sit on the arithmetic
- * stack while the next tier is computed: at run time (the operands
- * are parameters the folder can't touch), left- and right-nested,
- * and folded as deep constants. The mixed operators are
- * unparenthesized on purpose: C's precedence is the test, and the
- * file is compiled with -Wno-parentheses (xarith.flags). */
+// xarith.c — arithmetic: first the constant expressions the parser
+// folds at compile time (the peephole folds what it leaves), then
+// every binary operator at run time through show_ops, the compound
+// assignments one by one, the same operators in multi-level
+// expressions, whose partial results must sit on the arithmetic
+// stack while the next tier is computed: at run time (the operands
+// are parameters the folder can't touch), left- and right-nested,
+// and folded as deep constants. The mixed operators are
+// unparenthesized on purpose: C's precedence is the test, and the
+// file is compiled with -Wno-parentheses (xarith.flags).
 #include "ptest.h"
 
 int prec(int a, int b, int c, int d)
@@ -20,9 +20,9 @@ int precd(int a, int b, int c, int d, int e)
   return a * b / c + d % e; // * / % bind tighter than +
 }
 
-/* Every binary operator, at run time. b is small, so the shifts are
- * defined, and every value stays in the 16-bit range. / and % follow
- * C (toward zero, the sign of the dividend), and >> is arithmetic. */
+// Every binary operator, at run time. b is small, so the shifts are
+// defined, and every value stays in the 16-bit range. / and % follow
+// C (toward zero, the sign of the dividend), and >> is arithmetic.
 int show_ops(int a, int b)
 {
   puti(a + b);
@@ -60,46 +60,46 @@ int show_ops(int a, int b)
   return 0;
 }
 
-/* Two tiers: * / % over + -, six operands. */
+// Two tiers: * / % over + -, six operands.
 int two_tiers(int a, int b, int c, int d, int e, int f)
 {
   return a + b * c - d / e % f;
 }
 
-/* Four tiers: * / % over + -, then ^, then |. */
+// Four tiers: * / % over + -, then ^, then |.
 int four_tiers(int a, int b, int c, int d, int e, int f, int g, int h)
 {
   return a + b * c - d / e % f ^ g | h;
 }
 
-/* Right-nested: unlike the left-associative chains above, each level
- * leaves its partial result on the stack while the next is computed,
- * so the stack grows one word per level. */
+// Right-nested: unlike the left-associative chains above, each level
+// leaves its partial result on the stack while the next is computed,
+// so the stack grows one word per level.
 int right_nest(int a, int b, int c, int d, int e, int f)
 {
   return a + (b + (c + (d + (e + f))));
 }
 
-/* Subexpressions under operators: the division's divisor is a
- * subexpression, so it must be computed and held while the
- * numerator's is, and the product's factor is held for the whole
- * division. */
+// Subexpressions under operators: the division's divisor is a
+// subexpression, so it must be computed and held while the
+// numerator's is, and the product's factor is held for the whole
+// division.
 int mixed(int a, int b, int c, int d, int e, int f, int g)
 {
   return a * (b + c * d) - e / (f - g);
 }
 
-/* A relational over the arithmetic tiers: both sides are full
- * two-tier expressions, compared only when each is complete. */
+// A relational over the arithmetic tiers: both sides are full
+// two-tier expressions, compared only when each is complete.
 int compare_mix(int a, int b, int c, int d, int e, int f)
 {
   return a + b * c < d * e + f;
 }
 
-/* Every compound assignment, in turn, on a value passed in: each
- * must compute old OP b, store it, and the next must read back what
- * was stored. The shifts are by b, small enough to be defined, and
- * every value stays in the 16-bit range. Prints v after each. */
+// Every compound assignment, in turn, on a value passed in: each
+// must compute old OP b, store it, and the next must read back what
+// was stored. The shifts are by b, small enough to be defined, and
+// every value stays in the 16-bit range. Prints v after each.
 void comps(int a, int b)
 {
   int v;
@@ -136,9 +136,9 @@ void comps(int a, int b)
   putln();
 }
 
-/* Compound assignments on array elements (a different code path
- * than on plain variables), and a post-decrement as the index: the
- * old i is the index, and i itself moves on for the last read. */
+// Compound assignments on array elements (a different code path
+// than on plain variables), and a post-decrement as the index: the
+// old i is the index, and i itself moves on for the last read.
 int comp_elem(int a, int b)
 {
   int v[4];
@@ -153,7 +153,7 @@ int comp_elem(int a, int b)
   return r + i;       // i is 2 now: 21 + 2 = 23
 }
 
-/* A multiply the folder can't touch, for the wraparound tests. */
+// A multiply the folder can't touch, for the wraparound tests.
 int wrapmul(int a, int b)
 {
   return a * b;

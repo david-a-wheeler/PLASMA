@@ -1,19 +1,19 @@
-/* Declarations in C's full syntax (approach.md, "Function pointer
- * design", step 1): declarators in parentheses, pointers to arrays,
- * pointers to functions and arrays of them, typedefs of function types,
- * a function declared through one, a parameter of function type (a
- * pointer, C11 6.7.6.3), a variable and a function in one declaration,
- * abstract declarators in sizeof and a cast, and block-scope function
- * and extern declarations. The externs are among locals, so the locals
- * move up a slot (add_global()); u and w show they're intact, also after
- * the inner block. Calls through pointers come with step 2. */
+// Declarations in C's full syntax (approach.md, "Function pointer
+// design", step 1): declarators in parentheses, pointers to arrays,
+// pointers to functions and arrays of them, typedefs of function types,
+// a function declared through one, a parameter of function type (a
+// pointer, C11 6.7.6.3), a variable and a function in one declaration,
+// abstract declarators in sizeof and a cast, and block-scope function
+// and extern declarations. The externs are among locals, so the locals
+// move up a slot (add_global()); u and w show they're intact, also after
+// the inner block. Calls through pointers come with step 2.
 typedef int fn_t(int);
 typedef int (*fp_t)(int);
 int (*gp)(int);
 int (*table[3])(int);
 int a[4] = {10, 20, 30, 40};
 int (*pa)[4] = &a;
-struct ops {                    /* FILEIO's shape: a table of functions */
+struct ops {                    // FILEIO's shape: a table of functions
   int (*one)(int);
   char *(*two)(char *, int (*)(int));
   int n;

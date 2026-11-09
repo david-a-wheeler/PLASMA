@@ -1,20 +1,18 @@
-/*
- * The table of enum constants and typedef names (approach.md, "enum and
- * typedef design"), as parallel arrays: entry i has name id_nm[i] (an
- * id, the number ccpp gave the name: ../CCPP.md), value id_v[i], kind
- * id_k[i] (ID_*), and block depth id_d[i], one more than the depth
- * (0 once hidden, since char is unsigned: the 0-means-none idiom, as
- * in irin.c's lab_depth). Names need
- * no pool of their own: cccomp keeps no spellings (approach.md, "ccpp
- * design").
- */
+// The table of enum constants and typedef names (approach.md, "enum and
+// typedef design"), as parallel arrays: entry i has name id_nm[i] (an
+// id, the number ccpp gave the name: ../CCPP.md), value id_v[i], kind
+// id_k[i] (ID_*), and block depth id_d[i], one more than the depth
+// (0 once hidden, since char is unsigned: the 0-means-none idiom, as
+// in irin.c's lab_depth). Names need
+// no pool of their own: cccomp keeps no spellings (approach.md, "ccpp
+// design").
 #include <stddef.h>
 #include "build.h"
 #include "diag.h"
 #include "name.h"
 
-#define MAX_IDS      203    /* enum constants and typedef names (184, in
-                             * parse.c) */
+#define MAX_IDS      203    // enum constants and typedef names (184, in
+                            // parse.c)
 
 static int id_nm[MAX_IDS];
 static int id_v[MAX_IDS];
@@ -22,12 +20,12 @@ static char id_k[MAX_IDS];
 static char id_d[MAX_IDS];
 static int nids;
 #ifdef CCISH_STATS
-static int nids_peak;               /* the most at once */
+static int nids_peak;               // the most at once
 #endif
 
-/* Add an enum constant or typedef name (kind ID_*) with value val,
- * visible from block depth depth on, and return it. The caller checks
- * that the name is new in its scope. */
+// Add an enum constant or typedef name (kind ID_*) with value val,
+// visible from block depth depth on, and return it. The caller checks
+// that the name is new in its scope.
 int id_add(int name, int kind, int val, int depth)
 {
   if (nids >= MAX_IDS)
@@ -43,7 +41,7 @@ int id_add(int name, int kind, int val, int depth)
   return nids++;
 }
 
-/* The innermost visible enum constant or typedef named name, or -1. */
+// The innermost visible enum constant or typedef named name, or -1.
 int id_find(int name)
 {
   int i;
@@ -53,27 +51,27 @@ int id_find(int name)
   return -1;
 }
 
-/* The kind of entry i (ID_*). */
+// The kind of entry i (ID_*).
 int id_kind(int i)
 {
   return id_k[i];
 }
 
-/* The value of entry i: a constant's value, or a typedef's type. */
+// The value of entry i: a constant's value, or a typedef's type.
 int id_val(int i)
 {
   return id_v[i];
 }
 
-/* The block depth entry i was declared at (visible entries only). */
+// The block depth entry i was declared at (visible entries only).
 int id_depth(int i)
 {
   return id_d[i] - 1;
 }
 
-/* Hide the entries declared deeper than depth, at the end of their
- * block, and free them if they are the last ones: unlike struct tags,
- * no type refers to them. */
+// Hide the entries declared deeper than depth, at the end of their
+// block, and free them if they are the last ones: unlike struct tags,
+// no type refers to them.
 void id_hide(int depth)
 {
   int i;
@@ -85,7 +83,7 @@ void id_hide(int depth)
 }
 
 #ifdef CCISH_STATS
-/* The most entries the table held at once (CCISH_STATS). */
+// The most entries the table held at once (CCISH_STATS).
 int id_peak(void)
 {
   return nids_peak;

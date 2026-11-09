@@ -1,5 +1,5 @@
 
-/* C requires at least one constant. */
+// C requires at least one constant.
 enum e { };
 
 int main()

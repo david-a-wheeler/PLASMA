@@ -1,14 +1,14 @@
-/* Nested braces mixed with brace elision, and braces around scalars
- * (C11 6.7.9p11, p20), which gcc accepts with warnings, so this isn't
- * a cross test (tests/xrun/xinitnest.c is). When the next item is '{',
- * it starts the list of the subobject about to be initialized, at
- * whatever depth elision has reached: in m2's {1, {2}, 3}, that is
- * the scalar m2[0][1]. */
+// Nested braces mixed with brace elision, and braces around scalars
+// (C11 6.7.9p11, p20), which gcc accepts with warnings, so this isn't
+// a cross test (tests/xrun/xinitnest.c is). When the next item is '{',
+// it starts the list of the subobject about to be initialized, at
+// whatever depth elision has reached: in m2's {1, {2}, 3}, that is
+// the scalar m2[0][1].
 struct pt { int x, y; };
 struct seg { struct pt a, b; };
 
-int m[2][2] = {{1, 2}, {3, 4}};         /* formerly an error test */
-struct pt ps[2] = {{1, 2}, {3, 4}};     /* likewise */
+int m[2][2] = {{1, 2}, {3, 4}};         // formerly an error test
+struct pt ps[2] = {{1, 2}, {3, 4}};     // likewise
 int m2[2][2] = {1, {2}, 3};
 struct pt mix[3] = {{1, 2}, 3, 4, {5}};
 struct seg sg = {1, 2, {3}};
@@ -16,7 +16,7 @@ int a[3] = {{7}, 8};
 int x = {9};
 char cs[2][3] = {'a', {'b'}, 'c', {'d', 'e'}};
 
-/* Print n ints from p. */
+// Print n ints from p.
 void show(int *p, int n)
 {
   int i;

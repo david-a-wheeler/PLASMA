@@ -1,7 +1,7 @@
-/* xarrays.c — arrays: the sizeof a / sizeof a[0] idiom (portable
- * though sizeof is not), a folded constant size, element access,
- * pointer differences in elements, and p + i, which the peephole
- * fuses to one op. */
+// xarrays.c — arrays: the sizeof a / sizeof a[0] idiom (portable
+// though sizeof is not), a folded constant size, element access,
+// pointer differences in elements, and p + i, which the peephole
+// fuses to one op.
 #include "ptest.h"
 
 int sumto(int *v, int n)

@@ -1,6 +1,6 @@
-/* xchar.c — char: unsigned in ccish by design, and in the host build
- * via -funsigned-char; the arithmetic must agree, including storing a
- * wider value in a char (the low byte is kept). */
+// xchar.c — char: unsigned in ccish by design, and in the host build
+// via -funsigned-char; the arithmetic must agree, including storing a
+// wider value in a char (the low byte is kept).
 #include "ptest.h"
 
 int main(void)

@@ -1,25 +1,23 @@
-/*
- * ccpp's macros (approach.md, "ccpp design"): the table of #defines, and
- * their expansion. A macro's body is kept as tokens in the token
- * stream's own encoding (../CCPP.md), with ccpp's codes for its
- * parameters, # and ## (pplex.h); expanding one replays bytes.
- *
- * Expansions are read through an input stack: each entry is a text in
- * sbuf[] being read (a macro's replacement, or an argument being
- * expanded) and the macro it came from, which isn't expanded again
- * while it is read (C11 6.10.3.4). When the stack is empty, tokens come
- * from the lexer. A function-like macro's arguments are collected into
- * sbuf[] too; each one used is first expanded by itself (C11 6.10.3.1),
- * read behind a barrier entry that ends it, into obuf[]; then the
- * replacement is built in sbuf[], and read in place of the call, with
- * what follows it. sbuf[] and obuf[] are used as stacks, and sbuf[]'s
- * dead texts are reclaimed whenever one is added. Nothing is allocated.
- *
- * The table is parallel arrays: macro m has name mac_id[m], mac_np1[m]
- * parameters plus 1 (0 for an object-like macro; the last parameter is
- * __VA_ARGS__ if mac_va[m]), and its body is mac_len[m] bytes of body[]
- * from mac_at[m]; bodies are in the table's order, with no gaps.
- */
+// ccpp's macros (approach.md, "ccpp design"): the table of #defines, and
+// their expansion. A macro's body is kept as tokens in the token
+// stream's own encoding (../CCPP.md), with ccpp's codes for its
+// parameters, # and ## (pplex.h); expanding one replays bytes.
+//
+// Expansions are read through an input stack: each entry is a text in
+// sbuf[] being read (a macro's replacement, or an argument being
+// expanded) and the macro it came from, which isn't expanded again
+// while it is read (C11 6.10.3.4). When the stack is empty, tokens come
+// from the lexer. A function-like macro's arguments are collected into
+// sbuf[] too; each one used is first expanded by itself (C11 6.10.3.1),
+// read behind a barrier entry that ends it, into obuf[]; then the
+// replacement is built in sbuf[], and read in place of the call, with
+// what follows it. sbuf[] and obuf[] are used as stacks, and sbuf[]'s
+// dead texts are reclaimed whenever one is added. Nothing is allocated.
+//
+// The table is parallel arrays: macro m has name mac_id[m], mac_np1[m]
+// parameters plus 1 (0 for an object-like macro; the last parameter is
+// __VA_ARGS__ if mac_va[m]), and its body is mac_len[m] bytes of body[]
+// from mac_at[m]; bodies are in the table's order, with no gaps.
 #include <stdio.h>
 #include <string.h>
 #include "build.h"
@@ -33,15 +31,15 @@
 #include "pplex.h"
 #include "ppmac.h"
 
-#define MAX_MACROS   119    /* macros defined at once (108, ptop.c,
-                             * about 20 of them include guards) */
-#define MAX_MACRO_BYTES 976 /* their bodies, as tokens (887, pexpr.c) */
-#define MAX_EXPAND   16     /* macro expansions inside one another (2) */
-#define MAX_EXP_BYTES 256   /* bytes of the expansions and arguments
-                             * being read, and of the arguments' own
-                             * expansions (two buffers; 15 and 3): room
-                             * for macros longer than ccish's */
-#define MAX_ARG_SLOTS 32    /* arguments of the calls being expanded (1) */
+#define MAX_MACROS   119    // macros defined at once (108, ptop.c,
+                            // about 20 of them include guards)
+#define MAX_MACRO_BYTES 976 // their bodies, as tokens (887, pexpr.c)
+#define MAX_EXPAND   16     // macro expansions inside one another (2)
+#define MAX_EXP_BYTES 256   // bytes of the expansions and arguments
+                            // being read, and of the arguments' own
+                            // expansions (two buffers; 15 and 3): room
+                            // for macros longer than ccish's
+#define MAX_ARG_SLOTS 32    // arguments of the calls being expanded (1)
 
 int pp_from_lexer;
 
@@ -52,44 +50,44 @@ static int mac_at[MAX_MACROS];
 static int mac_len[MAX_MACROS];
 static char mac_np1[MAX_MACROS];
 static char mac_va[MAX_MACROS];
-static char mac_on[MAX_MACROS];     /* being expanded now */
+static char mac_on[MAX_MACROS];     // being expanded now
 static int nmacs;
 
-/* The macro being defined: where its body starts, its parameters, and
- * whether the last token was a '#'. */
+// The macro being defined: where its body starts, its parameters, and
+// whether the last token was a '#'.
 static int def_start;
 static int def_params[MAX_PP_PARAMS];
 static int def_np;
 static int def_va;
 static int def_hash;
 
-/* The input stack: entry k reads sbuf[] from in_at[k] to in_end[k], for
- * macro in_mac[k] (or -1); a barrier (in_bar[k]) ends an argument. */
+// The input stack: entry k reads sbuf[] from in_at[k] to in_end[k], for
+// macro in_mac[k] (or -1); a barrier (in_bar[k]) ends an argument.
 static unsigned char sbuf[MAX_EXP_BYTES];
-static int stop;                    /* sbuf[]'s first free byte */
-static int sfloor;                  /* the arguments in use end here */
+static int stop;                    // sbuf[]'s first free byte
+static int sfloor;                  // the arguments in use end here
 static int in_at[MAX_EXPAND];
 static int in_end[MAX_EXPAND];
 static int in_mac[MAX_EXPAND];
 static char in_bar[MAX_EXPAND];
 static int nin;
 
-/* Arguments' expansions, while a replacement is built. */
+// Arguments' expansions, while a replacement is built.
 static unsigned char obuf[MAX_EXP_BYTES];
 static int otop;
 
-/* The calls being expanded: each argument's text in sbuf[] (a_at to
- * a_end), and its expansion in obuf[] (e_at to e_end; e_at -1 until
- * made). */
+// The calls being expanded: each argument's text in sbuf[] (a_at to
+// a_end), and its expansion in obuf[] (e_at to e_end; e_at -1 until
+// made).
 static int a_at[MAX_ARG_SLOTS];
 static int a_end[MAX_ARG_SLOTS];
 static int e_at[MAX_ARG_SLOTS];
 static int e_end[MAX_ARG_SLOTS];
 static int nslots;
 
-/* A token read ahead (after a function-like macro's name, to see
- * whether a '(' follows), to be read again: its code (-1 for none),
- * value, and where it came from. pt_text and pt_len stay its. */
+// A token read ahead (after a function-like macro's name, to see
+// whether a '(' follows), to be read again: its code (-1 for none),
+// value, and where it came from. pt_text and pt_len stay its.
 static int pend_code = -1;
 static int pend_val;
 static char pend_first;
@@ -97,11 +95,11 @@ static char pend_lex;
 static char pend_macro;
 
 #ifdef CCISH_STATS
-/* The most each table held (CCISH_STATS): macros, their bytes, sbuf[],
- * obuf[], the input stack, and argument slots. */
+// The most each table held (CCISH_STATS): macros, their bytes, sbuf[],
+// obuf[], the input stack, and argument slots.
 static int peak[6];
 
-/* Record how full the tables are now. */
+// Record how full the tables are now.
 static void note(void)
 {
   int now[6], i;
@@ -116,7 +114,7 @@ static void note(void)
       peak[i] = now[i];
 }
 
-/* The most table k held (note()'s order). */
+// The most table k held (note()'s order).
 int pp_mac_peak(int k)
 {
   return peak[k];
@@ -126,7 +124,7 @@ int pp_mac_peak(int k)
 #define NOTE()
 #endif
 
-/* Forget every macro and expansion (for each source file). */
+// Forget every macro and expansion (for each source file).
 void pp_mac_init(void)
 {
   body_used = nmacs = 0;
@@ -134,7 +132,7 @@ void pp_mac_init(void)
   pend_code = -1;
 }
 
-/* The macro named id, or -1. */
+// The macro named id, or -1.
 int pp_mac_find(int id)
 {
   int m;
@@ -144,13 +142,13 @@ int pp_mac_find(int id)
   return -1;
 }
 
-/* Expansion's buffers are full: stop. */
+// Expansion's buffers are full: stop.
 static void too_long(void)
 {
   fatal(256 /* "macro expansion too long" */, NULL);
 }
 
-/* The length of the encoded token at p. */
+// The length of the encoded token at p.
 static int token_len(const unsigned char *p)
 {
   switch (p[0]) {
@@ -164,8 +162,8 @@ static int token_len(const unsigned char *p)
   return 1;
 }
 
-/* Write token code (value val, or n bytes at s) encoded at p; return
- * its length. */
+// Write token code (value val, or n bytes at s) encoded at p; return
+// its length.
 static int encode(unsigned char *p, int code, int val,
                   const unsigned char *s, int n)
 {
@@ -185,8 +183,8 @@ static int encode(unsigned char *p, int code, int val,
   return 1;
 }
 
-/* Read the encoded token at p into pt_val, pt_text and pt_len; return
- * its code. */
+// Read the encoded token at p into pt_val, pt_text and pt_len; return
+// its code.
 static int decode(const unsigned char *p)
 {
   int i;
@@ -200,8 +198,8 @@ static int decode(const unsigned char *p)
   return p[0];
 }
 
-/* Start a macro's body, at the end of body[]: np parameters (-1 for an
- * object-like macro) with ids params, the last __VA_ARGS__ if va. */
+// Start a macro's body, at the end of body[]: np parameters (-1 for an
+// object-like macro) with ids params, the last __VA_ARGS__ if va.
 void pp_def_begin(int np, const int *params, int va)
 {
   int i;
@@ -213,7 +211,7 @@ void pp_def_begin(int np, const int *params, int va)
     def_params[i] = params[i];
 }
 
-/* Append a byte to the body being defined. */
+// Append a byte to the body being defined.
 static void def_byte(int c)
 {
   if (body_used >= MAX_MACRO_BYTES)
@@ -221,8 +219,8 @@ static void def_byte(int c)
   body[body_used++] = (unsigned char)c;
 }
 
-/* The index of the parameter named id of the macro being defined, or
- * -1. */
+// The index of the parameter named id of the macro being defined, or
+// -1.
 static int param_of(int id)
 {
   int i;
@@ -232,10 +230,10 @@ static int param_of(int id)
   return -1;
 }
 
-/* Append a token to the body being defined: code, with its value val,
- * or for a string its n bytes at s. In a function-like macro, a
- * parameter becomes TC_PARAM, and # and the parameter after it
- * TC_HASH_PARAM. */
+// Append a token to the body being defined: code, with its value val,
+// or for a string its n bytes at s. In a function-like macro, a
+// parameter becomes TC_PARAM, and # and the parameter after it
+// TC_HASH_PARAM.
 void pp_def_token(int code, int val, const unsigned char *s, int n)
 {
   static unsigned char tok[2 + MAX_STR];
@@ -262,10 +260,10 @@ void pp_def_token(int code, int val, const unsigned char *s, int n)
     def_byte(tok[i]);
 }
 
-/* Finish the body being defined, as macro id's. A parameter next to ##
- * is used as it is, not expanded first (C11 6.10.3.1); ## can't be at
- * either end. A macro may be defined again only with the same
- * parameters and body (C11 6.10.3), which is then dropped. */
+// Finish the body being defined, as macro id's. A parameter next to ##
+// is used as it is, not expanded first (C11 6.10.3.1); ## can't be at
+// either end. A macro may be defined again only with the same
+// parameters and body (C11 6.10.3), which is then dropped.
 void pp_def_end(int id)
 {
   int m = pp_mac_find(id), n = body_used - def_start, i;
@@ -305,8 +303,8 @@ void pp_def_end(int id)
   pp_set_macro(id, 1);
 }
 
-/* #undef id: forget the macro, if there is one, closing up its body's
- * space. */
+// #undef id: forget the macro, if there is one, closing up its body's
+// space.
 void pp_undef(int id)
 {
   int m = pp_mac_find(id), n, i;
@@ -328,8 +326,8 @@ void pp_undef(int id)
   pp_set_macro(id, 0);
 }
 
-/* The first free byte of sbuf[] above everything still in use: the
- * arguments of the calls being expanded, and the texts being read. */
+// The first free byte of sbuf[] above everything still in use: the
+// arguments of the calls being expanded, and the texts being read.
 static int sbuf_low(void)
 {
   int low = sfloor;
@@ -338,9 +336,9 @@ static int sbuf_low(void)
   return low;
 }
 
-/* Push an entry that reads the n bytes at p (which may be in sbuf[]
- * above sbuf_low()), copied down to sbuf_low(), for macro m (or -1);
- * bar makes it a barrier. */
+// Push an entry that reads the n bytes at p (which may be in sbuf[]
+// above sbuf_low()), copied down to sbuf_low(), for macro m (or -1);
+// bar makes it a barrier.
 static void push_text(const unsigned char *p, int n, int m, int bar)
 {
   int low = sbuf_low();
@@ -360,9 +358,9 @@ static void push_text(const unsigned char *p, int n, int m, int bar)
   NOTE();
 }
 
-/* The next token, as pp_lex() gives one: the token read ahead, or the
- * innermost text's next one, or the lexer's (pp_from_lexer says which);
- * TC_END at a barrier. */
+// The next token, as pp_lex() gives one: the token read ahead, or the
+// innermost text's next one, or the lexer's (pp_from_lexer says which);
+// TC_END at a barrier.
 static int next_tok(void)
 {
   int k, c, at;
@@ -394,14 +392,14 @@ static int next_tok(void)
     if (in_bar[k])
       return TC_END;
     if (in_mac[k] >= 0)
-      mac_on[in_mac[k]] = 0;    /* this expansion has ended */
+      mac_on[in_mac[k]] = 0;    // this expansion has ended
     nin--;
   }
   pp_from_lexer = 1;
   return pp_lex();
 }
 
-/* Append a byte to sbuf[]. */
+// Append a byte to sbuf[].
 static void sput(int c)
 {
   if (stop >= MAX_EXP_BYTES)
@@ -409,7 +407,7 @@ static void sput(int c)
   sbuf[stop++] = (unsigned char)c;
 }
 
-/* Append the current token (code, pt_val, pt_text, pt_len) to sbuf[]. */
+// Append the current token (code, pt_val, pt_text, pt_len) to sbuf[].
 static void sput_token(int code)
 {
   if (stop + 2 + pt_len > MAX_EXP_BYTES)
@@ -417,8 +415,8 @@ static void sput_token(int code)
   stop += encode(sbuf + stop, code, pt_val, pt_text, pt_len);
 }
 
-/* Collect the arguments of a call of macro m, whose '(' has been read,
- * into sbuf[], as slots from nslots on; return how many. */
+// Collect the arguments of a call of macro m, whose '(' has been read,
+// into sbuf[], as slots from nslots on; return how many.
 static int collect(int m)
 {
   int base = nslots, n = 0, depth = 0, c, np = mac_np1[m] - 1;
@@ -453,16 +451,16 @@ static int collect(int m)
     sput_token(c);
   }
   if (np == 0 && n == 1 && a_at[base] == a_end[base])
-    n = 0;                      /* F(): no arguments */
+    n = 0;                      // F(): no arguments
   if (mac_va[m] && n == np - 1) {
-    a_at[base + n] = a_end[base + n] = stop;  /* no variable arguments */
+    a_at[base + n] = a_end[base + n] = stop;  // no variable arguments
     n++;
   }
   NOTE();
   return n;
 }
 
-/* Expand argument slot k by itself (C11 6.10.3.1), into obuf[]. */
+// Expand argument slot k by itself (C11 6.10.3.1), into obuf[].
 static void expand_arg(int k)
 {
   int c;
@@ -475,12 +473,12 @@ static void expand_arg(int k)
   }
   e_end[k] = otop;
   NOTE();
-  nin--;                        /* the barrier */
+  nin--;                        // the barrier
 }
 
-/* Append n bytes at p (in sbuf[] or obuf[]), tokens without blanks, to
- * sbuf[]; return where the last token starts, or -1 if there are
- * none. */
+// Append n bytes at p (in sbuf[] or obuf[]), tokens without blanks, to
+// sbuf[]; return where the last token starts, or -1 if there are
+// none.
 static int put_tokens(const unsigned char *p, int n)
 {
   int i, k, last = -1;
@@ -497,8 +495,8 @@ static int put_tokens(const unsigned char *p, int n)
   return last;
 }
 
-/* Make argument slot k's text a string (#): its tokens spelled, with
- * one space where blanks were between them (C11 6.10.3.2). */
+// Make argument slot k's text a string (#): its tokens spelled, with
+// one space where blanks were between them (C11 6.10.3.2).
 static void put_string(int k)
 {
   static unsigned char str[MAX_STR + 1];
@@ -523,16 +521,16 @@ static void put_string(int k)
   sput_token(TC_STR);
 }
 
-/* Is c a letter, a digit or '_'? */
+// Is c a letter, a digit or '_'?
 static int is_word_char(int c)
 {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
          || (c >= '0' && c <= '9') || c == '_';
 }
 
-/* Paste (##) the token at sbuf[lhs] and the one right after it, at
- * sbuf[rhs], into one, in their place (C11 6.10.3.3): their spellings,
- * joined, must spell a word, a decimal number or an operator. */
+// Paste (##) the token at sbuf[lhs] and the one right after it, at
+// sbuf[rhs], into one, in their place (C11 6.10.3.3): their spellings,
+// joined, must spell a word, a decimal number or an operator.
 static void paste(int lhs, int rhs)
 {
   static char text[2 * MAX_NAME + 8];
@@ -576,14 +574,14 @@ static void paste(int lhs, int rhs)
     if (code < 0)
       error(254 /* "pasting doesn't give a valid token:" */, text);
   }
-  /* The result, no longer than the two, then what followed them. */
+  // The result, no longer than the two, then what followed them.
   k = encode(sbuf + lhs, code, pt_val, pt_text, 0);
   n = stop - rest;
   memmove(sbuf + lhs + k, sbuf + rest, n);
   stop = lhs + k + n;
 }
 
-/* Where the last token starts of those from sbuf[from] to stop. */
+// Where the last token starts of those from sbuf[from] to stop.
 static int last_token(int from)
 {
   int n;
@@ -592,8 +590,8 @@ static int last_token(int from)
   return from;
 }
 
-/* Expand a call of function-like macro m, whose '(' has been read: its
- * replacement is read next, in place of the call. */
+// Expand a call of function-like macro m, whose '(' has been read: its
+// replacement is read next, in place of the call.
 static void call(int m)
 {
   int base = nslots, save_floor = sfloor, otop0 = otop, np = mac_np1[m] - 1;
@@ -603,7 +601,7 @@ static void call(int m)
     error(251 /* "wrong number of arguments for macro" */,
           pp_id_spelling(mac_id[m]));
   nslots = base + np;
-  sfloor = stop;                /* keep the arguments */
+  sfloor = stop;                // keep the arguments
   for (k = 0; k < np; k++)
     e_at[base + k] = -1;
   end = body + mac_at[m] + mac_len[m];
@@ -636,7 +634,7 @@ static void call(int m)
       paste(lhs, start);
       k = last_token(lhs);
     } else if (pasting && k < 0) {
-      k = lhs;                  /* an empty right operand */
+      k = lhs;                  // an empty right operand
     }
     pasting = 0;
     last = k;
@@ -648,16 +646,16 @@ static void call(int m)
   push_text(sbuf + rep, stop - rep, m, 0);
 }
 
-/* The next token without macros expanded (for defined, in #if). */
+// The next token without macros expanded (for defined, in #if).
 int pp_next_raw(void)
 {
   return next_tok();
 }
 
-/* The next token, with macros expanded (pp_lex()'s, from the lexer or
- * an expansion; pp_from_lexer says which); TC_END at the end of the
- * file, or of an argument being expanded. __LINE__ is the current line,
- * and __FILE__ the current file's name. */
+// The next token, with macros expanded (pp_lex()'s, from the lexer or
+// an expansion; pp_from_lexer says which); TC_END at the end of the
+// file, or of an argument being expanded. __LINE__ is the current line,
+// and __FILE__ the current file's name.
 int pp_next(void)
 {
   int c, m, id, first, lex, code;
@@ -676,7 +674,7 @@ int pp_next(void)
       return code;
     m = pp_mac_find(pt_val);
     if (mac_on[m])
-      return code;              /* inside its own expansion */
+      return code;              // inside its own expansion
     if (mac_np1[m] == 0) {
       push_text(body + mac_at[m], mac_len[m], m, 0);
       continue;
@@ -686,7 +684,7 @@ int pp_next(void)
     lex = pp_from_lexer;
     c = next_tok();
     if (c != '(') {
-      /* Not a call: the name, then that token, as they are. */
+      // Not a call: the name, then that token, as they are.
       pend_code = c;
       pend_val = pt_val;
       pend_first = (char)pt_first;

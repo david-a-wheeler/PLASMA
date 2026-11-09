@@ -1,5 +1,5 @@
 
-/* A tag can be defined once in a scope. */
+// A tag can be defined once in a scope.
 struct pt { int x, y; };
 struct pt { int x, y; };
 

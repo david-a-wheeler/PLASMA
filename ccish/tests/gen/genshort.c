@@ -1,9 +1,9 @@
-/* genshort.c: `short` is a synonym for `int`. The preprocessor (the
- * pp_word of src/pplex.c) gives the word `short` the token of `int`,
- * so the compiler sees only `int`, and a function written with
- * `short` lowers to the same machine code as its `int` twin. Each
- * short function here is paired with an int one of the same body, and
- * the listing pins both: any divergence shows as a diff. */
+// genshort.c: `short` is a synonym for `int`. The preprocessor (the
+// pp_word of src/pplex.c) gives the word `short` the token of `int`,
+// so the compiler sees only `int`, and a function written with
+// `short` lowers to the same machine code as its `int` twin. Each
+// short function here is paired with an int one of the same body, and
+// the listing pins both: any divergence shows as a diff.
 int iv = 5;
 short sv = 6;
 

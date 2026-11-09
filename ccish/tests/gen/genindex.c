@@ -1,11 +1,11 @@
-/* genindex.c - a[i + c]: the constant goes into the array's address
- * (peep.c, rewrite_index), twice it for an int array, so the index is
- * one load, which then fuses with the ADD (LA a+c ADDLW i): 2 bytes and
- * 2 ops less. a is the first global, at data offset 0, so a[i - 1]'s
- * address is offset -1, which ccrel wraps and the index brings back.
- * Also an int array (IDXW), a local array (LLA n+c), a string, and an
- * index of more than one load. A pointer's p[i + 1] has no constant
- * address, and stays. */
+// genindex.c - a[i + c]: the constant goes into the array's address
+// (peep.c, rewrite_index), twice it for an int array, so the index is
+// one load, which then fuses with the ADD (LA a+c ADDLW i): 2 bytes and
+// 2 ops less. a is the first global, at data offset 0, so a[i - 1]'s
+// address is offset -1, which ccrel wraps and the index brings back.
+// Also an int array (IDXW), a local array (LLA n+c), a string, and an
+// index of more than one load. A pointer's p[i + 1] has no constant
+// address, and stays.
 char a[8] = {1, 2, 3, 4, 5, 6, 7, 8};
 int w[4] = {10, 20, 30, 40};
 

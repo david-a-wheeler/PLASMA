@@ -1,10 +1,10 @@
-/* Counted loops with limits that aren't a constant or a local
- * (approach.md, "Possible improvements to the loop forms", 2): a
- * global, a char global, an expression of a local, array elements; the
- * limit first, with a store to another global in the body; <= with an
- * expression; and inits that are expressions, folded into the count. Each limit is computed once, on entry, which is
- * right only because nothing in the body can change it
- * (counted_not.c has the loops whose bodies could). */
+// Counted loops with limits that aren't a constant or a local
+// (approach.md, "Possible improvements to the loop forms", 2): a
+// global, a char global, an expression of a local, array elements; the
+// limit first, with a store to another global in the body; <= with an
+// expression; and inits that are expressions, folded into the count. Each limit is computed once, on entry, which is
+// right only because nothing in the body can change it
+// (counted_not.c has the loops whose bodies could).
 // The inits that are expressions (i = at[m], i = n - 1, i = at[m] + 1)
 // are folded into the count, so i is stored only at each loop's exit:
 // 8 SLWs of i ([0]), one per loop.
@@ -29,27 +29,27 @@ int main()
 {
   int i, m = 1, n = 6, s;
   s = 0;
-  for (i = 0; i < nf; i++)      /* a global */
+  for (i = 0; i < nf; i++)      // a global
     s += i;
   show(s);
   show(i);
   s = 0;
-  for (i = 0; i < nb; i++)      /* a char global */
+  for (i = 0; i < nb; i++)      // a char global
     s += i;
   show(s);
   show(i);
   s = 0;
-  for (i = 0; i < n - 1; i++)   /* an expression of a local */
+  for (i = 0; i < n - 1; i++)   // an expression of a local
     s += i;
   show(s);
   show(i);
   s = 0;
-  for (i = at[m]; i < at[m] + len[m]; i++)  /* array elements */
+  for (i = at[m]; i < at[m] + len[m]; i++)  // array elements
     s += i;
   show(s);
   show(i);
   s = 0;
-  for (i = 0; nf > i; i++) {    /* the limit first; another global */
+  for (i = 0; nf > i; i++) {    // the limit first; another global
     s += i;
     other = s;
   }
@@ -57,17 +57,17 @@ int main()
   show(other);
   show(i);
   s = 0;
-  for (i = 0; i <= nf * 2; i += 3)  /* <=, an expression: ADDBRLE */
+  for (i = 0; i <= nf * 2; i += 3)  // <=, an expression: ADDBRLE
     s += i;
   show(s);
   show(i);
   s = 0;
-  for (i = n - 1; i >= 0; i--)  /* an init that is an expression */
+  for (i = n - 1; i >= 0; i--)  // an init that is an expression
     s += i;
   show(s);
   show(i);
   s = 0;
-  for (i = at[m] + 1; i > nb; i--)  /* one that loads */
+  for (i = at[m] + 1; i > nb; i--)  // one that loads
     s += i;
   show(s);
   show(i);

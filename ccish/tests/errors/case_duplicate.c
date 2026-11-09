@@ -1,6 +1,6 @@
 
-/* Each case value can appear once in a switch; the error is at the
- * second one. */
+// Each case value can appear once in a switch; the error is at the
+// second one.
 int main()
 {
   int x = 1;

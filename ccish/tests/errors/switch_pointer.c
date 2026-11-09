@@ -1,5 +1,5 @@
 
-/* C switches only on integers. */
+// C switches only on integers.
 int main()
 {
   char *p = "hi";

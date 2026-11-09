@@ -1,4 +1,4 @@
-/* Line endings: CRLF, CR and LF. */
+// Line endings: CRLF, CR and LF.
 int main()
 {
   __puti(5);

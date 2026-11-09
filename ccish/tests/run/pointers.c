@@ -1,6 +1,6 @@
-/* Pointers: & and *, pointer parameters and return values, arithmetic
- * scaled by the element size, comparisons (< > <= >= are unsigned),
- * stores through pointers, and void *. */
+// Pointers: & and *, pointer parameters and return values, arithmetic
+// scaled by the element size, comparisons (< > <= >= are unsigned),
+// stores through pointers, and void *.
 // listing-has: LLA
 // listing-has: IDXLW
 // listing-has: SB
@@ -33,7 +33,7 @@ int *pick(int *a, int *b, int first)
   return first ? a : b;
 }
 
-/* Fill n ints from p with start, start + 1, ... */
+// Fill n ints from p with start, start + 1, ...
 void fill(int *p, int n, int start)
 {
   while (n-- > 0)
@@ -47,7 +47,7 @@ int main()
   int *w;
   void *v;
 
-  /* & and * on locals */
+  // & and * on locals
   show(*p);
   *p = 10;
   show(x);
@@ -65,7 +65,7 @@ int main()
   show(*pick(&x, &y, 0));
   __putln();
 
-  /* chars through a pointer */
+  // chars through a pointer
   *cp = 300;
   show(c);
   show(*cp = 321);
@@ -80,7 +80,7 @@ int main()
   show(len(""));
   __putln();
 
-  /* arithmetic on a heap block of 5 ints */
+  // arithmetic on a heap block of 5 ints
   v = __heapalloc(10);
   w = v;
   fill(w, 5, 100);
@@ -104,7 +104,7 @@ int main()
   show(*(y + w));
   __putln();
 
-  /* comparisons */
+  // comparisons
   s = "hello";
   show(*(s + 1));
   show(s + 5 - s);

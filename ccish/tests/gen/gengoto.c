@@ -1,9 +1,9 @@
-/* gengoto.c - a goto and its label: the label takes a goto label (the
- * block above the entry label, 104 up), and the goto is an ordinary
- * branch to it (pick). A counted loop keeps its limit and count under
- * its body, so a for-loop whose body holds a goto is kept uncounted:
- * sum's loop is the plain form, its index in the frame and its test a
- * real comparison, not the counted form's stack index and BRLT. */
+// gengoto.c - a goto and its label: the label takes a goto label (the
+// block above the entry label, 104 up), and the goto is an ordinary
+// branch to it (pick). A counted loop keeps its limit and count under
+// its body, so a for-loop whose body holds a goto is kept uncounted:
+// sum's loop is the plain form, its index in the frame and its test a
+// real comparison, not the counted form's stack index and BRLT.
 int pick(int n)
 {
   if (n)

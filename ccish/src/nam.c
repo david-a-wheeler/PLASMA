@@ -1,17 +1,15 @@
-/*
- * The reader of the name file, NAME.nam (../CCPP.md), for cccomp and
- * ccgen: it checks the whole file once, when it is opened (ccgen opens
- * it at the start, cccomp only for a message), and then looks
- * spellings up by id. It reads through a bio buffer that its caller
- * lends it (nam_bf): ccgen's own, and cccomp's for NAME.i, which
- * is closed by the time a message needs a name, so that cccomp spends
- * no memory on it. It keeps its place: a lookup reads on from the last
- * one, and starts
- * again from the top only for an earlier line (bio can't seek). Ids are
- * given in the order names are first met, which is nearly the order of
- * the functions and globals a symbol summary lists, so writing all their
- * names takes about one pass.
- */
+// The reader of the name file, NAME.nam (../CCPP.md), for cccomp and
+// ccgen: it checks the whole file once, when it is opened (ccgen opens
+// it at the start, cccomp only for a message), and then looks
+// spellings up by id. It reads through a bio buffer that its caller
+// lends it (nam_bf): ccgen's own, and cccomp's for NAME.i, which
+// is closed by the time a message needs a name, so that cccomp spends
+// no memory on it. It keeps its place: a lookup reads on from the last
+// one, and starts
+// again from the top only for an earlier line (bio can't seek). Ids are
+// given in the order names are first met, which is nearly the order of
+// the functions and globals a symbol summary lists, so writing all their
+// names takes about one pass.
 #include <stdio.h>
 #include "build.h"
 #include "cclimits.h"
@@ -23,22 +21,22 @@
 int nam_ids;
 int nam_sum;
 
-Bfile *nam_bf;                  /* the lent buffer */
+Bfile *nam_bf;                  // the lent buffer
 static const char *base_name;
 #ifdef CCISH_DIAG
-static char checked;            /* nam_open() has checked it */
+static char checked;            // nam_open() has checked it
 #endif
-static int at;                  /* the number of the line read next */
-static char line[MAX_PATH];     /* the line last read */
+static int at;                  // the number of the line read next
+static char line[MAX_PATH];     // the line last read
 
-/* Close the name file, if it is open (bclose() does nothing if not). */
+// Close the name file, if it is open (bclose() does nothing if not).
 void nam_close(void)
 {
   if (nam_bf)
     bclose(nam_bf);
 }
 
-/* The name file is damaged, or from another run of ccpp: stop. */
+// The name file is damaged, or from another run of ccpp: stop.
 void nam_stale(void)
 {
   nam_close();
@@ -46,7 +44,7 @@ void nam_stale(void)
         stream_name(base_name, SUFFIX_NAM));
 }
 
-/* Open the name file, to read it from the start. */
+// Open the name file, to read it from the start.
 static void reopen(void)
 {
   nam_close();
@@ -55,9 +53,9 @@ static void reopen(void)
   at = 1;
 }
 
-/* Read the name file's next line into line[], without its newline,
- * adding its bytes and newline to checksum *h; return its length. A
- * line that is too long, or the file's end, is damage. */
+// Read the name file's next line into line[], without its newline,
+// adding its bytes and newline to checksum *h; return its length. A
+// line that is too long, or the file's end, is damage.
 static int read_line(int *h)
 {
   int c, n = 0;
@@ -75,7 +73,7 @@ static int read_line(int *h)
   return n;
 }
 
-/* The value of the 4 upper-case hex digits at s, or -1. */
+// The value of the 4 upper-case hex digits at s, or -1.
 static int hex4(const char *s)
 {
   int i, v = 0, c;
@@ -91,11 +89,11 @@ static int hex4(const char *s)
   return v;
 }
 
-/* Open and check the name file of output name base (CCPP.md, "NAME.nam"),
- * before any name in it is used, and keep its stamp in nam_ids and
- * nam_sum, for the caller to match. The names come before the files,
- * none longer than MAX_NAME, at least one file follows them, then the
- * blank line, then a stamp that matches the file, and then nothing. */
+// Open and check the name file of output name base (CCPP.md, "NAME.nam"),
+// before any name in it is used, and keep its stamp in nam_ids and
+// nam_sum, for the caller to match. The names come before the files,
+// none longer than MAX_NAME, at least one file follows them, then the
+// blank line, then a stamp that matches the file, and then nothing.
 void nam_open(const char *base)
 {
   int n, h = 0, ids = 0, files = 0, d = 0, before;
@@ -109,11 +107,11 @@ void nam_open(const char *base)
     if (line[0] == '@')
       files++;
     else if (files || n > MAX_NAME)
-      nam_stale();      /* a name after the files, or too long */
+      nam_stale();      // a name after the files, or too long
     else
       ids++;
   }
-  h = before;           /* the blank line isn't summed */
+  h = before;           // the blank line isn't summed
   if (read_line(&d) != 12 || line[0] != '='
       || line[1] != '0' + NAM_VERSION || line[2] != ' ' || line[7] != ' '
       || hex4(line + 3) != ids || hex4(line + 8) != h || files == 0
@@ -128,9 +126,9 @@ void nam_open(const char *base)
 }
 
 #ifdef CCISH_DIAG
-/* Name the name file, base's, without opening it: it's opened and
- * checked when a name is first looked up (cccomp's full build, whose
- * messages' details are spelled before it stops). */
+// Name the name file, base's, without opening it: it's opened and
+// checked when a name is first looked up (cccomp's full build, whose
+// messages' details are spelled before it stops).
 void nam_base(const char *base)
 {
   base_name = base;
@@ -138,7 +136,7 @@ void nam_base(const char *base)
 }
 #endif
 
-/* Read line n of the name file (from 1) into line[]. */
+// Read line n of the name file (from 1) into line[].
 static void line_at(int n)
 {
   int d = 0;
@@ -148,8 +146,8 @@ static void line_at(int n)
     read_line(&d);
 }
 
-/* The spelling of name (an id), in a static buffer that the next lookup
- * reuses. */
+// The spelling of name (an id), in a static buffer that the next lookup
+// reuses.
 const char *nam_name(int name)
 {
 #ifdef CCISH_DIAG
@@ -162,7 +160,7 @@ const char *nam_name(int name)
   return line;
 }
 
-/* The name of source file k (from 1), in the same static buffer. */
+// The name of source file k (from 1), in the same static buffer.
 const char *nam_file(int k)
 {
   line_at(nam_ids + k);

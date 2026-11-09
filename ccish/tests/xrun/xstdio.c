@@ -1,14 +1,14 @@
-/* xstdio.c: the library's stdio (lib/), against the host's: write a
- * file with fwrite, fputs and putc; read it back with fread (whole
- * items, then a short count) and getc, to EOF; reopen "wb" to truncate;
- * remove it; fopen of a missing file; fflush; and the console's
- * newline. The file is in the current directory. */
+// xstdio.c: the library's stdio (lib/), against the host's: write a
+// file with fwrite, fputs and putc; read it back with fread (whole
+// items, then a short count) and getc, to EOF; reopen "wb" to truncate;
+// remove it; fopen of a missing file; fflush; and the console's
+// newline. The file is in the current directory.
 #include <stdio.h>
 #include <string.h>
 
 #define TMP ",xstdio.tmp"
 
-/* Print n in decimal, then a space. */
+// Print n in decimal, then a space.
 static void num(int n)
 {
   char buf[8];
@@ -36,26 +36,26 @@ int main(void)
   num(f != NULL);
   num((int)fwrite("abcdef", 1, 6, f));
   num((int)fwrite("ghij", 2, 2, f));
-  num(fputs("kl\n", f) >= 0);       /* any nonnegative value */
+  num(fputs("kl\n", f) >= 0);       // any nonnegative value
   num(putc('m', f));
   num(fclose(f));
   fputs("\n", stdout);
 
   f = fopen(TMP, "rb");
-  num((int)fread(buf, 2, 3, f));        /* 3 items: abcdef */
+  num((int)fread(buf, 2, 3, f));        // 3 items: abcdef
   buf[6] = 0;
   fputs(buf, stdout);
   putc(' ', stdout);
-  num((int)fread(buf, 1, 3, f));        /* ghi */
-  num((int)fread(buf, 4, 1, f));        /* j k l \n */
+  num((int)fread(buf, 1, 3, f));        // ghi
+  num((int)fread(buf, 4, 1, f));        // j k l \n
   num(buf[3] == '\n');
-  num(getc(f));                         /* 'm' */
+  num(getc(f));                         // 'm'
   num(getc(f) == EOF);
   num((int)fread(buf, 1, 4, f));
   fclose(f);
   fputs("\n", stdout);
 
-  f = fopen(TMP, "wb");                 /* truncates */
+  f = fopen(TMP, "wb");                 // truncates
   putc('z', f);
   fclose(f);
   f = fopen(TMP, "rb");

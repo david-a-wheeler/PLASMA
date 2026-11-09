@@ -1,13 +1,13 @@
-/* xlist.c — loops through non-integers: a chain of struct nodes,
- * whose array positions are scrambled (neither the logical order
- * nor its reverse), walked through the next pointers to the null
- * terminator, and also walked in physical order, forwards through
- * array dereference and backwards through a pointer to a node,
- * beside counted for loops that go up and go down, each in its own
- * function, against bounds passed in, not constants, chosen so that
- * every answer line is different, so no two lines can stand in for
- * each other. The accumulator is order-sensitive, so a walk in the
- * wrong order gives the wrong answer. */
+// xlist.c — loops through non-integers: a chain of struct nodes,
+// whose array positions are scrambled (neither the logical order
+// nor its reverse), walked through the next pointers to the null
+// terminator, and also walked in physical order, forwards through
+// array dereference and backwards through a pointer to a node,
+// beside counted for loops that go up and go down, each in its own
+// function, against bounds passed in, not constants, chosen so that
+// every answer line is different, so no two lines can stand in for
+// each other. The accumulator is order-sensitive, so a walk in the
+// wrong order gives the wrong answer.
 #include "ptest.h"
 
 struct node
@@ -16,17 +16,17 @@ struct node
   struct node *next;
 };
 
-/* The node with value v sits at array position (5 * v) % n: a
- * permutation of 0 to n-1 (5 is coprime to 7 and 12), neither the
- * logical order nor its reverse. */
+// The node with value v sits at array position (5 * v) % n: a
+// permutation of 0 to n-1 (5 is coprime to 7 and 12), neither the
+// logical order nor its reverse.
 int pos(int v, int n)
 {
   return (5 * v) % n;
 }
 
-/* Set each node's value, point each next at the logically next
- * node, and make the final node's next the null pointer. Returns
- * the head, the node with value 1. */
+// Set each node's value, point each next at the logically next
+// node, and make the final node's next the null pointer. Returns
+// the head, the node with value 1.
 struct node *build(struct node *nodes, int n)
 {
   int v;
@@ -38,8 +38,8 @@ struct node *build(struct node *nodes, int n)
   return &nodes[pos(1, n)];
 }
 
-/* Walk the chain in logical order: accum = 2*accum + p->value.
- * The order matters, so the answer pins the order of the walk. */
+// Walk the chain in logical order: accum = 2*accum + p->value.
+// The order matters, so the answer pins the order of the walk.
 int walk(struct node *head)
 {
   struct node *p;
@@ -50,8 +50,8 @@ int walk(struct node *head)
   return accum;
 }
 
-/* A for loop going up, bounded by n, a value passed in rather
- * than a constant. */
+// A for loop going up, bounded by n, a value passed in rather
+// than a constant.
 int up(int n)
 {
   int i, s;
@@ -61,8 +61,8 @@ int up(int n)
   return s;
 }
 
-/* Walk the array in physical order (the scrambled order), reading
- * each member through the array: nodes[i].value. */
+// Walk the array in physical order (the scrambled order), reading
+// each member through the array: nodes[i].value.
 int walk_phys(struct node *nodes, int n)
 {
   int i;
@@ -73,8 +73,8 @@ int walk_phys(struct node *nodes, int n)
   return accum;
 }
 
-/* Walk the physical array backwards with a pointer to a node:
- * p->value and p-- through the array of structs. */
+// Walk the physical array backwards with a pointer to a node:
+// p->value and p-- through the array of structs.
 int walk_back(struct node *nodes, int n)
 {
   struct node *p;
@@ -85,7 +85,7 @@ int walk_back(struct node *nodes, int n)
   return accum;
 }
 
-/* A for loop going down, bounded by n. */
+// A for loop going down, bounded by n.
 int down(int n)
 {
   int i, s;

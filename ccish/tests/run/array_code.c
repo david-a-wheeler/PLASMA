@@ -1,7 +1,7 @@
-/* The code for array elements (approach.md, "Pending array elements"):
- * a[i] = x and p[i] = x need no temporary (so the frame is just the
- * variables), a constant index on a local array is a plain local, and
- * an unused a[i]++ keeps no copy of the old value (no DUP). */
+// The code for array elements (approach.md, "Pending array elements"):
+// a[i] = x and p[i] = x need no temporary (so the frame is just the
+// variables), a constant index on a local array is a plain local, and
+// an unused a[i]++ keeps no copy of the old value (no DUP).
 // listing-has: ENTER 30,0
 // listing-lacks: DUP
 // listing-count: 7 IDXLW

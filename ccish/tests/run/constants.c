@@ -1,5 +1,5 @@
-/* Constants that need each encoding: CN, CB, CFFB, CW and MINUS1.
- * puti() prints signed values, so 32768 and up print as negative. */
+// Constants that need each encoding: CN, CB, CFFB, CW and MINUS1.
+// puti() prints signed values, so 32768 and up print as negative.
 void show(int n)
 {
   __puti(n);

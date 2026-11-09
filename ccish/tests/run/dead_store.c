@@ -1,7 +1,7 @@
-/* Stores to locals that nothing reads before the function returns are
- * dead (the frame goes), and go, with any value they stored that has
- * no effect (peep.c, dead_stores()). Each function's comment says what
- * must stay. */
+// Stores to locals that nothing reads before the function returns are
+// dead (the frame goes), and go, with any value they stored that has
+// no effect (peep.c, dead_stores()). Each function's comment says what
+// must stay.
 // What stays: through's 2 SLWs, call's 1; global's SAW; byte's ANDI
 // 255 (from its DLB), and the init function's, of main's exit status;
 // find's 2 DROP2s (its two loop values, at the return in the loop and at
@@ -22,7 +22,7 @@ void show(int n)
   __putc(' ');
 }
 
-/* x is never read: its store, and a * 3, go. */
+// x is never read: its store, and a * 3, go.
 int one(int a)
 {
   int x;
@@ -30,7 +30,7 @@ int one(int a)
   return a;
 }
 
-/* Two dead stores in a row. */
+// Two dead stores in a row.
 int two(int a)
 {
   int x, y;
@@ -39,7 +39,7 @@ int two(int a)
   return 7;
 }
 
-/* Stored, then read back: what is left is the value. */
+// Stored, then read back: what is left is the value.
 int back(int a)
 {
   int x;
@@ -47,7 +47,7 @@ int back(int a)
   return x;
 }
 
-/* A pointer reads x: its store stays. */
+// A pointer reads x: its store stays.
 int through(int a)
 {
   int x, *p;
@@ -56,14 +56,14 @@ int through(int a)
   return *p;
 }
 
-/* A global's store stays. */
+// A global's store stays.
 int global(int a)
 {
   g = a;
   return 0;
 }
 
-/* A char: the value returned is still the stored byte. */
+// A char: the value returned is still the stored byte.
 int byte(int a)
 {
   char c;
@@ -71,7 +71,7 @@ int byte(int a)
   return c;
 }
 
-/* A call between: the store stays (the scan stops at a call). */
+// A call between: the store stays (the scan stops at a call).
 int __call(int a)
 {
   int x;
@@ -80,7 +80,7 @@ int __call(int a)
   return 1;
 }
 
-/* A counted loop, then a return: the loop needn't store i. */
+// A counted loop, then a return: the loop needn't store i.
 int find(int n)
 {
   int i;

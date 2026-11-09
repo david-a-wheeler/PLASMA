@@ -1,13 +1,13 @@
-/* Stores through computed addresses need no temporary (approach.md
- * 4(d2), M5 step 4). The address's code is emitted first, as C reads
- * it, then the value's, and stage 2 exchanges the two blocks before
- * lowering them: *d++ = *s++ is "s++ LB d++ SB". If the store's value
- * is used, a DUP after the value keeps it below the address. So copy()
- * has only its parameters in its frame, and main only its locals.
- * Also: nested rotated stores, a held constant before a rotated
- * lvalue, an int stored into a char (the value is its low byte), i + p
- * as "p i IDXW", and *gp += bump(), where bump() moves gp: the call
- * goes first, so the load and the store use the same element. */
+// Stores through computed addresses need no temporary (approach.md
+// 4(d2), M5 step 4). The address's code is emitted first, as C reads
+// it, then the value's, and stage 2 exchanges the two blocks before
+// lowering them: *d++ = *s++ is "s++ LB d++ SB". If the store's value
+// is used, a DUP after the value keeps it below the address. So copy()
+// has only its parameters in its frame, and main only its locals.
+// Also: nested rotated stores, a held constant before a rotated
+// lvalue, an int stored into a char (the value is its low byte), i + p
+// as "p i IDXW", and *gp += bump(), where bump() moves gp: the call
+// goes first, so the load and the store use the same element.
 // listing-has: ENTER 4,2
 // listing-has: ENTER 10,0
 // listing-has: IDXW

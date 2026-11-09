@@ -1,5 +1,5 @@
-/* genswitch.c - the switch: a SEL to a case table of values and
- * labels, with the default the fall-through after the table. */
+// genswitch.c - the switch: a SEL to a case table of values and
+// labels, with the default the fall-through after the table.
 int pick3(int x)
 {
   switch (x) {

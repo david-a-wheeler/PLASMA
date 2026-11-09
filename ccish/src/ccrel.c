@@ -1,22 +1,20 @@
-/*
- * ccrel: ccish's final pass as a program of its own (approach.md,
- * "B3"), and its linker (issue 11). It reads the stream files that
- * ccgen wrote for one or more compiled files, its objects, and links
- * them into one module. The objects are kept, so that a changed file
- * needs only itself compiled again.
- *
- * Usage: ccrel [-l] [-o module] output|@file...
- *   output  an object's output name, as given to cccomp and ccgen; the
- *           objects are linked in this order. @file reads the names
- *           from file instead, one per line (CR or LF ends a line,
- *           and blank lines are skipped), since a link's names can
- *           overrun the VM's 127-character command line
- *           (doc/bootstrap-test.md, R10). It's GCC's @file syntax,
- *           but not its format: no options, quoting or white-space
- *           splitting, which an Apple II's CR lines don't need
- *   -l      print a listing of the module's bytecode
- *   -o      module name (default: output, if there is only one)
- */
+// ccrel: ccish's final pass as a program of its own (approach.md,
+// "B3"), and its linker (issue 11). It reads the stream files that
+// ccgen wrote for one or more compiled files, its objects, and links
+// them into one module. The objects are kept, so that a changed file
+// needs only itself compiled again.
+//
+// Usage: ccrel [-l] [-o module] output|@file...
+//   output  an object's output name, as given to cccomp and ccgen; the
+//           objects are linked in this order. @file reads the names
+//           from file instead, one per line (CR or LF ends a line,
+//           and blank lines are skipped), since a link's names can
+//           overrun the VM's 127-character command line
+//           (doc/bootstrap-test.md, R10). It's GCC's @file syntax,
+//           but not its format: no options, quoting or white-space
+//           splitting, which an Apple II's CR lines don't need
+//   -l      print a listing of the module's bytecode
+//   -o      module name (default: output, if there is only one)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,19 +22,19 @@
 #include "diag.h"
 #include "link.h"
 
-/* A partly written module, to remove if the final pass fails. */
+// A partly written module, to remove if the final pass fails.
 static const char *module_name;
 
-/* The objects' output names, from the command line or list files. */
+// The objects' output names, from the command line or list files.
 static const char *bases[MAX_OBJS];
 static int nbases;
 
-/* The list files' names, each ended by a NUL. */
+// The list files' names, each ended by a NUL.
 #define LIST_BYTES 512
 static char list[LIST_BYTES];
 static int list_len;
 
-/* After an error: close the open files, and remove partial output. */
+// After an error: close the open files, and remove partial output.
 void clean_up(void)
 {
   link_abort();
@@ -44,7 +42,7 @@ void clean_up(void)
     remove(module_name);
 }
 
-/* Print the command-line syntax and exit. */
+// Print the command-line syntax and exit.
 static void usage(void)
 {
 #ifdef CCISH_LISTING
@@ -55,7 +53,7 @@ static void usage(void)
   exit(2);
 }
 
-/* Add output name name to bases[]. */
+// Add output name name to bases[].
 static void add_base(const char *name)
 {
   if (nbases == MAX_OBJS)
@@ -63,17 +61,17 @@ static void add_base(const char *name)
   bases[nbases++] = name;
 }
 
-/* Add the output names in list file path, one per line, to bases[]. */
+// Add the output names in list file path, one per line, to bases[].
 static void read_list(const char *path)
 {
   FILE *f = fopen(path, "rb");
-  int c, at = list_len;         /* where this line's name starts */
+  int c, at = list_len;         // where this line's name starts
   if (!f)
     fatal(171 /* "cannot open" */, path);
   do {
     c = getc(f);
     if (c != EOF && c != '\n' && c != '\r') {
-      if (list_len >= LIST_BYTES - 1)   /* and room for its NUL */
+      if (list_len >= LIST_BYTES - 1)   // and room for its NUL
         fatal(319 /* "names in the list file too long (512 bytes in all):" */,
               path);
       list[list_len++] = (char)c;
@@ -86,7 +84,7 @@ static void read_list(const char *path)
   fclose(f);
 }
 
-/* Link the objects into a module. */
+// Link the objects into a module.
 int main(int argc, char **argv)
 {
   const char *modname = NULL;

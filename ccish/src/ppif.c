@@ -1,17 +1,15 @@
-/*
- * ccpp's #if and #elif expressions (approach.md, "ccpp design"; C11
- * 6.10.1): the rest of the directive's line, with macros expanded and
- * defined(name) or defined name replaced by 1 or 0, then every other
- * name by 0. Integer constants and C's operators but the assignments,
- * ++, -- and the comma; parentheses; ?:. Arithmetic is ccish's 16-bit
- * int and unsigned, with C's usual conversions (C says intmax_t and
- * uintmax_t: a documented difference). && || and ?: don't evaluate the
- * operand they skip, so 0 && 1 / 0 is no error.
- *
- * A value is kept as its 16 bits (0 to $FFFF) in an int, and read as
- * signed (sx()) where that matters, so that the same code is right in a
- * 32-bit int (the host) and a 16-bit one (ccish).
- */
+// ccpp's #if and #elif expressions (approach.md, "ccpp design"; C11
+// 6.10.1): the rest of the directive's line, with macros expanded and
+// defined(name) or defined name replaced by 1 or 0, then every other
+// name by 0. Integer constants and C's operators but the assignments,
+// ++, -- and the comma; parentheses; ?:. Arithmetic is ccish's 16-bit
+// int and unsigned, with C's usual conversions (C says intmax_t and
+// uintmax_t: a documented difference). && || and ?: don't evaluate the
+// operand they skip, so 0 && 1 / 0 is no error.
+//
+// A value is kept as its 16 bits (0 to $FFFF) in an int, and read as
+// signed (sx()) where that matters, so that the same code is right in a
+// 32-bit int (the host) and a 16-bit one (ccish).
 #include <stdio.h>
 #include "build.h"
 #include "cclimits.h"
@@ -24,33 +22,33 @@
 #include "ppmac.h"
 #include "ppif.h"
 
-static int cur;                 /* the current token's code */
-static int cur_val;             /* and its value */
-static int uns;                 /* the last value is unsigned */
-static int live;                /* evaluating, not skipping */
+static int cur;                 // the current token's code
+static int cur_val;             // and its value
+static int uns;                 // the last value is unsigned
+static int live;                // evaluating, not skipping
 
-/* The expression is malformed: stop. */
+// The expression is malformed: stop.
 static void bad(void)
 {
   error(259 /* "bad expression in #if" */, NULL);
 }
 
-/* The 16 bits of v, read as a signed value. */
+// The 16 bits of v, read as a signed value.
 static int sx(int v)
 {
   v &= 0xFFFF;
   return v >= 0x8000 ? v - 0x8000 - 0x8000 : v;
 }
 
-/* Move to the next token: a number for defined(name) or defined name,
- * and 0 for any other name (or keyword) left after expansion. */
+// Move to the next token: a number for defined(name) or defined name,
+// and 0 for any other name (or keyword) left after expansion.
 static void advance(void)
 {
   int paren;
   cur = pp_next();
   cur_val = pt_val;
   if (cur == TC_ID && pt_val == ID_DEFINED) {
-    cur = pp_next_raw();        /* the name isn't expanded */
+    cur = pp_next_raw();        // the name isn't expanded
     paren = cur == '(';
     if (paren)
       cur = pp_next_raw();
@@ -67,8 +65,8 @@ static void advance(void)
   }
 }
 
-/* The precedence of binary operator op (higher binds tighter), or -1 if
- * it isn't one. */
+// The precedence of binary operator op (higher binds tighter), or -1 if
+// it isn't one.
 static int prec(int op)
 {
   switch (op) {
@@ -88,8 +86,8 @@ static int prec(int op)
 
 static int cond(void);
 
-/* A unary expression: an operator and its operand, a parenthesized
- * expression, or a number. */
+// A unary expression: an operator and its operand, a parenthesized
+// expression, or a number.
 static int unary(void)
 {
   int op = cur, v;
@@ -122,8 +120,8 @@ static int unary(void)
   return v;
 }
 
-/* a op b, of 16-bit values, unsigned if u (but a shift's type is its
- * left operand's, au). */
+// a op b, of 16-bit values, unsigned if u (but a shift's type is its
+// left operand's, au).
 static int apply(int op, int a, int b, int u, int au)
 {
   if ((op == '/' || op == '%') && b == 0) {
@@ -156,8 +154,8 @@ static int apply(int op, int a, int b, int u, int au)
   return a | b;
 }
 
-/* Binary operators of precedence min and above, by precedence
- * climbing. */
+// Binary operators of precedence min and above, by precedence
+// climbing.
 static int binary(int min)
 {
   int a = unary(), au = uns, b, bu, op, p, saved;
@@ -170,7 +168,7 @@ static int binary(int min)
     if (op == TC_ANDAND || op == TC_OROR) {
       saved = live;
       if ((op == TC_ANDAND) == !a)
-        live = 0;               /* the result is known */
+        live = 0;               // the result is known
       b = binary(p + 1);
       live = saved;
       a = op == TC_ANDAND ? a && b : a || b;
@@ -181,7 +179,7 @@ static int binary(int min)
     bu = uns;
     a = apply(op, a, b & 0xFFFF, au || bu, au);
     if (p == 7 || p == 6)
-      au = 0;                   /* a comparison is an int */
+      au = 0;                   // a comparison is an int
     else if (p != 8)
       au = au || bu;
   }
@@ -189,7 +187,7 @@ static int binary(int min)
   return a;
 }
 
-/* A conditional expression, a ? b : c, or a binary one. */
+// A conditional expression, a ? b : c, or a binary one.
 static int cond(void)
 {
   int c = binary(1), t, tu, f, saved = live;
@@ -209,14 +207,14 @@ static int cond(void)
   return c ? t : f;
 }
 
-/* Read and evaluate the rest of an #if or #elif line: is it true? */
+// Read and evaluate the rest of an #if or #elif line: is it true?
 int pp_if_expr(void)
 {
   int v;
   live = 1;
   advance();
   if (cur == TC_NL)
-    bad();                      /* no expression */
+    bad();                      // no expression
   v = cond();
   if (cur != TC_NL)
     bad();

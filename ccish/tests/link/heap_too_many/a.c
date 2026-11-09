@@ -1,4 +1,4 @@
-/* 33 large globals, one more than ccrel can move to the heap. */
+// 33 large globals, one more than ccrel can move to the heap.
 char g1[256];
 char g2[256];
 char g3[256];

@@ -1,6 +1,6 @@
-/* Struct copies, compound assignment and ++ on globals declared extern
- * and defined after main, so that each goes through a data symbol
- * relocation (approach.md issue 11). */
+// Struct copies, compound assignment and ++ on globals declared extern
+// and defined after main, so that each goes through a data symbol
+// relocation (approach.md issue 11).
 struct pt { int x, y; };
 extern struct pt o;
 extern char buf[];

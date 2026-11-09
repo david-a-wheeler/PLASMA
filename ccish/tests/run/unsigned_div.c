@@ -1,9 +1,9 @@
-/* Unsigned /, % and >> by values known only at run time: calls to
- * ccgen's helper functions udiv, umod and ushr, which it writes into
- * the object once each (approach.md, "unsigned and helper functions
- * design"). Includes divisors of $8000 and more, which the helpers do
- * apart, and 1. showu prints in decimal, with / and % by 10 (helpers
- * too). Results by hand. */
+// Unsigned /, % and >> by values known only at run time: calls to
+// ccgen's helper functions udiv, umod and ushr, which it writes into
+// the object once each (approach.md, "unsigned and helper functions
+// design"). Includes divisors of $8000 and more, which the helpers do
+// apart, and 1. showu prints in decimal, with / and % by 10 (helpers
+// too). Results by hand.
 // listing-count: 1 helper udiv:
 // listing-count: 1 helper umod:
 // listing-count: 1 helper ushr:

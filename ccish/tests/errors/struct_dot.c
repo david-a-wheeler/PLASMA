@@ -1,5 +1,5 @@
 
-/* '.' needs a struct on its left. */
+// '.' needs a struct on its left.
 int main()
 {
   int x;

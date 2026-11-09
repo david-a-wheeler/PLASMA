@@ -1,5 +1,5 @@
 
-/* A struct can't be assigned an integer. */
+// A struct can't be assigned an integer.
 struct pt { int x, y; };
 
 int main()

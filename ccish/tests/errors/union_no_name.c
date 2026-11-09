@@ -1,4 +1,4 @@
-/* union needs a name or a member list. */
+// union needs a name or a member list.
 union 5 x;
 
 int main()

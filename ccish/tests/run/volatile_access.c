@@ -1,8 +1,8 @@
-/* A volatile object is read and written just as the program says
- * (approach.md issue 25), beside a twin without volatile. The globals,
- * in order: vx data+0, px data+2, vy data+4, py data+6.
- *   vx; vx;  two loads, kept (a plain x; loads nothing);
- *   vy++     one load and one store, and main's __puti(vy) one more. */
+// A volatile object is read and written just as the program says
+// (approach.md issue 25), beside a twin without volatile. The globals,
+// in order: vx data+0, px data+2, vy data+4, py data+6.
+//   vx; vx;  two loads, kept (a plain x; loads nothing);
+//   vy++     one load and one store, and main's __puti(vy) one more.
 // listing-count: 2 ; data+0
 // listing-lacks: ; data+2
 // listing-count: 3 ; data+4

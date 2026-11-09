@@ -1,11 +1,11 @@
-/* const and volatile (M5 step 6). Reading a const scalar with a
- * constant initializer gives its value at compile time, so x < N is
- * "LLW x CN 10 ISLT", and N * 2 + local is the constant 25; but &N
- * still works, and sizeof N is a constant. A const volatile object is
- * read from memory every time, never folded. A pointer may gain const
- * on what it points to (char * to const char *); losing const or
- * volatile is a warning, as in gcc. Pointers compare, and ?: combines,
- * whatever their targets' qualifiers. */
+// const and volatile (M5 step 6). Reading a const scalar with a
+// constant initializer gives its value at compile time, so x < N is
+// "LLW x CN 10 ISLT", and N * 2 + local is the constant 25; but &N
+// still works, and sizeof N is a constant. A const volatile object is
+// read from memory every time, never folded. A pointer may gain const
+// on what it points to (char * to const char *); losing const or
+// volatile is a warning, as in gcc. Pointers compare, and ?: combines,
+// whatever their targets' qualifiers.
 // listing-has: CN 10
 // listing-has: CB 25
 

@@ -1,5 +1,5 @@
 
-/* A const parameter can't be assigned to. */
+// A const parameter can't be assigned to.
 int f(const int n)
 {
   n = 1;

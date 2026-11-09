@@ -1,2 +1,2 @@
-/* A declarator's parenthesis must close. */
+// A declarator's parenthesis must close.
 int (*p(int);

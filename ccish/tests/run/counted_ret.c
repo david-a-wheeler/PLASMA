@@ -1,9 +1,9 @@
-/* Counted loops whose body returns (approach.md, "Possible improvements
- * to the loop forms", 5): the return drops the loop's limit and count
- * from under its result first, which waits in temporaries. Results of
- * an int, a char, none, a 2-word and a 4-word struct, and a return from
- * a switch in the body; then 40 calls in a row, which would overflow
- * the eval stack if a return left the two values behind. */
+// Counted loops whose body returns (approach.md, "Possible improvements
+// to the loop forms", 5): the return drops the loop's limit and count
+// from under its result first, which waits in temporaries. Results of
+// an int, a char, none, a 2-word and a 4-word struct, and a return from
+// a switch in the body; then 40 calls in a row, which would overflow
+// the eval stack if a return left the two values behind.
 // listing-count: 6 INCBRLE
 struct pair {
   int a;
@@ -26,7 +26,7 @@ void show(int n)
   __putc(' ');
 }
 
-/* The index of the first element of tab at least n, or -1. */
+// The index of the first element of tab at least n, or -1.
 int index_of(int n)
 {
   int i;
@@ -36,7 +36,7 @@ int index_of(int n)
   return -1;
 }
 
-/* The nth letter: a char result. */
+// The nth letter: a char result.
 char letter(int n)
 {
   int i;
@@ -46,7 +46,7 @@ char letter(int n)
   return '?';
 }
 
-/* Count up in done, and stop at n: no result. */
+// Count up in done, and stop at n: no result.
 void stop_at(int n)
 {
   int i;
@@ -57,7 +57,7 @@ void stop_at(int n)
   }
 }
 
-/* The first element of tab over n, and its index: 2 words. */
+// The first element of tab over n, and its index: 2 words.
 struct pair pair_at(int n)
 {
   struct pair p;
@@ -73,7 +73,7 @@ struct pair pair_at(int n)
   return p;
 }
 
-/* n and its multiples, if n is from 1 to 4: 4 words. */
+// n and its multiples, if n is from 1 to 4: 4 words.
 struct quad quad_at(int n)
 {
   struct quad q;
@@ -93,7 +93,7 @@ struct quad quad_at(int n)
   return q;
 }
 
-/* A return from a switch in the body. */
+// A return from a switch in the body.
 int kind(int n)
 {
   int i;

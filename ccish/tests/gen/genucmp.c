@@ -1,10 +1,10 @@
-/* genucmp.c - unsigned and pointer < > <= >= call CMDSYS's native
- * ISULT and the rest (lower.c; OBJECT.md, helper numbers 3-6): 3 bytes
- * and about 123 cycles, against 9 and 218 for the sign-bit flips ccgen
- * once wrote (5 and 131 with a constant), so a constant on either side
- * calls too. A comparison with 0 or 1 that tests for zero is that test
- * (irin.c, u_const): x <u 1 and x <=u 0 are x == 0 (NOT), and x >u 0
- * and x >=u 1 are x != 0, one branch in an if. */
+// genucmp.c - unsigned and pointer < > <= >= call CMDSYS's native
+// ISULT and the rest (lower.c; OBJECT.md, helper numbers 3-6): 3 bytes
+// and about 123 cycles, against 9 and 218 for the sign-bit flips ccgen
+// once wrote (5 and 131 with a constant), so a constant on either side
+// calls too. A comparison with 0 or 1 that tests for zero is that test
+// (irin.c, u_const): x <u 1 and x <=u 0 are x == 0 (NOT), and x >u 0
+// and x >=u 1 are x != 0, one branch in an if.
 unsigned lt(unsigned a, unsigned b) { return a < b; }
 unsigned ge(unsigned a, unsigned b) { return a >= b; }
 unsigned gt(unsigned a, unsigned b) { return a > b; }

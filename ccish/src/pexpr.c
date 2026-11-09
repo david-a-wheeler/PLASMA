@@ -1,11 +1,9 @@
-/*
- * cccomp's front end, the expression grammar (approach.md,
- * "parse.c split design"): primaries, the unary and postfix
- * operators, the binary operators with their type checks and
- * constant folding, the comparisons, the logical and conditional
- * operators, the assignments (with the struct copies), calls, and
- * parse_expr, the entry the statements and initializers use.
- */
+// cccomp's front end, the expression grammar (approach.md,
+// "parse.c split design"): primaries, the unary and postfix
+// operators, the binary operators with their type checks and
+// constant folding, the comparisons, the logical and conditional
+// operators, the assignments (with the struct copies), calls, and
+// parse_expr, the entry the statements and initializers use.
 
 #ifdef CCISH_STATS
 #include <stdio.h>
@@ -31,36 +29,36 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid);
 static void offset_place(Operand *o, int off);
 static void struct_word(Operand *w, Operand *o, int k);
 
-/* Do pointer types a and b point to the same type, apart from that
- * type's own qualifiers (const char * and char *)? */
+// Do pointer types a and b point to the same type, apart from that
+// type's own qualifiers (const char * and char *)?
 static int same_target(int a, int b)
 {
   return unqual(type_sub(a)) == unqual(type_sub(b));
 }
 
-/* Is pointer type t a pointer to void (with any qualifiers)? */
+// Is pointer type t a pointer to void (with any qualifiers)?
 static int is_void_ptr(int t)
 {
   return unqual(type_sub(t)) == TY_VOID;
 }
 
-/* Can pointer types a and b be mixed (in ==, != or ?:)? They can if
- * they point to the same type, whatever its qualifiers, or if either
- * is a void *. */
+// Can pointer types a and b be mixed (in ==, != or ?:)? They can if
+// they point to the same type, whatever its qualifiers, or if either
+// is a void *.
 static int compatible(int a, int b)
 {
   return same_target(a, b) || is_void_ptr(a) || is_void_ptr(b);
 }
 
 #ifdef CCISH_DIAG
-/* The argument parse_args() has check_assign() check: its number and
- * its function, spelled ("1 of 'f'") only for a message, since the
- * spelling comes from the name file, which a correct compile never
- * reads (CCPP.md, "The stamp"). */
+// The argument parse_args() has check_assign() check: its number and
+// its function, spelled ("1 of 'f'") only for a message, since the
+// spelling comes from the name file, which a correct compile never
+// reads (CCPP.md, "The stamp").
 static int arg_no, arg_fn;
 
-/* The detail of a message from check_assign(): its own, or for an
- * argument (where "argument", with none), "N of 'f'". */
+// The detail of a message from check_assign(): its own, or for an
+// argument (where "argument", with none), "N of 'f'".
 static const char *assign_detail(int where, const char *detail)
 {
   static char buf[MAX_NAME + 16];
@@ -75,14 +73,14 @@ static const char *assign_detail(int where, const char *detail)
 #define assign_detail(where, detail) (detail)
 #endif
 
-/* Check that o can be assigned (or passed, or returned) to type to, as
- * C requires: integers and pointers don't mix without a cast, except
- * the constant 0, and pointer types must be compatible. A pointer may
- * gain qualifiers on what it points to (char * to const char *), but
- * losing one is a warning, as in gcc: C requires a diagnostic, and the
- * program may still be right. A struct needs the same struct type.
- * where is a message part saying where ("assignment", or "argument"
- * with a detail such as "1 of 'f'"). */
+// Check that o can be assigned (or passed, or returned) to type to, as
+// C requires: integers and pointers don't mix without a cast, except
+// the constant 0, and pointer types must be compatible. A pointer may
+// gain qualifiers on what it points to (char * to const char *), but
+// losing one is a warning, as in gcc: C requires a diagnostic, and the
+// program may still be right. A struct needs the same struct type.
+// where is a message part saying where ("assignment", or "argument"
+// with a detail such as "1 of 'f'").
 void check_assign(int to, Operand *o, int where,
                          const char *detail)
 {
@@ -122,8 +120,8 @@ void check_assign(int to, Operand *o, int where,
   }
 }
 
-/* Make o's value C's truth value: 1 if it is nonzero, else 0. A
- * constant stays pending; anything else ends up on the stack. */
+// Make o's value C's truth value: 1 if it is nonzero, else 0. A
+// constant stays pending; anything else ends up on the stack.
 static void to_bool(Operand *o)
 {
   if (o->kind == K_CONST) {
@@ -140,9 +138,9 @@ static void to_bool(Operand *o)
   o->type = TY_INT;
 }
 
-/* Convert o to char, as C does for a cast or a char function's return
- * value: keep the low byte. A constant stays pending; anything else
- * ends up on the stack. A char, or a 1 or 0, needs no code. */
+// Convert o to char, as C does for a cast or a char function's return
+// value: keep the low byte. A constant stays pending; anything else
+// ends up on the stack. A char, or a 1 or 0, needs no code.
 void to_char(Operand *o)
 {
   if (o->kind == K_CONST) {
@@ -157,10 +155,10 @@ void to_char(Operand *o)
   o->type = TY_CHAR;
 }
 
-/* Apply the cast (type) to o. A cast's result is never an lvalue, so
- * the type's own qualifiers don't matter ((const int)x is an int). To
- * void, the value is discarded. Between integers and pointers, the
- * value is unchanged (both are 16 bits). */
+// Apply the cast (type) to o. A cast's result is never an lvalue, so
+// the type's own qualifiers don't matter ((const int)x is an int). To
+// void, the value is discarded. Between integers and pointers, the
+// value is unchanged (both are 16 bits).
 static void cast(Operand *o, int type)
 {
   type = unqual(type);
@@ -172,30 +170,28 @@ static void cast(Operand *o, int type)
   } else if (type == TY_CHAR) {
     to_char(o);
   } else if (is_pointer(type) && (addr_const(o) || o->kind == K_FUNC)) {
-    ;                           /* still an address constant */
+    ;                           // still an address constant
   } else if (o->kind != K_CONST) {
     rvalue(o);
   }
   o->type = type;
 }
 
-/* Parse an expression whose code can never run (such as the x in
- * 0 && x): check it, but emit nothing. */
+// Parse an expression whose code can never run (such as the x in
+// 0 && x): check it, but emit nothing.
 void parse_skipped(int min_prec, Operand *o)
 {
   int saved = nheld;
   suppress++;
   parse_expr(min_prec, o);
   suppress--;
-  nheld = saved;      /* drop anything held inside it */
+  nheld = saved;      // drop anything held inside it
 }
 
-/*
- * Binary operators: precedence and IR op. Returns 0 if tok is not a
- * binary operator. Sets *supported to 0 for C operators we don't
- * support yet; they still get their real precedence, so that, say, a
- * ',' ending a function argument isn't mistaken for an error.
- */
+// Binary operators: precedence and IR op. Returns 0 if tok is not a
+// binary operator. Sets *supported to 0 for C operators we don't
+// support yet; they still get their real precedence, so that, say, a
+// ',' ending a function argument isn't mistaken for an error.
 static int binary_prec(int *ir_op, int *supported)
 {
   *supported = 1;
@@ -216,7 +212,7 @@ static int binary_prec(int *ir_op, int *supported)
   case T_GE:  *ir_op = IR_GE;  return PREC_RELATIONAL;
   case T_EQ:  *ir_op = IR_EQ;  return PREC_EQUALITY;
   case T_NE:  *ir_op = IR_NE;  return PREC_EQUALITY;
-  /* These three are parsed specially, not with an IR op. */
+  // These three are parsed specially, not with an IR op.
   case T_ANDAND: *ir_op = -1;  return PREC_ANDAND;
   case T_OROR:   *ir_op = -1;  return PREC_OROR;
   case '?':      *ir_op = -1;  return PREC_COND;
@@ -227,8 +223,8 @@ static int binary_prec(int *ir_op, int *supported)
   return 0;
 }
 
-/* Assignment operators: returns 1 if tok is one. *ir_op is the
- * arithmetic for a compound assignment, or -1 for plain '='. */
+// Assignment operators: returns 1 if tok is one. *ir_op is the
+// arithmetic for a compound assignment, or -1 for plain '='.
 static int assign_op(int *ir_op)
 {
   switch (tok) {
@@ -247,15 +243,13 @@ static int assign_op(int *ir_op)
   return 0;
 }
 
-/*
- * Push the struct o by value (approach.md, "M6 design"): the words of
- * its bytes, first word deepest; a last odd byte alone, as a word. As
- * parameters, ENTER stores them in consecutive frame words, so they
- * land in the struct's own layout: the parameter is an ordinary local
- * struct, with no copy. A struct that is already on the stack (a call's
- * result) needs nothing. One reached through an address on the stack
- * is spilled first, unless it is a single word.
- */
+// Push the struct o by value (approach.md, "M6 design"): the words of
+// its bytes, first word deepest; a last odd byte alone, as a word. As
+// parameters, ENTER stores them in consecutive frame words, so they
+// land in the struct's own layout: the parameter is an ordinary local
+// struct, with no copy. A struct that is already on the stack (a call's
+// result) needs nothing. One reached through an address on the stack
+// is spilled first, unless it is a single word.
 void push_struct_words(Operand *o)
 {
   Operand v;
@@ -271,14 +265,14 @@ void push_struct_words(Operand *o)
   o->kind = K_VALUE;
 }
 
-/* Store the struct on the stack (o, a K_VALUE) into frame temporaries,
- * last word first, so that it can be used as an object: o becomes a
- * variable, but not an lvalue (f().x is readable, not assignable). */
+// Store the struct on the stack (o, a K_VALUE) into frame temporaries,
+// last word first, so that it can be used as an object: o becomes a
+// variable, but not an lvalue (f().x is readable, not assignable).
 static void materialize(Operand *o)
 {
   int k, w = struct_words(o->type), t = new_temp();
   for (k = 1; k < w; k++)
-    new_temp();                 /* the next words, right after t */
+    new_temp();                 // the next words, right after t
   for (k = w - 1; k >= 0; k--) {
     put(IR_SETLOCAL, t + 2 * k, -1);
     put(IR_DROP, 0, -1);
@@ -286,12 +280,12 @@ static void materialize(Operand *o)
   o->kind = K_VAR;
   o->off = t;
   o->global = 0;
-  o->quals = 0;                 /* a temporary: never volatile */
+  o->quals = 0;                 // a temporary: never volatile
   o->assigned = 1;
 }
 
-/* Push zero for a function of return type t that ends without a value:
- * as many words as it returns, so that the stack stays balanced. */
+// Push zero for a function of return type t that ends without a value:
+// as many words as it returns, so that the stack stays balanced.
 void push_zero_result(int t)
 {
   int k, w = result_words(t);
@@ -299,8 +293,8 @@ void push_zero_result(int t)
     put(IR_CONST, 0, -1);
 }
 
-/* Report an error if t is a struct too big to pass or return by value
- * (MAX_BYVAL bytes), or an incomplete one; is_param says which. */
+// Report an error if t is a struct too big to pass or return by value
+// (MAX_BYVAL bytes), or an incomplete one; is_param says which.
 void check_byval(int t, int is_param)
 {
   if (!is_struct(t))
@@ -317,19 +311,19 @@ void check_byval(int t, int is_param)
                             " parameter" */, NULL);
 }
 
-/* Calls emitted so far. A compound assignment compares it before and
- * after its right side, to see whether that has a call. */
+// Calls emitted so far. A compound assignment compares it before and
+// after its right side, to see whether that has a call.
 static int ncalls;
 
-/* Parse a call's arguments, starting at '(', and emit them; f is the
- * function called, or -1 for a call through a pointer, whose parameter
- * types aren't known (approach.md, "Function pointer design"). Checks
- * their types if f's are known. Returns their count. */
+// Parse a call's arguments, starting at '(', and emit them; f is the
+// function called, or -1 for a call through a pointer, whose parameter
+// types aren't known (approach.md, "Function pointer design"). Checks
+// their types if f's are known. Returns their count.
 static int parse_args(int f)
 {
   Operand a;
   int nargs = 0;
-  next();                         /* '(' */
+  next();                         // '('
   if (tok != ')') {
     for (;;) {
       parse_expr(PREC_ASSIGN, &a);
@@ -361,37 +355,37 @@ static int parse_args(int f)
   return nargs;
 }
 
-/* Parse a call to fn, starting at '(': emit the arguments, check their
- * count (and their types, if fn's parameter types are known), then
- * emit the call. */
+// Parse a call to fn, starting at '(': emit the arguments, check their
+// count (and their types, if fn's parameter types are known), then
+// emit the call.
 static void parse_call(int f, Operand *o)
 {
   int nargs = parse_args(f);
   if (nparams_of(f) < 0)
-    set_nparams(f, nargs);      /* first use fixes the count */
+    set_nparams(f, nargs);      // first use fixes the count
   else if (nparams_of(f) != nargs)
     error(55 /* "wrong number of arguments in call to" */,
           quote(fn_name[f]));
   fn_flags[f] |= FN_CALLED;
   put(IR_CALL, nargs, f);
   o->kind = fn_type[f] != TY_VOID ? K_VALUE : K_VOID;
-  o->type = fn_type[f];       /* a struct: its words are on the stack */
+  o->type = fn_type[f];       // a struct: its words are on the stack
 }
 
-/* Can a value of type t be called: is it a function, or a pointer to
- * one? */
+// Can a value of type t be called: is it a function, or a pointer to
+// one?
 static int callable(int t)
 {
   return is_func(t) || (is_pointer(t) && is_func(type_sub(t)));
 }
 
-/* Parse a call of o, starting at '(': o is a function, or a pointer to
- * one (approach.md, "Function pointer design"). A named function (f,
- * *f, &f) is called directly. Otherwise the call is ICAL, which takes
- * the address on top of the arguments: a callee whose value needs no
- * code yet (a variable, an element, a constant) is loaded after them,
- * and any other is kept in a temporary meanwhile. Nothing is known of
- * the parameters, so the arguments are passed as they are. */
+// Parse a call of o, starting at '(': o is a function, or a pointer to
+// one (approach.md, "Function pointer design"). A named function (f,
+// *f, &f) is called directly. Otherwise the call is ICAL, which takes
+// the address on top of the arguments: a callee whose value needs no
+// code yet (a variable, an element, a constant) is loaded after them,
+// and any other is kept in a temporary meanwhile. Nothing is known of
+// the parameters, so the arguments are passed as they are.
 static void parse_icall(Operand *o)
 {
   int t = o->type, nargs, tmp = -1, r;
@@ -416,18 +410,18 @@ static void parse_icall(Operand *o)
   r = unqual(type_sub(t));
   put(IR_ICALL, nargs, result_words(r));
   o->kind = r != TY_VOID ? K_VALUE : K_VOID;
-  o->type = r;                /* a struct: its words are on the stack */
+  o->type = r;                // a struct: its words are on the stack
   o->quals = 0;
   o->is_bool = 0;
   o->assigned = 0;
 }
 
-/* pstr("literal"): the address of the literal's PLASMA (length-prefixed)
- * form, which is the byte just before its first character. */
+// pstr("literal"): the address of the literal's PLASMA (length-prefixed)
+// form, which is the byte just before its first character.
 static void parse_pstr(void)
 {
   int off;
-  next();                         /* '(' */
+  next();                         // '('
   if (tok != T_STR)
     error(56 /* "pstr() needs a string literal, not" */, tok_desc());
   off = suppress ? 1 : data_string(tok_text, tok_len);
@@ -436,20 +430,20 @@ static void parse_pstr(void)
   put(IR_STRADDR, off - 1, -1);
 }
 
-/* Set while parsing the operand of prefix &, ++ or --, which must stay a
- * place: the next primary expression that isn't in parentheses clears
- * it. Then a const variable isn't folded to its value. */
+// Set while parsing the operand of prefix &, ++ or --, which must stay a
+// place: the next primary expression that isn't in parentheses clears
+// it. Then a const variable isn't folded to its value.
 static int want_place;
 
-/* Parse a primary expression: a constant, string, variable, call, or
- * expression in parentheses. Constants and variables stay pending. A
- * cast is parsed here too, since it also starts with '('.
- *
- * Reading a const variable with a constant initializer gives its value
- * at compile time (V_KNOWN), a K_CONST, so const int N = 10; makes
- * x < N use CB 10, and *P = 0 store straight to P's address. Not when
- * it is the operand of & (want_place), so &N works; N = 2 or N++ folds,
- * and need_lvalue() reports the const. */
+// Parse a primary expression: a constant, string, variable, call, or
+// expression in parentheses. Constants and variables stay pending. A
+// cast is parsed here too, since it also starts with '('.
+//
+// Reading a const variable with a constant initializer gives its value
+// at compile time (V_KNOWN), a K_CONST, so const int N = 10; makes
+// x < N use CB 10, and *P = 0 store straight to P's address. Not when
+// it is the operand of & (want_place), so &N works; N = 2 or N++ folds,
+// and need_lvalue() reports the const.
 static void parse_primary(Operand *o)
 {
   int name, c, f, v, place = want_place;
@@ -464,7 +458,7 @@ static void parse_primary(Operand *o)
   o->assigned = 0;
   switch (tok) {
   case T_NUM:
-    o->kind = K_CONST;          /* emit it later, if needed */
+    o->kind = K_CONST;          // emit it later, if needed
     o->val = wrap16((unsigned)tok_val);
     if (tok_unsigned)
       o->type = TY_UINT;
@@ -472,17 +466,17 @@ static void parse_primary(Operand *o)
     return;
   case T_STR:
     if (in_sizeof) {
-      /* In C a literal is a char array, so sizeof "hi" is 3: here
-       * it is that array, at an address on the stack. Elsewhere
-       * it is just a char *, so that literals don't each add a
-       * type (an array of their length) to the type table. */
+      // In C a literal is a char array, so sizeof "hi" is 3: here
+      // it is that array, at an address on the stack. Elsewhere
+      // it is just a char *, so that literals don't each add a
+      // type (an array of their length) to the type table.
       o->kind = K_DEREF;
       o->type = array_of(TY_CHAR, tok_len + 1);
       next();
       return;
     }
-    /* An address constant. A literal in code that can never run
-     * takes no data space, unless it is in a global's initializer. */
+    // An address constant. A literal in code that can never run
+    // takes no data space, unless it is in a global's initializer.
     o->kind = K_ADDR;
     o->global = G_STR;
     o->off = o->disp = suppress && !want_addr
@@ -495,7 +489,7 @@ static void parse_primary(Operand *o)
     enter_nest();
     next();
     if (is_type_start()) {
-      /* A cast: (type) unary-expression. */
+      // A cast: (type) unary-expression.
       c = parse_type_name();
       expect(')', 59 /* "expected ')' after the type in a cast, not" */);
       parse_unary(o);
@@ -503,7 +497,7 @@ static void parse_primary(Operand *o)
       nest--;
       return;
     }
-    /* The result may still be a pending variable: (x) = 1 is valid. */
+    // The result may still be a pending variable: (x) = 1 is valid.
     parse_expr(PREC_COMMA, o);
     expect(')', 60 /* "expected ')', not" */);
     nest--;
@@ -519,7 +513,7 @@ static void parse_primary(Operand *o)
       if (tok == '(')
         error(62 /* "called object is not a function:" */,
               quote(name));
-      o->kind = K_CONST;      /* an enum constant */
+      o->kind = K_CONST;      // an enum constant
       o->val = id_val(c);
       return;
     }
@@ -534,8 +528,8 @@ static void parse_primary(Operand *o)
       }
       f = find_func(name);
       if (f < 0) {
-        /* No implicit declarations (approach.md, decision 20):
-         * only the CMDSYS table declares a function by itself. */
+        // No implicit declarations (approach.md, decision 20):
+        // only the CMDSYS table declares a function by itself.
         c = find_cmdsys(name);
         if (c < 0)
           error(215 /* "function called without a declaration:" */,
@@ -547,29 +541,29 @@ static void parse_primary(Operand *o)
       return;
     }
     if (v >= 0 && (var_flags[v] & V_KNOWN) && !place) {
-      o->kind = K_CONST;      /* a const variable's known value */
-      o->quals = Q_CONST;     /* so N = 2 is an error 42 */
+      o->kind = K_CONST;      // a const variable's known value
+      o->quals = Q_CONST;     // so N = 2 is an error 42
       o->type = unqual(var_type[v]);
       o->val = var_val[v];
       o->nonice = 1;
       return;
     }
     if (v >= 0) {
-      o->kind = K_VAR;        /* load it later, if needed */
+      o->kind = K_VAR;        // load it later, if needed
       o->type = unqual(var_type[v]);
       o->quals = var_type[v] & Q_ALL;
-      /* A zero-filled global is reached through its symbol. */
+      // A zero-filled global is reached through its symbol.
       o->off = var_link[v] & VL_BSS ? 0 : var_off[v];
       o->global = var_where(v);
       return;
     }
     f = find_func(name);
     if (f < 0 && (c = find_cmdsys(name)) >= 0) {
-      f = add_func(name);       /* fp = __puti: declared by use */
+      f = add_func(name);       // fp = __puti: declared by use
       declare_cmdsys(f, c);
     }
     if (f >= 0) {
-      o->kind = K_FUNC;         /* a function designator */
+      o->kind = K_FUNC;         // a function designator
       o->val = f;
       o->type = func_of(fn_type[f]);
       return;
@@ -583,9 +577,9 @@ static void parse_primary(Operand *o)
   error(65 /* "expected an expression, not" */, tok_desc());
 }
 
-/* Check that lvalue o can be the operand of ++ or --, and get it ready:
- * push its value, leaving o itself ready to be stored into. Returns
- * the amount to add: the element size for a pointer, else 1. */
+// Check that lvalue o can be the operand of ++ or --, and get it ready:
+// push its value, leaving o itself ready to be stored into. Returns
+// the amount to add: the element size for a pointer, else 1.
 static int start_incdec(Operand *o)
 {
   Operand v;
@@ -596,14 +590,14 @@ static int start_incdec(Operand *o)
   return is_pointer(o->type) ? elem_size(o->type) : 1;
 }
 
-/* ++x / --x: x = x + 1, and the value is the new x. A macro, not a
- * function: it has one caller, on the recursive expression chain. */
+// ++x / --x: x = x + 1, and the value is the new x. A macro, not a
+// function: it has one caller, on the recursive expression chain.
 #define pre_incdec(o, ir_op) do { put(IR_CONST, start_incdec(o), -1); \
   put(ir_op, 0, -1); assign_to(o); (o)->is_bool = 0; } while (0)
 
-/* x++ / x--: the value is the old x. Keep a copy of it below the
- * update; when the value is unused, the peephole stage removes the
- * copy. */
+// x++ / x--: the value is the old x. Keep a copy of it below the
+// update; when the value is unused, the peephole stage removes the
+// copy.
 static void post_incdec(Operand *o, int ir_op)
 {
   int step = start_incdec(o);
@@ -611,33 +605,33 @@ static void post_incdec(Operand *o, int ir_op)
   put(IR_CONST, step, -1);
   put(ir_op, 0, -1);
   assign_to(o);
-  discard(o);                     /* the new value */
+  discard(o);                     // the new value
   o->kind = K_VALUE;
   o->is_bool = 0;
   o->assigned = 0;
 }
 
-/* Make the place o an object of type t (a pointer's target, or an
- * array's element), which may be qualified: o's type is t without its
- * qualifiers, and o->quals keeps them (*p is const if p is a const
- * char *). */
+// Make the place o an object of type t (a pointer's target, or an
+// array's element), which may be qualified: o's type is t without its
+// qualifiers, and o->quals keeps them (*p is const if p is a const
+// char *).
 static void set_object(Operand *o, int t)
 {
   o->type = unqual(t);
   o->quals = t & Q_ALL;
 }
 
-/* Apply unary * to o: the result is the object o points to. */
+// Apply unary * to o: the result is the object o points to.
 static void deref(Operand *o)
 {
   int t = o->type;
   if (o->kind == K_VOID)
     error(38 /* "void value used in an expression" */, NULL);
   if (is_func(t))
-    return;                     /* *f is f */
+    return;                     // *f is f
   if (callable(t)) {
-    /* The function fp points to, whose address is fp's value: still
-     * pending, or on the stack (parse.h). */
+    // The function fp points to, whose address is fp's value: still
+    // pending, or on the stack (parse.h).
     if (o->kind == K_STORE)
       rvalue(o);
     o->type = type_sub(t);
@@ -645,7 +639,7 @@ static void deref(Operand *o)
     return;
   }
   if (is_array(t) && is_place(o)) {
-    /* *a is a[0]: the same address, with the element's type. */
+    // *a is a[0]: the same address, with the element's type.
     set_object(o, type_sub(t));
     return;
   }
@@ -654,8 +648,8 @@ static void deref(Operand *o)
   if (is_void_ptr(t))
     error(67 /* "dereferencing a 'void *'" */, NULL);
   if (o->kind == K_VAR && !(o->quals & Q_VOLATILE)) {
-    make_elem(o, o->off, o->global, 0);     /* *p: the address is in p */
-  } else {                      /* (a volatile p is read now, once) */
+    make_elem(o, o->off, o->global, 0);     // *p: the address is in p
+  } else {                      // (a volatile p is read now, once)
     rvalue(o);
     o->kind = K_DEREF;
     o->is_bool = 0;
@@ -664,44 +658,44 @@ static void deref(Operand *o)
   set_object(o, type_sub(t));
 }
 
-/* Can o take an index (a variable one if var is set, else a constant)
- * and stay pending? It can if it is an array or pointer variable (local
- * or global), or a K_ELEM of array type (a row of a multi-dimensional
- * array) that has no variable index yet, since a K_ELEM holds only one. */
+// Can o take an index (a variable one if var is set, else a constant)
+// and stay pending? It can if it is an array or pointer variable (local
+// or global), or a K_ELEM of array type (a row of a multi-dimensional
+// array) that has no variable index yet, since a K_ELEM holds only one.
 static int pending_base(Operand *o, int var)
 {
-  if (o->kind == K_VAR)         /* not a volatile pointer: read it now */
+  if (o->kind == K_VAR)         // not a volatile pointer: read it now
     return is_array(o->type)
            || (is_pointer(o->type) && !(o->quals & Q_VOLATILE));
   return o->kind == K_ELEM && is_array(o->type) && !(var && o->idx >= 0);
 }
 
-/* Parse "[index]" after o: o becomes the element o[index], which C
- * defines as *(o + index). When o is a pending base and the index is a
- * plain variable or a number, nothing is emitted: the element is a
- * K_ELEM (or, for a constant index on an array variable, a K_VAR at a
- * fixed offset). Whether the index is that simple is decided before it
- * is parsed, by looking for ']' after its first token, since otherwise
- * the base's address must be emitted first, below the index. */
+// Parse "[index]" after o: o becomes the element o[index], which C
+// defines as *(o + index). When o is a pending base and the index is a
+// plain variable or a number, nothing is emitted: the element is a
+// K_ELEM (or, for a constant index on an array variable, a K_VAR at a
+// fixed offset). Whether the index is that simple is decided before it
+// is parsed, by looking for ']' after its first token, since otherwise
+// the base's address must be emitted first, below the index.
 static void parse_index(Operand *o)
 {
   Operand r;
   int t = o->type, simple, size, d, start = ir_here(), h = nheld, mid;
 
-  next();                         /* '[' */
+  next();                         // '['
   simple = (tok == T_NUM || tok == T_ID) && pending_base(o, tok == T_ID)
            && next_is_rbracket();
   if (!simple)
     rvalue(o);
-  start = code_start(start, h);   /* o's code, for i[p] (binary()) */
+  start = code_start(start, h);   // o's code, for i[p] (binary())
   mid = ir_here();
   parse_expr(PREC_COMMA, &r);
   expect(']', 68 /* "expected ']' after an array index, not" */);
   if (simple && r.kind == K_VAR && (r.quals & Q_VOLATILE)) {
-    /* A volatile index is read where it is written, not later (and
-     * for x op= e, twice) from a pending element: o's code now, and the
-     * index's after it, as if it weren't simple. Neither has emitted
-     * anything yet. */
+    // A volatile index is read where it is written, not later (and
+    // for x op= e, twice) from a pending element: o's code now, and the
+    // index's after it, as if it weren't simple. Neither has emitted
+    // anything yet.
     start = ir_here();
     h = nheld;
     rvalue(o);
@@ -728,7 +722,7 @@ static void parse_index(Operand *o)
     d = wrap16((unsigned)r.val * (unsigned)size);
     if (o->kind == K_VAR && is_array(t) && o->off + d >= 0
         && o->off + d <= max_offset(o->global)) {
-      o->off += d;            /* a[2]: a variable at a fixed offset */
+      o->off += d;            // a[2]: a variable at a fixed offset
     } else {
       if (o->kind == K_VAR)
         make_elem(o, o->off, o->global, is_array(t));
@@ -745,11 +739,11 @@ static void parse_index(Operand *o)
   set_object(o, type_sub(t));
 }
 
-/* Apply unary & to o: the result is its address. */
+// Apply unary & to o: the result is its address.
 static void address_of(Operand *o)
 {
   if (is_func(o->type)) {
-    /* &f, &*fp: the function's address, which is its value. */
+    // &f, &*fp: the function's address, which is its value.
     if (o->kind == K_FUNC)
       o->type = pointer_to(o->type);
     else
@@ -760,25 +754,25 @@ static void address_of(Operand *o)
     error_in(41 /* "lvalue required as" */,
              196 /* "unary '&' operand" */, NULL);
   if (o->kind == K_VAR && o->global)
-    o->kind = K_ADDR;               /* &g, &a[2], &s.x: a constant */
+    o->kind = K_ADDR;               // &g, &a[2], &s.x: a constant
   else if (o->kind == K_VAR)
     push_var_addr(o->off, o->global);
   else if (o->kind == K_ELEM)
-    push_address(o);                /* &*p is p, &a[i] is a + i */
-  else if (o->kind != K_DEREF)        /* K_DEREF: already on the stack */
+    push_address(o);                // &*p is p, &a[i] is a + i
+  else if (o->kind != K_DEREF)        // K_DEREF: already on the stack
     error_in(41 /* "lvalue required as" */,
              196 /* "unary '&' operand" */, NULL);
   if (o->kind != K_ADDR)
     o->kind = K_VALUE;
-  o->type = pointer_to(o->type | o->quals);   /* &N is a const int * */
+  o->type = pointer_to(o->type | o->quals);   // &N is a const int *
   o->quals = 0;
   o->is_bool = 0;
 }
 
-/* Move the place o off bytes further on, for a member or a part of a
- * struct: a variable stays a variable at a new offset if it can, a
- * K_ELEM adds to its displacement, and a K_DEREF adds to its address.
- * Its type is unchanged; the caller sets it. */
+// Move the place o off bytes further on, for a member or a part of a
+// struct: a variable stays a variable at a new offset if it can, a
+// K_ELEM adds to its displacement, and a K_DEREF adds to its address.
+// Its type is unchanged; the caller sets it.
 static void offset_place(Operand *o, int off)
 {
   int assigned = o->assigned;
@@ -790,15 +784,15 @@ static void offset_place(Operand *o, int off)
     o->assigned = assigned;
   } else if (o->kind == K_ELEM) {
     o->disp = wrap16((unsigned)o->disp + (unsigned)off);
-  } else if (off != 0) {          /* K_DEREF: the address is on the stack */
+  } else if (off != 0) {          // K_DEREF: the address is on the stack
     put(IR_CONST, off, -1);
     put(IR_ADD, 0, -1);
   }
 }
 
-/* Make w the word at offset k of the struct place o (its last byte
- * alone, if that's odd), a place: volatile if any part of o is, as an
- * access too many kept volatile does no harm. */
+// Make w the word at offset k of the struct place o (its last byte
+// alone, if that's odd), a place: volatile if any part of o is, as an
+// access too many kept volatile does no harm.
 static void struct_word(Operand *w, Operand *o, int k)
 {
   *w = *o;
@@ -807,13 +801,13 @@ static void struct_word(Operand *w, Operand *o, int k)
   w->type = type_size(o->type) - k == 1 ? TY_CHAR : TY_INT;
 }
 
-/* Parse ".member" or "->member" (arrow set) after o: o becomes the
- * member, a place at a constant offset in the struct (approach.md, "M6
- * design"). A member of a variable is a variable at a fixed offset
- * (s.m: LLW s+off), and one reached through a pointer adds the offset
- * as a displacement (p->m: LLW p CB off ADD LW). A member of a const
- * struct is const. For a constant pointer, such as a memory-mapped
- * I/O block, the offset is added at compile time. */
+// Parse ".member" or "->member" (arrow set) after o: o becomes the
+// member, a place at a constant offset in the struct (approach.md, "M6
+// design"). A member of a variable is a variable at a fixed offset
+// (s.m: LLW s+off), and one reached through a pointer adds the offset
+// as a displacement (p->m: LLW p CB off ADD LW). A member of a const
+// struct is const. For a constant pointer, such as a memory-mapped
+// I/O block, the offset is added at compile time.
 static void parse_member(Operand *o, int arrow)
 {
 #ifdef CCISH_DIAG
@@ -821,13 +815,13 @@ static void parse_member(Operand *o, int arrow)
 #endif
   int t = arrow ? value_type(o->type) : o->type, tag, m, off;
 
-  next();                         /* '.' or '->' */
+  next();                         // '.' or '->'
   if (arrow && !(is_pointer(t) && is_struct(type_sub(t))))
     error(72 /* "'->' needs a pointer to a struct or union" */, NULL);
   if (!arrow && !is_struct(t))
     error(73 /* "'.' needs a struct or union" */, NULL);
   if (!arrow && o->kind == K_VALUE)
-    materialize(o);             /* f().x */
+    materialize(o);             // f().x
   tag = struct_tag(arrow ? type_sub(t) : t);
   if (tok != T_ID)
     error(74 /* "expected a member name, not" */, tok_desc());
@@ -857,8 +851,8 @@ static void parse_member(Operand *o, int arrow)
   set_object(o, qualify(member_type(m), o->quals));
 }
 
-/* Parse a unary expression: prefix operators, then a primary
- * expression, then postfix ++ and --. */
+// Parse a unary expression: prefix operators, then a primary
+// expression, then postfix ++ and --.
 static void parse_unary(Operand *o)
 {
   int t = tok;
@@ -880,10 +874,10 @@ static void parse_unary(Operand *o)
       return;
     }
     if (t == '!' && o->kind == K_JUMP) {
-      /* Swap the outcomes: the true label (or a new one, G) becomes
-       * the false label, reached also by BRNCH G where true fell
-       * through; then the old false label, where true now falls
-       * through. */
+      // Swap the outcomes: the true label (or a new one, G) becomes
+      // the false label, reached also by BRNCH G where true fell
+      // through; then the old false label, where true now falls
+      // through.
       int g = o->off >= 0 ? o->off : new_label();
       branch(IR_JUMP, g);
       place_forward(o->val);
@@ -892,7 +886,7 @@ static void parse_unary(Operand *o)
       return;
     }
     rvalue(o);
-    /* A char operand is promoted; ! gives an int. */
+    // A char operand is promoted; ! gives an int.
     o->type = t == '!' ? TY_INT : promoted(o->type);
     if (t == '-')
       put(IR_NEG, 0, -1);
@@ -905,12 +899,12 @@ static void parse_unary(Operand *o)
     return;
   case T_INC: case T_DEC:
     next();
-    parse_unary(o);             /* ++N: the folded N's Q_CONST, error 42 */
+    parse_unary(o);             // ++N: the folded N's Q_CONST, error 42
     pre_incdec(o, t == T_INC ? IR_ADD : IR_SUB);
     return;
   case '*': case '&':
     next();
-    want_place = t == '&';      /* &N: N's address, not 10's */
+    want_place = t == '&';      // &N: N's address, not 10's
     parse_unary(o);
     if (t == '*')
       deref(o);
@@ -926,9 +920,9 @@ static void parse_unary(Operand *o)
   parse_postfix(o);
 }
 
-/* Parse any postfix operators after the operand o: ++, --, [], ., ->
- * and a call's "(" (a named function's call is parsed with the name,
- * in parse_primary()). */
+// Parse any postfix operators after the operand o: ++, --, [], ., ->
+// and a call's "(" (a named function's call is parsed with the name,
+// in parse_primary()).
 static void parse_postfix(Operand *o)
 {
   int t;
@@ -957,9 +951,9 @@ static void parse_postfix(Operand *o)
   }
 }
 
-/* Parse the operand of sizeof, after "sizeof": a type name in
- * parentheses, or a unary expression, which is checked but not run (it
- * emits nothing). o becomes the size, an int constant. */
+// Parse the operand of sizeof, after "sizeof": a type name in
+// parentheses, or a unary expression, which is checked but not run (it
+// emits nothing). o becomes the size, an int constant.
 static void parse_sizeof(Operand *o)
 {
   int t, saved = nheld;
@@ -969,12 +963,12 @@ static void parse_sizeof(Operand *o)
   if (tok == '(') {
     next();
     if (is_type_start()) {
-      /* A type name: a base type and an abstract declarator. */
+      // A type name: a base type and an abstract declarator.
       t = parse_type_name();
       expect(')', 77 /* "expected ')' after the type in sizeof, not" */);
     } else {
-      /* A parenthesized expression, which may be followed by
-       * postfix operators: sizeof (a)[0] is the size of (a)[0]. */
+      // A parenthesized expression, which may be followed by
+      // postfix operators: sizeof (a)[0] is the size of (a)[0].
       parse_expr(PREC_COMMA, o);
       expect(')', 60 /* "expected ')', not" */);
       parse_postfix(o);
@@ -986,34 +980,32 @@ static void parse_sizeof(Operand *o)
   }
   suppress--;
   in_sizeof--;
-  nheld = saved;              /* drop anything held inside it */
+  nheld = saved;              // drop anything held inside it
   nest--;
   if (unqual(t) == TY_VOID)
     error(78 /* "sizeof can't be applied to type void" */, NULL);
   if (is_struct(t) && type_size(t) == 0)
     error(79 /* "sizeof can't be applied to the incomplete type" */,
           tag_desc(struct_tag(t)));
-  if (is_array(t) && type_count(t) == 0)    /* extern int a[]; */
+  if (is_array(t) && type_count(t) == 0)    // extern int a[];
     error(79 /* "sizeof can't be applied to the incomplete type" */,
           NULL);
   o->kind = K_CONST;
   o->val = type_size(t);
-  o->type = TY_UINT;          /* C's size_t */
-  o->nonice = 0;              /* sizeof N is a constant expression */
+  o->type = TY_UINT;          // C's size_t
+  o->nonice = 0;              // sizeof N is a constant expression
   o->is_bool = 0;
 }
 
-/*
- * Parse the right side of && or || (the current token), with *o as the
- * left side, which binds at precedence prec. The result is a K_JUMP
- * with false label F (approach.md C4, "Conditions as jumps"):
- *   a && b:  a BRFALSE F  b BRFALSE F
- *   a || b:  a BRTRUE T   b BRFALSE F       (true label T, not placed)
- * A side that is itself a K_JUMP brings its own false label, which
- * becomes F (for && with both, a's is joined to b's); and maybe a true
- * label, placed where its true outcome goes on, or joined to T. A
- * constant left side folds.
- */
+// Parse the right side of && or || (the current token), with *o as the
+// left side, which binds at precedence prec. The result is a K_JUMP
+// with false label F (approach.md C4, "Conditions as jumps"):
+//   a && b:  a BRFALSE F  b BRFALSE F
+//   a || b:  a BRTRUE T   b BRFALSE F       (true label T, not placed)
+// A side that is itself a K_JUMP brings its own false label, which
+// becomes F (for && with both, a's is joined to b's); and maybe a true
+// label, placed where its true outcome goes on, or joined to T. A
+// constant left side folds.
 static void parse_logical(Operand *o, int prec)
 {
   int is_and = tok == T_ANDAND, end, t, f;
@@ -1022,14 +1014,14 @@ static void parse_logical(Operand *o, int prec)
   next();
   if (o->kind == K_CONST) {
     if ((o->val != 0) != is_and) {
-      /* 0 && x is 0, and 1 || x is 1: x never runs. */
+      // 0 && x is 0, and 1 || x is 1: x never runs.
       parse_skipped(prec + 1, &r);
       o->val = !is_and;
       o->type = TY_INT;
       o->nonice |= r.nonice;
       return;
     }
-    /* 1 && x and 0 || x are x, as 1 or 0 (or as a condition). */
+    // 1 && x and 0 || x are x, as 1 or 0 (or as a condition).
     end = o->nonice;
     parse_expr(prec + 1, &r);
     if (r.kind != K_JUMP)
@@ -1041,7 +1033,7 @@ static void parse_logical(Operand *o, int prec)
   if (is_and) {
     if (o->kind == K_JUMP) {
       f = o->val;
-      place_true(o);                /* b runs when a is true */
+      place_true(o);                // b runs when a is true
     } else {
       f = new_label();
       cond_branch(o, f, 0);
@@ -1049,9 +1041,9 @@ static void parse_logical(Operand *o, int prec)
     parse_expr(prec + 1, &r);
     t = -1;
     if (r.kind == K_JUMP) {
-      /* Keep b's false label, the one its last branch names (so that
-       * a BRNCH and that label can still meet in the peephole stage),
-       * and join a's to it. */
+      // Keep b's false label, the one its last branch names (so that
+      // a BRNCH and that label can still meet in the peephole stage),
+      // and join a's to it.
       join_label(f, r.val);
       f = r.val;
       t = r.off;
@@ -1077,18 +1069,18 @@ static void parse_logical(Operand *o, int prec)
   o->is_bool = 1;
 }
 
-/* Is o a void call (no value)? */
+// Is o a void call (no value)?
 static int is_void(Operand *o)
 {
   return o->kind == K_VOID;
 }
 
-/* The type of x ? b : c, given whether b and c are null pointer
- * constants. Integers give their common type, or if they differ, the
- * usual arithmetic conversions' (char and int: C promotes both). A pointer may meet the same type,
- * a void * (giving void *), or a null pointer constant. Two pointers
- * give a pointer to a type with the qualifiers of both targets: char *
- * and const char * give const char *. */
+// The type of x ? b : c, given whether b and c are null pointer
+// constants. Integers give their common type, or if they differ, the
+// usual arithmetic conversions' (char and int: C promotes both). A pointer may meet the same type,
+// a void * (giving void *), or a null pointer constant. Two pointers
+// give a pointer to a type with the qualifiers of both targets: char *
+// and const char * give const char *.
 static int cond_type(Operand *b, int b_null, Operand *c, int c_null)
 {
   int bt = value_type(b->type), ct = value_type(c->type), q;
@@ -1110,18 +1102,16 @@ static int cond_type(Operand *b, int b_null, Operand *c, int c_null)
   return TY_INT;
 }
 
-/*
- * Parse "? b : c" with *o as the condition. Code: "cond BRFLS Lelse b
- * BRNCH Lend Lelse: c Lend:". A constant condition picks b or c at
- * compile time, and the other is parsed but emits no code. Both sides
- * may be void calls, as in C, but not just one.
- */
+// Parse "? b : c" with *o as the condition. Code: "cond BRFLS Lelse b
+// BRNCH Lend Lelse: c Lend:". A constant condition picks b or c at
+// compile time, and the other is parsed but emits no code. Both sides
+// may be void calls, as in C, but not just one.
 static void parse_conditional(Operand *o)
 {
   Operand b, c;
   int else_l, end_l, b_null, type;
 
-  next();                         /* '?' */
+  next();                         // '?'
   if (o->kind == K_CONST) {
     int take_b = o->val != 0;
     if (take_b)
@@ -1138,13 +1128,13 @@ static void parse_conditional(Operand *o)
     type = cond_type(&b, is_null(&b), &c, is_null(&c));
     b_null = o->nonice;
     if (take_b)
-      *o = b;                   /* not a struct ?:, which ccish lacks */
+      *o = b;                   // not a struct ?:, which ccish lacks
     else
       *o = c;
     if (is_place(o))
-      rvalue(o);              /* the result is not an lvalue */
+      rvalue(o);              // the result is not an lvalue
     o->type = type;
-    o->nonice |= b_null;        /* N ? 1 : 2 is no more constant */
+    o->nonice |= b_null;        // N ? 1 : 2 is no more constant
     return;
   }
   else_l = new_label();
@@ -1169,13 +1159,13 @@ static void parse_conditional(Operand *o)
   o->is_bool = b.is_bool && c.is_bool;
 }
 
-/* Is IR op one of < > <= >=? */
+// Is IR op one of < > <= >=?
 static int is_relational(int op)
 {
   return IR_IS_RELATIONAL(op);
 }
 
-/* The C spelling of arithmetic IR op, for messages. */
+// The C spelling of arithmetic IR op, for messages.
 static const char *op_name(int op)
 {
   static const char *const names[] = {
@@ -1185,8 +1175,8 @@ static const char *op_name(int op)
   return IR_IS_BINARY(op) ? names[op - IR_ADD] : "operator";
 }
 
-/* Push integer operand i scaled by the size of what pointer type p
- * points to, for p + i or p - i. */
+// Push integer operand i scaled by the size of what pointer type p
+// points to, for p + i or p - i.
 static void push_scaled(Operand *i, int p)
 {
   int n = elem_size(p);
@@ -1202,9 +1192,9 @@ static void push_scaled(Operand *i, int p)
   }
 }
 
-/* A comparison with a pointer operand: check the types (equality allows
- * a null pointer constant or a void *; < > <= >= need the same type),
- * then push r. Pointers are compared unsigned (binary()). */
+// A comparison with a pointer operand: check the types (equality allows
+// a null pointer constant or a void *; < > <= >= need the same type),
+// then push r. Pointers are compared unsigned (binary()).
 static void compare_pointers(Operand *o, Operand *r, int op)
 {
   int lt = o->type, rt = value_type(r->type);
@@ -1218,15 +1208,15 @@ static void compare_pointers(Operand *o, Operand *r, int op)
   rvalue(r);
 }
 
-/* Push r for binary op *op on integers o and r, and make *op the
- * unsigned op when the operation is unsigned: when either operand is
- * unsigned int (for a shift, the left one). < > <= >= become IR_ULT
- * and the rest, put here (ccgen calls CMDSYS's ISULT and the rest);
- * / % >> become IR_UDIV, IR_UMOD,
- * IR_USHR, which the caller puts, with the a returned: 1 if r is a
- * constant (just written) that ccgen can do inline (a shift count, or a
- * power of 2 for / and %), else 0, for a call to a helper function
- * (approach.md, "unsigned and helper functions design"). */
+// Push r for binary op *op on integers o and r, and make *op the
+// unsigned op when the operation is unsigned: when either operand is
+// unsigned int (for a shift, the left one). < > <= >= become IR_ULT
+// and the rest, put here (ccgen calls CMDSYS's ISULT and the rest);
+// / % >> become IR_UDIV, IR_UMOD,
+// IR_USHR, which the caller puts, with the a returned: 1 if r is a
+// constant (just written) that ccgen can do inline (a shift count, or a
+// power of 2 for / and %), else 0, for a call to a helper function
+// (approach.md, "unsigned and helper functions design").
 static int unsigned_op(Operand *o, Operand *r, int *op)
 {
   int shift = IR_IS_S_SHIFT(*op), k = r->kind, v = r->val;
@@ -1240,31 +1230,29 @@ static int unsigned_op(Operand *o, Operand *r, int *op)
   } else if (*op == IR_DIV || *op == IR_MOD || *op == IR_SHR) {
     shift = *op == IR_SHR;
     *op = *op == IR_DIV ? IR_UDIV : *op == IR_MOD ? IR_UMOD : IR_USHR;
-    v &= 0xFFFF;                /* 0x8000u is a power of 2 too */
+    v &= 0xFFFF;                // 0x8000u is a power of 2 too
     return k == K_CONST && (shift || (v != 0 && (v & (v - 1)) == 0));
   }
   return 0;
 }
 
-/*
- * Finish binary op: o's value is on the stack (or held, if a
- * constant), and r has been parsed. Check the operand types, scale
- * pointer arithmetic by the element size, and emit the op. The result
- * replaces *o. Pointer arithmetic is p + i, i + p, p - i and p - q.
- * o's code is from IR position lstart to mid (lstart is -1 if
- * unknown), and r's code follows it.
- */
+// Finish binary op: o's value is on the stack (or held, if a
+// constant), and r has been parsed. Check the operand types, scale
+// pointer arithmetic by the element size, and emit the op. The result
+// replaces *o. Pointer arithmetic is p + i, i + p, p - i and p - q.
+// o's code is from IR position lstart to mid (lstart is -1 if
+// unknown), and r's code follows it.
 static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
 {
   int lt = o->type, rt = value_type(r->type), n, a = 0;
   int result = TY_INT;
 
   if (r->kind == K_VOID)
-    rvalue(r);                  /* an error */
+    rvalue(r);                  // an error
   if (is_compare(op) && (is_pointer(lt) || is_pointer(rt))) {
     compare_pointers(o, r, op);
-    /* < > <= >= between pointers are unsigned: IR_ULT and the rest
-     * (approach.md 18.7, C). */
+    // < > <= >= between pointers are unsigned: IR_ULT and the rest
+    // (approach.md 18.7, C).
     if (is_relational(op)) {
       put(IR_U_COMPARE(op), 0, -1);
       o->kind = K_VALUE;
@@ -1274,7 +1262,7 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
     }
   } else if (!is_pointer(lt) && !is_pointer(rt)) {
     a = unsigned_op(o, r, &op);
-    if (IR_IS_U_COMPARE(op)) {     /* already put */
+    if (IR_IS_U_COMPARE(op)) {     // already put
       o->kind = K_VALUE;
       o->type = TY_INT;
       o->is_bool = 1;
@@ -1285,14 +1273,14 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
                ? promoted(lt) : arith_type(lt, rt);
   } else if (is_pointer(lt) && !is_pointer(rt)
              && (op == IR_ADD || op == IR_SUB)) {
-    push_scaled(r, lt);         /* p + i, p - i */
+    push_scaled(r, lt);         // p + i, p - i
     result = lt;
   } else if (!is_pointer(lt) && op == IR_ADD) {
-    /* i + p: i is already below p. The two are exchanged, so that i
-     * is on top to be scaled ("p i IDXW"): by moving i's code after
-     * p's, or, if i's start isn't known (a constant written late, or
-     * no positions given), when the code runs (swap_blocks();
-     * approach.md 4(b)). */
+    // i + p: i is already below p. The two are exchanged, so that i
+    // is on top to be scaled ("p i IDXW"): by moving i's code after
+    // p's, or, if i's start isn't known (a constant written late, or
+    // no positions given), when the code runs (swap_blocks();
+    // approach.md 4(b)).
     n = elem_size(rt);
     rvalue(r);
     if (n != 1) {
@@ -1302,7 +1290,7 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
     }
     result = rt;
   } else if (is_pointer(lt) && is_pointer(rt) && op == IR_SUB) {
-    /* p - q: the difference in elements. */
+    // p - q: the difference in elements.
     if (!same_target(lt, rt))
       error(48 /* "incompatible pointer types in" */, "subtraction");
     n = elem_size(lt);
@@ -1328,10 +1316,10 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
   o->is_bool = is_compare(op);
 }
 
-/* Parse the right side of *f() = e, where o is the K_DEREF, its
- * address's code starting at IR position start. Its value and the
- * store wait (K_STORE) until the parser sees whether the value is
- * used; see finish_store(). */
+// Parse the right side of *f() = e, where o is the K_DEREF, its
+// address's code starting at IR position start. Its value and the
+// store wait (K_STORE) until the parser sees whether the value is
+// used; see finish_store().
 static void start_store(Operand *o, int start)
 {
   Operand r;
@@ -1349,24 +1337,22 @@ static void start_store(Operand *o, int start)
   o->assigned = 0;
 }
 
-/*
- * x op= e, for x a non-indexed pending element (*p, p[3], *gp), whose
- * address is computed twice: for the load and for the store. C says x
- * is evaluated once, and a call in e runs entirely before or entirely
- * after it (C11 6.5.2.2p10, 6.5.16.2p3), so if e calls a function that
- * changes p, the load and the store must still use the same object
- * (approach.md 4(d2)). So x isn't loaded until e is parsed:
- *   - if e emitted no code (a constant or a variable), the load comes
- *     first, as usual: "LLW p LW CN 1 ADD" becomes INCR;
- *   - otherwise the load comes after e's code, and the two values are
- *     exchanged (swap_blocks()). If e has a call, the load must stay
- *     after it, so both addresses follow the call: ccgen then applies
- *     the operator reversed (ADD as is, SUB then NEG, < as >, ...) or
- *     exchanges the values when the code runs. If not, e can't change p
- *     (except with undefined behavior), and ccgen may move the load
- *     ahead of e's code.
- * x is the element; r receives e; the result is left in x.
- */
+// x op= e, for x a non-indexed pending element (*p, p[3], *gp), whose
+// address is computed twice: for the load and for the store. C says x
+// is evaluated once, and a call in e runs entirely before or entirely
+// after it (C11 6.5.2.2p10, 6.5.16.2p3), so if e calls a function that
+// changes p, the load and the store must still use the same object
+// (approach.md 4(d2)). So x isn't loaded until e is parsed:
+//   - if e emitted no code (a constant or a variable), the load comes
+//     first, as usual: "LLW p LW CN 1 ADD" becomes INCR;
+//   - otherwise the load comes after e's code, and the two values are
+//     exchanged (swap_blocks()). If e has a call, the load must stay
+//     after it, so both addresses follow the call: ccgen then applies
+//     the operator reversed (ADD as is, SUB then NEG, < as >, ...) or
+//     exchanges the values when the code runs. If not, e can't change p
+//     (except with undefined behavior), and ccgen may move the load
+//     ahead of e's code.
+// x is the element; r receives e; the result is left in x.
 static void compound_elem(Operand *x, Operand *r, int op)
 {
   int mid = ir_here(), h = nheld, calls = ncalls, start, xm;
@@ -1382,7 +1368,7 @@ static void compound_elem(Operand *x, Operand *r, int op)
   rvalue(r);
   if (is_pointer(value_type(r->type))
       || (is_pointer(x->type) && op != IR_ADD && op != IR_SUB)) {
-    /* An error (int op= pointer, pointer *= ...): binary() says so. */
+    // An error (int op= pointer, pointer *= ...): binary() says so.
     rvalue(x);
     binary(x, r, op, -1, -1);
     return;
@@ -1393,8 +1379,8 @@ static void compound_elem(Operand *x, Operand *r, int op)
   binary(x, r, op, -1, -1);
 }
 
-/* Bytes of code that push the address of the place o (a K_VAR or
- * K_ELEM): an estimate, for choosing how to copy a struct. */
+// Bytes of code that push the address of the place o (a K_VAR or
+// K_ELEM): an estimate, for choosing how to copy a struct.
 static int addr_cost(Operand *o)
 {
   int c = o->global ? 3 : 2;
@@ -1405,8 +1391,8 @@ static int addr_cost(Operand *o)
   return c;
 }
 
-/* Bytes of code that load or store the word at offset off in the place
- * o (a K_VAR or K_ELEM): an estimate, as for addr_cost(). */
+// Bytes of code that load or store the word at offset off in the place
+// o (a K_VAR or K_ELEM): an estimate, as for addr_cost().
 static int access_cost(Operand *o, int off)
 {
   if (o->kind == K_VAR)
@@ -1414,8 +1400,8 @@ static int access_cost(Operand *o, int off)
   return addr_cost(o) + (off != 0 ? 2 : 0) + 1;
 }
 
-/* Push the address of the place o. A K_DEREF's is already on the
- * stack. */
+// Push the address of the place o. A K_DEREF's is already on the
+// stack.
 static void push_place_addr(Operand *o)
 {
   if (o->kind == K_VAR)
@@ -1424,9 +1410,9 @@ static void push_place_addr(Operand *o)
     push_address(o);
 }
 
-/* The function a struct copy calls: __memcpy(dst, src, n), from CMDSYS
- * unless the program defines its own, which must take C's arguments in
- * C's order. A value it returns is dropped. */
+// The function a struct copy calls: __memcpy(dst, src, n), from CMDSYS
+// unless the program defines its own, which must take C's arguments in
+// C's order. A value it returns is dropped.
 static int copy_func(void)
 {
   int f = find_func(ID_MEMCPY);
@@ -1442,25 +1428,23 @@ static int copy_func(void)
   return f;
 }
 
-/*
- * Copy the struct r into the place o (approach.md, "M6 design"). r's
- * code starts at IR position start (if it emitted any). Between two
- * places whose addresses need no code yet (K_VAR, K_ELEM), the words
- * are moved one at a time (LLW b SLW a ...) when that is no bigger
- * than calling memcpy; otherwise memcpy(dst, src, n) is called, with
- * dst's address first. If r's address was already emitted and o's
- * wasn't, the two are exchanged (swap_blocks()), as for a store
- * (finish_store()). A struct on the stack (a call's result) is stored
- * word by word, last first. o becomes the result: the object assigned
- * to, not an lvalue (for a K_DEREF, its address was kept with DUP).
- */
+// Copy the struct r into the place o (approach.md, "M6 design"). r's
+// code starts at IR position start (if it emitted any). Between two
+// places whose addresses need no code yet (K_VAR, K_ELEM), the words
+// are moved one at a time (LLW b SLW a ...) when that is no bigger
+// than calling memcpy; otherwise memcpy(dst, src, n) is called, with
+// dst's address first. If r's address was already emitted and o's
+// wasn't, the two are exchanged (swap_blocks()), as for a store
+// (finish_store()). A struct on the stack (a call's result) is stored
+// word by word, last first. o becomes the result: the object assigned
+// to, not an lvalue (for a K_DEREF, its address was kept with DUP).
 void copy_struct(Operand *o, Operand *r, int start)
 {
   Operand d, v;
   int n = type_size(o->type), k, cost = 0, mid, fn;
 
   if (r->kind == K_VALUE && o->kind != K_DEREF) {
-    /* Its words are on the stack: store them, last word first. */
+    // Its words are on the stack: store them, last word first.
     for (k = struct_words(o->type) - 1; k >= 0; k--) {
       struct_word(&d, o, 2 * k);
       if (d.kind == K_VAR) {
@@ -1475,7 +1459,7 @@ void copy_struct(Operand *o, Operand *r, int start)
     return;
   }
   if (r->kind == K_VALUE)
-    materialize(r);             /* the address is below it: *f() = g() */
+    materialize(r);             // the address is below it: *f() = g()
   if (o->kind != K_DEREF && r->kind != K_DEREF) {
     for (k = 0; k < n; k += 2)
       cost += access_cost(o, k) + access_cost(r, k);
@@ -1498,10 +1482,10 @@ void copy_struct(Operand *o, Operand *r, int start)
   }
   fn = copy_func();
   if (o->kind == K_DEREF || r->kind != K_DEREF) {
-    push_place_addr(o);         /* nothing for a K_DEREF */
+    push_place_addr(o);         // nothing for a K_DEREF
     push_place_addr(r);
   } else {
-    mid = ir_here();            /* r's address is already there */
+    mid = ir_here();            // r's address is already there
     push_place_addr(o);
     swap_blocks(start, mid, 0);
   }
@@ -1513,14 +1497,14 @@ void copy_struct(Operand *o, Operand *r, int start)
     o->assigned = 1;
 }
 
-/* Parse the right side of a struct assignment, with o the struct
- * assigned to, and copy it. o becomes the result. */
+// Parse the right side of a struct assignment, with o the struct
+// assigned to, and copy it. o becomes the result.
 static void struct_assign(Operand *o)
 {
   Operand r;
   int mark, h;
   if (o->kind == K_DEREF)
-    put(IR_DUP, 0, -1);       /* the address, kept for the result */
+    put(IR_DUP, 0, -1);       // the address, kept for the result
   mark = ir_here();
   h = nheld;
   parse_expr(PREC_ASSIGN, &r);
@@ -1528,9 +1512,9 @@ static void struct_assign(Operand *o)
   copy_struct(o, &r, code_start(mark, h));
 }
 
-/* Parse an assignment after its operator (ir_op, -1 for '='), with o
- * the lvalue, whose parsing began at IR position m0 with h0 constants
- * held. o becomes the result. */
+// Parse an assignment after its operator (ir_op, -1 for '='), with o
+// the lvalue, whose parsing began at IR position m0 with h0 constants
+// held. o becomes the result.
 static void parse_assign(Operand *o, int ir_op, int m0, int h0)
 {
   Operand r, x;
@@ -1544,24 +1528,24 @@ static void parse_assign(Operand *o, int ir_op, int m0, int h0)
     return;
   }
   if (ir_op >= 0 && o->kind == K_ELEM && o->idx >= 0) {
-    /* x op= e loads x, then stores into it after e. Saving an
-     * indexed element's address (spill()) is 1 byte smaller than
-     * computing it twice, and stays right if e changes the index
-     * through a pointer. With a SWAP opcode, neither would be
-     * needed: addr DUP LW e op SWAP SW (approach.md issue 21). */
+    // x op= e loads x, then stores into it after e. Saving an
+    // indexed element's address (spill()) is 1 byte smaller than
+    // computing it twice, and stays right if e changes the index
+    // through a pointer. With a SWAP opcode, neither would be
+    // needed: addr DUP LW e op SWAP SW (approach.md issue 21).
     push_address(o);
     o->kind = K_DEREF;
   }
   if (ir_op >= 0 && o->kind == K_ELEM) {
-    /* Its address is computed twice; see compound_elem(). */
+    // Its address is computed twice; see compound_elem().
     x = *o;
     compound_elem(&x, &r, ir_op);
     r = x;
   } else if (ir_op >= 0) {
-    /* x op= e with x's address computed once (a variable, or a
-     * spilled address): compute x op e, then store it as for
-     * x = e. Loading x before e runs is one of the orders C
-     * allows. */
+    // x op= e with x's address computed once (a variable, or a
+    // spilled address): compute x op e, then store it as for
+    // x = e. Loading x before e runs is one of the orders C
+    // allows.
     spill(o);
     x = *o;
     rvalue(&x);
@@ -1580,21 +1564,21 @@ static void parse_assign(Operand *o, int ir_op, int m0, int h0)
   o->is_bool = ir_op < 0 && r.is_bool && o->kind == K_VALUE;
 }
 
-/* After parse_expr() has parsed r, the right operand of o's binary
- * operator ir_op, with o's constant still held back (hold()) because
- * r emitted nothing: fold what can be folded now (a + c and a - c, for
- * o the address constant *addr, or addr NULL; c + p; c op c; c op x).
- * Returns 1 if it did, so the operator needs nothing more, else 0. It
- * is apart from parse_expr() so that its locals aren't in the frame of
- * every level of parse_expr()'s recursion. */
+// After parse_expr() has parsed r, the right operand of o's binary
+// operator ir_op, with o's constant still held back (hold()) because
+// r emitted nothing: fold what can be folded now (a + c and a - c, for
+// o the address constant *addr, or addr NULL; c + p; c op c; c op x).
+// Returns 1 if it did, so the operator needs nothing more, else 0. It
+// is apart from parse_expr() so that its locals aren't in the frame of
+// every level of parse_expr()'s recursion.
 static int fold_held(Operand *o, Operand *rp, int ir_op, Operand *addr)
 {
-  Operand r = *rp;       /* a copy: cheaper to reach, and off the
-                          * recursion's frames; *rp is unchanged when
-                          * this returns 0 */
+  Operand r = *rp;       // a copy: cheaper to reach, and off the
+                         // recursion's frames; *rp is unchanged when
+                         // this returns 0
   int a;
   if (addr) {
-    /* The left operand is an address constant: a + c and a - c fold. */
+    // The left operand is an address constant: a + c and a - c fold.
     if (r.kind != K_CONST || is_pointer(r.type))
       return 0;
     nheld--;
@@ -1606,8 +1590,8 @@ static int fold_held(Operand *o, Operand *rp, int ir_op, Operand *addr)
   }
   if (is_pointer(value_type(r.type))) {
     if (ir_op == IR_ADD && r.kind != K_VOID) {
-      /* c + p: emit p, then c scaled; c + an address constant
-       * folds. */
+      // c + p: emit p, then c scaled; c + an address constant
+      // folds.
       Operand c = *o;
       nheld--;
       if (addr_const(&r)) {
@@ -1633,10 +1617,10 @@ static int fold_held(Operand *o, Operand *rp, int ir_op, Operand *addr)
     o->nonice |= r.nonice;
     return 1;
   } else if (r.kind == K_VAR && swapped_op(ir_op) >= 0) {
-    /* c op x: emit x c op' (op' is op with its operands swapped), so
-     * that the peephole stage sees the constant right before the op
-     * (1+x: INCR). An unsigned comparison's right operand is then that
-     * one constant. */
+    // c op x: emit x c op' (op' is op with its operands swapped), so
+    // that the peephole stage sees the constant right before the op
+    // (1+x: INCR). An unsigned comparison's right operand is then that
+    // one constant.
     int op = swapped_op(ir_op);
     nheld--;
     rvalue(&r);
@@ -1653,11 +1637,9 @@ static int fold_held(Operand *o, Operand *rp, int ir_op, Operand *addr)
   return 0;
 }
 
-/*
- * Precedence climbing: parse an expression whose operators all have
- * precedence min_prec or higher. The result is left in *o, possibly
- * still pending (a bare variable).
- */
+// Precedence climbing: parse an expression whose operators all have
+// precedence min_prec or higher. The result is left in *o, possibly
+// still pending (a bare variable).
 void parse_expr(int min_prec, Operand *o)
 {
   int ir_op, supported, prec, m0 = ir_here(), h0 = nheld, lstart, mid;
@@ -1667,8 +1649,8 @@ void parse_expr(int min_prec, Operand *o)
   parse_unary(o);
 
   if (assign_op(&ir_op)) {
-    /* Assignment is right-associative and binds loosest of all but
-     * ','; it is only possible directly after a unary expression. */
+    // Assignment is right-associative and binds loosest of all but
+    // ','; it is only possible directly after a unary expression.
     if (min_prec > PREC_ASSIGN)
       error_in(41 /* "lvalue required as" */,
                194 /* "left operand of assignment" */, NULL);
@@ -1698,36 +1680,36 @@ void parse_expr(int min_prec, Operand *o)
       continue;
     }
     if (o->kind == K_CONST && !is_pointer(o->type) && nheld < MAX_HELD) {
-      /* Hold it back: it may fold with the right operand. */
+      // Hold it back: it may fold with the right operand.
       mark = hold(IR_CONST, o->val, -1);
     } else if ((ir_op == IR_ADD || ir_op == IR_SUB) && nheld < MAX_HELD
                && addr_const(o)
                && (o->off == 0 || o->global == G_STR
                    || !movable(o->global))) {
-      /* An address constant, held back the same way: plus or minus a
-       * constant folds into it. (Not for a comparison, whose right
-       * operand's code ccgen must know the length of; nor one that may
-       * move with an offset already, which takes more than one op.) */
+      // An address constant, held back the same way: plus or minus a
+      // constant folds into it. (Not for a comparison, whose right
+      // operand's code ccgen must know the length of; nor one that may
+      // move with an offset already, which takes more than one op.)
       op = addr_op(o, &a, &f);
       addr = *o;
       is_addr = 1;
       mark = hold(op, a, f);
-      o->kind = K_VALUE;        /* its value, once put() writes it */
+      o->kind = K_VALUE;        // its value, once put() writes it
     } else {
       rvalue(o);
-      /* All the code since this call began is the left operand. */
+      // All the code since this call began is the left operand.
       lstart = code_start(m0, h0);
     }
     mid = ir_here();
     next();
-    parse_expr(prec + 1, &r);   /* all binary ops are left-assoc */
+    parse_expr(prec + 1, &r);   // all binary ops are left-assoc
     if (r.kind == K_CONST && !suppress)
       check_right_const(ir_op, r.val);
     if (mark >= 0 && nheld > mark
         && fold_held(o, &r, ir_op, is_addr ? &addr : NULL))
       continue;
-    /* Otherwise the left value is (or, via put(), will be) on the
-     * stack below the right one. */
+    // Otherwise the left value is (or, via put(), will be) on the
+    // stack below the right one.
     binary(o, &r, ir_op, lstart, mid);
   }
   nest--;

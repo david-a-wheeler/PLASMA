@@ -1,5 +1,5 @@
 
-/* There is no arithmetic on structs. */
+// There is no arithmetic on structs.
 struct pt { int x, y; };
 
 int main()

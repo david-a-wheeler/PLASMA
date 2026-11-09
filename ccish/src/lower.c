@@ -1,9 +1,7 @@
-/*
- * Stage 2: lowering, the first stage of the back end (ccgen). Turns IR
- * ops, as irin.c reads them from the IR file, into PLASMA machine ops
- * and chooses their encodings, mostly 1:1. Each IR op is described in
- * ../IR.md. -i prints each op (dump_ir()) as irin.c reads it.
- */
+// Stage 2: lowering, the first stage of the back end (ccgen). Turns IR
+// ops, as irin.c reads them from the IR file, into PLASMA machine ops
+// and chooses their encodings, mostly 1:1. Each IR op is described in
+// ../IR.md. -i prints each op (dump_ir()) as irin.c reads it.
 #include <stdio.h>
 #include <string.h>
 #include "build.h"
@@ -18,183 +16,183 @@
 #include "peep.h"
 #include "helper.h"
 
-/* Each IR op's name, for -i; 0 for a number that is no op, which
- * irin.c refuses before it prints one. */
+// Each IR op's name, for -i; 0 for a number that is no op, which
+// irin.c refuses before it prints one.
 static const char *const ir_names[] = {
-  /* $00: local localb setlocal setlocalb */
+  // $00: local localb setlocal setlocalb
   "LOCAL", "LOCALB", "SETLOCAL", "SETLOCALB",
-  /* $04: global globalb setglobal setglobalb */
+  // $04: global globalb setglobal setglobalb
   "GLOBAL", "GLOBALB", "SETGLOBAL", "SETGLOBALB",
-  /* $08: load loadb store storeb */
+  // $08: load loadb store storeb
   "LOAD", "LOADB", "STORE", "STOREB",
-  /* $0C: localaddr dataaddr heapaddr straddr */
+  // $0C: localaddr dataaddr heapaddr straddr
   "LOCALADDR", "DATAADDR", "HEAPADDR", "STRADDR",
-  /* $10: func endfunc const call */
+  // $10: func endfunc const call
   "FUNC", "ENDFUNC", "CONST", "CALL",
-  /* $14: drop dup return funcaddr */
+  // $14: drop dup return funcaddr
   "DROP", "DUP", "RETURN", "FUNCADDR",
-  /* $18: icall neg comp not */
+  // $18: icall neg comp not
   "ICALL", "NEG", "COMP", "NOT",
-  /* $1C: swap udiv umod ushr */
+  // $1C: swap udiv umod ushr
   "SWAP", "UDIV", "UMOD", "USHR",
-  /* $20: localv localbv setlocalv setlocalbv */
+  // $20: localv localbv setlocalv setlocalbv
   "LOCALV", "LOCALBV", "SETLOCALV", "SETLOCALBV",
-  /* $24: globalv globalbv setglobalv setglobalbv */
+  // $24: globalv globalbv setglobalv setglobalbv
   "GLOBALV", "GLOBALBV", "SETGLOBALV", "SETGLOBALBV",
-  /* $28: loadv loadbv storev storebv */
+  // $28: loadv loadbv storev storebv
   "LOADV", "LOADBV", "STOREV", "STOREBV",
-  0, 0, 0, 0,  /* $2C: none */
-  /* $30: add sub mul div */
+  0, 0, 0, 0,  // $2C: none
+  // $30: add sub mul div
   "ADD", "SUB", "MUL", "DIV",
-  /* $34: mod and or xor */
+  // $34: mod and or xor
   "MOD", "AND", "OR", "XOR",
-  /* $38: shl shr - - */
+  // $38: shl shr - -
   "SHL", "SHR", 0, 0,
-  0, 0, 0, 0,  /* $3C: none */
-  /* $40: eq ne lt ge */
+  0, 0, 0, 0,  // $3C: none
+  // $40: eq ne lt ge
   "EQ", "NE", "LT", "GE",
-  /* $44: gt le ult uge */
+  // $44: gt le ult uge
   "GT", "LE", "ULT", "UGE",
-  /* $48: ugt ule - - */
+  // $48: ugt ule - -
   "UGT", "ULE", 0, 0,
-  0, 0, 0, 0,  /* $4C: none */
-  /* $50: label jump brfalse brtrue */
+  0, 0, 0, 0,  // $4C: none
+  // $50: label jump brfalse brtrue
   "LABEL", "JUMP", "BRFALSE", "BRTRUE",
-  /* $54: sel join cases caseval */
+  // $54: sel join cases caseval
   "SEL", "JOIN", "CASES", "CASEVAL",
-  /* $58: caseto - - - */
+  // $58: caseto - - -
   "CASETO", 0, 0, 0,
-  /* $5C: loop loopstep loopbody loopend */
+  // $5C: loop loopstep loopbody loopend
   "LOOP", "LOOPSTEP", "LOOPBODY", "LOOPEND",
 };
 
-/* How each IR op lowers (lw_kind[]), and the PLASMA opcode it lowers
- * to (lw_op[]), as parallel arrays indexed by IR op:
- *   L_SIMPLE   that opcode, with no operand
- *   L_COMPARE  that comparison, then NEG: PLASMA's comparisons give
- *              $FFFF for true, on every VM, and NEG makes it C's 1 (when
- *              the result only feeds a branch, the peephole stage removes
- *              the NEG)
- *   L_OPERAND  that opcode, with the IR op's operand a (a frame offset,
- *              a branch's label, or a pseudo-op's operand)
- *   L_GLOBAL   that opcode, the absolute-address form, with a's address
- *              relocated as data (data_fix())
- *   L_SPECIAL  lowered by lower_special()
- * The stores keep their value (DLW, DLB, DAW, DAB): an assignment's
- * value can be used, and when it isn't, the following DROP lets the
- * peephole stage make the plain store (SLW, ...). DLB keeps the stored
- * byte, which is the value C gives an assignment to a char. */
+// How each IR op lowers (lw_kind[]), and the PLASMA opcode it lowers
+// to (lw_op[]), as parallel arrays indexed by IR op:
+//   L_SIMPLE   that opcode, with no operand
+//   L_COMPARE  that comparison, then NEG: PLASMA's comparisons give
+//              $FFFF for true, on every VM, and NEG makes it C's 1 (when
+//              the result only feeds a branch, the peephole stage removes
+//              the NEG)
+//   L_OPERAND  that opcode, with the IR op's operand a (a frame offset,
+//              a branch's label, or a pseudo-op's operand)
+//   L_GLOBAL   that opcode, the absolute-address form, with a's address
+//              relocated as data (data_fix())
+//   L_SPECIAL  lowered by lower_special()
+// The stores keep their value (DLW, DLB, DAW, DAB): an assignment's
+// value can be used, and when it isn't, the following DROP lets the
+// peephole stage make the plain store (SLW, ...). DLB keeps the stored
+// byte, which is the value C gives an assignment to a char.
 enum { L_SIMPLE, L_COMPARE, L_OPERAND, L_GLOBAL, L_SPECIAL };
 
 static const char lw_kind[IR_NOPS] = {
-  /* $00: local localb setlocal setlocalb */
+  // $00: local localb setlocal setlocalb
   L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,
-  /* $04: global globalb setglobal setglobalb */
+  // $04: global globalb setglobal setglobalb
   L_GLOBAL, L_GLOBAL, L_GLOBAL, L_GLOBAL,
-  /* $08: load loadb store storeb */
+  // $08: load loadb store storeb
   L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,
-  /* $0C: localaddr dataaddr heapaddr straddr */
+  // $0C: localaddr dataaddr heapaddr straddr
   L_OPERAND, L_GLOBAL, L_SPECIAL, L_SPECIAL,
-  /* $10: func endfunc const call */
+  // $10: func endfunc const call
   L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,
-  /* $14: drop dup return funcaddr */
+  // $14: drop dup return funcaddr
   L_SIMPLE, L_SIMPLE, L_SPECIAL, L_SPECIAL,
-  /* $18: icall neg comp not */
+  // $18: icall neg comp not
   L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SPECIAL,
-  /* $1C: swap udiv umod ushr */
+  // $1C: swap udiv umod ushr
   L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,
-  /* $20: localv localbv setlocalv setlocalbv */
+  // $20: localv localbv setlocalv setlocalbv
   L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,
-  /* $24: globalv globalbv setglobalv setglobalbv */
+  // $24: globalv globalbv setglobalv setglobalbv
   L_GLOBAL, L_GLOBAL, L_GLOBAL, L_GLOBAL,
-  /* $28: loadv loadbv storev storebv */
+  // $28: loadv loadbv storev storebv
   L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,
-  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  /* $2C: none */
-  /* $30: add sub mul div */
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  // $2C: none
+  // $30: add sub mul div
   L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,
-  /* $34: mod and or xor */
+  // $34: mod and or xor
   L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,
-  /* $38: shl shr - - */
+  // $38: shl shr - -
   L_SIMPLE, L_SIMPLE, L_SPECIAL, L_SPECIAL,
-  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  /* $3C: none */
-  /* $40: eq ne lt ge */
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  // $3C: none
+  // $40: eq ne lt ge
   L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,
-  /* $44: gt le ult uge */
+  // $44: gt le ult uge
   L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,
-  /* $48: ugt ule - - */
+  // $48: ugt ule - -
   L_COMPARE, L_COMPARE, L_SPECIAL, L_SPECIAL,
-  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  /* $4C: none */
-  /* $50: label jump brfalse brtrue */
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  // $4C: none
+  // $50: label jump brfalse brtrue
   L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,
-  /* $54: sel join cases caseval */
+  // $54: sel join cases caseval
   L_OPERAND, L_SPECIAL, L_OPERAND, L_OPERAND,
-  /* $58: caseto - - - */
+  // $58: caseto - - -
   L_OPERAND, L_SPECIAL, L_SPECIAL, L_SPECIAL,
-  /* $5C: loop loopstep loopbody loopend */
+  // $5C: loop loopstep loopbody loopend
   L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,
 };
 
 static const unsigned char lw_op[IR_NOPS] = {
-  /* $00: local localb setlocal setlocalb */
+  // $00: local localb setlocal setlocalb
   OP_LLW, OP_LLB, OP_DLW, OP_DLB,
-  /* $04: global globalb setglobal setglobalb */
+  // $04: global globalb setglobal setglobalb
   OP_LAW, OP_LAB, OP_DAW, OP_DAB,
-  /* $08: load loadb store storeb */
+  // $08: load loadb store storeb
   OP_LW, OP_LB, OP_SW, OP_SB,
-  /* $0C: localaddr dataaddr heapaddr straddr */
+  // $0C: localaddr dataaddr heapaddr straddr
   OP_LLA, OP_LA, OP_LA, 0,
-  /* $10: func endfunc const call */
+  // $10: func endfunc const call
   0, 0, 0, 0,
-  /* $14: drop dup return funcaddr */
+  // $14: drop dup return funcaddr
   OP_DROP, OP_DUP, 0, 0,
-  /* $18: icall neg comp not */
+  // $18: icall neg comp not
   OP_ICAL, OP_NEG, OP_COMP, 0,
-  /* $1C: swap udiv umod ushr */
+  // $1C: swap udiv umod ushr
   0, 0, 0, 0,
-  /* $20: localv localbv setlocalv setlocalbv */
+  // $20: localv localbv setlocalv setlocalbv
   OP_LLW | MOP_VOLATILE, OP_LLB | MOP_VOLATILE,
   OP_DLW | MOP_VOLATILE, OP_DLB | MOP_VOLATILE,
-  /* $24: globalv globalbv setglobalv setglobalbv */
+  // $24: globalv globalbv setglobalv setglobalbv
   OP_LAW | MOP_VOLATILE, OP_LAB | MOP_VOLATILE,
   OP_DAW | MOP_VOLATILE, OP_DAB | MOP_VOLATILE,
-  /* $28: loadv loadbv storev storebv */
+  // $28: loadv loadbv storev storebv
   OP_LW | MOP_VOLATILE, OP_LB | MOP_VOLATILE,
   OP_SW | MOP_VOLATILE, OP_SB | MOP_VOLATILE,
-  0, 0, 0, 0,  /* $2C: none */
-  /* $30: add sub mul div */
+  0, 0, 0, 0,  // $2C: none
+  // $30: add sub mul div
   OP_ADD, OP_SUB, OP_MUL, OP_DIV,
-  /* $34: mod and or xor */
+  // $34: mod and or xor
   OP_MOD, OP_AND, OP_IOR, OP_XOR,
-  /* $38: shl shr - - */
+  // $38: shl shr - -
   OP_SHL, OP_SHR, 0, 0,
-  0, 0, 0, 0,  /* $3C: none */
-  /* $40: eq ne lt ge */
+  0, 0, 0, 0,  // $3C: none
+  // $40: eq ne lt ge
   OP_ISEQ, OP_ISNE, OP_ISLT, OP_ISGE,
-  /* $44: gt le ult uge */
+  // $44: gt le ult uge
   OP_ISGT, OP_ISLE, OP_ISLT, OP_ISGE,
-  /* $48: ugt ule - - */
+  // $48: ugt ule - -
   OP_ISGT, OP_ISLE, 0, 0,
-  0, 0, 0, 0,  /* $4C: none */
-  /* $50: label jump brfalse brtrue */
+  0, 0, 0, 0,  // $4C: none
+  // $50: label jump brfalse brtrue
   OP_LABEL, OP_BRNCH, OP_BRFLS, OP_BRTRU,
-  /* $54: sel join cases caseval */
+  // $54: sel join cases caseval
   OP_SEL, 0, OP_CASES, OP_CASEVAL,
-  /* $58: caseto - - - */
+  // $58: caseto - - -
   OP_CASETO, 0, 0, 0,
-  /* $5C: loop loopstep loopbody loopend */
+  // $5C: loop loopstep loopbody loopend
   0, 0, 0, 0,
 };
 
-/* Write s, then n in decimal, to standard output, for the -i and -d
- * dumps. No printf: the small build has none. */
+// Write s, then n in decimal, to standard output, for the -i and -d
+// dumps. No printf: the small build has none.
 void out_num(const char *s, int n)
 {
   fputs(s, stdout);
   fputs(num_text(n), stdout);
 }
 
-/* Print one IR op, for -i: "IR", its name padded to 8 characters, and
- * its operands. */
+// Print one IR op, for -i: "IR", its name padded to 8 characters, and
+// its operands.
 void dump_ir(int op, int a, int f)
 {
   int n = (int)strlen(ir_names[op]);
@@ -203,7 +201,7 @@ void dump_ir(int op, int a, int f)
   while (n++ < 8)
     fputs(" ", stdout);
   if (IR_IS_LOOP_MARKER(op))
-    op = IR_JOIN;               /* a loop marker's two labels, the same */
+    op = IR_JOIN;               // a loop marker's two labels, the same
   switch (op) {
   case IR_FUNC:     fputs(" ", stdout); fputs(func_name(f), stdout); break;
   case IR_ENDFUNC:  out_num(" frame=", a); break;
@@ -240,18 +238,18 @@ void dump_ir(int op, int a, int f)
   fputs("\n", stdout);
 }
 
-/* The fixup for a global op's address: a data offset (f is -1), or
- * extern global f plus the addend in m->a, which m->fn then names. */
+// The fixup for a global op's address: a data offset (f is -1), or
+// extern global f plus the addend in m->a, which m->fn then names.
 static int data_fix(Mop *m, int f)
 {
   m->fn = f;
   return f < 0 ? FIX_DATA : FIX_DSYM;
 }
 
-/* Make m push the constant c, using the shortest encoding (the same
- * choice as the PLASMA compiler's emit_const). The range tests are on
- * it as unsigned, v: on a 16-bit host, an int from $8000 up is
- * negative. */
+// Make m push the constant c, using the shortest encoding (the same
+// choice as the PLASMA compiler's emit_const). The range tests are on
+// it as unsigned, v: on a 16-bit host, an int from $8000 up is
+// negative.
 void mop_const(Mop *m, int c)
 {
   unsigned v = (unsigned)c & 0xFFFF;
@@ -272,9 +270,9 @@ void mop_const(Mop *m, int c)
   }
 }
 
-/* If m pushes a constant, store it (as 16 bits) in *v and return 1.
- * On a 16-bit host, a value from $8000 up is negative, so test *v with
- * masks, not ranges. */
+// If m pushes a constant, store it (as 16 bits) in *v and return 1.
+// On a 16-bit host, a value from $8000 up is negative, so test *v with
+// masks, not ranges.
 int mop_const_value(Mop *m, int *v)
 {
   if (MOP_IS_CN(m->op)) {
@@ -290,7 +288,7 @@ int mop_const_value(Mop *m, int *v)
   return 0;
 }
 
-/* Pass an operand-free machine op to the peephole stage. */
+// Pass an operand-free machine op to the peephole stage.
 static void put_simple(int op)
 {
   Mop m;
@@ -299,8 +297,8 @@ static void put_simple(int op)
   peep_put(&m);
 }
 
-/* Pass a frame op (LLW, SLW, ...) on one of the back end's own
- * temporaries, k, to the peephole stage. */
+// Pass a frame op (LLW, SLW, ...) on one of the back end's own
+// temporaries, k, to the peephole stage.
 static void put_temp(int op, int k)
 {
   Mop m;
@@ -310,7 +308,7 @@ static void put_temp(int op, int k)
   peep_put(&m);
 }
 
-/* Make m a call of helper k, which this object must then hold. */
+// Make m a call of helper k, which this object must then hold.
 static void helper_call(Mop *m, int k)
 {
   m->op = OP_CALL;
@@ -319,7 +317,7 @@ static void helper_call(Mop *m, int k)
   helper_used |= 1 << k;
 }
 
-/* Lower the IR ops of kind L_SPECIAL into m (and any ops before it). */
+// Lower the IR ops of kind L_SPECIAL into m (and any ops before it).
 static void lower_special(Mop *m, int op, int a, int f)
 {
   switch (op) {
@@ -366,22 +364,22 @@ static void lower_special(Mop *m, int op, int a, int f)
     m->a = FRAME_LATER;
     break;
   case IR_NOT:
-    /* C's !x is 1 or 0; PLASMA's NOT gives $FFFF (true) or 0 on
-     * every VM, so mask it: NOT then AND 1 gives 1 or 0. When the
-     * result only feeds a truth test (a branch, or another NOT), the
-     * peephole stage drops the ANDI, since $FFFF is already "true". */
+    // C's !x is 1 or 0; PLASMA's NOT gives $FFFF (true) or 0 on
+    // every VM, so mask it: NOT then AND 1 gives 1 or 0. When the
+    // result only feeds a truth test (a branch, or another NOT), the
+    // peephole stage drops the ANDI, since $FFFF is already "true".
     put_simple(OP_NOT);
     m->op = OP_ANDI;
     m->a = 1;
     break;
   case IR_USHR:
-    /* x >> n unsigned. By a constant n (f; irin.c made / by 2^n one
-     * too): PLASMA's SHR is arithmetic, so mask off the copies of the
-     * sign bit it shifts in. By a variable: the helper. */
+    // x >> n unsigned. By a constant n (f; irin.c made / by 2^n one
+    // too): PLASMA's SHR is arithmetic, so mask off the copies of the
+    // sign bit it shifts in. By a variable: the helper.
     if (f < 0) {
       helper_call(m, HELP_USHR);
     } else if (f == 0) {
-      m->op = OP_SHR;           /* by 0: nothing to mask */
+      m->op = OP_SHR;           // by 0: nothing to mask
     } else {
       put_simple(OP_SHR);
       mop_const(m, 0xFFFF >> f);
@@ -391,13 +389,13 @@ static void lower_special(Mop *m, int op, int a, int f)
     }
     break;
   case IR_UDIV: case IR_UMOD:
-    /* By other than a power of 2 (irin.c did those): the helper. */
+    // By other than a power of 2 (irin.c did those): the helper.
     helper_call(m, op == IR_UDIV ? HELP_UDIV : HELP_UMOD);
     break;
   case IR_SWAP:
-    /* What irin.c couldn't do by moving code: exchange the top value
-     * (a = 1), or the top value and its copy (a = 2), with the value
-     * below, through two temporaries. */
+    // What irin.c couldn't do by moving code: exchange the top value
+    // (a = 1), or the top value and its copy (a = 2), with the value
+    // below, through two temporaries.
     put_temp(OP_SLW, 0);
     if (a == 2)
       put_simple(OP_DROP);
@@ -413,8 +411,8 @@ static void lower_special(Mop *m, int op, int a, int f)
   }
 }
 
-/* Stage 2's entry: lower one IR op to machine ops and pass them to the
- * peephole stage, as lw_kind[] and lw_op[] say. */
+// Stage 2's entry: lower one IR op to machine ops and pass them to the
+// peephole stage, as lw_kind[] and lw_op[] say.
 void lower_op(int op, int a, int f)
 {
   Mop m;
@@ -422,7 +420,7 @@ void lower_op(int op, int a, int f)
 
   memset(&m, 0, sizeof(m));
   if (op == IR_MOP) {
-    m.op = a;                   /* a counted loop's branch, to label f */
+    m.op = a;                   // a counted loop's branch, to label f
     m.a = f;
     peep_put(&m);
     return;
@@ -431,8 +429,8 @@ void lower_op(int op, int a, int f)
   m.op = lw_op[op];
   if (kind == L_COMPARE) {
     if (IR_IS_U_COMPARE(op)) {
-      /* CMDSYS's native ISULT and the rest (irin.c): $FFFF or 0, as
-       * ISLT gives. */
+      // CMDSYS's native ISULT and the rest (irin.c): $FFFF or 0, as
+      // ISLT gives.
       helper_call(&m, HELP_U_COMPARE(op));
       peep_put(&m);
       memset(&m, 0, sizeof(m));

@@ -1,20 +1,20 @@
-/* A local that holds a volatile is initialized, and copied into, with
- * volatile stores, kept even though nothing reads them before the
- * function returns; a plain twin's stores go (peep.c, dead stores).
- * Two chars still pair into one word store, and zeros still go by word
- * or by memset: a frame can't be a device whose access width matters.
- *   vinit: a[4] = {1, 2}: CW 513 SLW, then 2 zeros, one SLW; w[2] =
- *     {5}: 2 SLWs; c[3] = {9}: the zeros' SLW, then the 9's SLB.
- *   vmember: a struct with a volatile member, initialized {1, 2}: both
- *     words volatile, 2 SLWs.
- *   vbig, pbig: an SLW and a memset each; the call takes the frame's
- *     address, so the plain twin keeps its store too.
- *   vcopy, pcopy: a struct copied from a global by memcpy.
- * pmember stores nothing; pinit keeps only its first SLW (the dead
- * stores pass misses it, as before volatile). So 1 SLB and 10 SLWs. vtake(gv)
- * pushes gv's words with volatile loads (push_struct_words), which
- * ccgen -d shows as LAW.v; the linked listing can't tell them from
- * plain LAWs, so this only checks that the call works. */
+// A local that holds a volatile is initialized, and copied into, with
+// volatile stores, kept even though nothing reads them before the
+// function returns; a plain twin's stores go (peep.c, dead stores).
+// Two chars still pair into one word store, and zeros still go by word
+// or by memset: a frame can't be a device whose access width matters.
+//   vinit: a[4] = {1, 2}: CW 513 SLW, then 2 zeros, one SLW; w[2] =
+//     {5}: 2 SLWs; c[3] = {9}: the zeros' SLW, then the 9's SLB.
+//   vmember: a struct with a volatile member, initialized {1, 2}: both
+//     words volatile, 2 SLWs.
+//   vbig, pbig: an SLW and a memset each; the call takes the frame's
+//     address, so the plain twin keeps its store too.
+//   vcopy, pcopy: a struct copied from a global by memcpy.
+// pmember stores nothing; pinit keeps only its first SLW (the dead
+// stores pass misses it, as before volatile). So 1 SLB and 10 SLWs. vtake(gv)
+// pushes gv's words with volatile loads (push_struct_words), which
+// ccgen -d shows as LAW.v; the linked listing can't tell them from
+// plain LAWs, so this only checks that the call works.
 // listing-count: 1 SLB
 // listing-count: 10 SLW
 // listing-count: 2 CALL $0000  ; __memset

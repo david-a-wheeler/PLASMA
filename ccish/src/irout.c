@@ -1,19 +1,17 @@
-/*
- * The front end's output: the writer of the IR file, NAME.ir, which
- * the back end (ccgen) reads (approach.md 18.7; format in ../OBJECT.md).
- * The file holds, in the order they are made:
- *   - the IR ops, as the parser puts them;
- *   - the data and string records (D, R, S), exactly as the stream file
- *     will have them, written as the parser declares data;
- *   - a line record before each function, and a name record before the
- *     first op that refers to a function, for ccgen's messages and -i;
- *   - the symbol summary, last, with its code offsets 0, which only
- *     ccgen knows.
- *
- * The parser reorders code without a buffer of its own: it counts the
- * ops written (ir_here()), and puts IR_SWAP with the lengths of the two
- * blocks to exchange, which ccgen does (approach.md 18.7, A).
- */
+// The front end's output: the writer of the IR file, NAME.ir, which
+// the back end (ccgen) reads (approach.md 18.7; format in ../OBJECT.md).
+// The file holds, in the order they are made:
+//   - the IR ops, as the parser puts them;
+//   - the data and string records (D, R, S), exactly as the stream file
+//     will have them, written as the parser declares data;
+//   - a line record before each function, and a name record before the
+//     first op that refers to a function, for ccgen's messages and -i;
+//   - the symbol summary, last, with its code offsets 0, which only
+//     ccgen knows.
+//
+// The parser reorders code without a buffer of its own: it counts the
+// ops written (ir_here()), and puts IR_SWAP with the lengths of the two
+// blocks to exchange, which ccgen does (approach.md 18.7, A).
 #include <stdio.h>
 #include "build.h"
 #include "cclimits.h"
@@ -30,25 +28,25 @@
 #include "ptop.h"
 #include "irout.h"
 
-#define DATA_RUN    128     /* bytes in one data record at most */
+#define DATA_RUN    128     // bytes in one data record at most
 
-/* The IR file, and its output name (for messages). */
+// The IR file, and its output name (for messages).
 static Bfile out;
 static const char *base_name;
 
-static int ndata;               /* bytes in the data so far */
-static int nstrs;               /* bytes in the string pool so far */
+static int ndata;               // bytes in the data so far
+static int nstrs;               // bytes in the string pool so far
 
-/* Data bytes not yet written: the current run, written as one D record
- * when it is full, or before an R record or the end of the stream. */
+// Data bytes not yet written: the current run, written as one D record
+// when it is full, or before an R record or the end of the stream.
 static unsigned char drun[DATA_RUN];
 static int ndrun;
 
-static int nops;                /* IR ops written so far */
+static int nops;                // IR ops written so far
 
-/* Create the IR file for output name base, and write its header: the
- * magic and the version. (The name file's stamp is in the summary, at
- * the end, since it's at the end of the token stream too.) */
+// Create the IR file for output name base, and write its header: the
+// magic and the version. (The name file's stamp is in the summary, at
+// the end, since it's at the end of the token stream too.)
 void ir_open(const char *base)
 {
   base_name = base;
@@ -58,8 +56,8 @@ void ir_open(const char *base)
   bputc(&out, IR_VERSION);
 }
 
-/* Write a name record for function f, if it has none yet: its name's
- * id, and whether it returns a value (for ccgen's checks). */
+// Write a name record for function f, if it has none yet: its name's
+// id, and whether it returns a value (for ccgen's checks).
 static void name_func(int f)
 {
   if (fn_flags[f] & FN_NAMED)
@@ -71,10 +69,10 @@ static void name_func(int f)
   bputw(&out, fn_name[f]);
 }
 
-/* Stage 1's output: write one IR op, its records first (a function's
- * line, a name), then its operands' prefixes, then its tag. a is 0, a
- * byte after the tag, or a W prefix's word; f (if not -1) is an X
- * prefix's word. */
+// Stage 1's output: write one IR op, its records first (a function's
+// line, a name), then its operands' prefixes, then its tag. a is 0, a
+// byte after the tag, or a W prefix's word; f (if not -1) is an X
+// prefix's word.
 void ir_put(int op, int a, int f)
 {
   nops++;
@@ -100,27 +98,27 @@ void ir_put(int op, int a, int f)
   }
 }
 
-/* The number of IR ops written so far: the IR position of the next.
- * The parser takes the lengths of blocks to exchange from it. */
+// The number of IR ops written so far: the IR position of the next.
+// The parser takes the lengths of blocks to exchange from it.
 int ir_here(void)
 {
   return nops;
 }
 
-/* ---------- Data and strings ---------- */
+// ---------- Data and strings ----------
 
-/* Write a string literal of len bytes to the stream, for the string
- * pool. Returns the pool offset of its first character. */
+// Write a string literal of len bytes to the stream, for the string
+// pool. Returns the pool offset of its first character.
 int data_string(const char *s, int len)
 {
   int first = nstrs + 1;
-  /* Keep offsets well inside 16 bits; the final pass checks that the
-   * whole module fits. */
+  // Keep offsets well inside 16 bits; the final pass checks that the
+  // whole module fits.
   if (nstrs > 0x7FFF - len - 2)
     error(181 /* "too many string literals: over 32767 bytes" */, NULL);
-  /* In the pool it is [len][chars][NUL] (the final pass adds the length
-   * byte and the NUL): the C pointer is to the first character, and the
-   * byte before it makes it a PLASMA string as well. */
+  // In the pool it is [len][chars][NUL] (the final pass adds the length
+  // byte and the NUL): the C pointer is to the first character, and the
+  // byte before it makes it a PLASMA string as well.
   bputc(&out, IR_REC(REC_STR));
   bputw(&out, len);
   bwrite(&out, (const unsigned char *)s, len);
@@ -128,7 +126,7 @@ int data_string(const char *s, int len)
   return first;
 }
 
-/* Write the pending data run as a D record. */
+// Write the pending data run as a D record.
 static void flush_data(void)
 {
   if (ndrun == 0)
@@ -139,14 +137,14 @@ static void flush_data(void)
   ndrun = 0;
 }
 
-/* The number of bytes written to the data stream so far: the data
- * offset of the next byte. */
+// The number of bytes written to the data stream so far: the data
+// offset of the next byte.
 int data_offset(void)
 {
   return ndata;
 }
 
-/* Append one byte (the low byte of v) to the data. */
+// Append one byte (the low byte of v) to the data.
 void data_byte(int v)
 {
   if (ndata >= 0x7FFF)
@@ -157,12 +155,12 @@ void data_byte(int v)
   ndata++;
 }
 
-/* Append a word to the data that holds an address, plus add bytes: of
- * data (kind REL_DATA) or of a string (REL_STR), at offset target, of
- * data symbol target (REL_DSYM, an extern global), or of function
- * target (REL_FUNC; add is 0). It is an R record
- * in place of the word's two bytes; the final pass writes the address
- * there. */
+// Append a word to the data that holds an address, plus add bytes: of
+// data (kind REL_DATA) or of a string (REL_STR), at offset target, of
+// data symbol target (REL_DSYM, an extern global), or of function
+// target (REL_FUNC; add is 0). It is an R record
+// in place of the word's two bytes; the final pass writes the address
+// there.
 void data_addr(int kind, int target, int add)
 {
   if (ndata > 0x7FFF - 2)
@@ -179,9 +177,9 @@ void data_addr(int kind, int target, int add)
   ndata += 2;
 }
 
-/* Reserve n zero bytes in the data, for a global variable: a Z record
- * of n, unless n is so small that the bytes are shorter. Returns their
- * data offset. */
+// Reserve n zero bytes in the data, for a global variable: a Z record
+// of n, unless n is so small that the bytes are shorter. Returns their
+// data offset.
 int data_zero(int n)
 {
   int first = ndata;
@@ -189,7 +187,7 @@ int data_zero(int n)
     error(182 /* "too much data: globals over 32767 bytes" */, NULL);
   if (n < 4) {
     while (n-- > 0)
-      data_byte(0);             /* shorter than a Z record */
+      data_byte(0);             // shorter than a Z record
     return first;
   }
   flush_data();
@@ -199,31 +197,31 @@ int data_zero(int n)
   return first;
 }
 
-/* ---------- The end ---------- */
+// ---------- The end ----------
 
-/* Write the symbol summary as the last record, and close the file: the
- * name file's stamp (../CCPP.md), which ccgen checks against the name
- * file before it spells a name into NAME.syms; then the functions,
- * then the global variables (data symbols), in NAME.syms's
- * layout after its magic and version, but with the code size and
- * offsets 0 (ccgen fills them in) and each name as its id (ccgen
- * spells it). */
+// Write the symbol summary as the last record, and close the file: the
+// name file's stamp (../CCPP.md), which ccgen checks against the name
+// file before it spells a name into NAME.syms; then the functions,
+// then the global variables (data symbols), in NAME.syms's
+// layout after its magic and version, but with the code size and
+// offsets 0 (ccgen fills them in) and each name as its id (ccgen
+// spells it).
 void ir_finish(void)
 {
   int i, flags, off, size, hash, name, dep, label;
-  int nsyms = nglobals;           /* the data symbols */
+  int nsyms = nglobals;           // the data symbols
 
   flush_data();
   bputc(&out, IR_REC(REC_SUMMARY));
-  bputw(&out, nam_ids);           /* the stamp of the name file the ids */
-  bputw(&out, nam_sum);           /* are from, from the token stream */
+  bputw(&out, nam_ids);           // the stamp of the name file the ids
+  bputw(&out, nam_sum);           // are from, from the token stream
   bputw(&out, ndata);
   bputw(&out, nstrs);
   bputw(&out, 0);
   bputw(&out, bss_next);
   bputw(&out, nfuncs);
   bputw(&out, nsyms);
-  bputc(&out, dep_count());       /* the modules pragmas named */
+  bputc(&out, dep_count());       // the modules pragmas named
   for (i = 0; i < dep_count(); i++)
     bputw(&out, dep_id[i]);
   for (i = 0; i < nfuncs; i++) {
@@ -234,7 +232,7 @@ void ir_finish(void)
     bputw(&out, hash);
     bputw(&out, fn_name[i]);
     dep = sym_import(i, fn_name[i], &label);
-    if (dep >= 0) {               /* SYM_FIMPORT: its module and name */
+    if (dep >= 0) {               // SYM_FIMPORT: its module and name
       bputc(&out, dep);
       bputw(&out, label);
     }
@@ -247,7 +245,7 @@ void ir_finish(void)
     bputw(&out, hash);
     bputw(&out, name);
     dep = sym_import(IMP_DATA + i, name, &label);
-    if (dep >= 0) {               /* SYM_DIMPORT */
+    if (dep >= 0) {               // SYM_DIMPORT
       bputc(&out, dep);
       bputw(&out, label);
     }
@@ -256,9 +254,9 @@ void ir_finish(void)
     fatal(187 /* "error writing" */, stream_name(base_name, SUFFIX_IR));
 }
 
-/* After an error: close the IR file if it is open, writing out what is
- * buffered, so that a kept file (-k) is complete up to the error, and
- * so that ProDOS can remove it. */
+// After an error: close the IR file if it is open, writing out what is
+// buffered, so that a kept file (-k) is complete up to the error, and
+// so that ProDOS can remove it.
 void ir_abort(void)
 {
   if (out.f)

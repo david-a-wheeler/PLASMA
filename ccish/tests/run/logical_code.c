@@ -1,9 +1,9 @@
-/* The code for && and || as jumps (approach.md C4, "Conditions as
- * jumps"). No comparison is turned into a 1 or 0 (no NEG), == and !=
- * fuse with their branch (BREQ, BRNE), and with no else part, no
- * BRNCH is left: the one that a && b || c and !(a && b) need goes, by
- * Bcond L BRNCH T L: -> Binv T L:. The one NEG is the init
- * function's, for main's exit status. */
+// The code for && and || as jumps (approach.md C4, "Conditions as
+// jumps"). No comparison is turned into a 1 or 0 (no NEG), == and !=
+// fuse with their branch (BREQ, BRNE), and with no else part, no
+// BRNCH is left: the one that a && b || c and !(a && b) need goes, by
+// Bcond L BRNCH T L: -> Binv T L:. The one NEG is the init
+// function's, for main's exit status.
 // listing-count: 1 NEG
 // listing-lacks: BRNCH
 // listing-lacks: ISEQ
@@ -14,8 +14,8 @@
 // listing-count: 2 BREQ
 // listing-count: 1 BRNE
 
-/* a > 5 && (b == 0 || c): LLW a CN 5 ISGT BRFLS F; LLW b BRFLS T;
- * LLW c BRFLS F; T: */
+// a > 5 && (b == 0 || c): LLW a CN 5 ISGT BRFLS F; LLW b BRFLS T;
+// LLW c BRFLS F; T:
 int g1(int a, int b, int c)
 {
   int x = 0;
@@ -24,7 +24,7 @@ int g1(int a, int b, int c)
   return x;
 }
 
-/* a && b || c: LLW a BRFLS F; LLW b BRTRU T; F: LLW c BRFLS end; T: */
+// a && b || c: LLW a BRFLS F; LLW b BRTRU T; F: LLW c BRFLS end; T:
 int g2(int a, int b, int c)
 {
   int x = 0;
@@ -33,7 +33,7 @@ int g2(int a, int b, int c)
   return x;
 }
 
-/* !(a && b): LLW a BRFLS F; LLW b BRTRU end; F: */
+// !(a && b): LLW a BRFLS F; LLW b BRTRU end; F:
 int g3(int a, int b)
 {
   int x = 0;
@@ -42,7 +42,7 @@ int g3(int a, int b)
   return x;
 }
 
-/* a == b && a != 3: LLW a LLW b BRNE F; LLW a CN 3 BREQ F */
+// a == b && a != 3: LLW a LLW b BRNE F; LLW a CN 3 BREQ F
 int g4(int a, int b)
 {
   int x = 0;
@@ -51,8 +51,8 @@ int g4(int a, int b)
   return x;
 }
 
-/* !(a || b): the || leaves its true label unplaced, and ! makes it the
- * false label: LLW a BRTRU G; LLW b BRTRU G */
+// !(a || b): the || leaves its true label unplaced, and ! makes it the
+// false label: LLW a BRTRU G; LLW b BRTRU G
 int g5(int a, int b)
 {
   int x = 0;
@@ -61,8 +61,8 @@ int g5(int a, int b)
   return x;
 }
 
-/* do ... while (x < a || x == b): both tests branch back to the top:
- * LLW x LLW a ISLT BRTRU top; LLW x LLW b BREQ top */
+// do ... while (x < a || x == b): both tests branch back to the top:
+// LLW x LLW a ISLT BRTRU top; LLW x LLW b BREQ top
 int g6(int a, int b)
 {
   int x = 0;
@@ -72,9 +72,9 @@ int g6(int a, int b)
   return x;
 }
 
-/* !(a && (b || c)): the && keeps the ||'s false label, so the BRNCH
- * that ! adds meets it: LLW a BRFLS F; LLW b BRTRU T; LLW c BRTRU T; F:
- * (T is the end) */
+// !(a && (b || c)): the && keeps the ||'s false label, so the BRNCH
+// that ! adds meets it: LLW a BRFLS F; LLW b BRTRU T; LLW c BRTRU T; F:
+// (T is the end)
 int g7(int a, int b, int c)
 {
   int x = 0;

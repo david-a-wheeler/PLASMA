@@ -1,5 +1,5 @@
-/* String literals: escapes, joining adjacent literals, pstr(), and a
- * literal used as a statement. */
+// String literals: escapes, joining adjacent literals, pstr(), and a
+// literal used as a statement.
 int main()
 {
   __puts(pstr("one, " "two"));

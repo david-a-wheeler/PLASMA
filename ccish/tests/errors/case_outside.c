@@ -1,5 +1,5 @@
 
-/* A case label belongs in a switch. */
+// A case label belongs in a switch.
 int main()
 {
   case 1:

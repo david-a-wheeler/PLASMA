@@ -1,6 +1,6 @@
 
-/* The result of an assignment through a pointer is not an lvalue, even
- * while its store waits to be emitted. */
+// The result of an assignment through a pointer is not an lvalue, even
+// while its store waits to be emitted.
 int a[4];
 
 int main()

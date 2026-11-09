@@ -1,86 +1,84 @@
-/*
- * Types. A type is a handle: the index of an entry in the type table,
- * plus qualifier bits (Q_CONST, Q_VOLATILE) above it, so a qualified
- * type needs no entry of its own (approach.md, "M5 design"). Equal
- * unqualified types share one entry. The first entries are the basic
- * types, at the fixed indexes TY_VOID, TY_CHAR, TY_INT and TY_UINT
- * (unsigned int). Pointer and array types are added as they are
- * needed. A multi-dimensional array is an array of arrays: int m[3][4]
- * is an array of 3 arrays of 4 ints.
- *
- * The table is three parallel arrays, one per field, all MAX_TYPES
- * long, indexed by the same entry number (approach.md, decision 15):
- * tkind[i] is entry i's kind, tsub[i] its pointed-to or element type
- * (for a struct, its tag), and tcount[i] its element count.
- *
- * Struct tags and members are parallel arrays too (approach.md, "M6
- * design"). Tag i has name tg_name[i] (an id, or -1 if anonymous), size
- * tg_size[i] (-1 until its member list is complete), block depth
- * tg_depth[i], one more than the depth (0 once hidden, since char is
- * unsigned: the 0-means-none idiom, as in irin.c's lab_depth), and its
- * name's hash, tg_hsum[i] and
- * tg_hmul[i], for type hashes (ccpp gives them, since cccomp has no
- * spellings), and tg_union[i], set when the tag is a union's, not a
- * struct's: a union's members all start at byte 0, and its size is the
- * largest member's (the layout the parser records, so every mechanism
- * that works on a struct's members and size works on a union's). Member i
- * belongs to tag mb_tag[i], and has name mb_name[i], type mb_type[i]
- * and byte offset mb_off[i]. A struct's members are in order, but not
- * always next to each other, since a struct may be defined inside
- * another's member list.
- */
+// Types. A type is a handle: the index of an entry in the type table,
+// plus qualifier bits (Q_CONST, Q_VOLATILE) above it, so a qualified
+// type needs no entry of its own (approach.md, "M5 design"). Equal
+// unqualified types share one entry. The first entries are the basic
+// types, at the fixed indexes TY_VOID, TY_CHAR, TY_INT and TY_UINT
+// (unsigned int). Pointer and array types are added as they are
+// needed. A multi-dimensional array is an array of arrays: int m[3][4]
+// is an array of 3 arrays of 4 ints.
+//
+// The table is three parallel arrays, one per field, all MAX_TYPES
+// long, indexed by the same entry number (approach.md, decision 15):
+// tkind[i] is entry i's kind, tsub[i] its pointed-to or element type
+// (for a struct, its tag), and tcount[i] its element count.
+//
+// Struct tags and members are parallel arrays too (approach.md, "M6
+// design"). Tag i has name tg_name[i] (an id, or -1 if anonymous), size
+// tg_size[i] (-1 until its member list is complete), block depth
+// tg_depth[i], one more than the depth (0 once hidden, since char is
+// unsigned: the 0-means-none idiom, as in irin.c's lab_depth), and its
+// name's hash, tg_hsum[i] and
+// tg_hmul[i], for type hashes (ccpp gives them, since cccomp has no
+// spellings), and tg_union[i], set when the tag is a union's, not a
+// struct's: a union's members all start at byte 0, and its size is the
+// largest member's (the layout the parser records, so every mechanism
+// that works on a struct's members and size works on a union's). Member i
+// belongs to tag mb_tag[i], and has name mb_name[i], type mb_type[i]
+// and byte offset mb_off[i]. A struct's members are in order, but not
+// always next to each other, since a struct may be defined inside
+// another's member list.
 #include <stddef.h>
 #include "build.h"
 #include "diag.h"
 #include "type.h"
 
-#define MAX_TYPES    54     /* distinct types (49, link.c); at most 128,
-                             * since char tables (fn_type[], param_types[])
-                             * hold unqualified types, and a host's char
-                             * may be signed */
-#define MAX_TAGS     6      /* struct tags, including hidden ones (3) */
-#define MAX_MEMBERS  32     /* struct members, in all structs (25) */
+#define MAX_TYPES    54     // distinct types (49, link.c); at most 128,
+                            // since char tables (fn_type[], param_types[])
+                            // hold unqualified types, and a host's char
+                            // may be signed
+#define MAX_TAGS     6      // struct tags, including hidden ones (3)
+#define MAX_MEMBERS  32     // struct members, in all structs (25)
 
 static char tkind[MAX_TYPES] = {TK_VOID, TK_CHAR, TK_INT, TK_UINT};
-static int tsub[MAX_TYPES];     /* a handle, with qualifier bits */
+static int tsub[MAX_TYPES];     // a handle, with qualifier bits
 static int tcount[MAX_TYPES];
 static int ntypes = 4;
 
 static int tg_name[MAX_TAGS];
 static int tg_size[MAX_TAGS];
 static char tg_depth[MAX_TAGS];
-char tg_union[MAX_TAGS];        /* (type.h) */
+char tg_union[MAX_TAGS];        // (type.h)
 static unsigned tg_hsum[MAX_TAGS];
 static unsigned tg_hmul[MAX_TAGS];
 static int ntags;
 
 static char mb_tag[MAX_MEMBERS];
 static int mb_name[MAX_MEMBERS];
-static int mb_type[MAX_MEMBERS];     /* a handle, with qualifier bits */
+static int mb_type[MAX_MEMBERS];     // a handle, with qualifier bits
 static int mb_off[MAX_MEMBERS];
 static int nmembers;
 
-/* The kind of type t (TK_*). */
+// The kind of type t (TK_*).
 int type_kind(int t)
 {
   return tkind[t & TY_INDEX];
 }
 
-/* The type a pointer type t points to, or an array type t's element
- * type, with its qualifiers. */
+// The type a pointer type t points to, or an array type t's element
+// type, with its qualifiers.
 int type_sub(int t)
 {
   return tsub[t & TY_INDEX];
 }
 
-/* The element count of array type t (0 if unknown). */
+// The element count of array type t (0 if unknown).
 int type_count(int t)
 {
   return tcount[t & TY_INDEX];
 }
 
-/* The size of a value of type t in bytes (0 for void, an array of
- * unknown size, or an incomplete struct). */
+// The size of a value of type t in bytes (0 for void, an array of
+// unknown size, or an incomplete struct).
 int type_size(int t)
 {
   switch (type_kind(t)) {
@@ -95,20 +93,20 @@ int type_size(int t)
   return 0;
 }
 
-/* Is t a pointer type? */
+// Is t a pointer type?
 int is_pointer(int t)
 {
   return type_kind(t) == TK_PTR;
 }
 
-/* Is t an array type? */
+// Is t an array type?
 int is_array(int t)
 {
   return type_kind(t) == TK_ARRAY;
 }
 
-/* The type of kind k with sub-type sub and count count, added to the
- * table if it isn't there yet. The result is unqualified. */
+// The type of kind k with sub-type sub and count count, added to the
+// table if it isn't there yet. The result is unqualified.
 static int find_type(int k, int sub, int count)
 {
   int i;
@@ -123,15 +121,15 @@ static int find_type(int k, int sub, int count)
   return ntypes++;
 }
 
-/* The type "pointer to t" (t may be qualified: const char *). */
+// The type "pointer to t" (t may be qualified: const char *).
 int pointer_to(int t)
 {
   return find_type(TK_PTR, t, 0);
 }
 
-/* The type "array of count t's" (count 0: size unknown). Its size must
- * fit in MAX_OBJECT bytes, so that sizes and offsets fit in an int on
- * the target. The caller checks that t has a size. */
+// The type "array of count t's" (count 0: size unknown). Its size must
+// fit in MAX_OBJECT bytes, so that sizes and offsets fit in an int on
+// the target. The caller checks that t has a size.
 int array_of(int t, int count)
 {
   if (count > MAX_OBJECT / type_size(t))
@@ -139,20 +137,20 @@ int array_of(int t, int count)
   return find_type(TK_ARRAY, t, count);
 }
 
-/* The type "function returning t", t unqualified. */
+// The type "function returning t", t unqualified.
 int func_of(int t)
 {
   return find_type(TK_FUNC, unqual(t), 0);
 }
 
-/* Is t a function type? */
+// Is t a function type?
 int is_func(int t)
 {
   return type_kind(t) == TK_FUNC;
 }
 
-/* Type t with qualifiers q (Q_CONST, Q_VOLATILE) added. An array's
- * qualifiers go to its elements, as in C. */
+// Type t with qualifiers q (Q_CONST, Q_VOLATILE) added. An array's
+// qualifiers go to its elements, as in C.
 int qualify(int t, int q)
 {
   if (is_array(t))
@@ -160,32 +158,32 @@ int qualify(int t, int q)
   return t | q;
 }
 
-/* Type t without its own qualifiers (those of what it points to stay:
- * unqual of const char * is still const char *). */
+// Type t without its own qualifiers (those of what it points to stay:
+// unqual of const char * is still const char *).
 int unqual(int t)
 {
   return t & ~Q_ALL;
 }
 
-/* Is type t const? */
+// Is type t const?
 int is_const(int t)
 {
   return (t & Q_CONST) != 0;
 }
 
-/* Type hash h with byte c added (approach.md issue 11, "Object format
- * 4"). h stays below 2^16, so a 32-bit int never overflows, and a
- * 16-bit one keeps the same low bits. */
+// Type hash h with byte c added (approach.md issue 11, "Object format
+// 4"). h stays below 2^16, so a 32-bit int never overflows, and a
+// 16-bit one keeps the same low bits.
 int hash_byte(int h, int c)
 {
   return (h * 31 + (c & 0xFF)) & 0xFFFF;
 }
 
-/* Type hash h with type t added, as a canonical string: k and V for
- * const and volatile, then i, u (unsigned int), c or v, * and the
- * target, [ with the
- * count and the element, ( and the return type, or s, the tag's name
- * and ';' (a struct is known by its name in every file). */
+// Type hash h with type t added, as a canonical string: k and V for
+// const and volatile, then i, u (unsigned int), c or v, * and the
+// target, [ with the
+// count and the element, ( and the return type, or s, the tag's name
+// and ';' (a struct is known by its name in every file).
 int type_hash(int t, int h)
 {
   int tag;
@@ -204,13 +202,13 @@ int type_hash(int t, int h)
     h = hash_byte(hash_byte(h, '['), type_count(t));
     return type_hash(type_sub(t), hash_byte(h, type_count(t) >> 8));
   }
-  /* The name's bytes, added one at a time with hash_byte(), would give
-   * h * 31^n + the name's own hash from 0: ccpp gives both parts
-   * (CCPP.md, TC_TAG). A union's tag gets a different marker than a
-   * struct's, so that a struct and a union of the same name (which
-   * the standard C allows to coexist, and ccish's shared tag
-   * namespace doesn't) hash different in another module's function
-   * signatures. */
+  // The name's bytes, added one at a time with hash_byte(), would give
+  // h * 31^n + the name's own hash from 0: ccpp gives both parts
+  // (CCPP.md, TC_TAG). A union's tag gets a different marker than a
+  // struct's, so that a struct and a union of the same name (which
+  // the standard C allows to coexist, and ccish's shared tag
+  // namespace doesn't) hash different in another module's function
+  // signatures.
   h = hash_byte(h, tag_is_union(struct_tag(t)) ? 'U' : 's');
   tag = struct_tag(t);
   if (tg_name[tag] >= 0)
@@ -218,27 +216,27 @@ int type_hash(int t, int h)
   return hash_byte(h, ';');
 }
 
-/* Is t a struct type? */
+// Is t a struct type?
 int is_struct(int t)
 {
   return type_kind(t) == TK_STRUCT;
 }
 
-/* The struct type of tag. Each tag has its own entry, so two structs
- * with the same members are different types, as in C. */
+// The struct type of tag. Each tag has its own entry, so two structs
+// with the same members are different types, as in C.
 int struct_type(int tag)
 {
   return find_type(TK_STRUCT, tag, 0);
 }
 
-/* The tag of struct type t. */
+// The tag of struct type t.
 int struct_tag(int t)
 {
   return type_sub(t);
 }
 
-/* A new, incomplete tag named name (-1 for none), visible at depth;
- * hsum and hmul are its name's hash (see type_hash()). */
+// A new, incomplete tag named name (-1 for none), visible at depth;
+// hsum and hmul are its name's hash (see type_hash()).
 int tag_new(int name, int depth, int hsum, int hmul)
 {
   if (ntags >= MAX_TAGS)
@@ -251,8 +249,8 @@ int tag_new(int name, int depth, int hsum, int hmul)
   return ntags++;
 }
 
-/* The innermost visible tag named name: one declared at depth, or at
- * any depth if depth is negative. Returns -1 if there is none. */
+// The innermost visible tag named name: one declared at depth, or at
+// any depth if depth is negative. Returns -1 if there is none.
 int tag_find(int name, int depth)
 {
   int i;
@@ -263,9 +261,9 @@ int tag_find(int name, int depth)
   return -1;
 }
 
-/* Hide the tags declared deeper than depth, at the end of their block.
- * They stay in the table, since types made from them may still be in
- * use (a static local's size is computed after its block ends). */
+// Hide the tags declared deeper than depth, at the end of their block.
+// They stay in the table, since types made from them may still be in
+// use (a static local's size is computed after its block ends).
 void tag_hide(int depth)
 {
   int i;
@@ -275,33 +273,33 @@ void tag_hide(int depth)
 }
 
 #ifdef CCISH_DIAG
-/* The name of tag (an id), or -1 if anonymous (for messages). */
+// The name of tag (an id), or -1 if anonymous (for messages).
 int tag_name(int tag)
 {
   return tg_name[tag];
 }
 #endif
 
-/* The size of tag's struct, or -1 if it is incomplete. */
+// The size of tag's struct, or -1 if it is incomplete.
 int tag_size(int tag)
 {
   return tg_size[tag];
 }
 
-/* Complete tag's struct, with size bytes. */
+// Complete tag's struct, with size bytes.
 void tag_set_size(int tag, int size)
 {
   tg_size[tag] = size;
 }
 
-/* Is tag a union's, not a struct's? */
+// Is tag a union's, not a struct's?
 int tag_is_union(int tag)
 {
   return tg_union[tag];
 }
 
-/* Add a member to tag's struct, at byte offset off, and return it. The
- * caller checks that its name is new in the struct. */
+// Add a member to tag's struct, at byte offset off, and return it. The
+// caller checks that its name is new in the struct.
 int member_add(int tag, int name, int type, int off)
 {
   if (nmembers >= MAX_MEMBERS)
@@ -313,7 +311,7 @@ int member_add(int tag, int name, int type, int off)
   return nmembers++;
 }
 
-/* The member of tag's struct named name, or -1 if there is none. */
+// The member of tag's struct named name, or -1 if there is none.
 int member_find(int tag, int name)
 {
   int i;
@@ -323,8 +321,8 @@ int member_find(int tag, int name)
   return -1;
 }
 
-/* The member of tag's struct after member m, in order (the first if m
- * is -1), or -1 if there are no more. */
+// The member of tag's struct after member m, in order (the first if m
+// is -1), or -1 if there are no more.
 int member_next(int tag, int m)
 {
   while (++m < nmembers)
@@ -333,21 +331,21 @@ int member_next(int tag, int m)
   return -1;
 }
 
-/* The type of member m, with its qualifiers. */
+// The type of member m, with its qualifiers.
 int member_type(int m)
 {
   return mb_type[m];
 }
 
-/* The byte offset of member m in its struct. */
+// The byte offset of member m in its struct.
 int member_off(int m)
 {
   return mb_off[m];
 }
 
 #ifdef CCISH_STATS
-/* How full the tables got (CCISH_STATS): types, tags and members; they
- * only grow. */
+// How full the tables got (CCISH_STATS): types, tags and members; they
+// only grow.
 void type_stats(int *types, int *tags, int *members)
 {
   *types = ntypes;

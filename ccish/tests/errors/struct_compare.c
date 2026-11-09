@@ -1,5 +1,5 @@
 
-/* C has no == for structs. */
+// C has no == for structs.
 struct pt { int x, y; };
 
 int main()

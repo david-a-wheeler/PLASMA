@@ -1,5 +1,5 @@
 
-/* A switch has at most one default. */
+// A switch has at most one default.
 int main()
 {
   int x = 1;

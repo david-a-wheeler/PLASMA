@@ -1,20 +1,18 @@
-/*
- * ccpp's lexer (approach.md, "ccpp design"). Reads the source a line at
- * a time into a fixed buffer, joining a line that ends in a backslash to
- * the next (C's phase 2), and splits it into tokens: their codes in the
- * token stream (../CCPP.md), with numbers converted, escapes decoded,
- * and identifiers given their ids. Accepts LF, CR and CRLF line endings,
- * and the C95 digraphs.
- *
- * It reads in one of three modes (pp_mode), which the driver (pp.c)
- * sets: PM_TEXT, ordinary source, where newlines are blanks; PM_DIRECTIVE,
- * a directive's line, which ends at its newline (TC_NL), not passed
- * until the mode changes, so that an #include can switch files right at
- * the end of its line; and PM_SKIP, a group that #ifdef and the rest
- * leave out, where only a '#' that starts a line counts, and the rest is
- * passed over without being split into tokens (so "don't" isn't an
- * unterminated literal there).
- */
+// ccpp's lexer (approach.md, "ccpp design"). Reads the source a line at
+// a time into a fixed buffer, joining a line that ends in a backslash to
+// the next (C's phase 2), and splits it into tokens: their codes in the
+// token stream (../CCPP.md), with numbers converted, escapes decoded,
+// and identifiers given their ids. Accepts LF, CR and CRLF line endings,
+// and the C95 digraphs.
+//
+// It reads in one of three modes (pp_mode), which the driver (pp.c)
+// sets: PM_TEXT, ordinary source, where newlines are blanks; PM_DIRECTIVE,
+// a directive's line, which ends at its newline (TC_NL), not passed
+// until the mode changes, so that an #include can switch files right at
+// the end of its line; and PM_SKIP, a group that #ifdef and the rest
+// leave out, where only a '#' that starts a line counts, and the rest is
+// passed over without being split into tokens (so "don't" isn't an
+// unterminated literal there).
 #include <stdio.h>
 #include <string.h>
 #include "build.h"
@@ -34,27 +32,27 @@ int pt_space;
 int pt_macro;
 int pp_mode;
 
-static Bfile *in;           /* the file being read, or NULL for a string */
-static unsigned char line[MAX_LINE + 1];  /* the current line, no newline */
+static Bfile *in;           // the file being read, or NULL for a string
+static unsigned char line[MAX_LINE + 1];  // the current line, no newline
 static int line_len;
-static int line_nl;         /* it ended with a newline (not the file's end) */
-static int line_extra;      /* lines joined to it by backslashes */
-static int pos;             /* the next character in line[] */
-static int ch;              /* current character, '\n' at the line's end,
-                             * or EOF */
-static int at_line_start;   /* no token yet on this line */
-static int spaced;          /* blanks or a comment were skipped */
+static int line_nl;         // it ended with a newline (not the file's end)
+static int line_extra;      // lines joined to it by backslashes
+static int pos;             // the next character in line[]
+static int ch;              // current character, '\n' at the line's end,
+                            // or EOF
+static int at_line_start;   // no token yet on this line
+static int spaced;          // blanks or a comment were skipped
 
-/* What an #include saves of the file it is in: where its lexer was, at
- * the newline that ends the #include line. */
+// What an #include saves of the file it is in: where its lexer was, at
+// the newline that ends the #include line.
 static Bfile *saved_in[MAX_INCLUDE];
 static int saved_ch[MAX_INCLUDE];
 static int saved_line[MAX_INCLUDE];
 static char saved_extra[MAX_INCLUDE];
 static int nsaved;
 
-/* Read the next line into line[], joining any that end in a backslash;
- * 0 at the end of the file. */
+// Read the next line into line[], joining any that end in a backslash;
+// 0 at the end of the file.
 static int next_line(void)
 {
   int c;
@@ -76,7 +74,7 @@ static int next_line(void)
     }
     if (c == '\n') {
       if (line_len > 0 && line[line_len - 1] == '\\') {
-        line_len--;             /* a backslash-newline joins the lines */
+        line_len--;             // a backslash-newline joins the lines
         line_extra++;
         continue;
       }
@@ -89,9 +87,9 @@ static int next_line(void)
   }
 }
 
-/* Advance to the next character. The line count goes up when we move
- * past a newline, not when we first see one, so an error found at the
- * end of a line reports that line. */
+// Advance to the next character. The line count goes up when we move
+// past a newline, not when we first see one, so an error found at the
+// end of a line reports that line.
 static void getch(void)
 {
   if (ch == '\n') {
@@ -108,7 +106,7 @@ static void getch(void)
     ch = line_nl ? '\n' : EOF;
 }
 
-/* The character after ch, without moving past ch. */
+// The character after ch, without moving past ch.
 static int peek(void)
 {
   if (pos < line_len)
@@ -116,7 +114,7 @@ static int peek(void)
   return line_nl ? '\n' : EOF;
 }
 
-/* Start reading source from f, at its first line. */
+// Start reading source from f, at its first line.
 void pp_lex_open(Bfile *f)
 {
   in = f;
@@ -127,8 +125,8 @@ void pp_lex_open(Bfile *f)
   getch();
 }
 
-/* Read the line s (from the command line: -D, -U) as a directive's, up
- * to its end. */
+// Read the line s (from the command line: -D, -U) as a directive's, up
+// to its end.
 void pp_lex_text(const char *s)
 {
   int n = (int)strlen(s);
@@ -145,8 +143,8 @@ void pp_lex_text(const char *s)
   pp_mode = PM_DIRECTIVE;
 }
 
-/* At the end of an #include line: keep the place in this file, and start
- * reading f. */
+// At the end of an #include line: keep the place in this file, and start
+// reading f.
 void pp_lex_push(Bfile *f)
 {
   saved_in[nsaved] = in;
@@ -157,8 +155,8 @@ void pp_lex_push(Bfile *f)
   pp_lex_open(f);
 }
 
-/* At the end of an included file: go back to the end of the #include
- * line that included it. */
+// At the end of an included file: go back to the end of the #include
+// line that included it.
 void pp_lex_pop(void)
 {
   nsaved--;
@@ -171,20 +169,20 @@ void pp_lex_pop(void)
   at_line_start = 0;
 }
 
-/* Is c a decimal digit? */
+// Is c a decimal digit?
 static int is_digit(int c) { return c >= '0' && c <= '9'; }
 
-/* Can c start an identifier (a letter or '_')? */
+// Can c start an identifier (a letter or '_')?
 static int is_alpha(int c)
 {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
-/* Is c a hexadecimal digit? */
+// Is c a hexadecimal digit?
 static int is_hex(int c)
 {
   return is_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
-/* The value (0-15) of hexadecimal digit c. */
+// The value (0-15) of hexadecimal digit c.
 static int hex_val(int c)
 {
   if (is_digit(c))
@@ -194,7 +192,7 @@ static int hex_val(int c)
   return c - 'A' + 10;
 }
 
-/* Skip blanks and comments: in a directive's line, not its newline. */
+// Skip blanks and comments: in a directive's line, not its newline.
 static void skip_blank(void)
 {
   for (;;) {
@@ -234,9 +232,9 @@ static void skip_blank(void)
   }
 }
 
-/* In a group being left out: pass over the rest of the line, up to its
- * newline or a comment, with no errors. A quoted string or character
- * ends at its closing quote or the line's end. */
+// In a group being left out: pass over the rest of the line, up to its
+// newline or a comment, with no errors. A quoted string or character
+// ends at its closing quote or the line's end.
 static void skip_rest(void)
 {
   int q;
@@ -258,9 +256,9 @@ static void skip_rest(void)
   }
 }
 
-/* In a directive's line: skip blanks, and read an identifier's
- * characters as they are (a directive's name: "if" is not the keyword
- * here) into buf (size bytes); return their number, 0 if there is none. */
+// In a directive's line: skip blanks, and read an identifier's
+// characters as they are (a directive's name: "if" is not the keyword
+// here) into buf (size bytes); return their number, 0 if there is none.
 int pp_lex_word(char *buf, int size)
 {
   int n = 0;
@@ -274,9 +272,9 @@ int pp_lex_word(char *buf, int size)
   return n;
 }
 
-/* In an #include line: skip blanks, and read a file's name, "name" or
- * <name>, into buf (size bytes); return its length, or -1 if there is
- * none. *angle says which form it was. */
+// In an #include line: skip blanks, and read a file's name, "name" or
+// <name>, into buf (size bytes); return its length, or -1 if there is
+// none. *angle says which form it was.
 int pp_lex_header(char *buf, int size, int *angle)
 {
   int n = 0, close;
@@ -297,8 +295,8 @@ int pp_lex_header(char *buf, int size, int *angle)
   return n;
 }
 
-/* In a directive's line: the rest of it, as it is, after any blanks
- * (#error's text). The line is then at its end. */
+// In a directive's line: the rest of it, as it is, after any blanks
+// (#error's text). The line is then at its end.
 const char *pp_lex_rest(void)
 {
   int start;
@@ -312,20 +310,20 @@ const char *pp_lex_rest(void)
   return (const char *)line + start;
 }
 
-/* #line n: make the next line number n. */
+// #line n: make the next line number n.
 void pp_lex_set_line(int n)
 {
   src_line = n - 1 - line_extra;
 }
 
-/* The character right after the last token: '(' just after a macro's
- * name, with no blank, makes it function-like. */
+// The character right after the last token: '(' just after a macro's
+// name, with no blank, makes it function-like.
 int pp_lex_next_char(void)
 {
   return ch;
 }
 
-/* Read one character of a character or string literal, handling escapes. */
+// Read one character of a character or string literal, handling escapes.
 static int literal_char(void)
 {
   int c = ch;
@@ -370,12 +368,12 @@ static int literal_char(void)
   return 0;
 }
 
-/* Read a decimal, octal (leading 0) or hex (0x) integer constant into
- * pt_val, and return its code. It must fit in 16 bits. It is unsigned
- * (TC_UNUM) with a u or U suffix, or if it is hex or octal and doesn't
- * fit in an int, as C says. (A decimal one that doesn't fit would be a
- * long in C; here it is the int with those bits, a documented
- * difference.) */
+// Read a decimal, octal (leading 0) or hex (0x) integer constant into
+// pt_val, and return its code. It must fit in 16 bits. It is unsigned
+// (TC_UNUM) with a u or U suffix, or if it is hex or octal and doesn't
+// fit in an int, as C says. (A decimal one that doesn't fit would be a
+// long in C; here it is the int with those bits, a documented
+// difference.)
 static int lex_number(void)
 {
   unsigned v = 0;
@@ -400,7 +398,7 @@ static int lex_number(void)
       break;
     if (d >= base)
       error(9 /* "bad digit in octal number" */, NULL);
-    /* Checked before, so that a 16-bit unsigned can't overflow. */
+    // Checked before, so that a 16-bit unsigned can't overflow.
     if (v > (0xFFFFu - (unsigned)d) / (unsigned)base)
       error(10 /* "number does not fit in 16 bits" */, NULL);
     v = v * (unsigned)base + (unsigned)d;
@@ -418,8 +416,8 @@ static int lex_number(void)
   return uns ? TC_UNUM : TC_NUM;
 }
 
-/* Read one string literal into pt_text and pt_len, with escapes
- * decoded. (The output joins adjacent ones.) */
+// Read one string literal into pt_text and pt_len, with escapes
+// decoded. (The output joins adjacent ones.)
 static void lex_string(void)
 {
   pt_len = 0;
@@ -433,10 +431,10 @@ static void lex_string(void)
   getch();
 }
 
-/* The C keywords: the supported ones first, in the order of their
- * codes. */
+// The C keywords: the supported ones first, in the order of their
+// codes.
 static const char *const keywords[] = {
-  /* supported: in the order of TC_KEYWORDS (CCPP.md) and T_INT ... */
+  // supported: in the order of TC_KEYWORDS (CCPP.md) and T_INT ...
   "int", "char", "signed", "unsigned",
   "void",
   "const", "volatile",
@@ -448,24 +446,24 @@ static const char *const keywords[] = {
   "typedef",
   "goto",
   "union",
-  /* the rest of C89's keywords: recognized so the error is clear */
+  // the rest of C89's keywords: recognized so the error is clear
   "auto", "double",
   "float", "long", "register",
   NULL
 };
 
-/* The code of the word (an identifier or keyword) of n characters at
- * word, NUL-terminated: a supported keyword's, or TC_ID or TC_KEYWORD
- * with its id in pt_val (and in pt_macro whether it names a macro).
- * `short` is a synonym for `int`: ccish has one word type, and the
- * standard C distinction between the two is not worth implementing in
- * the memory ccish runs in, so the word gets int's code, and the
- * compiler never sees a short. */
+// The code of the word (an identifier or keyword) of n characters at
+// word, NUL-terminated: a supported keyword's, or TC_ID or TC_KEYWORD
+// with its id in pt_val (and in pt_macro whether it names a macro).
+// `short` is a synonym for `int`: ccish has one word type, and the
+// standard C distinction between the two is not worth implementing in
+// the memory ccish runs in, so the word gets int's code, and the
+// compiler never sees a short.
 int pp_word(const char *word, int n)
 {
   int i;
   if (!strcmp(word, "short"))
-    return TC_KEYWORDS;      /* int */
+    return TC_KEYWORDS;      // int
   for (i = 0; keywords[i]; i++)
     if (!strcmp(keywords[i], word)) {
       if (i < NKEYWORDS)
@@ -479,7 +477,7 @@ int pp_word(const char *word, int n)
   return TC_ID;
 }
 
-/* Read an identifier or keyword, and return its code (pp_word()). */
+// Read an identifier or keyword, and return its code (pp_word()).
 static int lex_word(void)
 {
   char word[MAX_NAME + 1];
@@ -493,18 +491,18 @@ static int lex_word(void)
   return pp_word(word, n);
 }
 
-/* The multi-character operators' spellings, in the order of their codes
- * (TC_EQ ...). */
+// The multi-character operators' spellings, in the order of their codes
+// (TC_EQ ...).
 static const char *const ops[NOPS] = {
   "==", "!=", "<=", ">=", "<<", ">>", "&&", "||", "++", "--",
   "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=",
   "->", "..."
 };
 
-/* The one-character tokens. */
+// The one-character tokens.
 static const char singles[] = "!%&()*+,-./:;<=>?[]^{|}~";
 
-/* The code of the operator spelled s, or -1 if it isn't one. */
+// The code of the operator spelled s, or -1 if it isn't one.
 int pp_op(const char *s)
 {
   int i;
@@ -520,8 +518,8 @@ int pp_op(const char *s)
   return -1;
 }
 
-/* Add character c to the spelling being made in buf (size bytes, at
- * *n): 0 if there is no room. */
+// Add character c to the spelling being made in buf (size bytes, at
+// *n): 0 if there is no room.
 static int spell_c(char *buf, int size, int *n, int c)
 {
   if (*n >= size - 1)
@@ -530,12 +528,12 @@ static int spell_c(char *buf, int size, int *n, int c)
   return 1;
 }
 
-/* Spell the token code (with its value val, or for a string its n
- * bytes at s) as C source, into buf (size bytes, with a NUL), for # and
- * ##: a number in decimal (so 0x10 becomes 16, and 'A' 65), a string
- * with its quotes, and \n, \t, \r, \" and \\ escaped, any other byte
- * outside ' ' to '~' in octal. Return its length, or -1 if it doesn't
- * fit. */
+// Spell the token code (with its value val, or for a string its n
+// bytes at s) as C source, into buf (size bytes, with a NUL), for # and
+// ##: a number in decimal (so 0x10 becomes 16, and 'A' 65), a string
+// with its quotes, and \n, \t, \r, \" and \\ escaped, any other byte
+// outside ' ' to '~' in octal. Return its length, or -1 if it doesn't
+// fit.
 int pp_spell_token(int code, int val, const unsigned char *s, int n,
                    char *buf, int size)
 {
@@ -586,7 +584,7 @@ int pp_spell_token(int code, int val, const unsigned char *s, int n,
     buf[len] = 0;
     return len;
   } else {
-    num[0] = (char)code;        /* a one-character token */
+    num[0] = (char)code;        // a one-character token
     num[1] = 0;
     w = num;
   }
@@ -597,7 +595,7 @@ int pp_spell_token(int code, int val, const unsigned char *s, int n,
   return len;
 }
 
-/* Consume ch if it equals c. */
+// Consume ch if it equals c.
 static int accept(int c)
 {
   if (ch == c) {
@@ -609,19 +607,19 @@ static int accept(int c)
 
 static int lex_op(void);
 
-/* The next token: its code, with its value in pt_val (a number, or an
- * id) or its bytes in pt_text and pt_len (a string); TC_NL at the end
- * of a directive's line, and TC_END at the end of the file. '#' is a
- * token, for the caller to treat as a directive if pt_first (it is the
- * line's first). In a group being left out (PM_SKIP), only such a '#',
- * and TC_END, are returned. */
+// The next token: its code, with its value in pt_val (a number, or an
+// id) or its bytes in pt_text and pt_len (a string); TC_NL at the end
+// of a directive's line, and TC_END at the end of the file. '#' is a
+// token, for the caller to treat as a directive if pt_first (it is the
+// line's first). In a group being left out (PM_SKIP), only such a '#',
+// and TC_END, are returned.
 int pp_lex(void)
 {
   spaced = 0;
   for (;;) {
     skip_blank();
     if (pp_mode == PM_DIRECTIVE && (ch == '\n' || ch == EOF))
-      return TC_NL;     /* the end of a directive's line */
+      return TC_NL;     // the end of a directive's line
     if (ch == EOF)
       return TC_END;
     if (pp_mode != PM_SKIP)
@@ -663,8 +661,8 @@ int pp_lex(void)
   return lex_op();
 }
 
-/* Read an operator or punctuator, and return its code. (Apart from
- * pp_lex(), so that neither has too many returns for ccish.) */
+// Read an operator or punctuator, and return its code. (Apart from
+// pp_lex(), so that neither has too many returns for ccish.)
 static int lex_op(void)
 {
   int c = ch;
@@ -687,9 +685,9 @@ static int lex_op(void)
     if (accept('='))
       return TC_LE;
     if (accept('%'))
-      return '{';         /* digraph <% */
+      return '{';         // digraph <%
     if (accept(':'))
-      return '[';         /* digraph <: */
+      return '[';         // digraph <:
     return '<';
   case '>':
     if (accept('>'))
@@ -697,18 +695,18 @@ static int lex_op(void)
     return accept('=') ? TC_GE : '>';
   case '%':
     if (accept('>'))
-      return '}';         /* digraph %> */
+      return '}';         // digraph %>
     if (accept(':')) {
       if (ch == '%' && peek() == ':') {
         getch();
         getch();
-        return TC_PASTE;  /* digraph %:%: */
+        return TC_PASTE;  // digraph %:%:
       }
-      return '#';         /* digraph %: */
+      return '#';         // digraph %:
     }
     return accept('=') ? TC_MODEQ : '%';
   case ':':
-    return accept('>') ? ']' : ':';  /* digraph :> */
+    return accept('>') ? ']' : ':';  // digraph :>
   case '.':
     if (accept('.')) {
       if (!accept('.'))

@@ -1,12 +1,12 @@
-/* Local array initializers, compiled as stores into the frame: brace
- * lists with missing elements (zero) and a trailing comma, sizes from
- * the initializer, char arrays from strings (with and without room for
- * the NUL), flat lists for two-dimensional arrays, string rows of a
- * char array of arrays, non-constant elements, arrays of strings, a
- * scalar in braces, and re-initialization each time a block is entered.
- * Two neighboring char constants are one word store ("abc" starts with
- * CW $6261, 'a' and 'b'), and long runs of zeros use memset (roomy and
- * big). */
+// Local array initializers, compiled as stores into the frame: brace
+// lists with missing elements (zero) and a trailing comma, sizes from
+// the initializer, char arrays from strings (with and without room for
+// the NUL), flat lists for two-dimensional arrays, string rows of a
+// char array of arrays, non-constant elements, arrays of strings, a
+// scalar in braces, and re-initialization each time a block is entered.
+// Two neighboring char constants are one word store ("abc" starts with
+// CW $6261, 'a' and 'b'), and long runs of zeros use memset (roomy and
+// big).
 // listing-has: CW $6261
 // listing-count: 2 ; __memset (import)
 void show(int n)
@@ -15,7 +15,7 @@ void show(int n)
   __putc(' ');
 }
 
-/* Print the C string s, then a space. */
+// Print the C string s, then a space.
 void say(char *s)
 {
   while (*s)
@@ -82,7 +82,7 @@ int main()
   show(sum(big, 30));
   __putln();
 
-  /* initialized again each time the block is entered */
+  // initialized again each time the block is entered
   for (i = 0; i < 2; i++) {
     int c[3] = {i};
     show(c[0] + c[2]);

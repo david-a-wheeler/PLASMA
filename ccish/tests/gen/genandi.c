@@ -1,8 +1,8 @@
-/* genandi.c - consecutive byte-ANDs fold into one: ANDI m ANDI n
- * becomes ANDI (m & n). A (char) cast on an int emits ANDI 255 (clear
- * the high byte) and a small & constant emits ANDI n; the pair merges
- * to ANDI (255 & n), which is just ANDI n, and a third mask merges
- * again. A char operand needs no cast, so it has no pair to fold. */
+// genandi.c - consecutive byte-ANDs fold into one: ANDI m ANDI n
+// becomes ANDI (m & n). A (char) cast on an int emits ANDI 255 (clear
+// the high byte) and a small & constant emits ANDI n; the pair merges
+// to ANDI (255 & n), which is just ANDI n, and a third mask merges
+// again. A char operand needs no cast, so it has no pair to fold.
 int foldpair(int x)
 {
   return (int)((char)(x) & 240);

@@ -1,8 +1,8 @@
-/* a[i] op= e saves the element's address in a temporary, so it is
- * computed once (approach.md, M4 step 3 notes): one IDXLW (index op) per compound
- * assignment, and the temporary is reused (DLW). In a[i] += f(&i), f
- * changes i, but the store still goes to the element that was loaded.
- * C lets f run before or after a[i] is found; ccish finds a[i] first. */
+// a[i] op= e saves the element's address in a temporary, so it is
+// computed once (approach.md, M4 step 3 notes): one IDXLW (index op) per compound
+// assignment, and the temporary is reused (DLW). In a[i] += f(&i), f
+// changes i, but the store still goes to the element that was loaded.
+// C lets f run before or after a[i] is found; ccish finds a[i] first.
 // listing-count: 3 IDXLW
 // listing-has: DLW
 int f(int *q)

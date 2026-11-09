@@ -1,5 +1,5 @@
 
-/* A member of a returned struct can be read, but not assigned to. */
+// A member of a returned struct can be read, but not assigned to.
 struct pt { int x, y; };
 
 struct pt origin(void);

@@ -1,13 +1,13 @@
-/* xbool.c - truth runs (approach.md, decision 31): an if whose arms
- * return 1 and 0 is the condition's truth, so the compiler returns
- * the condition's value and drops the branch, labels and arms. The
- * cross-check runs this against the host compiler: a plain value is
- * boolified, the arms' order negates, equal arms keep the constant,
- * non-truth arms keep the branch, the ternary spelling flows the
- * value on to the use, and short-circuit conditions keep their
- * branches. A ! directly after a comparison is the De Morgan
- * opposite of it (decision 32), tested here as values, signed and
- * unsigned, and in a branch. */
+// xbool.c - truth runs (approach.md, decision 31): an if whose arms
+// return 1 and 0 is the condition's truth, so the compiler returns
+// the condition's value and drops the branch, labels and arms. The
+// cross-check runs this against the host compiler: a plain value is
+// boolified, the arms' order negates, equal arms keep the constant,
+// non-truth arms keep the branch, the ternary spelling flows the
+// value on to the use, and short-circuit conditions keep their
+// branches. A ! directly after a comparison is the De Morgan
+// opposite of it (decision 32), tested here as values, signed and
+// unsigned, and in a branch.
 #include "ptest.h"
 
 int b1(int x) { if (x) return 1; else return 0; }

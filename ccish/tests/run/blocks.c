@@ -1,5 +1,5 @@
-/* Empty statements, nested blocks, "return;" in an int function (C89
- * allows it; the value is 0), and a void main. */
+// Empty statements, nested blocks, "return;" in an int function (C89
+// allows it; the value is 0), and a void main.
 int f(int x)
 {
   { ; }

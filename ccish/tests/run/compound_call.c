@@ -1,14 +1,14 @@
-/* x op= e, where e calls a function that moves the pointer x is reached
- * through. C evaluates x once, and a call runs entirely before or
- * entirely after that (C11 6.5.2.2p10, 6.5.16.2p3), so the load and the
- * store must use the same element: here the one the moved pointer
- * points to, since ccish makes the call first (approach.md 4(d2)). The
- * two values are then exchanged by ccgen (18.7, A): + as it is, - as
- * SUB then NEG, and the others with e saved in a temporary of ccgen's
- * before x is loaded (so main's frame is its one local plus one
- * temporary). A pointer's right side is saved the same way, then scaled,
- * and a char gets its low byte. Without a call, the usual order is
- * kept. */
+// x op= e, where e calls a function that moves the pointer x is reached
+// through. C evaluates x once, and a call runs entirely before or
+// entirely after that (C11 6.5.2.2p10, 6.5.16.2p3), so the load and the
+// store must use the same element: here the one the moved pointer
+// points to, since ccish makes the call first (approach.md 4(d2)). The
+// two values are then exchanged by ccgen (18.7, A): + as it is, - as
+// SUB then NEG, and the others with e saved in a temporary of ccgen's
+// before x is loaded (so main's frame is its one local plus one
+// temporary). A pointer's right side is saved the same way, then scaled,
+// and a char gets its low byte. Without a call, the usual order is
+// kept.
 // listing-has: ENTER 4,0
 // listing-has: NEG
 int g[8];

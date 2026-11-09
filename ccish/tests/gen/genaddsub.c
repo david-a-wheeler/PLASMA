@@ -1,9 +1,9 @@
-/* genaddsub.c - two small constant adds or subtracts merge to one op
- * (the front end can't fold them, since the intermediate is not a
- * constant): ADDI/SUBI and INCR/DECR combine to their sum; a sum of 0
- * drops both, and the result is INCR/DECR for +/-1, ADDI/SUBI for the
- * rest. A wide constant (300) or a variable second term is not a small
- * additive update, so it does not merge. */
+// genaddsub.c - two small constant adds or subtracts merge to one op
+// (the front end can't fold them, since the intermediate is not a
+// constant): ADDI/SUBI and INCR/DECR combine to their sum; a sum of 0
+// drops both, and the result is INCR/DECR for +/-1, ADDI/SUBI for the
+// rest. A wide constant (300) or a variable second term is not a small
+// additive update, so it does not merge.
 int sum(int x)
 {
   return x + 5 - 3;

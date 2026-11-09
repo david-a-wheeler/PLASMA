@@ -1,12 +1,12 @@
-/* xstring.c: the library's string.h (lib/), against the host's: each
- * function, with the edge cases (empty strings, a NUL searched for, n
- * of 0, padding, overlapping moves both ways, a nonzero memset of an
- * odd length). Printed through the library's stdio, so no ptest.h.
- * strcmp's result is compared only by sign, as C defines it. */
+// xstring.c: the library's string.h (lib/), against the host's: each
+// function, with the edge cases (empty strings, a NUL searched for, n
+// of 0, padding, overlapping moves both ways, a nonzero memset of an
+// odd length). Printed through the library's stdio, so no ptest.h.
+// strcmp's result is compared only by sign, as C defines it.
 #include <stdio.h>
 #include <string.h>
 
-/* Print n in decimal, then a space. */
+// Print n in decimal, then a space.
 static void num(int n)
 {
   char buf[8];
@@ -24,13 +24,13 @@ static void num(int n)
   putc(' ', stdout);
 }
 
-/* Print the sign of n: -1, 0 or 1. */
+// Print the sign of n: -1, 0 or 1.
 static void sign(int n)
 {
   num(n < 0 ? -1 : n > 0);
 }
 
-/* Print n bytes of p, a NUL as '.'. */
+// Print n bytes of p, a NUL as '.'.
 static void bytes(const char *p, int n)
 {
   int i;
@@ -52,7 +52,7 @@ int main(void)
   sign(strcmp("abd", "abc"));
   sign(strcmp("ab", "abc"));
   sign(strcmp("abc", "ab"));
-  sign(strcmp("\x80", "a"));     /* unsigned chars */
+  sign(strcmp("\x80", "a"));     // unsigned chars
   sign(strcmp("", ""));
   fputs("\n", stdout);
 
@@ -61,10 +61,10 @@ int main(void)
   fputs(strcat(a, ""), stdout);
   putc(' ', stdout);
   memset(b, 'x', sizeof b);
-  strncpy(b, "abc", 6);          /* padded with NULs to 6 */
+  strncpy(b, "abc", 6);          // padded with NULs to 6
   bytes(b, 8);
   memset(b, 'x', sizeof b);
-  strncpy(b, "abcdef", 3);       /* no NUL */
+  strncpy(b, "abcdef", 3);       // no NUL
   bytes(b, 5);
   strcpy(a, "ab");
   fputs(strncat(a, "cdef", 2), stdout);
@@ -83,16 +83,16 @@ int main(void)
   fputs("\n", stdout);
 
   memset(a, 0, sizeof a);
-  memset(a, 'q', 5);             /* odd: CMDSYS fills by words */
+  memset(a, 'q', 5);             // odd: CMDSYS fills by words
   bytes(a, 7);
-  memset(a, 0x141, 2);           /* only the low byte, 'A' */
+  memset(a, 0x141, 2);           // only the low byte, 'A'
   bytes(a, 3);
   memcpy(b, "123456789", 10);
   bytes(b, 10);
-  memmove(b + 2, b, 5);          /* overlapping, up */
+  memmove(b + 2, b, 5);          // overlapping, up
   bytes(b, 10);
   memcpy(b, "123456789", 10);
-  memmove(b, b + 3, 6);          /* overlapping, down */
+  memmove(b, b + 3, 6);          // overlapping, down
   bytes(b, 10);
   num(memcpy(a, b, 0) == a);
   num(memmove(a, b, 0) == a);

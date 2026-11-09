@@ -1,8 +1,8 @@
-/* xfuncptr.c: function pointers. Taking a function's address, calling
- * through a pointer (in a variable, an array, a struct, a parameter,
- * a call's result), comparing pointers, and the forms that call a named
- * function directly ((*f)(x), (&f)(x)). Tables are filled in at run
- * time here; xfuncinit.c has them in initializers. */
+// xfuncptr.c: function pointers. Taking a function's address, calling
+// through a pointer (in a variable, an array, a struct, a parameter,
+// a call's result), comparing pointers, and the forms that call a named
+// function directly ((*f)(x), (&f)(x)). Tables are filled in at run
+// time here; xfuncinit.c has them in initializers.
 #include "ptest.h"
 
 typedef int binop(int, int);
@@ -71,7 +71,7 @@ struct pt mkpt(int x, int y)
 
 static int fact(int n);
 
-/* Set at run time to fact, which calls itself through it. */
+// Set at run time to fact, which calls itself through it.
 static int (*factp)(int);
 
 static int fact(int n)
@@ -82,25 +82,25 @@ static int fact(int n)
 binop *table[3];
 int (*gun)(int);
 
-/* A pointer as a parameter: call it. */
+// A pointer as a parameter: call it.
 int apply(binop *f, int a, int b)
 {
   return f(a, b);
 }
 
-/* The same, through the explicit dereference. */
+// The same, through the explicit dereference.
 int apply2(int (*f)(int), int a)
 {
   return (*f)(a);
 }
 
-/* A function that returns a function pointer. */
+// A function that returns a function pointer.
 binop *pick(int k)
 {
   return table[k];
 }
 
-/* Its declarator form, without the typedef. */
+// Its declarator form, without the typedef.
 int (*pick_un(int k))(int)
 {
   return k ? neg : twice;
@@ -118,7 +118,7 @@ int main(void)
   binop *ops[3];
   int i, s;
 
-  /* A variable: f, &f, and calls through it. */
+  // A variable: f, &f, and calls through it.
   fp = twice;
   puti(fp(5)); putc(' ');
   puti((*fp)(6)); putc(' ');
@@ -128,12 +128,12 @@ int main(void)
   puti((&*fp)(9)); putc(' ');
   puti(&*fp == fp); putln();
 
-  /* Named functions called through the forms that name them. */
+  // Named functions called through the forms that name them.
   puti((*twice)(9)); putc(' ');
   puti((&twice)(10)); putc(' ');
   puti((***neg)(11)); putln();
 
-  /* A global pointer, and one to a pointer. */
+  // A global pointer, and one to a pointer.
   gun = twice;
   pp = &gun;
   puti(gun(12)); putc(' ');
@@ -141,8 +141,8 @@ int main(void)
   *pp = neg;
   puti(gun(14)); putln();
 
-  /* Arrays of pointers: a global one, a local one, a variable index,
-   * in a counted loop. */
+  // Arrays of pointers: a global one, a local one, a variable index,
+  // in a counted loop.
   table[0] = add;
   table[1] = sub;
   table[2] = mul;
@@ -156,7 +156,7 @@ int main(void)
   puti(table[2](table[0](1, 2), table[1](9, 4))); putc(' ');
   puti(calls); putln();
 
-  /* Members, through a struct and a pointer to it. */
+  // Members, through a struct and a pointer to it.
   o.op = sub;
   o.un = neg;
   o.name = 'o';
@@ -166,7 +166,7 @@ int main(void)
   puti(op->un(op->op(1, 2))); putc(' ');
   putc(o.name); putln();
 
-  /* Pointers passed and returned. */
+  // Pointers passed and returned.
   puti(apply(mul, 6, 7)); putc(' ');
   puti(apply(&add, 6, 7)); putc(' ');
   puti(apply2(twice, 21)); putc(' ');
@@ -174,13 +174,13 @@ int main(void)
   puti(pick_un(1)(4)); putc(' ');
   puti((*pick_un(0))(4)); putln();
 
-  /* A choice of function, then a call of the result. */
+  // A choice of function, then a call of the result.
   for (i = 0; i < 2; i++) {
     puti((i ? add : sub)(9, 2)); putc(' ');
   }
   putln();
 
-  /* Comparisons. */
+  // Comparisons.
   fp = twice;
   puti(fp == twice); putc(' ');
   puti(fp == neg); putc(' ');
@@ -189,7 +189,7 @@ int main(void)
   puti(!fp); putc(' ');
   puti(table[0] == add && table[1] != add); putln();
 
-  /* void, char and struct results. */
+  // void, char and struct results.
   vp = show;
   vp(1);
   (*vp)(2);
@@ -202,11 +202,11 @@ int main(void)
   puti(q.x * 10 + q.y); putc(' ');
   puti(mp(6, 7).y); putln();
 
-  /* Recursion through a pointer. */
+  // Recursion through a pointer.
   factp = fact;
   puti(factp(7)); putln();
 
-  /* A CMDSYS function, by address. */
+  // A CMDSYS function, by address.
   vp = puti;
   vp(321);
   putln();

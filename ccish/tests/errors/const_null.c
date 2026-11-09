@@ -1,6 +1,6 @@
 
-/* A const int holding 0 isn't a null pointer constant in C: only an
- * integer constant expression 0 is. */
+// A const int holding 0 isn't a null pointer constant in C: only an
+// integer constant expression 0 is.
 int main()
 {
   const int ZERO = 0;

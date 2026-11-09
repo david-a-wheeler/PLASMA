@@ -1,7 +1,5 @@
-/*
- * ccgen's stage 3 (peep.c): the peephole optimizer. Include after
- * mop.h.
- */
+// ccgen's stage 3 (peep.c): the peephole optimizer. Include after
+// mop.h.
 #ifndef PEEP_H
 #define PEEP_H
 

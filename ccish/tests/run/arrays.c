@@ -1,7 +1,7 @@
-/* Arrays: local arrays of int, char and pointers, constant and variable
- * indexes (int and char), multi-dimensional arrays, array parameters,
- * arrays used as pointers, &a[i], *a, i[a], and stores, compound
- * assignment and ++ / -- on elements. */
+// Arrays: local arrays of int, char and pointers, constant and variable
+// indexes (int and char), multi-dimensional arrays, array parameters,
+// arrays used as pointers, &a[i], *a, i[a], and stores, compound
+// assignment and ++ / -- on elements.
 // listing-has: IDXW
 void show(int n)
 {
@@ -17,7 +17,7 @@ int sum(int a[], int n)
   return s;
 }
 
-/* Sort n ints into increasing order (insertion sort). */
+// Sort n ints into increasing order (insertion sort).
 void sort(int a[], int n)
 {
   int i, j, t;
@@ -32,7 +32,7 @@ void sort(int a[], int n)
   }
 }
 
-/* The trace of a 3 x 3 matrix, passed as a pointer to its rows. */
+// The trace of a 3 x 3 matrix, passed as a pointer to its rows.
 int trace(int m[][3])
 {
   int i, t = 0;
@@ -41,19 +41,19 @@ int trace(int m[][3])
   return t;
 }
 
-/* m[2][j]: a constant row and a variable column through a pointer. */
+// m[2][j]: a constant row and a variable column through a pointer.
 int get(int m[][3], int j)
 {
   return m[2][j];
 }
 
-/* Add 1 to m[1][j]. */
+// Add 1 to m[1][j].
 void bump(int m[][3], int j)
 {
   m[1][j]++;
 }
 
-/* Copy the C string s to d. */
+// Copy the C string s to d.
 void copy(char *d, char *s)
 {
   int i = 0;
@@ -69,7 +69,7 @@ int main()
   char *names[3];
   int t[6];
 
-  /* constant indexes */
+  // constant indexes
   a[0] = 10;
   a[1] = 20;
   a[2] = 30;
@@ -80,7 +80,7 @@ int main()
   show(a[1] + a[3]);
   __putln();
 
-  /* variable indexes, compound assignment, ++ and -- */
+  // variable indexes, compound assignment, ++ and --
   for (i = 0; i < 5; i++)
     a[i] += i;
   for (i = 0; i < 5; i++)
@@ -96,7 +96,7 @@ int main()
   show(a[2]);
   __putln();
 
-  /* char arrays and char indexes */
+  // char arrays and char indexes
   for (c = 0; c < 7; c++)
     s[c] = 'a' + c;
   s[7] = 0;
@@ -107,11 +107,11 @@ int main()
     __putc(s[i]);
   __putc(' ');
   show(s[c] + 1);
-  s[0] = 300;                 /* a char keeps the low byte */
+  s[0] = 300;                 // a char keeps the low byte
   show(s[0]);
   __putln();
 
-  /* arrays as pointers */
+  // arrays as pointers
   p = a;
   show(*p);
   show(p[3]);
@@ -134,7 +134,7 @@ int main()
   show(p > a);
   __putln();
 
-  /* functions taking arrays */
+  // functions taking arrays
   show(sum(a, 5));
   t[0] = 5;
   t[1] = 3;
@@ -147,7 +147,7 @@ int main()
     show(t[i]);
   __putln();
 
-  /* two-dimensional arrays */
+  // two-dimensional arrays
   for (i = 0; i < 3; i++)
     for (c = 0; c < 3; c++)
       m[i][c] = i * 3 + c;
@@ -171,7 +171,7 @@ int main()
   show(m[1][0]);
   __putln();
 
-  /* arrays of pointers */
+  // arrays of pointers
   names[0] = "zero";
   names[1] = "one";
   names[2] = "two";

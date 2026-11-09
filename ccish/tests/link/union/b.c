@@ -1,4 +1,4 @@
-/* The caller-half: see a.c for the union and the callee. */
+// The caller-half: see a.c for the union and the callee.
 union W { int a; char b; };
 
 int f(union W u);

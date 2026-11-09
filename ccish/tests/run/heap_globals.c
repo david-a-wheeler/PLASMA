@@ -1,9 +1,9 @@
-/* Large zero-filled globals, which ccrel moves to the heap (approach.md,
- * "Large zero-filled data on the heap"): zero at the start; constant
- * and variable indexes; a char store at a constant index; a big
- * struct's members; an array whose address is in an initializer, which
- * stays in data; and a static one. The init function takes the block
- * from heapalloc and zeroes it with memset. */
+// Large zero-filled globals, which ccrel moves to the heap (approach.md,
+// "Large zero-filled data on the heap"): zero at the start; constant
+// and variable indexes; a char store at a constant index; a big
+// struct's members; an array whose address is in an initializer, which
+// stays in data; and a static one. The init function takes the block
+// from heapalloc and zeroes it with memset.
 // listing-has: __heapalloc (import)
 // listing-has: __memset (import)
 // listing-has: CS (18 chars)

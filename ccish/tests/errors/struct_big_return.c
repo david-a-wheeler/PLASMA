@@ -1,5 +1,5 @@
 
-/* Only structs of up to 8 bytes are returned by value. */
+// Only structs of up to 8 bytes are returned by value.
 struct big { int v[5]; };
 
 struct big make(void);

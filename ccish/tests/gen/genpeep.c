@@ -1,8 +1,8 @@
-/* genpeep.c - small peephole rules (peep.c, the list at its top):
- * -(-x) is x (NEG NEG goes); x == 0 is NOT (CN 0 ISEQ), and as a test
- * one branch (NOT BRFLS is BRTRU); x << 1 is x DUP ADD, as x * 2 is
- * (genmul.c); and an address plus a constant is one address
- * (LLA n+c). */
+// genpeep.c - small peephole rules (peep.c, the list at its top):
+// -(-x) is x (NEG NEG goes); x == 0 is NOT (CN 0 ISEQ), and as a test
+// one branch (NOT BRFLS is BRTRU); x << 1 is x DUP ADD, as x * 2 is
+// (genmul.c); and an address plus a constant is one address
+// (LLA n+c).
 int g;
 
 int negneg(int x)  { return -(-x); }

@@ -1,15 +1,13 @@
-/*
- * ccpp's driver (approach.md, "ccpp design"): reads the source's tokens
- * from the lexer (or a macro's expansion) and writes them to the token
- * stream, and carries out the directives: #include, #define, #undef,
- * #if, #ifdef, #ifndef, #elif, #else, #endif, #error and #line; #pragma
- * is ignored.
- *
- * The groups #ifdef and the rest open are a stack (cond[]): each one's
- * state is C_TAKING (its tokens are kept), C_WAIT (skipped, no branch
- * taken yet), C_DONE (skipped, a branch was taken) or C_DEAD (skipped,
- * since the group around it is), with C_ELSE once its #else is seen.
- */
+// ccpp's driver (approach.md, "ccpp design"): reads the source's tokens
+// from the lexer (or a macro's expansion) and writes them to the token
+// stream, and carries out the directives: #include, #define, #undef,
+// #if, #ifdef, #ifndef, #elif, #else, #endif, #error and #line; #pragma
+// is ignored.
+//
+// The groups #ifdef and the rest open are a stack (cond[]): each one's
+// state is C_TAKING (its tokens are kept), C_WAIT (skipped, no branch
+// taken yet), C_DONE (skipped, a branch was taken) or C_DEAD (skipped,
+// since the group around it is), with C_ELSE once its #else is seen.
 #include <stdio.h>
 #include <string.h>
 #include "build.h"
@@ -29,37 +27,37 @@
 #include <plasma.h>
 #endif
 
-#define MAX_IF_NEST  8      /* #ifdef groups open at once (3) */
-#define MAX_INC_DIRS 8      /* -I directories */
-#define MAX_PP_OPTS  16     /* -D and -U options */
+#define MAX_IF_NEST  8      // #ifdef groups open at once (3)
+#define MAX_INC_DIRS 8      // -I directories
+#define MAX_PP_OPTS  16     // -D and -U options
 
 int pp_cur_file;
 
-/* The source and its includes, innermost last, each with its number in
- * the name file, and how many groups were open when it began. */
+// The source and its includes, innermost last, each with its number in
+// the name file, and how many groups were open when it began.
 static Bfile files[MAX_INCLUDE + 1];
 static int file_no[MAX_INCLUDE + 1];
 static char file_conds[MAX_INCLUDE + 1];
 static int depth;
-static char cur_path[MAX_PATH];     /* the current file's name */
+static char cur_path[MAX_PATH];     // the current file's name
 #ifdef CCISH_STATS
-static int depth_peak, conds_peak;  /* the most of each at once */
+static int depth_peak, conds_peak;  // the most of each at once
 #endif
 
 enum { C_TAKING, C_WAIT, C_DONE, C_DEAD, C_STATE = 3, C_ELSE = 4 };
 static char cond[MAX_IF_NEST];
 static int nconds;
 
-/* The command line's options, in order: the directories to look for
- * includes in, and the -D and -U options (each "D" or "U" then its
- * text). */
+// The command line's options, in order: the directories to look for
+// includes in, and the -D and -U options (each "D" or "U" then its
+// text).
 static const char *inc_dirs[MAX_INC_DIRS];
 static int ninc_dirs;
 static const char *opt_text[MAX_PP_OPTS];
 static char opt_kind[MAX_PP_OPTS];
 static int nopts;
 
-/* Add -I dir: a directory to look for #include files in. */
+// Add -I dir: a directory to look for #include files in.
 void pp_include_dir(const char *dir)
 {
   if (ninc_dirs >= MAX_INC_DIRS)
@@ -67,7 +65,7 @@ void pp_include_dir(const char *dir)
   inc_dirs[ninc_dirs++] = dir;
 }
 
-/* Add -D text or -U text (kind 'D' or 'U'), to apply in order. */
+// Add -D text or -U text (kind 'D' or 'U'), to apply in order.
 void pp_option(int kind, const char *text)
 {
   if (nopts >= MAX_PP_OPTS)
@@ -76,9 +74,9 @@ void pp_option(int kind, const char *text)
   opt_text[nopts++] = text;
 }
 
-/* If argv[i] is -I, -D or -U, with its value after it or in the next
- * argument, record it and return the index of its last argument;
- * otherwise return -1. */
+// If argv[i] is -I, -D or -U, with its value after it or in the next
+// argument, record it and return the index of its last argument;
+// otherwise return -1.
 int pp_arg(int argc, char **argv, int i)
 {
   const char *a = argv[i], *v = a + 2;
@@ -96,29 +94,29 @@ int pp_arg(int argc, char **argv, int i)
   return i;
 }
 
-/* Are the current tokens kept (not in a group being skipped)? */
+// Are the current tokens kept (not in a group being skipped)?
 static int taking(void)
 {
   return nconds == 0 || (cond[nconds - 1] & C_STATE) == C_TAKING;
 }
 
-/* Set the lexer's mode for after a directive: skipping or not. */
+// Set the lexer's mode for after a directive: skipping or not.
 static void after_directive(void)
 {
   pp_mode = taking() ? PM_TEXT : PM_SKIP;
 }
 
-/* The rest of the directive's line must be empty. */
+// The rest of the directive's line must be empty.
 static void end_directive(const char *name)
 {
   if (pp_lex() != TC_NL)
     error(246 /* "extra tokens at the end of the directive:" */, name);
 }
 
-/* #pragma. "#pragma plasma import NAME" names the PLASMA module to load
- * for the externs declared after it in the same file (approach.md issue
- * 22, decision 35): it becomes the tokens __plasma_import NAME, which
- * cccomp reads. Any other pragma is ignored, as C allows. */
+// #pragma. "#pragma plasma import NAME" names the PLASMA module to load
+// for the externs declared after it in the same file (approach.md issue
+// 22, decision 35): it becomes the tokens __plasma_import NAME, which
+// cccomp reads. Any other pragma is ignored, as C allows.
 static void do_pragma(void)
 {
   char w[8];
@@ -136,8 +134,8 @@ static void do_pragma(void)
     ;
 }
 
-/* Read a macro's name, an identifier (or a keyword ccish doesn't
- * support, which is one too), after directive name; return its id. */
+// Read a macro's name, an identifier (or a keyword ccish doesn't
+// support, which is one too), after directive name; return its id.
 static int macro_name(const char *name)
 {
   int c = pp_lex();
@@ -146,16 +144,16 @@ static int macro_name(const char *name)
   return pt_val;
 }
 
-/* #define name body, an object-like macro, or #define name(params)
- * body, a function-like one: a '(' right after the name, with no blank.
- * The parameters are names, the last of which may be "...", which is
- * __VA_ARGS__ in the body. */
+// #define name body, an object-like macro, or #define name(params)
+// body, a function-like one: a '(' right after the name, with no blank.
+// The parameters are names, the last of which may be "...", which is
+// __VA_ARGS__ in the body.
 static void do_define(void)
 {
   int id = macro_name("#define"), c, np = -1, va = 0, i;
   int params[MAX_PP_PARAMS];
   if (pp_lex_next_char() == '(') {
-    pp_lex();                   /* '(' */
+    pp_lex();                   // '('
     np = 0;
     c = pp_lex();
     while (c != ')') {
@@ -188,14 +186,14 @@ static void do_define(void)
   pp_def_end(id);
 }
 
-/* #undef name. */
+// #undef name.
 static void do_undef(void)
 {
   pp_undef(macro_name("#undef"));
   end_directive("#undef");
 }
 
-/* Try to open path for an #include, as the next file: 1 if it opened. */
+// Try to open path for an #include, as the next file: 1 if it opened.
 static int try_open(const char *path)
 {
   if (!bopen(&files[depth + 1], path, 0))
@@ -204,8 +202,8 @@ static int try_open(const char *path)
   return 1;
 }
 
-/* Join dir (the first n characters of it), a '/' unless n is 0, and
- * name into buf (MAX_PATH bytes); 0 if it is too long. */
+// Join dir (the first n characters of it), a '/' unless n is 0, and
+// name into buf (MAX_PATH bytes); 0 if it is too long.
 static int join(char *buf, const char *dir, int n, const char *name)
 {
   if (n + 1 + (int)strlen(name) >= MAX_PATH)
@@ -218,13 +216,13 @@ static int join(char *buf, const char *dir, int n, const char *name)
   return 1;
 }
 
-/* #include "name" or <name>: "name" is looked for beside the file that
- * includes it, then in the include directories (the -I ones, then the
- * default); <name> only in those. The file is read next, from the end
- * of the #include line. */
+// #include "name" or <name>: "name" is looked for beside the file that
+// includes it, then in the include directories (the -I ones, then the
+// default); <name> only in those. The file is read next, from the end
+// of the #include line.
 static void do_include(void)
 {
-  static char name[MAX_PATH], buf[MAX_PATH];  /* too big for a frame */
+  static char name[MAX_PATH], buf[MAX_PATH];  // too big for a frame
   const char *slash;
   int angle, i, found = 0;
   if (pp_lex_header(name, MAX_PATH, &angle) < 0)
@@ -256,8 +254,8 @@ static void do_include(void)
   pp_lex_push(&files[depth]);
 }
 
-/* Open a group: kept if is_true, unless the group around it is
- * skipped. */
+// Open a group: kept if is_true, unless the group around it is
+// skipped.
 static void open_group(int is_true)
 {
   if (nconds >= MAX_IF_NEST)
@@ -272,7 +270,7 @@ static void open_group(int is_true)
 #endif
 }
 
-/* #ifdef name or #ifndef name (want 0): open a group. */
+// #ifdef name or #ifndef name (want 0): open a group.
 static void do_ifdef(int want, const char *name)
 {
   int id = macro_name(name), def = pp_is_macro(id);
@@ -280,8 +278,8 @@ static void do_ifdef(int want, const char *name)
   open_group(def == want);
 }
 
-/* #if expression: open a group (the expression is read only if the
- * group around it is kept). */
+// #if expression: open a group (the expression is read only if the
+// group around it is kept).
 static void do_if(void)
 {
   if (!taking()) {
@@ -292,8 +290,8 @@ static void do_if(void)
   open_group(pp_if_expr());
 }
 
-/* #elif expression: the group's next branch, kept if no branch before
- * it was and the expression is true (read only then). */
+// #elif expression: the group's next branch, kept if no branch before
+// it was and the expression is true (read only then).
 static void do_elif(void)
 {
   if (nconds == 0)
@@ -306,17 +304,17 @@ static void do_elif(void)
     cond[nconds - 1] = pp_if_expr() ? C_TAKING : C_WAIT;
     return;
   }
-  pp_mode = PM_SKIP;            /* the line isn't read */
+  pp_mode = PM_SKIP;            // the line isn't read
 }
 
-/* #error text: stop, with the text. */
+// #error text: stop, with the text.
 static void do_error(void)
 {
   error(258 /* "#error:" */, pp_lex_rest());
 }
 
-/* #line number "file": the next line has that number, and, with a
- * file's name, the current file is called that from here on. */
+// #line number "file": the next line has that number, and, with a
+// file's name, the current file is called that from here on.
 static void do_line(void)
 {
   int c = pp_next(), n = pt_val;
@@ -336,7 +334,7 @@ static void do_line(void)
   pp_lex_set_line(n);
 }
 
-/* #else: the group's last branch. */
+// #else: the group's last branch.
 static void do_else(void)
 {
   end_directive("#else");
@@ -352,7 +350,7 @@ static void do_else(void)
     cond[nconds - 1] |= C_ELSE;
 }
 
-/* #endif: close the group. */
+// #endif: close the group.
 static void do_endif(void)
 {
   end_directive("#endif");
@@ -361,9 +359,9 @@ static void do_endif(void)
   nconds--;
 }
 
-/* Carry out a directive, after its '#'. In a group being skipped, only
- * the conditional ones count, and the rest of the line is passed over;
- * the null directive (a '#' alone) does nothing. */
+// Carry out a directive, after its '#'. In a group being skipped, only
+// the conditional ones count, and the rest of the line is passed over;
+// the null directive (a '#' alone) does nothing.
 static void directive(void)
 {
   char hashed[13], *name = hashed + 1;
@@ -391,7 +389,7 @@ static void directive(void)
   } else if (!strcmp(name, "endif")) {
     do_endif();
   } else if (!taking()) {
-    pp_mode = PM_SKIP;          /* nothing else counts here */
+    pp_mode = PM_SKIP;          // nothing else counts here
     return;
   } else if (!strcmp(name, "define")) {
     do_define();
@@ -412,20 +410,20 @@ static void directive(void)
   after_directive();
 }
 
-/* Add the default include directory after the -I ones: CCISH_INC if
- * the build defines it (the Makefile does, for the host), else the VM's
- * <syspath>ccinc (doc/bootstrap-test.md, R2). Then apply the -D and -U
- * options, in order, each as a directive's line: -D name is name 1,
- * and -D name=text is name text. */
+// Add the default include directory after the -I ones: CCISH_INC if
+// the build defines it (the Makefile does, for the host), else the VM's
+// <syspath>ccinc (doc/bootstrap-test.md, R2). Then apply the -D and -U
+// options, in order, each as a directive's line: -D name is name 1,
+// and -D name=text is name text.
 static void apply_options(void)
 {
-  static char buf[MAX_LINE + 1];    /* too big for a frame */
+  static char buf[MAX_LINE + 1];    // too big for a frame
   const char *eq;
   int i;
 #ifdef CCISH_INC
   pp_include_dir(CCISH_INC);
 #else
-  static char sys_inc[MAX_PATH];  /* <syspath>ccinc */
+  static char sys_inc[MAX_PATH];  // <syspath>ccinc
   i = cmdsys.syspath[0];
   if (i < MAX_PATH - 6) {
     memcpy(sys_inc, cmdsys.syspath + 1, i);
@@ -454,8 +452,8 @@ static void apply_options(void)
   }
 }
 
-/* The end of a file: back to the one that included it, or 0 at the
- * source's own end. Its groups must all be closed. */
+// The end of a file: back to the one that included it, or 0 at the
+// source's own end. Its groups must all be closed.
 static int end_file(void)
 {
   if (nconds != file_conds[depth])
@@ -473,9 +471,9 @@ static int end_file(void)
 }
 
 #ifdef CCISH_STATS
-/* Report how full the tables got, on one line of stderr, for
- * tools/measure.py: the name pool's bytes, then pp_mac_peak()'s, then
- * the include depth and the groups open. */
+// Report how full the tables got, on one line of stderr, for
+// tools/measure.py: the name pool's bytes, then pp_mac_peak()'s, then
+// the include depth and the groups open.
 static void report_stats(void)
 {
   int i;
@@ -494,8 +492,8 @@ static void report_stats(void)
 }
 #endif
 
-/* Preprocess source file src into the token stream and name file of
- * output name base. */
+// Preprocess source file src into the token stream and name file of
+// output name base.
 void pp_file(const char *src, const char *base)
 {
   int c;
@@ -540,8 +538,8 @@ void pp_file(const char *src, const char *base)
 #endif
 }
 
-/* After an error: close the open files, so that ProDOS can remove the
- * outputs. */
+// After an error: close the open files, so that ProDOS can remove the
+// outputs.
 void pp_abort(void)
 {
   while (depth >= 0)
@@ -549,8 +547,8 @@ void pp_abort(void)
   pp_out_abort();
 }
 
-/* The output name for source file src: its name without ".c", in a
- * static buffer. */
+// The output name for source file src: its name without ".c", in a
+// static buffer.
 const char *base_of(const char *src)
 {
   static char buf[MAX_PATH];

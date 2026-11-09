@@ -1,8 +1,8 @@
-/* xfuncinit.c: function addresses in initializers. A global pointer, a
- * table of them, a struct of them (the shape of PLASMA's FILEIO table),
- * a static local, a const table, a function defined after the table
- * that names it, and a local array and struct, whose initializers are
- * code. */
+// xfuncinit.c: function addresses in initializers. A global pointer, a
+// table of them, a struct of them (the shape of PLASMA's FILEIO table),
+// a static local, a const table, a function defined after the table
+// that names it, and a local array and struct, whose initializers are
+// code.
 #include "ptest.h"
 
 typedef int binop(int, int);
@@ -39,13 +39,13 @@ binop *const ctable[2] = {&mul, later};
 struct io dev = {add, &mul, 7, 0};
 struct io dev2 = {later, sub, 2, mul};
 
-/* Defined after the tables that name it. */
+// Defined after the tables that name it.
 int later(int a, int b)
 {
   return 100 * a + b;
 }
 
-/* A static local's initializer is data too: count the calls. */
+// A static local's initializer is data too: count the calls.
 int counted(int a)
 {
   static binop *op = add;

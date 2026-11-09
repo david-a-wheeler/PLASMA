@@ -1,7 +1,7 @@
-/* Global variables: int, char and pointer scalars, arrays of int, char
- * and pointers, a two-dimensional array, zero at load, global and local
- * index variables, pointers to globals, globals passed to functions and
- * changed by them, and locals and parameters that hide a global. */
+// Global variables: int, char and pointer scalars, arrays of int, char
+// and pointers, a two-dimensional array, zero at load, global and local
+// index variables, pointers to globals, globals passed to functions and
+// changed by them, and locals and parameters that hide a global.
 // listing-has: LAW
 // listing-has: SAW
 // listing-has: LAB
@@ -21,7 +21,7 @@ void show(int n)
   __putc(' ');
 }
 
-/* Count calls in a global. */
+// Count calls in a global.
 void tick(void)
 {
   count++;
@@ -35,9 +35,9 @@ int sum(int a[], int n)
   return s;
 }
 
-int count2;                     /* declared between functions */
+int count2;                     // declared between functions
 
-/* The parameter hides the global count. */
+// The parameter hides the global count.
 int hide(int count)
 {
   return count * 2;
@@ -48,7 +48,7 @@ int main()
   int i, x;
   int loc[3];
 
-  /* globals start at zero */
+  // globals start at zero
   show(count);
   show(flag);
   show(table[4]);
@@ -56,13 +56,13 @@ int main()
   show(gp == 0);
   __putln();
 
-  /* scalars */
+  // scalars
   count = 5;
   count += 3;
   tick();
   tick();
   show(count);
-  flag = 300;                 /* a char keeps the low byte */
+  flag = 300;                 // a char keeps the low byte
   show(flag);
   flag++;
   show(flag++);
@@ -78,7 +78,7 @@ int main()
   show(count);
   __putln();
 
-  /* arrays */
+  // arrays
   for (i = 0; i < 5; i++)
     table[i] = i * i;
   show(table[3]);
@@ -104,7 +104,7 @@ int main()
   __putc(' ');
   __putln();
 
-  /* two dimensions */
+  // two dimensions
   for (i = 0; i < 3; i++)
     for (gi = 0; gi < 4; gi++)
       grid[i][gi] = i * 10 + gi;
@@ -118,7 +118,7 @@ int main()
   show(**grid);
   __putln();
 
-  /* pointers */
+  // pointers
   gp = table;
   show(*gp);
   show(gp[1]);

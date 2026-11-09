@@ -1,8 +1,8 @@
-/* sizeof: of type names (with '*'s and array sizes), of expressions,
- * which are not run, of arrays (their full size), array parameters (a
- * pointer) and string literals (a char array), and in constant
- * expressions such as an array size: b has 6 elements, so the frame is
- * 10 + 2 + 1 + 2 + 24 + 12 = 51 bytes. f() is never called. */
+// sizeof: of type names (with '*'s and array sizes), of expressions,
+// which are not run, of arrays (their full size), array parameters (a
+// pointer) and string literals (a char array), and in constant
+// expressions such as an array size: b has 6 elements, so the frame is
+// 10 + 2 + 1 + 2 + 24 + 12 = 51 bytes. f() is never called.
 // listing-has: ENTER 51,0
 // listing-lacks: ; f
 int g[10];
@@ -71,7 +71,7 @@ int main()
   show(param(a, p));
   __putln();
 
-  /* the operand isn't run */
+  // the operand isn't run
   i = 5;
   show(sizeof i++);
   show(i);

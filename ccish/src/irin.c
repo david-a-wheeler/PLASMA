@@ -1,17 +1,15 @@
-/*
- * The back end's input: read the IR file, NAME.ir, that the front end
- * wrote (approach.md 18.7; format in ../OBJECT.md), and drive stages 2
- * to 4. Each IR op goes to lowering (lower_op()), after waiting in a
- * buffer where the parser's reordering is done (IR_SWAP; below); the
- * data and string records (D, R, S) are copied to the stream file as
- * they are, in the order met; and the symbol summary at the end becomes
- * NAME.syms, with
- * the code size and each defined function's code offset filled in,
- * which only the back end knows, and each name spelled from the name
- * file, NAME.nam (../CCPP.md), whose stamp the IR file's header gives.
- * The file is read once, in order, and every record is checked, so that
- * a damaged file is reported rather than compiled.
- */
+// The back end's input: read the IR file, NAME.ir, that the front end
+// wrote (approach.md 18.7; format in ../OBJECT.md), and drive stages 2
+// to 4. Each IR op goes to lowering (lower_op()), after waiting in a
+// buffer where the parser's reordering is done (IR_SWAP; below); the
+// data and string records (D, R, S) are copied to the stream file as
+// they are, in the order met; and the symbol summary at the end becomes
+// NAME.syms, with
+// the code size and each defined function's code offset filled in,
+// which only the back end knows, and each name spelled from the name
+// file, NAME.nam (../CCPP.md), whose stamp the IR file's header gives.
+// The file is read once, in order, and every record is checked, so that
+// a damaged file is reported rather than compiled.
 #include <stdio.h>
 #include <string.h>
 #include "build.h"
@@ -31,34 +29,34 @@
 #include "emit.h"
 #include "helper.h"
 
-/* The IR file, and its output name (for messages). */
+// The IR file, and its output name (for messages).
 static Bfile in;
-static Bfile nam_in;            /* lent to nam.c, for NAME.nam */
+static Bfile nam_in;            // lent to nam.c, for NAME.nam
 static const char *base_name;
 
-/* The source file's name, file 1 of the name file, for messages. */
+// The source file's name, file 1 of the name file, for messages.
 static char source[MAX_PATH];
 
-/* The functions' names, from the N records: each one's id, or 0 if it
- * has none yet. */
+// The functions' names, from the N records: each one's id, or 0 if it
+// has none yet.
 static int fn_id[MAX_FUNCS];
 #ifdef CCISH_CHECKS
-static char fn_returns[MAX_FUNCS];  /* from the name record: 1 if the
-                                     * function returns a value */
+static char fn_returns[MAX_FUNCS];  // from the name record: 1 if the
+                                    // function returns a value
 #endif
 
-static int in_func;         /* between a FUNC and its ENDFUNC */
-static int max_func;        /* the highest function index met, or -1 */
-static int nwritten;        /* functions written (FUNC ops) */
+static int in_func;         // between a FUNC and its ENDFUNC
+static int max_func;        // the highest function index met, or -1
+static int nwritten;        // functions written (FUNC ops)
 
-/* Stop: the IR file is damaged (or cut short). */
+// Stop: the IR file is damaged (or cut short).
 void ir_damaged(void)
 {
   fatal(188 /* "compiler stream file is damaged:" */,
         stream_name(base_name, SUFFIX_IR));
 }
 
-/* Read a byte of the IR file, which must not end here. */
+// Read a byte of the IR file, which must not end here.
 static int get_byte(void)
 {
   int c = bgetc(&in);
@@ -67,22 +65,22 @@ static int get_byte(void)
   return c;
 }
 
-/* Read a word, low byte first. */
+// Read a word, low byte first.
 static int get_word(void)
 {
   int lo = get_byte();
   return lo | (get_byte() << 8);
 }
 
-/* Copy the next n bytes of the IR file to the output file. */
+// Copy the next n bytes of the IR file to the output file.
 static void copy(int n)
 {
   while (n-- > 0)
     emit_byte(get_byte());
 }
 
-/* Copy a D, R, S or Z record, whose tag t (its letter: the IR file's
- * is in lowercase) has just been read, to the stream file as it is. */
+// Copy a D, R, S or Z record, whose tag t (its letter: the IR file's
+// is in lowercase) has just been read, to the stream file as it is.
 static void copy_record(int t)
 {
   int n;
@@ -104,9 +102,9 @@ static void copy_record(int t)
   }
 }
 
-/* Read the header: the magic and the version; then check the name file
- * (its stamp is checked against the IR file's at the summary) and get
- * the source file's name, which messages give from now on. */
+// Read the header: the magic and the version; then check the name file
+// (its stamp is checked against the IR file's at the summary) and get
+// the source file's name, which messages give from now on.
 static void read_header(void)
 {
   if (get_byte() != 'C' || get_byte() != 'I' || get_byte() != 'R'
@@ -116,10 +114,10 @@ static void read_header(void)
   nam_open(base_name);
   strcpy(source, nam_file(1));
   src_name = source;
-  src_name_hook = 0;          /* not the front end's, in ccish */
+  src_name_hook = 0;          // not the front end's, in ccish
 }
 
-/* Read a name, an id, which must be in the name file. */
+// Read a name, an id, which must be in the name file.
 static int get_id(void)
 {
   int id = get_word();
@@ -128,8 +126,8 @@ static int get_id(void)
   return id;
 }
 
-/* Read an N record: keep a function's name's id (and, for the checks,
- * whether it returns a value). */
+// Read an N record: keep a function's name's id (and, for the checks,
+// whether it returns a value).
 static void read_name(void)
 {
   int f = get_word();
@@ -148,8 +146,8 @@ static void read_name(void)
   fn_id[f] = get_id();
 }
 
-/* Function f's name, for messages and -i (or a helper's), from the name
- * file. */
+// Function f's name, for messages and -i (or a helper's), from the name
+// file.
 const char *func_name(int f)
 {
   if (f >= MAX_FUNCS)
@@ -159,8 +157,8 @@ const char *func_name(int f)
   return nam_name(fn_id[f]);
 }
 
-/* Write a symbol's name, read as an id, to NAME.syms: its length, then
- * its characters. */
+// Write a symbol's name, read as an id, to NAME.syms: its length, then
+// its characters.
 static void put_name(void)
 {
   const char *s = nam_name(get_id());
@@ -169,56 +167,54 @@ static void put_name(void)
     emit_byte(*s++);
 }
 
-/*
- * The IR ops read but not yet lowered, as parallel arrays (approach.md
- * 18.7, A). The parser can't reorder code itself: when a value's code
- * must come before code it has already written (*f() = e: the value
- * below the address, since there is no SWAP opcode), it puts IR_SWAP
- * with the lengths of the two blocks, which are the ops just before
- * it. If both are still here, they are exchanged in place, by three
- * reversals (Bentley, Programming Pearls, column 2), and the SWAP costs
- * nothing: moving ops is safe because each lowers on its own and
- * branches name labels by number. The SWAP stays, done, so that a block
- * holding it has the length the parser counted, and lowers to nothing.
- * When the buffer is full, its older half is lowered, so the last
- * IR_BUF / 2 ops are always here: blocks that long always move.
- *
- * A SWAP that can't move code (it is told not to, or a block has been
- * lowered) waits for the op after it (SW_PENDING; buf_f holds its top
- * block's length, 0 if not known, times 2, plus 1 if that block ends in
- * a DUP: a store whose value is used, which leaves the value twice). Then it is done
- * the cheapest way left (decide()), its mode in buf_a:
- *   SW_FREE      the next op reversed, at no cost: ADD and the other
- *                commutative ops as they are, SUB as SUB then NEG, < as
- *                >, and so on (lower_free_swap())
- *   SW_STASH     the value below saved in temporary 0 just before the
- *                top block's code runs (buf_pre[] marks its first op),
- *                and loaded again after it: one temporary
- *   SW_EXCHANGE  the values exchanged after the fact through two
- *                temporaries (buf_f: the values the top block left)
- * A stash needs the top block still here, and holding no other SWAP
- * that uses a temporary, whose use would overlap.
- *
- * The unsigned comparisons (IR_ULT ...; 18.7, C) call CMDSYS's native
- * ISULT and the rest (lower.c), which is smaller and faster than the
- * signed comparison with both sign bits flipped (XOR $8000) that ccgen
- * used to write, even with a constant right operand (3 bytes and about
- * 123 cycles, against 5 and 131 then, 9 and 218 for two variables). A
- * comparison with 0 or 1 that is a test of zero is one (u_const()).
- *
- * If the VM gains more comparison ops (approach.md, "Loop design",
- * and issue 21), this is where they would go. Unsigned comparison
- * opcodes would replace the CMDSYS calls. For loops, step-and-branch-if-not-equal ops (INCBRNE,
- * ADDBRNE, DECBRNE, SUBBRNE) would let every != loop, of int,
- * unsigned or a pointer, keep its count on the eval stack as PLASMA's
- * FOR does (2 ops per pass), since != has no sign; and unsigned
- * counted-loop ops (INCBRULE and the like) would do the same for
- * unsigned and pointer loops that end with < or <=. Today's counted
- * ops (INCBRLE and the rest) compare signed, so only int loops can
- * use them.
- */
+// The IR ops read but not yet lowered, as parallel arrays (approach.md
+// 18.7, A). The parser can't reorder code itself: when a value's code
+// must come before code it has already written (*f() = e: the value
+// below the address, since there is no SWAP opcode), it puts IR_SWAP
+// with the lengths of the two blocks, which are the ops just before
+// it. If both are still here, they are exchanged in place, by three
+// reversals (Bentley, Programming Pearls, column 2), and the SWAP costs
+// nothing: moving ops is safe because each lowers on its own and
+// branches name labels by number. The SWAP stays, done, so that a block
+// holding it has the length the parser counted, and lowers to nothing.
+// When the buffer is full, its older half is lowered, so the last
+// IR_BUF / 2 ops are always here: blocks that long always move.
+//
+// A SWAP that can't move code (it is told not to, or a block has been
+// lowered) waits for the op after it (SW_PENDING; buf_f holds its top
+// block's length, 0 if not known, times 2, plus 1 if that block ends in
+// a DUP: a store whose value is used, which leaves the value twice). Then it is done
+// the cheapest way left (decide()), its mode in buf_a:
+//   SW_FREE      the next op reversed, at no cost: ADD and the other
+//                commutative ops as they are, SUB as SUB then NEG, < as
+//                >, and so on (lower_free_swap())
+//   SW_STASH     the value below saved in temporary 0 just before the
+//                top block's code runs (buf_pre[] marks its first op),
+//                and loaded again after it: one temporary
+//   SW_EXCHANGE  the values exchanged after the fact through two
+//                temporaries (buf_f: the values the top block left)
+// A stash needs the top block still here, and holding no other SWAP
+// that uses a temporary, whose use would overlap.
+//
+// The unsigned comparisons (IR_ULT ...; 18.7, C) call CMDSYS's native
+// ISULT and the rest (lower.c), which is smaller and faster than the
+// signed comparison with both sign bits flipped (XOR $8000) that ccgen
+// used to write, even with a constant right operand (3 bytes and about
+// 123 cycles, against 5 and 131 then, 9 and 218 for two variables). A
+// comparison with 0 or 1 that is a test of zero is one (u_const()).
+//
+// If the VM gains more comparison ops (approach.md, "Loop design",
+// and issue 21), this is where they would go. Unsigned comparison
+// opcodes would replace the CMDSYS calls. For loops, step-and-branch-if-not-equal ops (INCBRNE,
+// ADDBRNE, DECBRNE, SUBBRNE) would let every != loop, of int,
+// unsigned or a pointer, keep its count on the eval stack as PLASMA's
+// FOR does (2 ops per pass), since != has no sign; and unsigned
+// counted-loop ops (INCBRULE and the like) would do the same for
+// unsigned and pointer loops that end with < or <=. Today's counted
+// ops (INCBRLE and the rest) compare signed, so only int loops can
+// use them.
 enum { SW_DONE, SW_PENDING, SW_FREE, SW_STASH, SW_EXCHANGE };
-enum { PRE_STASH = 1 };         /* buf_pre[] bits */
+enum { PRE_STASH = 1 };         // buf_pre[] bits
 
 char buf_op[IR_BUF];
 int buf_a[IR_BUF];
@@ -226,7 +222,7 @@ int buf_f[IR_BUF];
 char buf_pre[IR_BUF];
 int nbuf;
 
-/* Reverse the held ops from index i up to (not including) j. */
+// Reverse the held ops from index i up to (not including) j.
 static void reverse(int i, int j)
 {
   int op, a, f, pre;
@@ -248,78 +244,76 @@ static void reverse(int i, int j)
 }
 
 #ifdef CCISH_CHECKS
-/*
- * The full build's check of a block of held ops before it is moved,
- * stashed or flipped around (CCISH_CHECKS): the parser's lengths count
- * the ops it wrote, and if the two counts ever disagreed (a compiler
- * bug, or a damaged file), the wrong code would move with no message.
- * So each block must leave exactly the values IR_SWAP or the unsigned
- * comparison says (1, or 2 for a top block ending in DUP), and never
- * use a value from below it. Each op's effect is in stk_effect[]: the
- * values it pops times 16, plus those it pushes, or STK_NONE for an op
- * that can't be in an expression, and for a number that is no op (the
- * reader refuses those: IR_IS_OP). It's a char table, and char is
- * unsigned (as in ccish), so STK_NONE is a value no op's effect has,
- * not -1. A CALL pops its arguments and pushes a
- * value if its function returns one (from the name record). Branches
- * are followed: lab_depth[] is the depth at each label the block
- * branches to (plus 1; 0 if none yet), and code after a JUMP is
- * unreachable until a label. A SWAP inside the block, done or not,
- * changes no depth.
- */
+// The full build's check of a block of held ops before it is moved,
+// stashed or flipped around (CCISH_CHECKS): the parser's lengths count
+// the ops it wrote, and if the two counts ever disagreed (a compiler
+// bug, or a damaged file), the wrong code would move with no message.
+// So each block must leave exactly the values IR_SWAP or the unsigned
+// comparison says (1, or 2 for a top block ending in DUP), and never
+// use a value from below it. Each op's effect is in stk_effect[]: the
+// values it pops times 16, plus those it pushes, or STK_NONE for an op
+// that can't be in an expression, and for a number that is no op (the
+// reader refuses those: IR_IS_OP). It's a char table, and char is
+// unsigned (as in ccish), so STK_NONE is a value no op's effect has,
+// not -1. A CALL pops its arguments and pushes a
+// value if its function returns one (from the name record). Branches
+// are followed: lab_depth[] is the depth at each label the block
+// branches to (plus 1; 0 if none yet), and code after a JUMP is
+// unreachable until a label. A SWAP inside the block, done or not,
+// changes no depth.
 #define STK_NONE 0x7F
 static const char stk_effect[IR_NOPS] = {
-  /* $00: local localb setlocal setlocalb */
+  // $00: local localb setlocal setlocalb
   0x01, 0x01, 0x11, 0x11,
-  /* $04: global globalb setglobal setglobalb */
+  // $04: global globalb setglobal setglobalb
   0x01, 0x01, 0x11, 0x11,
-  /* $08: load loadb store storeb */
+  // $08: load loadb store storeb
   0x11, 0x11, 0x20, 0x20,
-  /* $0C: localaddr dataaddr heapaddr straddr */
+  // $0C: localaddr dataaddr heapaddr straddr
   0x01, 0x01, 0x01, 0x01,
-  /* $10: func endfunc const call */
+  // $10: func endfunc const call
   STK_NONE, STK_NONE, 0x01, 0x00,
-  /* $14: drop dup return funcaddr */
+  // $14: drop dup return funcaddr
   0x10, 0x12, STK_NONE, 0x01,
-  /* $18: icall neg comp not */
+  // $18: icall neg comp not
   0x00, 0x11, 0x11, 0x11,
-  /* $1C: swap udiv umod ushr */
+  // $1C: swap udiv umod ushr
   0x22, 0x21, 0x21, 0x21,
-  /* $20: localv localbv setlocalv setlocalbv */
+  // $20: localv localbv setlocalv setlocalbv
   0x01, 0x01, 0x11, 0x11,
-  /* $24: globalv globalbv setglobalv setglobalbv */
+  // $24: globalv globalbv setglobalv setglobalbv
   0x01, 0x01, 0x11, 0x11,
-  /* $28: loadv loadbv storev storebv */
+  // $28: loadv loadbv storev storebv
   0x11, 0x11, 0x20, 0x20,
-  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  /* $2C: none */
-  /* $30: add sub mul div */
+  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  // $2C: none
+  // $30: add sub mul div
   0x21, 0x21, 0x21, 0x21,
-  /* $34: mod and or xor */
+  // $34: mod and or xor
   0x21, 0x21, 0x21, 0x21,
-  /* $38: shl shr - - */
+  // $38: shl shr - -
   0x21, 0x21, STK_NONE, STK_NONE,
-  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  /* $3C: none */
-  /* $40: eq ne lt ge */
+  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  // $3C: none
+  // $40: eq ne lt ge
   0x21, 0x21, 0x21, 0x21,
-  /* $44: gt le ult uge */
+  // $44: gt le ult uge
   0x21, 0x21, 0x21, 0x21,
-  /* $48: ugt ule - - */
+  // $48: ugt ule - -
   0x21, 0x21, STK_NONE, STK_NONE,
-  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  /* $4C: none */
-  /* $50: label jump brfalse brtrue */
+  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  // $4C: none
+  // $50: label jump brfalse brtrue
   0x00, 0x00, 0x10, 0x10,
-  /* $54: sel join cases caseval */
+  // $54: sel join cases caseval
   STK_NONE, 0x00, STK_NONE, STK_NONE,
-  /* $58: caseto - - - */
+  // $58: caseto - - -
   STK_NONE, STK_NONE, STK_NONE, STK_NONE,
-  /* $5C: loop loopstep loopbody loopend */
+  // $5C: loop loopstep loopbody loopend
   STK_NONE, STK_NONE, STK_NONE, STK_NONE,
 };
 
 static char lab_depth[MAX_LABELS];
 
-/* Note that a branch reaches label n at depth: it must agree with any
- * other branch there. Returns 0 if it doesn't. */
+// Note that a branch reaches label n at depth: it must agree with any
+// other branch there. Returns 0 if it doesn't.
 static int branch_depth(int n, int depth)
 {
   if (lab_depth[n] && lab_depth[n] != depth + 1)
@@ -328,8 +322,8 @@ static int branch_depth(int n, int depth)
   return 1;
 }
 
-/* Does the block of the len held ops from index start leave want
- * values, never using one from below it? */
+// Does the block of the len held ops from index start leave want
+// values, never using one from below it?
 static int block_ok(int start, int len, int want)
 {
   int i, op, e, pops, pushes, d, depth = 0, live = 1;
@@ -345,7 +339,7 @@ static int block_ok(int start, int len, int want)
           return 0;
         depth = d - 1;
       } else if (!live) {
-        return 0;               /* a label nothing in the block reaches */
+        return 0;               // a label nothing in the block reaches
       }
       live = 1;
       continue;
@@ -377,7 +371,7 @@ static int block_ok(int start, int len, int want)
   return live && depth == want;
 }
 
-/* Stop unless block_ok(start, len, want). */
+// Stop unless block_ok(start, len, want).
 static void check_block(int start, int len, int want)
 {
   if (!block_ok(start, len, want))
@@ -385,7 +379,7 @@ static void check_block(int start, int len, int want)
 }
 #endif
 
-/* Is IR op op one whose operands can be reversed at no cost? */
+// Is IR op op one whose operands can be reversed at no cost?
 static int reversible(int op)
 {
   switch (op) {
@@ -397,8 +391,8 @@ static int reversible(int op)
   return 0;
 }
 
-/* Choose how to do the pending SWAP at held index s, now that the op
- * after it, next, is known. */
+// Choose how to do the pending SWAP at held index s, now that the op
+// after it, next, is known.
 static void decide(int s, int next)
 {
   int len = buf_f[s] >> 1, values = 1 + (buf_f[s] & 1), i;
@@ -423,51 +417,51 @@ static void decide(int s, int next)
   buf_f[s] = values;
 }
 
-/* The relational comparison that means the same with its operands
- * exchanged; valid only on an IR_IS_RELATIONAL op. (Not IR_COMPARE_FLIP:
- * that is the opposite comparison, the one ! gives. */
+// The relational comparison that means the same with its operands
+// exchanged; valid only on an IR_IS_RELATIONAL op. (Not IR_COMPARE_FLIP:
+// that is the opposite comparison, the one ! gives.
 int ir_mirror(int cmp)
 {
   return cmp == IR_LT ? IR_GT : cmp == IR_GT ? IR_LT
          : cmp == IR_LE ? IR_GE : IR_LE;
 }
 
-/* Lower the SW_FREE SWAP at held index i with the op after it, and
- * return how many ops that took: just the SWAP (which needs no code)
- * before a commutative op, or both. */
+// Lower the SW_FREE SWAP at held index i with the op after it, and
+// return how many ops that took: just the SWAP (which needs no code)
+// before a commutative op, or both.
 static int lower_free_swap(int i)
 {
   int next = buf_op[i + 1];
   if (next == IR_SUB) {
-    lower_op(IR_SUB, 0, -1);    /* x - y is -(y - x) */
+    lower_op(IR_SUB, 0, -1);    // x - y is -(y - x)
     lower_op(IR_NEG, 0, -1);
     return 2;
   }
   if (IR_IS_RELATIONAL(next)) {
-    /* The operands are exchanged, so is the comparison. */
+    // The operands are exchanged, so is the comparison.
     lower_op(ir_mirror(next), 0, -1);
     return 2;
   }
   return 1;
 }
 
-/* Label reference counts, by the target a branch names: lab_cnt[]
- * counts the branches that have been lowered (gone from the hold
- * buffer), buf_cnt[] the branches still held, and lab_placed[] the
- * labels whose LABEL op has been lowered. A JOIN, which re-points the
- * branches so far to its a at its f (a label joined at most once,
- * parse.c's join_label), is noted in target_of[] when held, and
- * followed to the end where a count is wanted. The truth runs'
- * lab_clean (below) reads all of this. */
+// Label reference counts, by the target a branch names: lab_cnt[]
+// counts the branches that have been lowered (gone from the hold
+// buffer), buf_cnt[] the branches still held, and lab_placed[] the
+// labels whose LABEL op has been lowered. A JOIN, which re-points the
+// branches so far to its a at its f (a label joined at most once,
+// parse.c's join_label), is noted in target_of[] when held, and
+// followed to the end where a count is wanted. The truth runs'
+// lab_clean (below) reads all of this.
 static int lab_cnt[MAX_LABELS];
 static int buf_cnt[MAX_LABELS];
-static int target_of[MAX_LABELS]; /* a JOIN's a now goes to its f */
+static int target_of[MAX_LABELS]; // a JOIN's a now goes to its f
 static char lab_placed[MAX_LABELS];
 
-/* Count a label's references as its ops are lowered: branches
- * accumulate in lab_cnt[], and the op leaves the hold buffer, so
- * buf_cnt[] loses it; a LABEL places its label and resets the
- * counts. A JOIN's re-pointing is noted when it is held. */
+// Count a label's references as its ops are lowered: branches
+// accumulate in lab_cnt[], and the op leaves the hold buffer, so
+// buf_cnt[] loses it; a LABEL places its label and resets the
+// counts. A JOIN's re-pointing is noted when it is held.
 static void lab_count(int op, int a)
 {
   if (IR_REFS_LABEL(op)) {
@@ -480,9 +474,9 @@ static void lab_count(int op, int a)
   }
 }
 
-/* Lower the oldest n held ops (or one more, if a SWAP takes the op
- * after it), keeping the rest. A SWAP is never lowered before it has
- * been decided, with the op after it held. */
+// Lower the oldest n held ops (or one more, if a SWAP takes the op
+// after it), keeping the rest. A SWAP is never lowered before it has
+// been decided, with the op after it held.
 static void lower_held(int n)
 {
   int i = 0, j, op;
@@ -517,70 +511,68 @@ static void lower_held(int n)
   nbuf -= i;
 }
 
-/*
- * The truth runs (approach.md, decision 31). An if whose arms both
- * return constants, in either order,
- *   cond BRFALSE L0  CONST k1  RETURN  JUMP E  LABEL L0  CONST k2
- *   RETURN
- * or the same without the JUMP when the if's other arm falls out,
- * or a ternary whose arms end in a branch to the ternary's end
- * instead of returns,
- *   cond BRFALSE L0  CONST k1  JUMP L2  LABEL L0  CONST k2  [JUMP
- *   L2]  LABEL L2
- * is the condition's truth: the arms pick out 1 and 0, or both the
- * same k. The run rewrites to the value it computes, dropping the
- * branch, labels and arms (lower_held's nbuf and the lab_* below
- * stay in step):
- *   k1 == k2:  DROP CONST k1
- *   1, then 0: the condition, already 0 or 1 when it ends in a
- *              comparison or C's ! (the lowering masks that to 0
- *              or 1), else boolified: CONST 0 NE
- *   0, then 1: its negation: NOT, or CONST 0 EQ
- * In the if spelling the run's RETURN is kept, so the implicit
- * return the parser appends after it is dead code for the peephole
- * stage; in the ternary spelling the value stays on the stack for
- * whatever follows the expression. A JUMP's label, or the ternary's
- * end label, is eaten with the run when nothing else references it,
- * so it is no barrier for that dead code either. The runs are fixed
- * suffixes, matched against the hold buffer's tail as each op is
- * held; the if spelling defers a step, so the end label after its
- * core may still be eaten. The front end's invariant that all the
- * branches to a label come before the label (parse.c's
- * place_forward) makes the reference counts complete (lab_count,
- * above lower_held).
- */
+// The truth runs (approach.md, decision 31). An if whose arms both
+// return constants, in either order,
+//   cond BRFALSE L0  CONST k1  RETURN  JUMP E  LABEL L0  CONST k2
+//   RETURN
+// or the same without the JUMP when the if's other arm falls out,
+// or a ternary whose arms end in a branch to the ternary's end
+// instead of returns,
+//   cond BRFALSE L0  CONST k1  JUMP L2  LABEL L0  CONST k2  [JUMP
+//   L2]  LABEL L2
+// is the condition's truth: the arms pick out 1 and 0, or both the
+// same k. The run rewrites to the value it computes, dropping the
+// branch, labels and arms (lower_held's nbuf and the lab_* below
+// stay in step):
+//   k1 == k2:  DROP CONST k1
+//   1, then 0: the condition, already 0 or 1 when it ends in a
+//              comparison or C's ! (the lowering masks that to 0
+//              or 1), else boolified: CONST 0 NE
+//   0, then 1: its negation: NOT, or CONST 0 EQ
+// In the if spelling the run's RETURN is kept, so the implicit
+// return the parser appends after it is dead code for the peephole
+// stage; in the ternary spelling the value stays on the stack for
+// whatever follows the expression. A JUMP's label, or the ternary's
+// end label, is eaten with the run when nothing else references it,
+// so it is no barrier for that dead code either. The runs are fixed
+// suffixes, matched against the hold buffer's tail as each op is
+// held; the if spelling defers a step, so the end label after its
+// core may still be eaten. The front end's invariant that all the
+// branches to a label come before the label (parse.c's
+// place_forward) makes the reference counts complete (lab_count,
+// above lower_held).
 
-/* The pending core of an if-spelling run: buf[rp_s] holds its seven
- * ops, and the next op held may be the JUMP's label, eaten with the
- * run. */
+// The pending core of an if-spelling run: buf[rp_s] holds its seven
+// ops, and the next op held may be the JUMP's label, eaten with the
+// run.
 static int rp_on, rp_s, rp_k1, rp_k2, rp_ret, rp_e;
 
-/* The current function (fn_cur) and its parameters' words
- * (fn_params), from IR_FUNC: the tail rewrite (tail_rewrite) stores
- * the call's args into the slots ENTER leaves them, 2k for the kth
- * parameter. Nothing sits under a tail call: it is held only where
- * the body's code is, and no loop layout keeps values there (the
- * counted form's limit and count do sit under its body, but body_ok()
- * in irloop.c keeps calls out of such a body, demoting the loop). */
+// The current function (fn_cur) and its parameters' words
+// (fn_params), from IR_FUNC: the tail rewrite (tail_rewrite) stores
+// the call's args into the slots ENTER leaves them, 2k for the kth
+// parameter. Nothing sits under a tail call: it is held only where
+// the body's code is, and no loop layout keeps values there (the
+// counted form's limit and count do sit under its body, but body_ok()
+// in irloop.c keeps calls out of such a body, demoting the loop).
 static int fn_cur, fn_params;
 
-/* Are k1 then k2 the arms the run rewrites: equal arms, or the two
- * truth values in either order? */
+// Are k1 then k2 the arms the run rewrites: equal arms, or the two
+// truth values in either order?
 static int run_ok(int k1, int k2)
 {
   return k1 == k2 || (k1 == 0 && k2 == 1) || (k1 == 1 && k2 == 0);
 }
 
-/* Is the value a run tests, whose last op is held just before the
- * run at s, already 0 or 1: a comparison, signed or unsigned, or
- * C's !? */
+// Is the value a run tests, whose last op is held just before the
+// run at s, already 0 or 1: a comparison, signed or unsigned, or
+// C's !?
 static int bool_at(int s)
 {
   int op = s > 0 ? buf_op[s - 1] : -1;
   return IR_IS_COMPARE(op) || op == IR_NOT;
 }
 
-/* Where a branch to label x goes, through the held JOINs. */
+// Where a branch to label x goes, through the held JOINs.
 static int lab_final(int x)
 {
   while (target_of[x] != x)
@@ -588,10 +580,10 @@ static int lab_final(int x)
   return x;
 }
 
-/* Is label x referenced, through the JOINs, exactly by the own
- * branches of a run, none of them lowered? A label shared with a
- * short-circuit condition's branches (a && b branches to the same
- * false label twice) fails this. */
+// Is label x referenced, through the JOINs, exactly by the own
+// branches of a run, none of them lowered? A label shared with a
+// short-circuit condition's branches (a && b branches to the same
+// false label twice) fails this.
 static int lab_clean(int x, int own)
 {
   int i, n = 0;
@@ -603,15 +595,15 @@ static int lab_clean(int x, int own)
   return n == own;
 }
 
-/* Rewrite the len-op run at buf[s] to the value it computes: sp 1
- * when its arms end in RETURN (kept, with its a, the words
- * returned), 0 when in a branch to the end. The run's own branches
- * leave the buffer, so buf_cnt[] loses them before the rewrite.
- * Lowers what is decidable, the whole buffer. */
+// Rewrite the len-op run at buf[s] to the value it computes: sp 1
+// when its arms end in RETURN (kept, with its a, the words
+// returned), 0 when in a branch to the end. The run's own branches
+// leave the buffer, so buf_cnt[] loses them before the rewrite.
+// Lowers what is decidable, the whole buffer.
 static void run_do(int s, int len, int sp, int k1, int k2, int ret)
 {
   int o[3][3], m = 0, i;
-  if (!run_ok(k1, k2))      /* the callers gate this; be sure */
+  if (!run_ok(k1, k2))      // the callers gate this; be sure
     { lower_held(nbuf); return; }
   for (i = 0; i < len; i++)
     if (IR_REFS_LABEL(buf_op[s + i]))
@@ -619,15 +611,15 @@ static void run_do(int s, int len, int sp, int k1, int k2, int ret)
   if (k1 == k2) {
     o[m][0] = IR_DROP;  o[m][1] = 0;  o[m][2] = -1;  m++;
     o[m][0] = IR_CONST; o[m][1] = k1; o[m][2] = -1;  m++;
-  } else if (k1 == 0) {            /* k2 is 1: the value is !cond */
+  } else if (k1 == 0) {            // k2 is 1: the value is !cond
     if (bool_at(s)) {
       o[m][0] = IR_NOT; o[m][1] = 0; o[m][2] = -1;  m++;
     } else {
       o[m][0] = IR_CONST; o[m][1] = 0; o[m][2] = -1;  m++;
       o[m][0] = IR_EQ;    o[m][1] = 0; o[m][2] = -1;  m++;
     }
-  } else {                         /* k1 is 1, k2 is 0: the value is
-                                    * cond */
+  } else {                         // k1 is 1, k2 is 0: the value is
+                                   // cond
     if (!bool_at(s)) {
       o[m][0] = IR_CONST; o[m][1] = 0; o[m][2] = -1;  m++;
       o[m][0] = IR_NE;    o[m][1] = 0; o[m][2] = -1;  m++;
@@ -646,9 +638,9 @@ static void run_do(int s, int len, int sp, int k1, int k2, int ret)
   lower_held(nbuf);
 }
 
-/* Match the hold buffer's tail against a truth run and act on it: the
- * if spelling's core sets the pending step for its end label, the
- * other shapes rewrite at once. */
+// Match the hold buffer's tail against a truth run and act on it: the
+// if spelling's core sets the pending step for its end label, the
+// other shapes rewrite at once.
 static void run_match(void)
 {
   int n = nbuf, s, l0, k1, k2;
@@ -661,7 +653,7 @@ static void run_match(void)
     if (n > 6 && buf_op[n - 7] == IR_BRFALSE && buf_a[n - 7] == l0
         && buf_op[n - 6] == IR_CONST && buf_op[n - 5] == IR_RETURN
         && buf_op[n - 4] == IR_JUMP) {
-      /* cond BRFALSE L0 C1 RETURN JUMP E LABEL L0 C2 RETURN */
+      // cond BRFALSE L0 C1 RETURN JUMP E LABEL L0 C2 RETURN
       k1 = buf_a[n - 6];
       if (run_ok(k1, k2) && lab_clean(l0, 1)) {
         rp_on = 1;
@@ -674,7 +666,7 @@ static void run_match(void)
     } else if (buf_op[n - 4] == IR_RETURN && buf_op[n - 5] == IR_CONST
                && buf_op[n - 6] == IR_BRFALSE && buf_a[n - 6] == l0
                && run_ok(buf_a[n - 5], k2) && lab_clean(l0, 1)) {
-      /* cond BRFALSE L0 C1 RETURN LABEL L0 C2 RETURN */
+      // cond BRFALSE L0 C1 RETURN LABEL L0 C2 RETURN
       run_do(n - 6, 6, 1, buf_a[n - 5], k2, buf_a[n - 4]);
     }
   } else if (n > 7 && buf_op[n - 1] == IR_LABEL && buf_op[n - 2] == IR_JUMP
@@ -686,7 +678,7 @@ static void run_match(void)
              && run_ok(buf_a[n - 6], buf_a[n - 3])
              && lab_clean(buf_a[n - 4], 1)
              && lab_clean(buf_a[n - 1], 2)) {
-    /* cond BRFALSE L0 C1 JUMP L2 LABEL L0 C2 JUMP L2 LABEL L2 */
+    // cond BRFALSE L0 C1 JUMP L2 LABEL L0 C2 JUMP L2 LABEL L2
     s = n - 8;
     run_do(s, 8, 0, buf_a[n - 6], buf_a[n - 3], 0);
   } else if (n > 5 && buf_op[n - 1] == IR_LABEL && buf_op[n - 2] == IR_CONST
@@ -697,61 +689,61 @@ static void run_match(void)
              && run_ok(buf_a[n - 5], buf_a[n - 2])
              && lab_clean(buf_a[n - 3], 1)
              && lab_clean(buf_a[n - 1], 1)) {
-    /* cond BRFALSE L0 C1 JUMP L2 LABEL L0 C2 LABEL L2 */
+    // cond BRFALSE L0 C1 JUMP L2 LABEL L0 C2 LABEL L2
     s = n - 6;
     run_do(s, 7, 0, buf_a[n - 5], buf_a[n - 2], 0);
   }
 }
 
-/* The held tail is a comparison and its !: the De Morgan opposite of
- * the comparison, IR_COMPARE_FLIP, is the same value, one op shorter,
- * and it holds wherever the value goes, a branch, a run or an
- * expression, so the ! is dropped (unsigned too: !(a <u b) is a >=u b). */
+// The held tail is a comparison and its !: the De Morgan opposite of
+// the comparison, IR_COMPARE_FLIP, is the same value, one op shorter,
+// and it holds wherever the value goes, a branch, a run or an
+// expression, so the ! is dropped (unsigned too: !(a <u b) is a >=u b).
 static void not_cmp(void)
 {
   buf_op[nbuf - 2] = (char)IR_COMPARE_FLIP(buf_op[nbuf - 2]);
   nbuf--;
 }
 
-/* The held tail is a betweenness: the same local loaded twice, each time
- * compared against a constant, x >= c1 (or >) and x <= c2 (or <), the two
- * fails both branching to the same label, nothing between that could change
- * the local (only the compare and its branch). A char local (0 to 255 when
- * loaded) matches with the range a power-of-two block of bytes, within 0
- * to 255; an int local matches with the range a power-of-two block of
- * words (low <= high signed, so the range is not empty, and the width a
- * power of two from 1 to 65536), or when each load is masked to its low
- * byte (the (char) cast, or an x & 255: load, CONST 255, AND), which is a
- * byte again. Rewrite it to one load, the misalignment r subtracted, the
- * block's mask ANDed, and one compare == (the aligned base), where low and
- * high are the inclusive ends the two comparisons describe (> c1 means low
- * is c1 + 1, < c2 means high is c2 - 1), w == high - low + 1 the block's
- * width, r == (low & 0xFFFF) & (w - 1), and the mask mod - w (256 - w for
- * a byte, 65536 - w for a word) keeps the high bits: the block's low
- * log2(w) bits are free, so a value is in it exactly when those high bits,
- * after shifting off r, are the base's. Emit the general unaligned shape
- * and let the peephole stage make it best: an r of 0 drops the x - 0, an r
- * of 1 is a DECR, an r of 2 to 255 a SUBI, an r above 255 (only for a word)
- * a CW and a SUB, a constant AND an ANDI when the mask is a byte, and the
- * compare's BRFALSE meets the ISEQ as a BRNE. The (char) cast's tail is
- * four ops longer than the plain one; the rewrite shortens it, and the
- * held buffer is lowered as run_do does after a length-changing rewrite,
- * so a later IR_SWAP whose counted block covered the tail falls back to
- * the value exchange, which needs no lengths. Signed only: an unsigned
- * compare is held under its own op, so it never reaches here as a signed
- * one. */
+// The held tail is a betweenness: the same local loaded twice, each time
+// compared against a constant, x >= c1 (or >) and x <= c2 (or <), the two
+// fails both branching to the same label, nothing between that could change
+// the local (only the compare and its branch). A char local (0 to 255 when
+// loaded) matches with the range a power-of-two block of bytes, within 0
+// to 255; an int local matches with the range a power-of-two block of
+// words (low <= high signed, so the range is not empty, and the width a
+// power of two from 1 to 65536), or when each load is masked to its low
+// byte (the (char) cast, or an x & 255: load, CONST 255, AND), which is a
+// byte again. Rewrite it to one load, the misalignment r subtracted, the
+// block's mask ANDed, and one compare == (the aligned base), where low and
+// high are the inclusive ends the two comparisons describe (> c1 means low
+// is c1 + 1, < c2 means high is c2 - 1), w == high - low + 1 the block's
+// width, r == (low & 0xFFFF) & (w - 1), and the mask mod - w (256 - w for
+// a byte, 65536 - w for a word) keeps the high bits: the block's low
+// log2(w) bits are free, so a value is in it exactly when those high bits,
+// after shifting off r, are the base's. Emit the general unaligned shape
+// and let the peephole stage make it best: an r of 0 drops the x - 0, an r
+// of 1 is a DECR, an r of 2 to 255 a SUBI, an r above 255 (only for a word)
+// a CW and a SUB, a constant AND an ANDI when the mask is a byte, and the
+// compare's BRFALSE meets the ISEQ as a BRNE. The (char) cast's tail is
+// four ops longer than the plain one; the rewrite shortens it, and the
+// held buffer is lowered as run_do does after a length-changing rewrite,
+// so a later IR_SWAP whose counted block covered the tail falls back to
+// the value exchange, which needs no lengths. Signed only: an unsigned
+// compare is held under its own op, so it never reaches here as a signed
+// one.
 static void between_rewrite(void)
 {
   int n = nbuf;
   int load, p, k, cmp1, cmp2, lab, low, high, w, r, mod, i;
   if (n < 8)
     return;
-  /* Two shapes, from p: the plain one, load const cmp BRFALSE load const
-   * cmp BRFALSE, eight ops, for a char local (IR_LOCALB) or an int local
-   * (IR_LOCAL); and the (char) cast on an int, load CONST 255 AND const
-   * cmp BRFALSE, repeated, twelve ops. In both the same local is tested
-   * twice, each fail to the same label; k is the cast's four extra ops,
-   * so the plain's first fail is at n - 5, the cast's at n - 7. */
+  // Two shapes, from p: the plain one, load const cmp BRFALSE load const
+  // cmp BRFALSE, eight ops, for a char local (IR_LOCALB) or an int local
+  // (IR_LOCAL); and the (char) cast on an int, load CONST 255 AND const
+  // cmp BRFALSE, repeated, twelve ops. In both the same local is tested
+  // twice, each fail to the same label; k is the cast's four extra ops,
+  // so the plain's first fail is at n - 5, the cast's at n - 7.
   if (buf_op[n - 8] == IR_LOCALB || buf_op[n - 8] == IR_LOCAL) {
     load = buf_op[n - 8];
     p = n - 8;
@@ -759,7 +751,7 @@ static void between_rewrite(void)
     if (buf_op[n - 4] != load || buf_a[n - 8] != buf_a[n - 4]
         || buf_op[n - 7] != IR_CONST || buf_op[n - 3] != IR_CONST
         || buf_op[n - 5] != IR_BRFALSE || buf_op[n - 1] != IR_BRFALSE)
-      return;               /* the same local, loaded twice */
+      return;               // the same local, loaded twice
     cmp1 = buf_op[n - 6];
     cmp2 = buf_op[n - 2];
     low = buf_a[n - 7] + (cmp1 == IR_GT);
@@ -788,28 +780,28 @@ static void between_rewrite(void)
   if (cmp2 != IR_LE && cmp2 != IR_LT)
     return;
   if (buf_a[n - 1] != lab)
-    return;                 /* both fails must go to the same label */
-  for (i = p; i < n; i++)           /* no pending flip or stash in the tail */
+    return;                 // both fails must go to the same label
+  for (i = p; i < n; i++)           // no pending flip or stash in the tail
     if (buf_pre[i])
       return;
   if (low > high)
-    return;  /* signed empty, e.g. x > 32767 && x <= 32767, which the mod
-              * arithmetic would read as the whole word, always true */
+    return;  // signed empty, e.g. x > 32767 && x <= 32767, which the mod
+             // arithmetic would read as the whole word, always true
   if (load == IR_LOCALB || k) {
     if (low < 0 || high > 255)
-      return;               /* the byte block must be whole bytes */
+      return;               // the byte block must be whole bytes
     mod = 256;
   } else
-    mod = 0;                 /* 65536: (0 - w) & 0xFFFF is that mask */
+    mod = 0;                 // 65536: (0 - w) & 0xFFFF is that mask
   w = high - low + 1;
   if ((w & (w - 1)) != 0)
-    return;                 /* the block's width must be a power of two */
-  r = (low & 0xFFFF) & (w - 1);      /* the misalignment, 0 when aligned */
-  /* The tail from p: the load (already there), CONST r, SUB, CONST the
-   * mask, AND, CONST the aligned base, EQ, BRFALSE lab. For the plain
-   * shape that is the eight ops in place; for the cast, four of its
-   * twelve, the rest dropped. All the ops take no f, and the scan above
-   * left no pre bits, so only the op and the a need setting. */
+    return;                 // the block's width must be a power of two
+  r = (low & 0xFFFF) & (w - 1);      // the misalignment, 0 when aligned
+  // The tail from p: the load (already there), CONST r, SUB, CONST the
+  // mask, AND, CONST the aligned base, EQ, BRFALSE lab. For the plain
+  // shape that is the eight ops in place; for the cast, four of its
+  // twelve, the rest dropped. All the ops take no f, and the scan above
+  // left no pre bits, so only the op and the a need setting.
   buf_op[p + 1] = IR_CONST;  buf_a[p + 1] = r;
   buf_op[p + 2] = IR_SUB;    buf_a[p + 2] = 0;
   buf_op[p + 3] = IR_CONST;  buf_a[p + 3] = (mod - w) & 0xFFFF;
@@ -817,20 +809,20 @@ static void between_rewrite(void)
   buf_op[p + 5] = IR_CONST;  buf_a[p + 5] = (low - r) & 0xFFFF;
   buf_op[p + 6] = IR_EQ;     buf_a[p + 6] = 0;
   buf_op[p + 7] = IR_BRFALSE; buf_a[p + 7] = lab;
-  buf_cnt[lab]--;           /* the dropped IR_BRFALSE no longer names lab */
+  buf_cnt[lab]--;           // the dropped IR_BRFALSE no longer names lab
   if (k) {
     nbuf = n - 4;
-    lower_held(nbuf);       /* no parser length may name the tail now */
+    lower_held(nbuf);       // no parser length may name the tail now
   }
 }
 
-/* Rewrite unsigned op *op (IR_UDIV, IR_UMOD or IR_USHR) on a constant
- * right operand, the held CONST just before it, to be done inline, and
- * return its f: x >> c is USHR with f = c (SHR, then a mask); x / 2^n
- * the same, with the CONST made n; x % 2^n an AND (f -1), with the
- * CONST made 2^n - 1. The parser marks only those (a = 1); the rest
- * call helpers (lower.c). The number of ops held stays the same, as
- * blocks' lengths need. */
+// Rewrite unsigned op *op (IR_UDIV, IR_UMOD or IR_USHR) on a constant
+// right operand, the held CONST just before it, to be done inline, and
+// return its f: x >> c is USHR with f = c (SHR, then a mask); x / 2^n
+// the same, with the CONST made n; x % 2^n an AND (f -1), with the
+// CONST made 2^n - 1. The parser marks only those (a = 1); the rest
+// call helpers (lower.c). The number of ops held stays the same, as
+// blocks' lengths need.
 static int unsigned_const(int *op)
 {
   int c, n = 0;
@@ -858,11 +850,11 @@ static int unsigned_const(int *op)
   return n;
 }
 
-/* An unsigned comparison op is about to be held. If its right operand
- * is a constant 0 or 1 that makes it a test of zero, make it that, an
- * EQ or NE with 0, which the peephole stage makes one branch or a NOT:
- * x <u 1 and x <=u 0 are x == 0, and x >=u 1 and x >u 0 are x != 0.
- * Returns the op to hold. */
+// An unsigned comparison op is about to be held. If its right operand
+// is a constant 0 or 1 that makes it a test of zero, make it that, an
+// EQ or NE with 0, which the peephole stage makes one branch or a NOT:
+// x <u 1 and x <=u 0 are x == 0, and x >=u 1 and x >u 0 are x != 0.
+// Returns the op to hold.
 static int u_const(int op)
 {
   int c = nbuf > 0 && buf_op[nbuf - 1] == IR_CONST ? buf_a[nbuf - 1] : -1;
@@ -874,12 +866,12 @@ static int u_const(int op)
   return op;
 }
 
-/* A RETURN a (with f) is about to be held, just after the labels (and
- * joins) at the buffer's tail, from index k: make each held JUMP that
- * goes to one of them that RETURN, which is a byte smaller (LEAVE n,
- * not BRNCH) and one op less where it runs. The stack is the same at a
- * jump as at its label, so the jump and the return do the same. A
- * JUMP's label is where the JOINs held after it send it. */
+// A RETURN a (with f) is about to be held, just after the labels (and
+// joins) at the buffer's tail, from index k: make each held JUMP that
+// goes to one of them that RETURN, which is a byte smaller (LEAVE n,
+// not BRNCH) and one op less where it runs. The stack is the same at a
+// jump as at its label, so the jump and the return do the same. A
+// JUMP's label is where the JOINs held after it send it.
 static void jump_return(int a, int f)
 {
   int k = nbuf, i, j, t;
@@ -891,7 +883,7 @@ static void jump_return(int a, int f)
     t = buf_a[i];
     for (j = i + 1; j < nbuf; j++) {
       if (buf_op[j] == IR_JOIN && buf_a[j] == t) {
-        t = buf_f[j];           /* (a label is joined only unplaced) */
+        t = buf_f[j];           // (a label is joined only unplaced)
       } else if (j >= k && buf_op[j] == IR_LABEL && buf_a[j] == t) {
         buf_cnt[buf_a[i]]--;
         buf_op[i] = IR_RETURN;
@@ -903,10 +895,10 @@ static void jump_return(int a, int f)
   }
 }
 
-/* Hold IR op op until it is lowered. A pending SWAP just before it is
- * decided first. A SWAP whose two blocks are here is done at once, by
- * moving them; one that can't be waits. An unsigned comparison's way is
- * chosen now (in a). The end of a function lowers all. */
+// Hold IR op op until it is lowered. A pending SWAP just before it is
+// decided first. A SWAP whose two blocks are here is done at once, by
+// moving them; one that can't be waits. An unsigned comparison's way is
+// chosen now (in a). The end of a function lowers all.
 void ir_hold(int op, int a, int f)
 {
   if (rp_on) {
@@ -927,7 +919,7 @@ void ir_hold(int op, int a, int f)
   }
   if (IR_IS_U_COMPARE(op)) {
     op = u_const(op);
-    a = 0;                      /* (the parser's block length: unused) */
+    a = 0;                      // (the parser's block length: unused)
   }
   if (op == IR_SWAP) {
     if (f >= 0 && a + f <= nbuf) {
@@ -964,19 +956,19 @@ void ir_hold(int op, int a, int f)
     lower_held(nbuf);
 }
 
-/* The hold buffer's tail is the self tail call at index at, its args
- * held before it and nothing under them: lower what is held, drop
- * the call, and hold the replacement: the args' stores into the
- * parameter slots, a word each at the offsets ENTER leaves them (2k
- * for the kth), and the jump to the function's entry label, after
- * its ENTER. The jump reuses the current frame (no new ENTER per
- * recursion), and the base case's return is the function's, so the
- * call's return is dropped. */
+// The hold buffer's tail is the self tail call at index at, its args
+// held before it and nothing under them: lower what is held, drop
+// the call, and hold the replacement: the args' stores into the
+// parameter slots, a word each at the offsets ENTER leaves them (2k
+// for the kth), and the jump to the function's entry label, after
+// its ENTER. The jump reuses the current frame (no new ENTER per
+// recursion), and the base case's return is the function's, so the
+// call's return is dropped.
 static void tail_rewrite(int at)
 {
   int i, p = fn_params;
   lower_held(at);
-  nbuf = 0;                     /* the call, now at 0, is gone */
+  nbuf = 0;                     // the call, now at 0, is gone
   for (i = p - 1; i >= 0; i--) {
     ir_hold(IR_SETLOCAL, 2 * i, -1);
     ir_hold(IR_DROP, 0, -1);
@@ -984,19 +976,19 @@ static void tail_rewrite(int at)
   ir_hold(IR_JUMP, ENTRY_LABEL, -1);
 }
 
-/* Is label n one that the function buffer has room for? */
+// Is label n one that the function buffer has room for?
 static int good_label(int n)
 {
   return n >= 0 && n < MAX_LABELS;
 }
 
-/* Check IR op op's place and operands, print it for -i, and hold it
- * for lowering. */
+// Check IR op op's place and operands, print it for -i, and hold it
+// for lowering.
 static void do_op(int op, int a, int f)
 {
   int i;
   if (!IR_IS_OP(op) || (op == IR_FUNC) == in_func)
-    ir_damaged();     /* no such op; FUNC outside a function, all else in */
+    ir_damaged();     // no such op; FUNC outside a function, all else in
   switch (op) {
   case IR_FUNC: case IR_CALL: case IR_FUNCADDR:
     if (f < 0 || f >= MAX_FUNCS || !fn_id[f])
@@ -1055,67 +1047,67 @@ static void do_op(int op, int a, int f)
     ir_hold(op, a, f);
     if (op == IR_RETURN && nbuf >= 2
         && buf_op[nbuf - 2] == IR_CALL && buf_f[nbuf - 2] == fn_cur)
-      tail_rewrite(nbuf - 2);   /* a self tail call */
+      tail_rewrite(nbuf - 2);   // a self tail call
   }
   if (op == IR_FUNC)
     ir_hold(IR_LABEL, ENTRY_LABEL, -1);
 }
 
-/* Read the summary, the last record, and write NAME.syms from it, with
- * the code size and the defined functions' offsets filled in, then the
- * helpers this object holds (written first, after its functions): each
- * one's number, size, checksum and name. Each function the summary says
- * is defined must have been written, and no other. It starts with the
- * name file's stamp, which must be the name file's, before any name is
- * spelled from it. */
+// Read the summary, the last record, and write NAME.syms from it, with
+// the code size and the defined functions' offsets filled in, then the
+// helpers this object holds (written first, after its functions): each
+// one's number, size, checksum and name. Each function the summary says
+// is defined must have been written, and no other. It starts with the
+// name file's stamp, which must be the name file's, before any name is
+// spelled from it.
 static void read_summary(void)
 {
   int nf, nd, i, flags, n, ndefined = 0;
   const char *s;
   if (in_func)
     ir_damaged();
-  i = get_word();               /* the name file's stamp */
+  i = get_word();               // the name file's stamp
   n = get_word();
   if (i != nam_ids || n != nam_sum)
-    nam_stale();                /* from another run of ccpp */
+    nam_stale();                // from another run of ccpp
   gen_helpers();
   emit_summary();
-  emit_word(get_word());        /* data size */
-  emit_word(get_word());        /* string pool size */
-  get_word();                   /* code size: 0 */
+  emit_word(get_word());        // data size
+  emit_word(get_word());        // string pool size
+  get_word();                   // code size: 0
   emit_word(emit_code_size());
-  emit_word(get_word());        /* zero-filled (BSS) size */
+  emit_word(get_word());        // zero-filled (BSS) size
   nf = get_word();
   nd = get_word();
   if (nf > MAX_FUNCS || max_func >= nf)
     ir_damaged();
   emit_word(nf);
   emit_word(nd);
-  n = get_byte();               /* modules to import from */
+  n = get_byte();               // modules to import from
   emit_byte(n);
   while (n-- > 0)
     put_name();
   for (i = 0; i < nf; i++) {
     flags = get_byte();
     emit_byte(flags);
-    emit_byte(get_byte());      /* parameter count */
-    get_word();                 /* code offset: 0 */
+    emit_byte(get_byte());      // parameter count
+    get_word();                 // code offset: 0
     if (!(flags & SYM_DEFINED) != (fn_code[i] < 0))
       ir_damaged();
     emit_word(flags & SYM_DEFINED ? fn_code[i] : 0);
     ndefined += (flags & SYM_DEFINED) != 0;
-    emit_word(get_word());      /* type hash */
+    emit_word(get_word());      // type hash
     put_name();
     if (flags & SYM_FIMPORT) {
-      emit_byte(get_byte());    /* its module */
-      put_name();               /* its PLASMA name */
+      emit_byte(get_byte());    // its module
+      put_name();               // its PLASMA name
     }
   }
   if (ndefined != nwritten)
-    ir_damaged();               /* a function written twice */
+    ir_damaged();               // a function written twice
   for (i = 0; i < nd; i++) {
     emit_byte(flags = get_byte());
-    copy(6);                    /* offset, size, type hash */
+    copy(6);                    // offset, size, type hash
     put_name();
     if (flags & SYM_DIMPORT) {
       emit_byte(get_byte());
@@ -1130,7 +1122,7 @@ static void read_summary(void)
   for (i = 0; i < NHELPERS + NHELP_CMDSYS; i++) {
     if (!(helper_used & (1 << i)))
       continue;
-    emit_byte(i);               /* a CMDSYS comparison has no code */
+    emit_byte(i);               // a CMDSYS comparison has no code
     emit_word(i < NHELPERS ? helper_size[i] : 0);
     emit_word(i < NHELPERS ? helper_sum[i] : 0);
     s = helper_name(i);
@@ -1141,8 +1133,8 @@ static void read_summary(void)
   emit_finish();
 }
 
-/* The back end: read the IR file of output name base, and write its
- * stream file and symbol summary. */
+// The back end: read the IR file of output name base, and write its
+// stream file and symbol summary.
 void gen_file(const char *base)
 {
   int t, a = 0, f = -1, prefixed = 0, i;
@@ -1162,19 +1154,19 @@ void gen_file(const char *base)
   emit_open(base);
   for (;;) {
     t = get_byte();
-    /* Prefixes: X (f), then W (a word a), just before their op. */
+    // Prefixes: X (f), then W (a word a), just before their op.
     if (t == IR_REC(REC_SECOND) && !prefixed) {
       f = get_word();
       prefixed = 1;
       continue;
     }
     if (t == IR_REC(REC_WORD) && prefixed < 2) {
-      a = (get_word() ^ 0x8000) - 0x8000;   /* sign-extended */
+      a = (get_word() ^ 0x8000) - 0x8000;   // sign-extended
       prefixed = 2;
       continue;
     }
-    /* An IR op: below IR_TAG_END, or that plus IR_BYTE_OP, with a byte
-     * a after it (not after a W prefix). */
+    // An IR op: below IR_TAG_END, or that plus IR_BYTE_OP, with a byte
+    // a after it (not after a W prefix).
     if (t < IR_TAG_END || (t >= IR_BYTE_OP && t < IR_BYTE_OP + IR_TAG_END
                            && prefixed < 2)) {
       if (t & IR_BYTE_OP) {
@@ -1188,8 +1180,8 @@ void gen_file(const char *base)
       continue;
     }
     if (prefixed)
-      ir_damaged();             /* a prefix not followed by its op */
-    t &= ~IR_REC_CASE;          /* a record: its letter, as the stream's */
+      ir_damaged();             // a prefix not followed by its op
+    t &= ~IR_REC_CASE;          // a record: its letter, as the stream's
     if (REC_IS_PASSTHROUGH(t)) {
       copy_record(t);
     } else if (t == REC_LINE) {
@@ -1213,7 +1205,7 @@ void gen_file(const char *base)
   src_line = 0;
 }
 
-/* After an error in the back end: close its open files (ProDOS needs it). */
+// After an error in the back end: close its open files (ProDOS needs it).
 void gen_abort(void)
 {
   bclose(&in);
@@ -1221,8 +1213,8 @@ void gen_abort(void)
   emit_abort();
 }
 
-/* Remove the stream file and symbol summary of output name base, unless
- * -k asked to keep them. */
+// Remove the stream file and symbol summary of output name base, unless
+// -k asked to keep them.
 void remove_streams(const char *base)
 {
   remove_stream(base, SUFFIX_OBJ);

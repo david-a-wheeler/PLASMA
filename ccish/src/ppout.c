@@ -1,19 +1,17 @@
-/*
- * ccpp's output (../CCPP.md): the token stream, NAME.i, a token at a
- * time; adjacent strings are joined here (C's phase 6), so a string is
- * held until the next token shows it is complete. Lines are brought up
- * to date just before each token is written: next-line codes for up to 3
- * lines, a line's number for more (after a skipped group, say), and a
- * file's number and line on a change of file. At the end, the name file,
- * NAME.nam, and the stamp both files carry.
- *
- * With -E (pp_opt_text, in the full build only: CCISH_TEXT), the tokens
- * are written as text to the standard output instead, as gcc -E writes
- * them: a space between tokens, newlines to keep their lines, and a
- * line marker, # line "file", for a change of file or a long jump. All
- * of it is in the CCISH_TEXT parts below, so that it can be put in the
- * small build too by defining CCISH_TEXT there.
- */
+// ccpp's output (../CCPP.md): the token stream, NAME.i, a token at a
+// time; adjacent strings are joined here (C's phase 6), so a string is
+// held until the next token shows it is complete. Lines are brought up
+// to date just before each token is written: next-line codes for up to 3
+// lines, a line's number for more (after a skipped group, say), and a
+// file's number and line on a change of file. At the end, the name file,
+// NAME.nam, and the stamp both files carry.
+//
+// With -E (pp_opt_text, in the full build only: CCISH_TEXT), the tokens
+// are written as text to the standard output instead, as gcc -E writes
+// them: a space between tokens, newlines to keep their lines, and a
+// line marker, # line "file", for a change of file or a long jump. All
+// of it is in the CCISH_TEXT parts below, so that it can be put in the
+// small build too by defining CCISH_TEXT there.
 #include <stdio.h>
 #include "build.h"
 #include "cclimits.h"
@@ -30,20 +28,20 @@
 static Bfile out;
 static Bfile nam;
 static const char *base_name;
-static unsigned char str[MAX_STR];  /* the string being joined */
+static unsigned char str[MAX_STR];  // the string being joined
 static int str_len;
-static int str_held;                /* a string is in str[] */
-static int last;                    /* the last code written, but lines' */
-static int asm_seen;                /* 1 after __asm__, 2 after its '(' */
-static int out_file;                /* the file and line a reader of the */
-static int out_line;                /* stream is at */
+static int str_held;                // a string is in str[]
+static int last;                    // the last code written, but lines'
+static int asm_seen;                // 1 after __asm__, 2 after its '('
+static int out_file;                // the file and line a reader of the
+static int out_line;                // stream is at
 
 #ifdef CCISH_TEXT
 int pp_opt_text;
-static int text_col;                /* tokens written on the line */
+static int text_col;                // tokens written on the line
 
-/* -E: bring the text's line up to the current one: newlines for up to
- * 8 lines, else a line marker. */
+// -E: bring the text's line up to the current one: newlines for up to
+// 8 lines, else a line marker.
 static void text_sync(void)
 {
   char path[MAX_PATH];
@@ -68,8 +66,8 @@ static void text_sync(void)
   out_line = src_line;
 }
 
-/* -E: write a token as source, after a space if it isn't the line's
- * first. */
+// -E: write a token as source, after a space if it isn't the line's
+// first.
 static void put_text(int code, int val, const unsigned char *s, int n)
 {
   static char buf[4 * MAX_STR + 3];
@@ -80,7 +78,7 @@ static void put_text(int code, int val, const unsigned char *s, int n)
 }
 #endif
 
-/* Create the token stream for output name base, and write its header. */
+// Create the token stream for output name base, and write its header.
 void pp_out_open(const char *base)
 {
   base_name = base;
@@ -99,7 +97,7 @@ void pp_out_open(const char *base)
   bputc(&out, TOK_VERSION);
 }
 
-/* Bring the stream's file and line up to the current ones. */
+// Bring the stream's file and line up to the current ones.
 static void sync(void)
 {
 #ifdef CCISH_TEXT
@@ -125,10 +123,10 @@ static void sync(void)
   out_line = src_line;
 }
 
-/* Write the held string, if any. In an asm label, __asm__("PERR"), it
- * is written as the identifier PERR (interned now), since cccomp keeps
- * no strings but passes ids along for ccgen to spell (approach.md
- * issue 22). */
+// Write the held string, if any. In an asm label, __asm__("PERR"), it
+// is written as the identifier PERR (interned now), since cccomp keeps
+// no strings but passes ids along for ccgen to spell (approach.md
+// issue 22).
 static void flush_str(void)
 {
   int id;
@@ -158,12 +156,12 @@ static void flush_str(void)
   bwrite(&out, str, str_len);
 }
 
-/* Write a token: code, with its value val (a number or an id) or, for a
- * string, its n bytes at s. A string is joined to one held before it;
- * the line is brought up to date before the held string is written, so
- * that a string's line is that of the token after it. An identifier
- * after "struct" or "union" is a tag, with its spelling's hash
- * (CCPP.md, TC_TAG). */
+// Write a token: code, with its value val (a number or an id) or, for a
+// string, its n bytes at s. A string is joined to one held before it;
+// the line is brought up to date before the held string is written, so
+// that a string's line is that of the token after it. An identifier
+// after "struct" or "union" is a tag, with its spelling's hash
+// (CCPP.md, TC_TAG).
 void pp_out(int code, int val, const unsigned char *s, int n)
 {
   int i, mul, hash;
@@ -203,8 +201,8 @@ void pp_out(int code, int val, const unsigned char *s, int n)
     bputw(&out, val);
 }
 
-/* End the token stream: write NAME.nam, then the end code and the
- * stamp (the id count and NAME.nam's checksum), and close both. */
+// End the token stream: write NAME.nam, then the end code and the
+// stamp (the id count and NAME.nam's checksum), and close both.
 void pp_out_finish(void)
 {
   int sum;
@@ -229,7 +227,7 @@ void pp_out_finish(void)
     fatal(187 /* "error writing" */, stream_name(base_name, SUFFIX_I));
 }
 
-/* After an error: close the output files, so that they can be removed. */
+// After an error: close the output files, so that they can be removed.
 void pp_out_abort(void)
 {
   bclose(&nam);

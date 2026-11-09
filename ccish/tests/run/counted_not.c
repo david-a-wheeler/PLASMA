@@ -1,10 +1,10 @@
-/* Loops that must not be counted (approach.md, "Loop design", step 2),
- * though they have a counted loop's shape: the body changes the
- * variable, or the limit, or calls; the variable's address is
- * taken before the loop, or later in an outer loop, before the inner
- * loop runs again; every != loop; and limits the body could change, or
- * that might differ on each pass (limits()). Each must give C's results, and no counted-loop op
- * may appear. */
+// Loops that must not be counted (approach.md, "Loop design", step 2),
+// though they have a counted loop's shape: the body changes the
+// variable, or the limit, or calls; the variable's address is
+// taken before the loop, or later in an outer loop, before the inner
+// loop runs again; every != loop; and limits the body could change, or
+// that might differ on each pass (limits()). Each must give C's results, and no counted-loop op
+// may appear.
 // listing-lacks: INCBRLE
 // listing-lacks: ADDBRLE
 // listing-lacks: DECBRGE
@@ -17,8 +17,8 @@ void show(int n)
   __putc(' ');
 }
 
-/* The first i whose square is at least n (a loop that isn't counted,
- * so that a loop calling it has a call in its body). */
+// The first i whose square is at least n (a loop that isn't counted,
+// so that a loop calling it has a call in its body).
 int find(int n)
 {
   int i = 0;
@@ -27,8 +27,8 @@ int find(int n)
   return i;
 }
 
-/* Not counted: the body changes the variable, or the limit, or calls;
- * the variable's address is taken. */
+// Not counted: the body changes the variable, or the limit, or calls;
+// the variable's address is taken.
 void not_counted(void)
 {
   int i, n, s, *p;
@@ -64,8 +64,8 @@ void not_counted(void)
   __putln();
 }
 
-/* The variable's address taken later in an outer loop, before the
- * inner loop runs again. */
+// The variable's address taken later in an outer loop, before the
+// inner loop runs again.
 void later(void)
 {
   int s, t, j, dummy, *p;
@@ -83,8 +83,8 @@ void later(void)
   __putln();
 }
 
-/* != loops: never counted (never made a <), so exact for signed and
- * unsigned alike, across $8000 and through 0. */
+// != loops: never counted (never made a <), so exact for signed and
+// unsigned alike, across $8000 and through 0.
 void not_equal(void)
 {
   int i, s = 0;
@@ -113,19 +113,19 @@ void not_equal(void)
 int gl = 5;
 int arr[3] = {1, 4, 6};
 
-/* Return 3. */
+// Return 3.
 int three(void)
 {
   return 3;
 }
 
-/* Limits that aren't a constant or a local, which the body could
- * change, or that might differ on each pass. */
+// Limits that aren't a constant or a local, which the body could
+// change, or that might differ on each pass.
 void limits(void)
 {
   int i, s, n, *p, *q;
   s = 0;
-  for (i = 0; i < gl; i++) {    /* the body stores to the global */
+  for (i = 0; i < gl; i++) {    // the body stores to the global
     if (i == 1)
       gl = 3;
     s++;
@@ -135,7 +135,7 @@ void limits(void)
   gl = 5;
   p = &gl;
   s = 0;
-  for (i = 0; i < gl; i++) {    /* through a pointer */
+  for (i = 0; i < gl; i++) {    // through a pointer
     if (i == 0)
       *p = 2;
     s++;
@@ -143,7 +143,7 @@ void limits(void)
   show(s);
   show(i);
   s = 0;
-  for (i = 0; i < arr[1]; i++) {    /* to the element the limit reads */
+  for (i = 0; i < arr[1]; i++) {    // to the element the limit reads
     if (i == 0)
       arr[1] = 2;
     s++;
@@ -151,13 +151,13 @@ void limits(void)
   show(s);
   show(i);
   s = 0;
-  for (i = 0; i < three(); i++)     /* a call in the limit */
+  for (i = 0; i < three(); i++)     // a call in the limit
     s++;
   show(s);
   show(i);
   n = 6;
   s = 0;
-  for (i = 0; i < n - 1; i++) {     /* the body changes a local it reads */
+  for (i = 0; i < n - 1; i++) {     // the body changes a local it reads
     n--;
     s++;
   }
@@ -166,7 +166,7 @@ void limits(void)
   n = 4;
   q = &n;
   s = 0;
-  for (i = 0; i < n - 1; i++)       /* that local's address taken */
+  for (i = 0; i < n - 1; i++)       // that local's address taken
     s++;
   show(s);
   show(i);

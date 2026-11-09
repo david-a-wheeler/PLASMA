@@ -1,25 +1,25 @@
-/* && and || compiled as jumps (approach.md C4, "Conditions as jumps"):
- * evaluation order and short-circuiting, in each statement that takes
- * a condition, in ?:, as expression statements, as values, with
- * constant operands, and in sizeof (not evaluated). t(n) and f(n)
- * record n in a trace; show() prints the trace and clears it. */
+// && and || compiled as jumps (approach.md C4, "Conditions as jumps"):
+// evaluation order and short-circuiting, in each statement that takes
+// a condition, in ?:, as expression statements, as values, with
+// constant operands, and in sizeof (not evaluated). t(n) and f(n)
+// record n in a trace; show() prints the trace and clears it.
 int trace;
 
-/* Record n in the trace, and return it (true unless 0). */
+// Record n in the trace, and return it (true unless 0).
 int t(int n)
 {
   trace = trace * 10 + n;
   return n;
 }
 
-/* Record n in the trace, and return 0 (false). */
+// Record n in the trace, and return 0 (false).
 int f(int n)
 {
   trace = trace * 10 + n;
   return 0;
 }
 
-/* Print the trace and a space, and clear it. */
+// Print the trace and a space, and clear it.
 void show(void)
 {
   __puti(trace);
@@ -27,13 +27,13 @@ void show(void)
   trace = 0;
 }
 
-/* Print Y if c is true, else N. */
+// Print Y if c is true, else N.
 void yn(int c)
 {
   __putc(c ? 'Y' : 'N');
 }
 
-/* a && b, returned as a value. */
+// a && b, returned as a value.
 int both(int a, int b)
 {
   return a && b;
@@ -44,7 +44,7 @@ int main()
   int i, n, x;
   char ch;
 
-  /* if: short-circuiting and order. */
+  // if: short-circuiting and order.
   if (f(1) && t(2)) __putc('Y'); else __putc('N');
   show();
   if (t(1) || t(2)) __putc('Y'); else __putc('N');
@@ -57,7 +57,7 @@ int main()
   show();
   __putln();
 
-  /* As expression statements: only the side effects remain. */
+  // As expression statements: only the side effects remain.
   t(1) && t(2);
   f(3) && t(4);
   show();
@@ -66,7 +66,7 @@ int main()
   show();
   __putln();
 
-  /* Loops. */
+  // Loops.
   i = 0;
   while (i < 10 && i * i < 30)
     i++;
@@ -90,14 +90,14 @@ int main()
   __puti(i); __putc(' ');
   __putln();
 
-  /* ?: with a && or || condition. */
+  // ?: with a && or || condition.
   __puti(t(1) && f(2) ? 10 : 20); __putc(' ');
   show();
   __puti(f(1) || t(2) ? 30 : 40); __putc(' ');
   show();
   __putln();
 
-  /* As values: always 1 or 0. */
+  // As values: always 1 or 0.
   x = t(3) && t(4);
   __puti(x); __putc(' ');
   show();
@@ -116,7 +116,7 @@ int main()
   __puti(both(5, 0)); __putc(' ');
   __putln();
 
-  /* Constant operands; a constant side that decides the result. */
+  // Constant operands; a constant side that decides the result.
   yn(1 && t(1));
   yn(t(2) && 1);
   yn(0 || t(3));

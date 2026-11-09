@@ -1,126 +1,124 @@
-/*
- * Stage 3: peephole optimizer. Holds a small window of machine ops,
- * rewrites patterns at the end of the window, and passes ops on to the
- * emitter.
- *
- * Dead code: after an unconditional exit (LEAVE, RET, BRNCH, SEL),
- * nothing can run until the next barrier, so ops are discarded until
- * then. Barriers are the pseudo-ops: function start and end, labels (a
- * label is where a branch can land, which makes code reachable again),
- * and a SEL's case table (the code after it runs when no case matches).
- * This removes the implicit "return 0" the parser adds after a final
- * return statement, the jump after an if-part that ends in return, and
- * the bodies of if (0) and while (0).
- *
- * Patterns (each checked at the end of the window after every op):
- *   DLW n  DROP              -> SLW n      assignment whose value is unused
- *   SLW n  LLW n             -> DLW n      store, then load the same local
- *                                          (these two also for bytes, and
- *                                          for globals: DAW, SAW, LAW, ...)
- *   CW a   LB / LW / SB / SW -> LAB / LAW / SAB / SAW a   constant address
- *                                          (also after CB, CFFB, or LA)
- *   const  AND               -> ANDI const for a constant from 0 to 255
- *   const  IOR               -> ORI const  for a constant from 1 to 255
- *   DROP  DROP               -> DROP2      one op, as the first leaves
- *                                          the window (pass_oldest()), so
- *                                          that every pattern sees each,
- *                                          and any two that meet merge
- *   ANDI m ANDI n            -> ANDI (m & n)  two byte-ANDs merge: AND
- *                                          is associative, and both clear
- *                                          the high byte, so a (char)
- *                                          cast on an int (ANDI 255)
- *                                          before a mask (ANDI n) is just
- *                                          the mask (255 & n is n)
- *   LLB/LAB n  ANDI 255      -> LLB/LAB n    a byte load already
- *                                          zero-extends, so a full-byte
- *                                          ANDI after it is redundant
- *                                          (a word load keeps it)
- *   const  NEG / COMP        -> const      e.g. -5 is one constant
- *   CW v   CW v              -> CW v DUP     two equal WORD constants: a CW
- *                                          loads two operand bytes, so a stack
- *                                          DUP beats a second CW (4 cyc, 2B)
- *   const OP const           -> const      for ADD, SUB, MUL, DIV, MOD,
- *                                          AND, IOR, XOR, SHL, SHR and the
- *                                          six comparisons: a backstop
- *                                          for the parser's folding,
- *                                          for the leftovers the peep's
- *                                          own rewrites make. Not for a
- *                                          zero divisor or a shift by
- *                                          sixteen or more, which are
- *                                          undefined in C (and the VMs
- *                                          disagree on the first)
- *   CN 0   ADD / SUB         -> (nothing)
- *   CN 0  IOR/XOR/SHL/SHR    -> (nothing)    x | 0, x ^ 0, x << 0, x >> 0
- *                                          and ~~x (COMP COMP) are no-ops,
- *                                          so both ops go
- *   CN 1   ADD / SUB         -> INCR / DECR   (also MINUS1 SUB, ...)
- *   const  ADD / SUB         -> ADDI / SUBI n  for adding n from 2 to 255
- *                                          either way (x - 5, x + -5:
- *                                          SUBI 5)
- *   ADDI/SUBI/INCR/DECR pair -> one op      two small constant adds/subs
- *                                          merge to their sum (x + 5 - 3:
- *                                          ADDI 5 SUBI 3 -> ADDI 2; the
- *                                          front end can't fold it, since
- *                                          x + 5 is not a constant)
- *   LLW n  ADD / IDXW        -> ADDLW / IDXLW n  (also LLB, LAW, LAB:
- *                                          ADDLB, IDXLB, ADDAW, ...)
- *   NEG  BRFLS / BRTRU       -> BRFLS / BRTRU    comparison used as a test
- *   NOT ANDI 1  BRFLS/BRTRU  -> BRTRU / BRFLS    branch on !x
- *   NOT  BRFLS / BRTRU       -> BRTRU / BRFLS    the same, without the
- *                                          ANDI (from x == 0, below)
- *   ISEQ / ISNE  BRFLS/BRTRU -> BREQ / BRNE
- *   CN 0  BREQ / BRNE        -> BRFLS / BRTRU    x == 0 is a test of x
- *   CN 2  MUL                -> DUP ADD    (faster than CN 1 SHL; see rewrite)
- *   CN 3  MUL                -> DUP IDXW
- *   CN 0  MUL                -> DROP CN 0
- *   CN 1  SHL                -> DUP ADD    x << 1, as for x * 2
- *   CN 0  ISEQ               -> NOT        x == 0: PLASMA's NOT gives
- *                                          ISEQ's true ($FFFF) and false
- *   NEG  NEG                 -> (nothing)  -(-x) is x, -32768 too
- *   LLA n / LA a  add c      -> LLA n+c / LA a+c   an address plus a
- *                                          constant (INCR ... SUBI c) is
- *                                          one address, on the terms of
- *                                          a[i + c] below
- *   CN 1  MUL                -> (nothing)
- *   DROP  CN 0               -> ANDI 0     one op pops it and pushes 0
- *   const MUL, const = 2^n   -> CN n SHL   for n from 2 to 15
- *   DUP  ADD  ADD            -> IDXW       p + 2*i
- *   LA a  expr  add c  ADD   -> LA a+c  expr  ADD   a[i + c] (add c is
- *        INCR, DECR, ADDI or SUBI c, expr any index with no effect): the
- *        constant goes into the array's address, twice it before IDXW
- *        (an int's a[i + c]), so the index is one load and ADD fuses
- *        (LA a+c ADDLW i: 2 bytes and 2 ops less). For a data or string
- *        address (ccrel wraps an offset outside the object, which the
- *        index brings back), and for LLA n while n+c is a frame offset;
- *        not an extern's, which ccrel may move to the heap.
- *   DUP  update  store  DROP -> update  store   x++ whose old value is
- *        unused, or (with no update) an assignment's. update is INCR,
- *        DECR, NEG, COMP, ADDI, SUBI, or a constant then ADD or SUB;
- *        store is SLW, SLB, SAW or SAB n, or SW or SB after an address
- *        computed only on the stack (LLW p, LLA a IDXLW i, LA g IDXAW
- *        i, ...), volatile or not (the store is still made).
- *   expr  DROP               -> (nothing)  for an expression with no
- *                                          effect: constants, plain loads
- *                                          (LLW, LAW, LW, ...), DUP, and
- *                                          arithmetic; not a call, a
- *                                          store, or a volatile load,
- *                                          which must happen (I/O is
- *                                          volatile)
- * And at a LEAVE or RET (dead_stores()), the stores to locals just
- * before it, with nothing between but ops on the stack, are dead (the
- * frame goes), unless a later op loads the local back: SLW or SLB n ->
- * DROP, DLW n -> (nothing), DLB n -> ANDI 255 (the byte it keeps); then
- * an expression and that DROP -> (nothing), as above. A loop's exit then a return
- * (SLW i DROP MINUS1 LEAVE) needn't store i.
- * And at a label L, just before it flushes the window (skipping joins):
- *   BRNCH L                  -> (nothing)  a jump to the very next op
- *   Bcond L  BRNCH T         -> Binv T     the opposite branch (BRFLS /
- *                                          BRTRU, BREQ / BRNE); for
- *                                          a && b || c, !(a && b), ...
- * A join (OP_JOIN, from && and ||) emits no code: it isn't a barrier,
- * but waits in the window in order, even in dead code.
- * All are valid for C: they don't change any value the program sees.
- */
+// Stage 3: peephole optimizer. Holds a small window of machine ops,
+// rewrites patterns at the end of the window, and passes ops on to the
+// emitter.
+//
+// Dead code: after an unconditional exit (LEAVE, RET, BRNCH, SEL),
+// nothing can run until the next barrier, so ops are discarded until
+// then. Barriers are the pseudo-ops: function start and end, labels (a
+// label is where a branch can land, which makes code reachable again),
+// and a SEL's case table (the code after it runs when no case matches).
+// This removes the implicit "return 0" the parser adds after a final
+// return statement, the jump after an if-part that ends in return, and
+// the bodies of if (0) and while (0).
+//
+// Patterns (each checked at the end of the window after every op):
+//   DLW n  DROP              -> SLW n      assignment whose value is unused
+//   SLW n  LLW n             -> DLW n      store, then load the same local
+//                                          (these two also for bytes, and
+//                                          for globals: DAW, SAW, LAW, ...)
+//   CW a   LB / LW / SB / SW -> LAB / LAW / SAB / SAW a   constant address
+//                                          (also after CB, CFFB, or LA)
+//   const  AND               -> ANDI const for a constant from 0 to 255
+//   const  IOR               -> ORI const  for a constant from 1 to 255
+//   DROP  DROP               -> DROP2      one op, as the first leaves
+//                                          the window (pass_oldest()), so
+//                                          that every pattern sees each,
+//                                          and any two that meet merge
+//   ANDI m ANDI n            -> ANDI (m & n)  two byte-ANDs merge: AND
+//                                          is associative, and both clear
+//                                          the high byte, so a (char)
+//                                          cast on an int (ANDI 255)
+//                                          before a mask (ANDI n) is just
+//                                          the mask (255 & n is n)
+//   LLB/LAB n  ANDI 255      -> LLB/LAB n    a byte load already
+//                                          zero-extends, so a full-byte
+//                                          ANDI after it is redundant
+//                                          (a word load keeps it)
+//   const  NEG / COMP        -> const      e.g. -5 is one constant
+//   CW v   CW v              -> CW v DUP     two equal WORD constants: a CW
+//                                          loads two operand bytes, so a stack
+//                                          DUP beats a second CW (4 cyc, 2B)
+//   const OP const           -> const      for ADD, SUB, MUL, DIV, MOD,
+//                                          AND, IOR, XOR, SHL, SHR and the
+//                                          six comparisons: a backstop
+//                                          for the parser's folding,
+//                                          for the leftovers the peep's
+//                                          own rewrites make. Not for a
+//                                          zero divisor or a shift by
+//                                          sixteen or more, which are
+//                                          undefined in C (and the VMs
+//                                          disagree on the first)
+//   CN 0   ADD / SUB         -> (nothing)
+//   CN 0  IOR/XOR/SHL/SHR    -> (nothing)    x | 0, x ^ 0, x << 0, x >> 0
+//                                          and ~~x (COMP COMP) are no-ops,
+//                                          so both ops go
+//   CN 1   ADD / SUB         -> INCR / DECR   (also MINUS1 SUB, ...)
+//   const  ADD / SUB         -> ADDI / SUBI n  for adding n from 2 to 255
+//                                          either way (x - 5, x + -5:
+//                                          SUBI 5)
+//   ADDI/SUBI/INCR/DECR pair -> one op      two small constant adds/subs
+//                                          merge to their sum (x + 5 - 3:
+//                                          ADDI 5 SUBI 3 -> ADDI 2; the
+//                                          front end can't fold it, since
+//                                          x + 5 is not a constant)
+//   LLW n  ADD / IDXW        -> ADDLW / IDXLW n  (also LLB, LAW, LAB:
+//                                          ADDLB, IDXLB, ADDAW, ...)
+//   NEG  BRFLS / BRTRU       -> BRFLS / BRTRU    comparison used as a test
+//   NOT ANDI 1  BRFLS/BRTRU  -> BRTRU / BRFLS    branch on !x
+//   NOT  BRFLS / BRTRU       -> BRTRU / BRFLS    the same, without the
+//                                          ANDI (from x == 0, below)
+//   ISEQ / ISNE  BRFLS/BRTRU -> BREQ / BRNE
+//   CN 0  BREQ / BRNE        -> BRFLS / BRTRU    x == 0 is a test of x
+//   CN 2  MUL                -> DUP ADD    (faster than CN 1 SHL; see rewrite)
+//   CN 3  MUL                -> DUP IDXW
+//   CN 0  MUL                -> DROP CN 0
+//   CN 1  SHL                -> DUP ADD    x << 1, as for x * 2
+//   CN 0  ISEQ               -> NOT        x == 0: PLASMA's NOT gives
+//                                          ISEQ's true ($FFFF) and false
+//   NEG  NEG                 -> (nothing)  -(-x) is x, -32768 too
+//   LLA n / LA a  add c      -> LLA n+c / LA a+c   an address plus a
+//                                          constant (INCR ... SUBI c) is
+//                                          one address, on the terms of
+//                                          a[i + c] below
+//   CN 1  MUL                -> (nothing)
+//   DROP  CN 0               -> ANDI 0     one op pops it and pushes 0
+//   const MUL, const = 2^n   -> CN n SHL   for n from 2 to 15
+//   DUP  ADD  ADD            -> IDXW       p + 2*i
+//   LA a  expr  add c  ADD   -> LA a+c  expr  ADD   a[i + c] (add c is
+//        INCR, DECR, ADDI or SUBI c, expr any index with no effect): the
+//        constant goes into the array's address, twice it before IDXW
+//        (an int's a[i + c]), so the index is one load and ADD fuses
+//        (LA a+c ADDLW i: 2 bytes and 2 ops less). For a data or string
+//        address (ccrel wraps an offset outside the object, which the
+//        index brings back), and for LLA n while n+c is a frame offset;
+//        not an extern's, which ccrel may move to the heap.
+//   DUP  update  store  DROP -> update  store   x++ whose old value is
+//        unused, or (with no update) an assignment's. update is INCR,
+//        DECR, NEG, COMP, ADDI, SUBI, or a constant then ADD or SUB;
+//        store is SLW, SLB, SAW or SAB n, or SW or SB after an address
+//        computed only on the stack (LLW p, LLA a IDXLW i, LA g IDXAW
+//        i, ...), volatile or not (the store is still made).
+//   expr  DROP               -> (nothing)  for an expression with no
+//                                          effect: constants, plain loads
+//                                          (LLW, LAW, LW, ...), DUP, and
+//                                          arithmetic; not a call, a
+//                                          store, or a volatile load,
+//                                          which must happen (I/O is
+//                                          volatile)
+// And at a LEAVE or RET (dead_stores()), the stores to locals just
+// before it, with nothing between but ops on the stack, are dead (the
+// frame goes), unless a later op loads the local back: SLW or SLB n ->
+// DROP, DLW n -> (nothing), DLB n -> ANDI 255 (the byte it keeps); then
+// an expression and that DROP -> (nothing), as above. A loop's exit then a return
+// (SLW i DROP MINUS1 LEAVE) needn't store i.
+// And at a label L, just before it flushes the window (skipping joins):
+//   BRNCH L                  -> (nothing)  a jump to the very next op
+//   Bcond L  BRNCH T         -> Binv T     the opposite branch (BRFLS /
+//                                          BRTRU, BREQ / BRNE); for
+//                                          a && b || c, !(a && b), ...
+// A join (OP_JOIN, from && and ||) emits no code: it isn't a barrier,
+// but waits in the window in order, even in dead code.
+// All are valid for C: they don't change any value the program sees.
 #include "build.h"
 #include "cclimits.h"
 #include "obj.h"
@@ -130,16 +128,16 @@
 #include "peep.h"
 #include "emit.h"
 
-/* Big enough for an unused a[i]++ through a pointer with an offset:
- * DUP INCR LLW p LLW i IDXW CB d ADD SW DROP. */
+// Big enough for an unused a[i]++ through a pointer with an offset:
+// DUP INCR LLW p LLW i IDXW CB d ADD SW DROP.
 #define WINDOW 10
 
 static Mop win[WINDOW];
 static int nwin;
-static int dead;            /* code is unreachable until the next barrier */
+static int dead;            // code is unreachable until the next barrier
 
-/* Send the oldest op in the window on to stage 4; or, if it's a DROP
- * and so is the next, make that a DROP2 (one op, a byte less). */
+// Send the oldest op in the window on to stage 4; or, if it's a DROP
+// and so is the next, make that a DROP2 (one op, a byte less).
 static void pass_oldest(void)
 {
   int i;
@@ -152,28 +150,28 @@ static void pass_oldest(void)
   nwin--;
 }
 
-/* Send every op in the window on to stage 4, oldest first. */
+// Send every op in the window on to stage 4, oldest first.
 void peep_flush(void)
 {
   while (nwin > 0)
     pass_oldest();
 }
 
-/* Does op always transfer control (a return or a jump), so that what
- * follows can't run until the next label? */
+// Does op always transfer control (a return or a jump), so that what
+// follows can't run until the next label?
 static int is_unconditional_exit(int op)
 {
   return op == OP_LEAVE || op == OP_RET || op == OP_BRNCH || op == OP_SEL;
 }
 
-/* Is op a branch that pops a value and tests it for zero? */
+// Is op a branch that pops a value and tests it for zero?
 static int is_test_branch(int op)
 {
   return op == OP_BRFLS || op == OP_BRTRU;
 }
 
-/* The branch with the opposite test: BRFLS for BRTRU, BREQ for BRNE,
- * and back; or -1 for any other op. */
+// The branch with the opposite test: BRFLS for BRTRU, BREQ for BRNE,
+// and back; or -1 for any other op.
 static int invert_branch(int op)
 {
   switch (op) {
@@ -185,9 +183,9 @@ static int invert_branch(int op)
   return -1;
 }
 
-/* The store that doesn't keep its value for a store that does (SLW for
- * DLW, and so on for DLB, DAW and DAB), or -1. A volatile one opts in
- * (it is still one store), and keeps its mark. */
+// The store that doesn't keep its value for a store that does (SLW for
+// DLW, and so on for DLB, DAW and DAB), or -1. A volatile one opts in
+// (it is still one store), and keeps its mark.
 static int plain_store(int op)
 {
   int v = op & MOP_VOLATILE;
@@ -200,9 +198,9 @@ static int plain_store(int op)
   return -1;
 }
 
-/* The store that keeps its value, if load reads back what store wrote
- * (DLW for SLW then LLW, and so on for bytes and globals), or -1. The
- * caller checks that the two have the same address. */
+// The store that keeps its value, if load reads back what store wrote
+// (DLW for SLW then LLW, and so on for bytes and globals), or -1. The
+// caller checks that the two have the same address.
 static int keeping_store(int store, int load)
 {
   if (store == OP_SLW && load == OP_LLW) return OP_DLW;
@@ -212,9 +210,9 @@ static int keeping_store(int store, int load)
   return -1;
 }
 
-/* The absolute-address form of a load or store through an address on
- * the stack (LAB for LB, and so on), or -1. A volatile one opts in (it
- * is still one access), and keeps its mark: *SPEAKER is one LAB. */
+// The absolute-address form of a load or store through an address on
+// the stack (LAB for LB, and so on), or -1. A volatile one opts in (it
+// is still one access), and keeps its mark: *SPEAKER is one LAB.
 static int absolute_op(int op)
 {
   int v = op & MOP_VOLATILE;
@@ -227,40 +225,40 @@ static int absolute_op(int op)
   return -1;
 }
 
-/* The op that adds a load's value (ADDLW for LLW, and so on for LLB,
- * LAW and LAB), or that adds twice it if idx (IDXLW, ...), or -1. The
- * VM numbers both sets of four in the loads' order: ADDLB is LLB +
- * $4C, and IDXLB is ADDLB + 8. */
+// The op that adds a load's value (ADDLW for LLW, and so on for LLB,
+// LAW and LAB), or that adds twice it if idx (IDXLW, ...), or -1. The
+// VM numbers both sets of four in the loads' order: ADDLB is LLB +
+// $4C, and IDXLB is ADDLB + 8.
 static int fused_op(int load, int idx)
 {
-  int v = load & MOP_VOLATILE;  /* a volatile load opts in: still one */
+  int v = load & MOP_VOLATILE;  // a volatile load opts in: still one
   load = MOP_PLAIN(load);
   if (load < OP_LLB || load > OP_LAW)
     return -1;
   return (load + (OP_ADDLB - OP_LLB) + (idx ? OP_IDXLB - OP_ADDLB : 0)) | v;
 }
 
-/* Does op take one value and give one back, adding something to it
- * (ADDI, SUBI, or ADDLB to IDXAW), with no other effect? Not a
- * volatile fused load (odd), which drop_expr() mustn't delete. */
+// Does op take one value and give one back, adding something to it
+// (ADDI, SUBI, or ADDLB to IDXAW), with no other effect? Not a
+// volatile fused load (odd), which drop_expr() mustn't delete.
 static int is_add_op(int op)
 {
   return op == OP_ADDI || op == OP_SUBI
          || (op >= OP_ADDLB && op <= OP_IDXAW && !MOP_IS_VOLATILE(op));
 }
 
-/* Is op a one-operand op that can sit between DUP and SLW in the x++
- * pattern below? */
+// Is op a one-operand op that can sit between DUP and SLW in the x++
+// pattern below?
 static int is_unary(int op)
 {
   return op == OP_INCR || op == OP_DECR || op == OP_NEG || op == OP_COMP
          || op == OP_ADDI || op == OP_SUBI;
 }
 
-/* If m is an op that only works on the stack (no branch, call, store,
- * or volatile access; a plain load is one), set how many values it pops
- * and pushes and return 1. Such an op can go when its value does: a
- * plain load has no effect a C program may see. */
+// If m is an op that only works on the stack (no branch, call, store,
+// or volatile access; a plain load is one), set how many values it pops
+// and pushes and return 1. Such an op can go when its value does: a
+// plain load has no effect a C program may see.
 static int stack_effect(Mop *m, int *pops, int *pushes)
 {
   int v;
@@ -287,14 +285,14 @@ static int stack_effect(Mop *m, int *pops, int *pushes)
     *pushes = 2;
     return 1;
   }
-  *pops = 2;                    /* the rest of them take two */
+  *pops = 2;                    // the rest of them take two
   return MOP_IS_ARITH(m->op);
 }
 
-/* The number of ops in the self-contained expression that ends just
- * before window index end and pushes one value (such as the address
- * LLA a LLW i IDXW), or 0 if there isn't one. It scans backward,
- * counting the values still needed. */
+// The number of ops in the self-contained expression that ends just
+// before window index end and pushes one value (such as the address
+// LLA a LLW i IDXW), or 0 if there isn't one. It scans backward,
+// counting the values still needed.
 static int expr_len(int end)
 {
   int need = 1, i, pops, pushes;
@@ -308,10 +306,10 @@ static int expr_len(int end)
   return 0;
 }
 
-/* The number of ops in the store that ends just before window index
- * end: SLW / SLB / SAW / SAB n, or an address expression then SW / SB,
- * either of them volatile (only the copy of its value goes). 0 if
- * there isn't one. */
+// The number of ops in the store that ends just before window index
+// end: SLW / SLB / SAW / SAB n, or an address expression then SW / SB,
+// either of them volatile (only the copy of its value goes). 0 if
+// there isn't one.
 static int store_len(int end)
 {
   int op = end >= 1 ? win[end - 1].op : -1, n;
@@ -325,8 +323,8 @@ static int store_len(int end)
   return 0;
 }
 
-/* The number of ops (1 or 2) in the update that ends just before window
- * index end: a unary op, or a constant then ADD / SUB. 0 if none. */
+// The number of ops (1 or 2) in the update that ends just before window
+// index end: a unary op, or a constant then ADD / SUB. 0 if none.
 static int update_len(int end)
 {
   int v;
@@ -338,17 +336,17 @@ static int update_len(int end)
   return 0;
 }
 
-/* With DROP at the end of the window, match DUP update store DROP (an
- * x++ whose old value is unused), or DUP store DROP (an assignment
- * whose value is unused, such as a volatile's, which cccomp keeps),
- * and remove the DUP and the DROP. Returns 1 if it did. */
+// With DROP at the end of the window, match DUP update store DROP (an
+// x++ whose old value is unused), or DUP store DROP (an assignment
+// whose value is unused, such as a volatile's, which cccomp keeps),
+// and remove the DUP and the DROP. Returns 1 if it did.
 static int drop_dup(void)
 {
   int s = store_len(nwin - 1), u, d, i;
   if (s == 0)
     return 0;
   u = update_len(nwin - 1 - s);
-  d = nwin - 2 - s - u;           /* where the DUP must be */
+  d = nwin - 2 - s - u;           // where the DUP must be
   if (d < 0 || win[d].op != OP_DUP)
     return 0;
   for (i = d; i < nwin - 2; i++)
@@ -359,41 +357,41 @@ static int drop_dup(void)
 
 static int fold_addr(Mop *base, Mop *m);
 
-/* The patterns on loads and stores, with a and b the last two ops in
- * the window. Returns 1 if one changed anything. */
+// The patterns on loads and stores, with a and b the last two ops in
+// the window. Returns 1 if one changed anything.
 static int rewrite_load_store(Mop *a, Mop *b)
 {
   int v;
 
-  /* DLW n DROP -> SLW n (also DLB, DAW, DAB): an assignment whose
-   * value is unused just stores, without keeping a copy to throw away. */
+  // DLW n DROP -> SLW n (also DLB, DAW, DAB): an assignment whose
+  // value is unused just stores, without keeping a copy to throw away.
   if (plain_store(a->op) >= 0 && b->op == OP_DROP) {
     a->op = plain_store(a->op);
     nwin--;
     return 1;
   }
-  /* LLA n add c -> LLA n+c, and LA a add c -> LA a+c: one address, on
-   * rewrite_index()'s terms. */
+  // LLA n add c -> LLA n+c, and LA a add c -> LA a+c: one address, on
+  // rewrite_index()'s terms.
   if (fold_addr(a, b)) {
     nwin--;
     return 1;
   }
-  /* SLW n LLW n -> DLW n (also for bytes, and SAW / SAB with LAW / LAB):
-   * storing a variable and then loading it again becomes a store that
-   * keeps the value. DLB keeps the stored byte, which is what LLB would
-   * load. */
+  // SLW n LLW n -> DLW n (also for bytes, and SAW / SAB with LAW / LAB):
+  // storing a variable and then loading it again becomes a store that
+  // keeps the value. DLB keeps the stored byte, which is what LLB would
+  // load.
   if (keeping_store(a->op, b->op) >= 0 && a->a == b->a
       && a->fix == b->fix && a->fn == b->fn) {
     a->op = keeping_store(a->op, b->op);
     nwin--;
     return 1;
   }
-  /* CW addr LB -> LAB addr (also LW, SB, SW, after CB or CFFB, or LA
-   * for a data address): a load or store through a constant address
-   * is one op, such as reading the speaker at $C030. Not after CN or
-   * MINUS1, which are shorter than LAB's address word, nor for an
-   * object that may move to the heap (FIX_HEAP), whose LA ccrel may
-   * turn into an LAW. */
+  // CW addr LB -> LAB addr (also LW, SB, SW, after CB or CFFB, or LA
+  // for a data address): a load or store through a constant address
+  // is one op, such as reading the speaker at $C030. Not after CN or
+  // MINUS1, which are shorter than LAB's address word, nor for an
+  // object that may move to the heap (FIX_HEAP), whose LA ccrel may
+  // turn into an LAW.
   if (absolute_op(b->op) >= 0 && a->fix != FIX_HEAP
       && (a->op == OP_CW || a->op == OP_CB || a->op == OP_CFFB
           || a->op == OP_LA)) {
@@ -405,9 +403,9 @@ static int rewrite_load_store(Mop *a, Mop *b)
     nwin--;
     return 1;
   }
-  /* LLW n ADD -> ADDLW n, and LLW n IDXW -> IDXLW n (also for LLB, LAW
-   * and LAB): adding a variable's value, or twice it, is one op, a
-   * byte smaller. */
+  // LLW n ADD -> ADDLW n, and LLW n IDXW -> IDXLW n (also for LLB, LAW
+  // and LAB): adding a variable's value, or twice it, is one op, a
+  // byte smaller.
   if ((b->op == OP_ADD || b->op == OP_IDXW)
       && fused_op(a->op, b->op == OP_IDXW) >= 0) {
     a->op = fused_op(a->op, b->op == OP_IDXW);
@@ -419,9 +417,9 @@ static int rewrite_load_store(Mop *a, Mop *b)
 
 static int add_value(Mop *m, int *v);
 
-/* If base is an address that can take an addend d (LA of data or a
- * string, which ccrel wraps; LLA while it stays a frame offset; not an
- * extern's, which ccrel may move to the heap), add it and return 1. */
+// If base is an address that can take an addend d (LA of data or a
+// string, which ccrel wraps; LLA while it stays a frame offset; not an
+// extern's, which ccrel may move to the heap), add it and return 1.
 static int add_to_addr(Mop *base, int d)
 {
   if (base->op == OP_LA ? base->fix != FIX_DATA && base->fix != FIX_STR
@@ -431,16 +429,16 @@ static int add_to_addr(Mop *base, int d)
   return 1;
 }
 
-/* LLA n or LA a (base), then a constant add (m): fold it, and return 1. */
+// LLA n or LA a (base), then a constant add (m): fold it, and return 1.
 static int fold_addr(Mop *base, Mop *m)
 {
   int v;
   return add_value(m, &v) && add_to_addr(base, v);
 }
 
-/* With b an ADD or IDXW and a a constant add, the a[i + c] pattern
- * (the list at the top): fold c into the array's address. Returns 1 if
- * it did. */
+// With b an ADD or IDXW and a a constant add, the a[i + c] pattern
+// (the list at the top): fold c into the array's address. Returns 1 if
+// it did.
 static int rewrite_index(Mop *a, Mop *b)
 {
   int v, n, d;
@@ -452,20 +450,20 @@ static int rewrite_index(Mop *a, Mop *b)
   d = b->op == OP_IDXW ? 2 * v : v;
   if (!add_to_addr(base, d))
     return 0;
-  *a = *b;                      /* the add goes */
+  *a = *b;                      // the add goes
   nwin--;
   return 1;
 }
 
-/* The patterns on a constant (a) and the op that uses it (b). Returns
- * 1 if one changed anything. */
+// The patterns on a constant (a) and the op that uses it (b). Returns
+// 1 if one changed anything.
 static int rewrite_const(Mop *a, Mop *b)
 {
   int v;
 
-  /* const AND -> ANDI const, for a constant from 0 to 255: one
-   * two-byte op (it clears the high byte, as the AND would); and const
-   * IOR -> ORI const, from 1 to 255 (x | 0 is rewrite_noop()'s). */
+  // const AND -> ANDI const, for a constant from 0 to 255: one
+  // two-byte op (it clears the high byte, as the AND would); and const
+  // IOR -> ORI const, from 1 to 255 (x | 0 is rewrite_noop()'s).
   if ((b->op == OP_AND || b->op == OP_IOR) && mop_const_value(a, &v)
       && !(v & 0xFF00) && (v || b->op == OP_AND)) {
     a->op = MOP_BYTE_FORM(b->op);
@@ -473,30 +471,30 @@ static int rewrite_const(Mop *a, Mop *b)
     nwin--;
     return 1;
   }
-  /* CN 0 ISEQ -> NOT: x == 0 is !x, with ISEQ's own true ($FFFF). */
+  // CN 0 ISEQ -> NOT: x == 0 is !x, with ISEQ's own true ($FFFF).
   if (b->op == OP_ISEQ && mop_const_value(a, &v) && v == 0) {
     a->op = OP_NOT;
     nwin--;
     return 1;
   }
-  /* CN 1 SHL -> DUP ADD: x << 1, as rewrite_mul() does x * 2. */
+  // CN 1 SHL -> DUP ADD: x << 1, as rewrite_mul() does x * 2.
   if (b->op == OP_SHL && mop_const_value(a, &v) && v == 1) {
     a->op = OP_DUP;
     b->op = OP_ADD;
     return 1;
   }
-  /* const NEG / COMP -> const: negate or complement the constant at
-   * compile time (a backstop for the parser's folding). */
+  // const NEG / COMP -> const: negate or complement the constant at
+  // compile time (a backstop for the parser's folding).
   if ((b->op == OP_NEG || b->op == OP_COMP) && mop_const_value(a, &v)) {
     mop_const(a, b->op == OP_NEG ? -v : ~v);
     nwin--;
     return 1;
   }
-  /* const ADD / SUB, adding d (the constant, or minus it for SUB):
-   * d = 0 -> nothing (p[0] when p is itself loaded, as in
-   * names[i][0]); 1 or -1 -> INCR or DECR; up to 255 either way ->
-   * ADDI or SUBI (x - 5 and x + -5 are both SUBI 5). One op instead of
-   * two: a byte smaller after CB or CFFB, and faster after CN. */
+  // const ADD / SUB, adding d (the constant, or minus it for SUB):
+  // d = 0 -> nothing (p[0] when p is itself loaded, as in
+  // names[i][0]); 1 or -1 -> INCR or DECR; up to 255 either way ->
+  // ADDI or SUBI (x - 5 and x + -5 are both SUBI 5). One op instead of
+  // two: a byte smaller after CB or CFFB, and faster after CN.
   if ((b->op == OP_ADD || b->op == OP_SUB) && a->fix == FIX_NONE
       && mop_const_value(a, &v)) {
     int d = b->op == OP_ADD ? v : -v, op = OP_ADDI;
@@ -519,12 +517,12 @@ static int rewrite_const(Mop *a, Mop *b)
   return 0;
 }
 
-/* Two consecutive byte-ANDs merge into one (ANDI m ANDI n becomes
- * ANDI (m & n)): AND is associative, and both clear the high byte, so
- * the earlier one is subsumed by the combined mask. A (char) cast on
- * an int (ANDI 255) meeting a small & constant (ANDI n) is the case
- * this folds, since 255 & n is n. It is pure stack arithmetic (no read
- * is added or removed), so it is safe even for a volatile value. */
+// Two consecutive byte-ANDs merge into one (ANDI m ANDI n becomes
+// ANDI (m & n)): AND is associative, and both clear the high byte, so
+// the earlier one is subsumed by the combined mask. A (char) cast on
+// an int (ANDI 255) meeting a small & constant (ANDI n) is the case
+// this folds, since 255 & n is n. It is pure stack arithmetic (no read
+// is added or removed), so it is safe even for a volatile value.
 static int rewrite_andi(Mop *a, Mop *b)
 {
   if (a->op == OP_ANDI && b->op == OP_ANDI) {
@@ -535,9 +533,9 @@ static int rewrite_andi(Mop *a, Mop *b)
   return 0;
 }
 
-/* If m adds a small constant to the top of the stack (INCR, DECR, ADDI
- * or SUBI), set *v to that constant (positive for an add) and return 1;
- * 0 otherwise. INCR and DECR are the +/-1 forms of ADDI and SUBI. */
+// If m adds a small constant to the top of the stack (INCR, DECR, ADDI
+// or SUBI), set *v to that constant (positive for an add) and return 1;
+// 0 otherwise. INCR and DECR are the +/-1 forms of ADDI and SUBI.
 static int add_value(Mop *m, int *v)
 {
   switch (m->op) {
@@ -549,12 +547,12 @@ static int add_value(Mop *m, int *v)
   return 0;
 }
 
-/* Two small additive updates merge into one: the front end emits each
- * constant add or subtract as its own op (x + 5 - 3 is ADDI 5 SUBI 3,
- * since x + 5 is not a constant), but their sum is a constant, so one
- * op suffices. The sum is 0 -> drop both, +/-1 -> INCR / DECR,
- * +/-2 to +/-255 -> ADDI / SUBI; a larger magnitude stays as two ops.
- * It is pure stack arithmetic, safe even for a volatile value. */
+// Two small additive updates merge into one: the front end emits each
+// constant add or subtract as its own op (x + 5 - 3 is ADDI 5 SUBI 3,
+// since x + 5 is not a constant), but their sum is a constant, so one
+// op suffices. The sum is 0 -> drop both, +/-1 -> INCR / DECR,
+// +/-2 to +/-255 -> ADDI / SUBI; a larger magnitude stays as two ops.
+// It is pure stack arithmetic, safe even for a volatile value.
 static int rewrite_addsub(Mop *a, Mop *b)
 {
   int x, y, t;
@@ -578,10 +576,10 @@ static int rewrite_addsub(Mop *a, Mop *b)
   return 1;
 }
 
-/* A constant 0 under a no-op op (x | 0, x ^ 0, x << 0, x >> 0), or a
- * double complement (~~x), leaves the value unchanged, so both ops go.
- * The front end already folds x + 0 and x - 0; these are the rest.
- * Pure stack arithmetic, safe even for a volatile value. */
+// A constant 0 under a no-op op (x | 0, x ^ 0, x << 0, x >> 0), or a
+// double complement (~~x), leaves the value unchanged, so both ops go.
+// The front end already folds x + 0 and x - 0; these are the rest.
+// Pure stack arithmetic, safe even for a volatile value.
 static int rewrite_noop(Mop *a, Mop *b)
 {
   int v;
@@ -598,11 +596,10 @@ static int rewrite_noop(Mop *a, Mop *b)
   return 0;
 }
 
-/* A byte load (LLB, LAB) already zero-extends, so a full-byte ANDI 255
- * right after it is redundant and goes. Not a word load (LLW, LAW),
- * whose high byte may be set. Pure stack, safe even for a volatile.
- * Feeds on the const AND -> ANDI peep (c & 255 becomes LLB ANDI 255).
- */
+// A byte load (LLB, LAB) already zero-extends, so a full-byte ANDI 255
+// right after it is redundant and goes. Not a word load (LLW, LAW),
+// whose high byte may be set. Pure stack, safe even for a volatile.
+// Feeds on the const AND -> ANDI peep (c & 255 becomes LLB ANDI 255).
 static int rewrite_load_andi(Mop *a, Mop *b)
 {
   if (b->op == OP_ANDI && b->a == 0xFF
@@ -613,11 +610,11 @@ static int rewrite_load_andi(Mop *a, Mop *b)
   return 0;
 }
 
-/* DROP CN 0 (discard a value, then push 0) is one ANDI 0: it pops the
- * value and pushes 0 in one op instead of two. The value is still
- * computed, for its side effects; only the drop-and-replace is cheaper.
- * Same two bytes, one fewer instruction. Pure stack, safe even for a
- * volatile value. */
+// DROP CN 0 (discard a value, then push 0) is one ANDI 0: it pops the
+// value and pushes 0 in one op instead of two. The value is still
+// computed, for its side effects; only the drop-and-replace is cheaper.
+// Same two bytes, one fewer instruction. Pure stack, safe even for a
+// volatile value.
 static int rewrite_drop_zero(Mop *a, Mop *b)
 {
   int v;
@@ -630,12 +627,12 @@ static int rewrite_drop_zero(Mop *a, Mop *b)
   return 0;
 }
 
-/* Two equal WORD (CW) constants in a row push the same value twice; the
- * second is a DUP. A CW loads two operand bytes, so the stack copy (DUP,
- * 44 cycles) is cheaper than a second CW (48) by 4 cycles and 2 bytes. The
- * cheaper forms (MINUS1, CN, CB, CFFB) load from the opcode or one operand
- * byte (36-43 cycles), where a DUP is a cycle regression or a wash, so they
- * stay as two constants. Pure stack, safe even for a volatile value. */
+// Two equal WORD (CW) constants in a row push the same value twice; the
+// second is a DUP. A CW loads two operand bytes, so the stack copy (DUP,
+// 44 cycles) is cheaper than a second CW (48) by 4 cycles and 2 bytes. The
+// cheaper forms (MINUS1, CN, CB, CFFB) load from the opcode or one operand
+// byte (36-43 cycles), where a DUP is a cycle regression or a wash, so they
+// stay as two constants. Pure stack, safe even for a volatile value.
 static int rewrite_dup_const(Mop *a, Mop *b)
 {
   int va, vb;
@@ -649,8 +646,8 @@ static int rewrite_dup_const(Mop *a, Mop *b)
   return 0;
 }
 
-/* The 16-bit pattern in v as a signed int, as parse.c's wrap16: the
- * unsigned arithmetic works whether the host's int has 16 or 32 bits. */
+// The 16-bit pattern in v as a signed int, as parse.c's wrap16: the
+// unsigned arithmetic works whether the host's int has 16 or 32 bits.
 static int signed_word(int v)
 {
   unsigned u = (unsigned)v & 0xFFFF;
@@ -659,9 +656,9 @@ static int signed_word(int v)
   return (int)u;
 }
 
-/* c shifted right by y (0 to 15) as a signed 16-bit word, rounding
- * toward minus infinity: the sign bit shifts in, as on every VM. The
- * count is small, so a shift at a time is the whole op. */
+// c shifted right by y (0 to 15) as a signed 16-bit word, rounding
+// toward minus infinity: the sign bit shifts in, as on every VM. The
+// count is small, so a shift at a time is the whole op.
 static int shr_word(int c, int y)
 {
   unsigned u = (unsigned)c & 0xFFFF;
@@ -670,13 +667,13 @@ static int shr_word(int c, int y)
   return signed_word((int)u);
 }
 
-/* If op folds two constants, c on the stack below a, set *v to the
- * 16-bit value the VM's op would push and return 1; 0 if the peep
- * must not fold it. The values are as signed words where the op is
- * signed (the VM's words are two's complement): division and modulo
- * are C's (toward zero), the comparisons give the VM's $FFFF / 0. The
- * no cases are C's undefined ones: a zero divisor, where the VMs
- * disagree, and a shift by sixteen or more. */
+// If op folds two constants, c on the stack below a, set *v to the
+// 16-bit value the VM's op would push and return 1; 0 if the peep
+// must not fold it. The values are as signed words where the op is
+// signed (the VM's words are two's complement): division and modulo
+// are C's (toward zero), the comparisons give the VM's $FFFF / 0. The
+// no cases are C's undefined ones: a zero divisor, where the VMs
+// disagree, and a shift by sixteen or more.
 static int fold_pair(int op, int c, int a, int *v)
 {
   int x = signed_word(c);
@@ -707,26 +704,26 @@ static int fold_pair(int op, int c, int a, int *v)
   return 1;
 }
 
-/* The patterns that end in a branch (b), with a the op before it.
- * Returns 1 if one changed anything. */
+// The patterns that end in a branch (b), with a the op before it.
+// Returns 1 if one changed anything.
 static int rewrite_branch(Mop *a, Mop *b)
 {
   int v;
 
-  /* NEG BRFLS / BRTRU -> BRFLS / BRTRU: negating doesn't change
-   * whether a value is 0, so a comparison's NEG (which makes C's 1)
-   * isn't needed when the result only feeds a branch. */
+  // NEG BRFLS / BRTRU -> BRFLS / BRTRU: negating doesn't change
+  // whether a value is 0, so a comparison's NEG (which makes C's 1)
+  // isn't needed when the result only feeds a branch.
   if (a->op == OP_NEG && is_test_branch(b->op)) {
     *a = *b;
     nwin--;
     return 1;
   }
-  /* NOT ANDI n BRFLS / BRTRU -> BRTRU / BRFLS: branch on !x by testing x
-   * with the opposite branch. The ANDI n (n non-zero) only normalizes the
-   * truth value to 1 (PLASMA's NOT gives $FFFF), and a test branch cares
-   * only about zero vs non-zero, so the mask is dropped. (Eliding it before
-   * a non-branch truth use is NOT done: a following NOT belongs to another
-   * !expr and would be clobbered.) */
+  // NOT ANDI n BRFLS / BRTRU -> BRTRU / BRFLS: branch on !x by testing x
+  // with the opposite branch. The ANDI n (n non-zero) only normalizes the
+  // truth value to 1 (PLASMA's NOT gives $FFFF), and a test branch cares
+  // only about zero vs non-zero, so the mask is dropped. (Eliding it before
+  // a non-branch truth use is NOT done: a following NOT belongs to another
+  // !expr and would be clobbered.)
   if (nwin >= 3 && win[nwin - 3].op == OP_NOT && a->op == OP_ANDI
       && a->a != 0 && is_test_branch(b->op)) {
     win[nwin - 3] = *b;
@@ -734,15 +731,15 @@ static int rewrite_branch(Mop *a, Mop *b)
     nwin -= 2;
     return 1;
   }
-  /* NOT BRFLS / BRTRU -> BRTRU / BRFLS: branch on !x by testing x. */
+  // NOT BRFLS / BRTRU -> BRTRU / BRFLS: branch on !x by testing x.
   if (a->op == OP_NOT && is_test_branch(b->op)) {
     *a = *b;
     a->op = invert_branch(b->op);
     nwin--;
     return 1;
   }
-  /* ISEQ / ISNE then BRFLS / BRTRU -> BREQ / BRNE: compare and branch
-   * in one op. */
+  // ISEQ / ISNE then BRFLS / BRTRU -> BREQ / BRNE: compare and branch
+  // in one op.
   if ((a->op == OP_ISEQ || a->op == OP_ISNE) && is_test_branch(b->op)) {
     int on_true = b->op == OP_BRTRU;
     int on_equal = (a->op == OP_ISEQ) == on_true;
@@ -751,8 +748,8 @@ static int rewrite_branch(Mop *a, Mop *b)
     nwin--;
     return 1;
   }
-  /* CN 0 BREQ / BRNE -> BRFLS / BRTRU: comparing with 0 is just a
-   * test of the value. */
+  // CN 0 BREQ / BRNE -> BRFLS / BRTRU: comparing with 0 is just a
+  // test of the value.
   if ((b->op == OP_BREQ || b->op == OP_BRNE)
       && mop_const_value(a, &v) && v == 0) {
     *a = *b;
@@ -763,48 +760,48 @@ static int rewrite_branch(Mop *a, Mop *b)
   return 0;
 }
 
-/* const MUL -> cheaper ops for some constants, as PLASMA's own
- * optimizer does (src/toolsrc/codeopt.pla), with a the constant and b
- * the MUL. MUL is a 16-step shift-and-add loop on the 6502 VMs, so it
- * is the slowest choice. Returns 1 if it changed anything. */
+// const MUL -> cheaper ops for some constants, as PLASMA's own
+// optimizer does (src/toolsrc/codeopt.pla), with a the constant and b
+// the MUL. MUL is a 16-step shift-and-add loop on the 6502 VMs, so it
+// is the slowest choice. Returns 1 if it changed anything.
 static int rewrite_mul(Mop *a, Mop *b)
 {
   int v;
 
   if (b->op == OP_MUL && mop_const_value(a, &v)) {
-    /* x * 2 -> DUP ADD, not CN 1 SHL. Both are 2 bytes, but on the
-     * 6502 VM DUP ADD takes about 52 cycles and CN 1 SHL about 59:
-     * SHL is a general shifter that saves Y, checks for counts of 8
-     * or more, and loops. (codeopt.pla even turns CN 1 SHL into
-     * DUP ADD.) It also lets p + i fuse into IDXW, below. */
+    // x * 2 -> DUP ADD, not CN 1 SHL. Both are 2 bytes, but on the
+    // 6502 VM DUP ADD takes about 52 cycles and CN 1 SHL about 59:
+    // SHL is a general shifter that saves Y, checks for counts of 8
+    // or more, and loops. (codeopt.pla even turns CN 1 SHL into
+    // DUP ADD.) It also lets p + i fuse into IDXW, below.
     if (v == 2) {
       a->op = OP_DUP;
       a->a = 0;
       b->op = OP_ADD;
       return 1;
     }
-    /* x * 3 -> DUP IDXW: x + 2x, in 2 bytes. */
+    // x * 3 -> DUP IDXW: x + 2x, in 2 bytes.
     if (v == 3) {
       a->op = OP_DUP;
       a->a = 0;
       b->op = OP_IDXW;
       return 1;
     }
-    /* x * 0 -> DROP CN 0: x is still computed, for its side
-     * effects (such as a call), then replaced by 0. */
+    // x * 0 -> DROP CN 0: x is still computed, for its side
+    // effects (such as a call), then replaced by 0.
     if (v == 0) {
       a->op = OP_DROP;
       mop_const(b, 0);
       return 1;
     }
-    /* x * 1 -> x: nothing to do. */
+    // x * 1 -> x: nothing to do.
     if (v == 1) {
       nwin -= 2;
       return 1;
     }
-    /* x * 2^n, n from 2 to 15 -> CN n SHL: the same size as the
-     * MUL, and much faster. (Not for x / 2^n: SHR rounds toward
-     * minus infinity, but C's / truncates toward zero.) */
+    // x * 2^n, n from 2 to 15 -> CN n SHL: the same size as the
+    // MUL, and much faster. (Not for x / 2^n: SHR rounds toward
+    // minus infinity, but C's / truncates toward zero.)
     if ((v & (v - 1)) == 0) {
       unsigned u = (unsigned)v;
       int n = 0;
@@ -822,16 +819,16 @@ static int rewrite_mul(Mop *a, Mop *b)
 
 static void remove_op(int i);
 
-/* Does window op m read a local: LLW, LLB, or an add of one? */
+// Does window op m read a local: LLW, LLB, or an add of one?
 static int reads_local(Mop *m)
 {
   return m->op == OP_LLW || m->op == OP_LLB || m->op == OP_ADDLB
          || m->op == OP_ADDLW || m->op == OP_IDXLB || m->op == OP_IDXLW;
 }
 
-/* Remove the DROP at window index i and, if the expression before it
- * has no effect (expr_len(): plain loads and arithmetic), that too.
- * Returns how many ops before i went. */
+// Remove the DROP at window index i and, if the expression before it
+// has no effect (expr_len(): plain loads and arithmetic), that too.
+// Returns how many ops before i went.
 static int drop_expr(int i)
 {
   int n = expr_len(i), k;
@@ -843,11 +840,11 @@ static int drop_expr(int i)
 }
 
 
-/* The window's last op is a LEAVE or RET: remove the stores to locals
- * before it that nothing reads back (the patterns at the top). It scans
- * back over ops that only work on the stack (stack_effect(), but no
- * load through an address, which might read a local through a pointer),
- * DROPs, loads of locals, and the stores, and stops at anything else. */
+// The window's last op is a LEAVE or RET: remove the stores to locals
+// before it that nothing reads back (the patterns at the top). It scans
+// back over ops that only work on the stack (stack_effect(), but no
+// load through an address, which might read a local through a pointer),
+// DROPs, loads of locals, and the stores, and stops at anything else.
 static void dead_stores(void)
 {
   int i, j, pops, pushes, nread = 0, read[WINDOW];
@@ -860,7 +857,7 @@ static void dead_stores(void)
         if (m->a - read[j] <= 1 && read[j] - m->a <= 1)
           break;
       if (j < nread)
-        continue;               /* loaded back: not dead */
+        continue;               // loaded back: not dead
       if (m->op == OP_DLW) {
         remove_op(i);
       } else if (m->op == OP_DLB) {
@@ -869,7 +866,7 @@ static void dead_stores(void)
       } else {
         m->op = OP_DROP;
         m->a = 0;
-        i -= drop_expr(i);      /* and the value, if it has no effect */
+        i -= drop_expr(i);      // and the value, if it has no effect
       }
     } else if (reads_local(m)) {
       read[nread++] = m->a;
@@ -881,8 +878,8 @@ static void dead_stores(void)
   }
 }
 
-/* Try one pattern at the end of the window. Returns 1 if it changed
- * anything, so the caller tries again. */
+// Try one pattern at the end of the window. Returns 1 if it changed
+// anything, so the caller tries again.
 static int rewrite(void)
 {
   Mop *a, *b;
@@ -891,10 +888,10 @@ static int rewrite(void)
     return 0;
   a = &win[nwin - 2];
   b = &win[nwin - 1];
-  /* const OP const -> const (fold_pair()): both sides constant is a
-   * backstop for the parser's own folding. It comes first, so that
-   * the one-constant rewrites below don't spend one constant into an
-   * ADDI or the like, leaving the other stranded. */
+  // const OP const -> const (fold_pair()): both sides constant is a
+  // backstop for the parser's own folding. It comes first, so that
+  // the one-constant rewrites below don't spend one constant into an
+  // ADDI or the like, leaving the other stranded.
   if (nwin >= 3) {
     int v1, v2, v;
     if (mop_const_value(&win[nwin - 3], &v1)
@@ -913,27 +910,27 @@ static int rewrite(void)
       || rewrite_drop_zero(a, b) || rewrite_dup_const(a, b)
       || rewrite_index(a, b))
     return 1;
-  /* DUP ADD ADD -> IDXW: adding twice x is PLASMA's word index op
-   * (p + i for a pointer to 2-byte elements). */
+  // DUP ADD ADD -> IDXW: adding twice x is PLASMA's word index op
+  // (p + i for a pointer to 2-byte elements).
   if (nwin >= 3 && win[nwin - 3].op == OP_DUP && a->op == OP_ADD
       && b->op == OP_ADD) {
     win[nwin - 3].op = OP_IDXW;
     nwin -= 2;
     return 1;
   }
-  /* DUP update store DROP -> update store: x++ (or a similar update)
-   * whose old value is unused needs no copy of it; nor does a store. */
+  // DUP update store DROP -> update store: x++ (or a similar update)
+  // whose old value is unused needs no copy of it; nor does a store.
   if (b->op == OP_DROP && drop_dup())
     return 1;
-  /* expr DROP -> nothing, for an expression that reads no memory but
-   * the frame. */
+  // expr DROP -> nothing, for an expression that reads no memory but
+  // the frame.
   if (b->op == OP_DROP && drop_expr(nwin - 1))
     return 1;
   return 0;
 }
 
-/* The index of the last op in the window before index i that isn't a
- * join (which emits no code), or -1. */
+// The index of the last op in the window before index i that isn't a
+// join (which emits no code), or -1.
 static int code_before(int i)
 {
   while (--i >= 0 && win[i].op == OP_JOIN)
@@ -941,7 +938,7 @@ static int code_before(int i)
   return i;
 }
 
-/* Remove the op at window index i. */
+// Remove the op at window index i.
 static void remove_op(int i)
 {
   for (; i < nwin - 1; i++)
@@ -949,22 +946,22 @@ static void remove_op(int i)
   nwin--;
 }
 
-/* The patterns at label n, just before it is placed (which flushes the
- * window). Joins in between are skipped. */
+// The patterns at label n, just before it is placed (which flushes the
+// window). Joins in between are skipped.
 static void before_label(int n)
 {
   int b = code_before(nwin), a;
   if (b < 0 || win[b].op != OP_BRNCH)
     return;
-  /* BRNCH n, then label n -> the label alone: the jump goes to the
-   * very next op. */
+  // BRNCH n, then label n -> the label alone: the jump goes to the
+  // very next op.
   if (win[b].a == n) {
     remove_op(b);
     return;
   }
-  /* Bcond n BRNCH t, then label n -> Binv t, then label n: branch to t
-   * on the opposite test, else fall through to n (BRFLS / BRTRU,
-   * BREQ / BRNE). a && b || c and !(a && b) need this BRNCH. */
+  // Bcond n BRNCH t, then label n -> Binv t, then label n: branch to t
+  // on the opposite test, else fall through to n (BRFLS / BRTRU,
+  // BREQ / BRNE). a && b || c and !(a && b) need this BRNCH.
   a = code_before(b);
   if (a >= 0 && invert_branch(win[a].op) >= 0 && win[a].a == n) {
     win[a].op = invert_branch(win[a].op);
@@ -973,11 +970,11 @@ static void before_label(int n)
   }
 }
 
-/* Stage 3's entry: add an op to the window and apply the patterns.
- * Barriers flush the window, and ops in dead code are dropped. A join
- * emits no code, so it isn't a barrier: it waits in the window, in
- * order (stage 4 needs the branches it moves first), and is kept even
- * in dead code (the branches it moves are live). */
+// Stage 3's entry: add an op to the window and apply the patterns.
+// Barriers flush the window, and ops in dead code are dropped. A join
+// emits no code, so it isn't a barrier: it waits in the window, in
+// order (stage 4 needs the branches it moves first), and is kept even
+// in dead code (the branches it moves are live).
 void peep_put(Mop *m)
 {
   if (m->op == OP_JOIN) {
@@ -987,7 +984,7 @@ void peep_put(Mop *m)
     return;
   }
   if (MOP_IS_PSEUDO(m->op)) {
-    /* A barrier: never optimize across it. */
+    // A barrier: never optimize across it.
     if (m->op == OP_LABEL)
       before_label(m->a);
     peep_flush();

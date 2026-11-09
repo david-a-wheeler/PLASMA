@@ -1,5 +1,5 @@
 
-/* An argument must be the parameter's struct type. */
+// An argument must be the parameter's struct type.
 struct pt { int x, y; };
 struct sz { int w, h; };
 

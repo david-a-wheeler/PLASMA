@@ -1,7 +1,7 @@
-/* xshift.c — shifts and multiplies at run time, with loop constants
- * chosen to hit the peephole's multiply rewrites (x * 2 becomes
- * DUP ADD, x * 3 DUP IDXW, x * 2^n a shift) and to leave plain MULs
- * where they don't apply. */
+// xshift.c — shifts and multiplies at run time, with loop constants
+// chosen to hit the peephole's multiply rewrites (x * 2 becomes
+// DUP ADD, x * 3 DUP IDXW, x * 2^n a shift) and to leave plain MULs
+// where they don't apply.
 #include "ptest.h"
 
 int shl(int a, int b)

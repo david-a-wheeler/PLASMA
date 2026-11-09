@@ -1,15 +1,15 @@
-/* gencmp.c - truth runs (approach.md, decision 31): an if whose arms
- * return 1 and 0 is the condition's truth, so it compiles to the
- * condition's value, and the branch, labels and arms are dropped.
- * A comparison or ! is already 0 or 1; a plain value is boolified;
- * the arms' order picks the negation; equal arms keep one constant.
- * The ternary spelling, whose arms end in a branch to the
- * expression's end, leaves the value on the stack for what follows.
- * Conditions sharing a label with an earlier branch (short-circuit
- * && and || values) keep their branches. A ! directly after a
- * comparison is the De Morgan opposite of it, one op shorter, valid
- * wherever the value goes (decision 32), and !s not after a
- * comparison stay. */
+// gencmp.c - truth runs (approach.md, decision 31): an if whose arms
+// return 1 and 0 is the condition's truth, so it compiles to the
+// condition's value, and the branch, labels and arms are dropped.
+// A comparison or ! is already 0 or 1; a plain value is boolified;
+// the arms' order picks the negation; equal arms keep one constant.
+// The ternary spelling, whose arms end in a branch to the
+// expression's end, leaves the value on the stack for what follows.
+// Conditions sharing a label with an earlier branch (short-circuit
+// && and || values) keep their branches. A ! directly after a
+// comparison is the De Morgan opposite of it, one op shorter, valid
+// wherever the value goes (decision 32), and !s not after a
+// comparison stay.
 int eq(int a, int b)   { if (a == b) return 1; else return 0; }
 int ne(int a, int b)   { if (a != b) return 1; else return 0; }
 int isz(int a)         { if (a == 0) return 1; else return 0; }

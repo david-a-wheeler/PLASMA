@@ -1,9 +1,9 @@
-/* genloop.c - the counted for-loop: the limit and the count ride on
- * the stack for the life of the loop (the exit drops both), the test
- * is the counted branch (BRLT up, BRGT down), the step is a plain
- * ADDI or SUBI, and the index's per-turn store keeps the count for
- * the body. The PLASMA-for fusions (INCBRLE, ...) are not reachable
- * from C's for. */
+// genloop.c - the counted for-loop: the limit and the count ride on
+// the stack for the life of the loop (the exit drops both), the test
+// is the counted branch (BRLT up, BRGT down), the step is a plain
+// ADDI or SUBI, and the index's per-turn store keeps the count for
+// the body. The PLASMA-for fusions (INCBRLE, ...) are not reachable
+// from C's for.
 int total(int n)
 {
   int i, s;

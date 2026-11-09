@@ -1,6 +1,6 @@
-/* xloops.c — the shapes of loop update the peephole must handle:
- * i++, ++i, i = i + 1, i += 2, i -= 1, while, do-while, nested
- * loops, break and continue, and an update whose old value is used. */
+// xloops.c — the shapes of loop update the peephole must handle:
+// i++, ++i, i = i + 1, i += 2, i -= 1, while, do-while, nested
+// loops, break and continue, and an update whose old value is used.
 #include "ptest.h"
 
 int main(void)

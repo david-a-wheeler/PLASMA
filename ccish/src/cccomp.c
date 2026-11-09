@@ -1,18 +1,16 @@
-/*
- * cccomp: ccish's front end as a program of its own (approach.md, "B3"
- * and 18.7). It parses the token stream and name file that ccpp made of
- * one .c file (NAME.i and NAME.nam, ../CCPP.md) into the IR file,
- * NAME.ir, and leaves that for ccgen, the back end, which writes the
- * stream files for ccrel. On the Apple II, a small driver runs ccpp,
- * cccomp, ccgen and then ccrel, and each is freed when it ends, so each
- * has nearly all of memory.
- *
- * Usage: cccomp [-k] [-o output] input
- *   -k  keep the token stream, and keep the IR file even after an error
- *   -o  output name for the IR file (default: the input name)
- * It reads input.i and input.nam, and removes input.i once it succeeds
- * (unless -k); ccgen needs input.nam too, so it removes that.
- */
+// cccomp: ccish's front end as a program of its own (approach.md, "B3"
+// and 18.7). It parses the token stream and name file that ccpp made of
+// one .c file (NAME.i and NAME.nam, ../CCPP.md) into the IR file,
+// NAME.ir, and leaves that for ccgen, the back end, which writes the
+// stream files for ccrel. On the Apple II, a small driver runs ccpp,
+// cccomp, ccgen and then ccrel, and each is freed when it ends, so each
+// has nearly all of memory.
+//
+// Usage: cccomp [-k] [-o output] input
+//   -k  keep the token stream, and keep the IR file even after an error
+//   -o  output name for the IR file (default: the input name)
+// It reads input.i and input.nam, and removes input.i once it succeeds
+// (unless -k); ccgen needs input.nam too, so it removes that.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,25 +22,25 @@
 #include "ir.h"
 #include "parse.h"
 
-/* The IR file's output name, to remove it after an error. */
+// The IR file's output name, to remove it after an error.
 static const char *base_name;
 
-/* After an error: close the open files, and remove the IR file (unless
- * -k). */
+// After an error: close the open files, and remove the IR file (unless
+// -k).
 void clean_up(void)
 {
   compile_abort();
   remove_stream(base_name, SUFFIX_IR);
 }
 
-/* Print the command-line syntax and exit. */
+// Print the command-line syntax and exit.
 static void usage(void)
 {
   fputs("usage: cccomp [-k] [-o output] input\n", stderr);
   exit(2);
 }
 
-/* Parse one token stream into the IR file. */
+// Parse one token stream into the IR file.
 int main(int argc, char **argv)
 {
   const char *src = NULL, *outname = NULL;

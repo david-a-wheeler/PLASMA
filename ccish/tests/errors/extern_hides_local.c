@@ -1,4 +1,4 @@
-/* An extern in a block would be hidden by a visible local of the same name. */
+// An extern in a block would be hidden by a visible local of the same name.
 int main()
 {
   int x;

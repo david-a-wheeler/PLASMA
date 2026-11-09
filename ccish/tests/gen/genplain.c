@@ -1,15 +1,15 @@
-/* genplain.c - plain (not volatile) loads have no effect a C program
- * may see, so they go when their value does (approach.md issue 25):
- * I/O must be volatile (genvolatile.c has the twins). KBD is the
- * Apple II keyboard, deliberately declared without volatile: a program
- * that does this is wrong, and its reads may go. Under plvm it's
- * ordinary memory. */
+// genplain.c - plain (not volatile) loads have no effect a C program
+// may see, so they go when their value does (approach.md issue 25):
+// I/O must be volatile (genvolatile.c has the twins). KBD is the
+// Apple II keyboard, deliberately declared without volatile: a program
+// that does this is wrong, and its reads may go. Under plvm it's
+// ordinary memory.
 char *const KBD = (char *)0xC000;
 int g, h;
 int a[4];
 int *p;
 
-/* Loads as statements: nothing. */
+// Loads as statements: nothing.
 int stmts(int i)
 {
   *p;
@@ -18,7 +18,7 @@ int stmts(int i)
   return 0;
 }
 
-/* A dead store's value: a load through a pointer goes with it. */
+// A dead store's value: a load through a pointer goes with it.
 int deadload(void)
 {
   int x = *p;
@@ -26,7 +26,7 @@ int deadload(void)
   return 0;
 }
 
-/* Values computed and dropped: a comparison, a division. */
+// Values computed and dropped: a comparison, a division.
 int dropped(void)
 {
   (void)(g < h);
@@ -34,9 +34,9 @@ int dropped(void)
   return 0;
 }
 
-/* A limit or an init read through a plain I/O address: the loop is
- * still counted, its limit read once and kept on the stack (irloop.c);
- * the loop variable is never loaded to test it. */
+// A limit or an init read through a plain I/O address: the loop is
+// still counted, its limit read once and kept on the stack (irloop.c);
+// the loop variable is never loaded to test it.
 int limit(void)
 {
   int i, n = 0;
@@ -53,10 +53,10 @@ int init(void)
   return n;
 }
 
-/* A do-nothing delay loop: C lets a compiler remove it, since nothing
- * it does can be seen, and ccish does (irloop.c), leaving i its last
- * value, a store dead_stores() then drops. A delay needs a volatile
- * counter, whose every store happens. */
+// A do-nothing delay loop: C lets a compiler remove it, since nothing
+// it does can be seen, and ccish does (irloop.c), leaving i its last
+// value, a store dead_stores() then drops. A delay needs a volatile
+// counter, whose every store happens.
 void delay(void)
 {
   int i;

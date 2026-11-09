@@ -1,5 +1,5 @@
 
-/* A local struct initialized from a struct of another type. */
+// A local struct initialized from a struct of another type.
 struct a { int x; };
 struct b { int x; };
 

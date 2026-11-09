@@ -1,10 +1,10 @@
-/* Do-nothing counted loops with constant ends go (irloop.c,
- * counted_loop): only the variable's last value is left, computed in
- * 16 bits. Steps of 1 and 3 up, 1 and 4 down, a step that doesn't land
- * on the limit, a distance of 60000 (more than an int holds), a limit
- * next to 32767, and a loop that never runs (left as written). No
- * counted loop's op is left, but never()'s test (one ISLT); gcc agrees.
- * A loop that must run has a volatile in it (genplain.c). */
+// Do-nothing counted loops with constant ends go (irloop.c,
+// counted_loop): only the variable's last value is left, computed in
+// 16 bits. Steps of 1 and 3 up, 1 and 4 down, a step that doesn't land
+// on the limit, a distance of 60000 (more than an int holds), a limit
+// next to 32767, and a loop that never runs (left as written). No
+// counted loop's op is left, but never()'s test (one ISLT); gcc agrees.
+// A loop that must run has a volatile in it (genplain.c).
 // listing-count: 0 INCBRLE
 // listing-count: 0 DECBRGE
 // listing-count: 0 ADDBRLE

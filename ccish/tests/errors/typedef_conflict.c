@@ -1,5 +1,5 @@
 
-/* A typedef may be repeated only with the same type. */
+// A typedef may be repeated only with the same type.
 typedef int T;
 typedef int T;
 typedef char T;

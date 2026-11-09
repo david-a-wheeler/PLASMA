@@ -1,5 +1,5 @@
 
-/* A member of a const struct is const. */
+// A member of a const struct is const.
 struct pt { int x, y; };
 
 const struct pt origin;

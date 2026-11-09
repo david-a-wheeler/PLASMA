@@ -1,5 +1,5 @@
 
-/* A const variable isn't a constant expression in C. */
+// A const variable isn't a constant expression in C.
 const int N = 3;
 enum { A = N };
 

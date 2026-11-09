@@ -1,4 +1,4 @@
-/* The other half of helpers: see a.c. */
+// The other half of helpers: see a.c.
 unsigned div_a(unsigned n, unsigned d);
 
 unsigned div_b(unsigned n, unsigned d)

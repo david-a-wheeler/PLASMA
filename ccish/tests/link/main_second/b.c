@@ -1,4 +1,4 @@
-/* The other half of main_second: see a.c. */
+// The other half of main_second: see a.c.
 // listing-lacks: __toupper (import)
 // listing-has: ; __toupper
 int __toupper(int c);

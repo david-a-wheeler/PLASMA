@@ -1,6 +1,6 @@
-/* More left operands held back for folding than MAX_HELD (8): each
- * past it is emitted instead, and the sum is still right. 1 + ... + 10
- * is 55, plus x (1). */
+// More left operands held back for folding than MAX_HELD (8): each
+// past it is emitted instead, and the sum is still right. 1 + ... + 10
+// is 55, plus x (1).
 int main()
 {
   int x = 1;

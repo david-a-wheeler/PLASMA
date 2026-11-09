@@ -1,11 +1,11 @@
-/* gentail.c - simple tail recursion (approach.md, decision 33): a
- * function's own tail call, whose result is returned directly,
- * becomes the args' stores into the parameter slots, the counted
- * loop's values' drops, and a jump to the function's entry label
- * (the label after its ENTER, 103), instead of a call: no new frame
- * per recursion. A self call whose result is used, that is not
- * followed by the return, or a call to another function, stays a
- * call. */
+// gentail.c - simple tail recursion (approach.md, decision 33): a
+// function's own tail call, whose result is returned directly,
+// becomes the args' stores into the parameter slots, the counted
+// loop's values' drops, and a jump to the function's entry label
+// (the label after its ENTER, 103), instead of a call: no new frame
+// per recursion. A self call whose result is used, that is not
+// followed by the return, or a call to another function, stays a
+// call.
 int gt0(int n)
 {
   if (n <= 0)
@@ -21,7 +21,7 @@ void gt1(int n, int *p)
 }
 void gt6(int n)
 {
-  gt6(n - 1);   /* no base case: the tail jump is the loop */
+  gt6(n - 1);   // no base case: the tail jump is the loop
 }
 int gt2(int n)
 {

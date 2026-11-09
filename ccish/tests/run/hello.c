@@ -1,4 +1,4 @@
-/* The milestone 1 example from approach.md. */
+// The milestone 1 example from approach.md.
 int add(int a, int b) { return a + b; }
 
 int main()

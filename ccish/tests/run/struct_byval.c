@@ -1,25 +1,25 @@
-/* Structs passed and returned by value (M6 step 3): up to 8 bytes, as
- * the words of their bytes. A parameter lands in the callee's frame in
- * its own layout, so it needs no copy; a returned struct is its words
- * on the stack (a PLASMA multi-value return), stored straight into the
- * variable it is assigned to. */
+// Structs passed and returned by value (M6 step 3): up to 8 bytes, as
+// the words of their bytes. A parameter lands in the callee's frame in
+// its own layout, so it needs no copy; a returned struct is its words
+// on the stack (a PLASMA multi-value return), stored straight into the
+// variable it is assigned to.
 struct pt { int x, y; };
-struct rgb { char r, g, b; };               /* 3 bytes: 2 words */
+struct rgb { char r, g, b; };               // 3 bytes: 2 words
 struct qr { int q, r; };
 struct name { char s[4]; };
-struct wide { int a, b, c; char d, e; };    /* 8 bytes: 4 words */
+struct wide { int a, b, c; char d, e; };    // 8 bytes: 4 words
 struct one { int v; };
 
 struct pt pts[3];
 
-/* A struct parameter is a copy: changing it changes nothing outside. */
+// A struct parameter is a copy: changing it changes nothing outside.
 int sum(struct pt p)
 {
   p.x += p.y;
   return p.x;
 }
 
-/* Return two values, like PLASMA's divmod()#2. */
+// Return two values, like PLASMA's divmod()#2.
 struct qr divide(int a, int b)
 {
   struct qr v;
@@ -28,7 +28,7 @@ struct qr divide(int a, int b)
   return v;
 }
 
-/* Return a struct made from a parameter. */
+// Return a struct made from a parameter.
 struct rgb dim(struct rgb c, int k)
 {
   c.r = c.r / k;
@@ -37,7 +37,7 @@ struct rgb dim(struct rgb c, int k)
   return c;
 }
 
-/* Pass a returned struct straight on, and return one straight back. */
+// Pass a returned struct straight on, and return one straight back.
 struct pt swap(struct pt p)
 {
   struct pt t;
@@ -46,27 +46,27 @@ struct pt swap(struct pt p)
   return t;
 }
 
-/* Return the swapped point, unchanged: the call's words are returned
- * as they are. */
+// Return the swapped point, unchanged: the call's words are returned
+// as they are.
 struct pt twice(struct pt p)
 {
   return swap(swap(p));
 }
 
-/* Return the 4-word struct with each member doubled. */
+// Return the 4-word struct with each member doubled.
 struct wide dbl(struct wide w)
 {
   w.a *= 2; w.b *= 2; w.c *= 2; w.d *= 2; w.e *= 2;
   return w;
 }
 
-/* A one-word struct, through a pointer. */
+// A one-word struct, through a pointer.
 int get(struct one o)
 {
   return o.v;
 }
 
-/* Return a pointer to pts[i]. */
+// Return a pointer to pts[i].
 struct pt *at(int i)
 {
   return &pts[i];
@@ -106,7 +106,7 @@ int main()
   i = 0;
   __puti(sum(pts[i + 1])); __putc(' ');
   __puti(get(*(struct one *)&o)); __putc(' ');
-  swap(a);                        /* the result is dropped */
+  swap(a);                        // the result is dropped
   __putln();
 
   w = dbl(w);

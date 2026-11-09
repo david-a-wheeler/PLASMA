@@ -1,9 +1,9 @@
-/* xandi.c - the ANDI fold (ANDI m ANDI n -> ANDI (m & n)): a (char)
- * cast on an int (ANDI 255) followed by a small & mask (ANDI n) merges
- * to ANDI (255 & n), which is just the mask. The cross-check runs this
- * against the host compiler: the value must be x's low byte & the mask,
- * whether x is a small byte, a byte at or above 128 (the sign edge), or
- * a value with a high byte that the cast clears. */
+// xandi.c - the ANDI fold (ANDI m ANDI n -> ANDI (m & n)): a (char)
+// cast on an int (ANDI 255) followed by a small & mask (ANDI n) merges
+// to ANDI (255 & n), which is just the mask. The cross-check runs this
+// against the host compiler: the value must be x's low byte & the mask,
+// whether x is a small byte, a byte at or above 128 (the sign edge), or
+// a value with a high byte that the cast clears.
 #include "ptest.h"
 
 int fold(int x)

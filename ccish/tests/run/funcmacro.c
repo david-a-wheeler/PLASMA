@@ -1,7 +1,7 @@
-/* Function-like macros: arguments expanded before they are substituted
- * (so MAX(MAX(a, b), c) works), #, ##, __VA_ARGS__, a macro name with
- * no '(' after it, and ccish's own FRAME_TEMP and HELPER_FN (approach.md,
- * "ccpp design", step 5). */
+// Function-like macros: arguments expanded before they are substituted
+// (so MAX(MAX(a, b), c) works), #, ##, __VA_ARGS__, a macro name with
+// no '(' after it, and ccish's own FRAME_TEMP and HELPER_FN (approach.md,
+// "ccpp design", step 5).
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define SQUARE(x) ((x) * (x))
 #define STR(x) #x
@@ -19,7 +19,7 @@ int sum3(int a, int b, int c) { return a + b + c; }
 int main()
 {
   int VAR(one) = 1, VAR(two) = 2;
-  int SQUARE = 5;               /* no '(' after it: just a name */
+  int SQUARE = 5;               // no '(' after it: just a name
   __puti(MAX(MAX(3, 7), 5)); __putc(' ');
   __puti(SQUARE(var_one + var_two)); __putc(' ');
   __puts(pstr(STR(TEN))); __putc(' ');

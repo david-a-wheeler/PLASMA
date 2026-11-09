@@ -1,8 +1,8 @@
-/* #if and #elif (approach.md, "ccpp design", step 6): each test prints
- * 1 when the preprocessor gets it right. 16-bit arithmetic, signed or
- * unsigned as C's conversions say; defined; names left over are 0;
- * && || ?: skip what they don't evaluate; #elif after a taken branch
- * isn't evaluated. Then __LINE__, #line, and __FILE__. */
+// #if and #elif (approach.md, "ccpp design", step 6): each test prints
+// 1 when the preprocessor gets it right. 16-bit arithmetic, signed or
+// unsigned as C's conversions say; defined; names left over are 0;
+// && || ?: skip what they don't evaluate; #elif after a taken branch
+// isn't evaluated. Then __LINE__, #line, and __FILE__.
 #define TWO 2
 #define F(x) ((x) * 3)
 int main()
@@ -32,7 +32,7 @@ int main()
 #else
   __puti(1);
 #endif
-#if 0x7FFF + 1 < 0        /* 16 bits: it wraps (a documented difference) */
+#if 0x7FFF + 1 < 0        // 16 bits: it wraps (a documented difference)
   __puti(1);
 #else
   __puti(0);

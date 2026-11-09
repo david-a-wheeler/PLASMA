@@ -1,5 +1,5 @@
 
-/* An enum constant can't share a name with a global variable. */
+// An enum constant can't share a name with a global variable.
 int RED;
 enum { RED, GREEN };
 

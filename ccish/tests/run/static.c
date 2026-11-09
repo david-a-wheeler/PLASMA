@@ -1,12 +1,12 @@
-/* static (M5 step 5). A static local lives in the data segment, like a
- * global, but has block scope. Its constant initializer is applied
- * once, when the module loads, so counter() counts from 10. It takes no
- * frame space: counter() and inits() have no frame (no ENTER), and
- * fill()'s 300-byte buffer, too big for the 255-byte frame, leaves it
- * just a parameter and a local (ENTER 4,1). Static locals in different
- * blocks are different objects. Their initializers work as a global's
- * do: strings, char arrays, and addresses of globals and of other static
- * locals. static on a global or a function changes nothing for now. */
+// static (M5 step 5). A static local lives in the data segment, like a
+// global, but has block scope. Its constant initializer is applied
+// once, when the module loads, so counter() counts from 10. It takes no
+// frame space: counter() and inits() have no frame (no ENTER), and
+// fill()'s 300-byte buffer, too big for the 255-byte frame, leaves it
+// just a parameter and a local (ENTER 4,1). Static locals in different
+// blocks are different objects. Their initializers work as a global's
+// do: strings, char arrays, and addresses of globals and of other static
+// locals. static on a global or a function changes nothing for now.
 // listing-count: 5 ENTER
 // listing-has: ENTER 4,1
 static int calls;

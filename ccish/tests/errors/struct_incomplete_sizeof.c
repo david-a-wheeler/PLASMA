@@ -1,5 +1,5 @@
 
-/* An incomplete struct has no size yet. */
+// An incomplete struct has no size yet.
 struct s;
 
 int main()

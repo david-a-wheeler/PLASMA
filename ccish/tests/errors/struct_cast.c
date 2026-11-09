@@ -1,5 +1,5 @@
 
-/* C has no casts to struct types. */
+// C has no casts to struct types.
 struct pt { int x, y; };
 
 int main()

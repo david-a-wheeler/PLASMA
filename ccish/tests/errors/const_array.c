@@ -1,5 +1,5 @@
 
-/* The elements of a const array can't be assigned to. */
+// The elements of a const array can't be assigned to.
 int main()
 {
   const int t[2] = {1, 2};

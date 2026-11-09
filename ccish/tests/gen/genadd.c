@@ -1,6 +1,6 @@
-/* genadd.c - adding a constant or a local: a constant that fits
- * becomes INCR, DECR, ADDI or SUBI; adding zero adds nothing; and a
- * local that is added (or twice added) fuses into the load. */
+// genadd.c - adding a constant or a local: a constant that fits
+// becomes INCR, DECR, ADDI or SUBI; adding zero adds nothing; and a
+// local that is added (or twice added) fuses into the load.
 int add3(int x)    { return x + 3; }
 int sub5(int x)    { return x - 5; }
 int plus1(int x)   { return x + 1; }

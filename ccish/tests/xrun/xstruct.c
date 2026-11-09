@@ -1,7 +1,7 @@
-/* xstruct.c — structs: member access, pointers to structs, structs
- * passed by value, structs in arrays. No sizeof of a struct (ccish
- * packs with no padding, the host may pad); the element-count ratio
- * is portable. */
+// xstruct.c — structs: member access, pointers to structs, structs
+// passed by value, structs in arrays. No sizeof of a struct (ccish
+// packs with no padding, the host may pad); the element-count ratio
+// is portable.
 #include "ptest.h"
 
 struct pt

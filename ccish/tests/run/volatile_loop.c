@@ -1,9 +1,9 @@
-/* A counted loop computes its limit once, at its entry (irloop.c), so
- * a volatile limit makes the loop an ordinary one, which reads it each
- * pass; the plain twin is counted, its bottom one BRLT. The globals: vn
- * data+0, pn data+2. A loop over a volatile local isn't counted either
- * (step_shape() and the DLW fix name the plain ops): only ploop's
- * i < 4 is, its bottom one INCBRLE. */
+// A counted loop computes its limit once, at its entry (irloop.c), so
+// a volatile limit makes the loop an ordinary one, which reads it each
+// pass; the plain twin is counted, its bottom one BRLT. The globals: vn
+// data+0, pn data+2. A loop over a volatile local isn't counted either
+// (step_shape() and the DLW fix name the plain ops): only ploop's
+// i < 4 is, its bottom one INCBRLE.
 // listing-count: 1 BRLT
 // listing-count: 1 INCBRLE
 volatile int vn = 5;

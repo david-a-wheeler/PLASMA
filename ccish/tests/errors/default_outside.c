@@ -1,5 +1,5 @@
 
-/* So does default. */
+// So does default.
 int main()
 {
   default:

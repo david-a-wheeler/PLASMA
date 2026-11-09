@@ -1,5 +1,5 @@
 
-/* A global's initializer must be constant: not another struct. */
+// A global's initializer must be constant: not another struct.
 struct pt { int x, y; };
 
 struct pt a;

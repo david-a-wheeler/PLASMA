@@ -1,10 +1,10 @@
-/* xaddsub.c - the additive-update combine (two small constant adds or
- * subtracts merge to one op): the cross-check runs the folded code and
- * the host's unfolded code and requires the same value. The constants
- * are small, so the low 16 bits agree under either width; w16() keeps
- * the printed result there. The high-x loop is count-bounded (not
- * x-bounded) so it stops on the 16-bit VM, and exercises the 16-bit
- * wrap of the intermediate. */
+// xaddsub.c - the additive-update combine (two small constant adds or
+// subtracts merge to one op): the cross-check runs the folded code and
+// the host's unfolded code and requires the same value. The constants
+// are small, so the low 16 bits agree under either width; w16() keeps
+// the printed result there. The high-x loop is count-bounded (not
+// x-bounded) so it stops on the 16-bit VM, and exercises the 16-bit
+// wrap of the intermediate.
 #include "ptest.h"
 
 int sum(int x)    { return x + 5 - 3; }

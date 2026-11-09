@@ -1,6 +1,6 @@
-/* Object-like macros, #include (twice, behind an include guard),
- * #ifdef, #ifndef, #else, #undef and a redefinition with the same body
- * (approach.md, "ccpp design", step 4). */
+// Object-like macros, #include (twice, behind an include guard),
+// #ifdef, #ifndef, #else, #undef and a redefinition with the same body
+// (approach.md, "ccpp design", step 4).
 #include "inc/macros.h"
 #include "inc/macros.h"
 #define SIZE 3
@@ -17,7 +17,7 @@ int main()
 {
   int i;
   LOOP a[i] = i * 10;
-  __puti(TWICE_SIZE * 2); __putc(' ');      /* 3 + 3 * 2: no parentheses */
+  __puti(TWICE_SIZE * 2); __putc(' ');      // 3 + 3 * 2: no parentheses
   __puti(a[2]); __putc(' ');
   __puts(pstr(GREETING " there"));
   __putln();

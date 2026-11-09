@@ -1,8 +1,8 @@
-/* Address constants (approach.md, "C6 design"): the expression parser
- * folds a global's or a string's address with constant offsets, in a
- * global's initializer (2 + buf, &s.y and &ps[1].x were errors before)
- * and in code, as one LA. The data: s at 0, ps at 4, buf at 12, m at
- * 20, so buf + 4 is data+16. */
+// Address constants (approach.md, "C6 design"): the expression parser
+// folds a global's or a string's address with constant offsets, in a
+// global's initializer (2 + buf, &s.y and &ps[1].x were errors before)
+// and in code, as one LA. The data: s at 0, ps at 4, buf at 12, m at
+// 20, so buf + 4 is data+16.
 // listing-has: ; data+16
 struct pt { int x, y; };
 struct pt s = {10, 20};

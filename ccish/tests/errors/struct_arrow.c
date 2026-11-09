@@ -1,5 +1,5 @@
 
-/* '->' needs a pointer to a struct, not a struct. */
+// '->' needs a pointer to a struct, not a struct.
 struct pt { int x, y; };
 
 int main()

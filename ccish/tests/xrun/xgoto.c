@@ -1,19 +1,19 @@
-/* A three-state machine (red, green, yellow) driven by goto, run for a
- * fixed number of ticks; it counts the ticks spent in each state. The
- * dispatch is a chain of gotos and the loop is a goto loop (never
- * counted). This is the pattern goto exists for. The host compiler is
- * the oracle: the same source must print the same counts. */
+// A three-state machine (red, green, yellow) driven by goto, run for a
+// fixed number of ticks; it counts the ticks spent in each state. The
+// dispatch is a chain of gotos and the loop is a goto loop (never
+// counted). This is the pattern goto exists for. The host compiler is
+// the oracle: the same source must print the same counts.
 #include <ptest.h>
 int main(void)
 {
-  int state = 0;        /* 0 red, 1 green, 2 yellow */
+  int state = 0;        // 0 red, 1 green, 2 yellow
   int ticks = 0;
   int red = 0, green = 0, yellow = 0;
-  int instate = 0;      /* ticks in the current state, so far */
+  int instate = 0;      // ticks in the current state, so far
   int dur[3];
-  dur[0] = 5;           /* red lasts 5 ticks */
-  dur[1] = 3;           /* green lasts 3 */
-  dur[2] = 1;           /* yellow lasts 1 */
+  dur[0] = 5;           // red lasts 5 ticks
+  dur[1] = 3;           // green lasts 3
+  dur[2] = 1;           // yellow lasts 1
 top:
   if (ticks >= 30)
     goto done;

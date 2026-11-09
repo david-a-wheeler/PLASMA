@@ -1,10 +1,10 @@
-/* Counted loops (approach.md, "Loop design", step 2): each form, with
- * the init folded into the count or not, both ends constant, the final
- * value of the variable after a normal exit, a break, and a loop that
- * never runs; continue and a switch in the body. The bodies make no
- * calls; results are shown after each loop. The counts pin which loops
- * are counted, in which form (counted_not.c has those that mustn't
- * be). */
+// Counted loops (approach.md, "Loop design", step 2): each form, with
+// the init folded into the count or not, both ends constant, the final
+// value of the variable after a normal exit, a break, and a loop that
+// never runs; continue and a switch in the body. The bodies make no
+// calls; results are shown after each loop. The counts pin which loops
+// are counted, in which form (counted_not.c has those that mustn't
+// be).
 // Each loop, by function: up: BRLT; INCBRLE; BRGT, INCBRLE; BRLT;
 // BRGT, ADDBRLE. down: DECBRGE; BRLT, DECBRGE; BRGT; BRLT, SUBBRGE.
 // never: BRLT 3 times (the two loops with both ends constant that
@@ -21,69 +21,69 @@ void show(int n)
   __putc(' ');
 }
 
-/* Counting up. */
+// Counting up.
 void up(void)
 {
   int i, j, n, s;
   n = 5;
   s = 0;
-  for (i = 0; i < n; i++)       /* BRLT, local limit */
+  for (i = 0; i < n; i++)       // BRLT, local limit
     s += i;
   show(s);
   show(i);
   s = 0;
-  for (i = 0; i < 10; i++)      /* INCBRLE, both ends constant */
+  for (i = 0; i < 10; i++)      // INCBRLE, both ends constant
     s += i;
   show(s);
   show(i);
   j = 3;
   s = 0;
-  for (i = j; i <= n; i++)      /* INCBRLE, init from a local */
+  for (i = j; i <= n; i++)      // INCBRLE, init from a local
     s += i;
   show(s);
   show(i);
   s = 0;
-  for (i = 1; i < 11; i += 3)   /* ADDI 3, BRLT */
+  for (i = 1; i < 11; i += 3)   // ADDI 3, BRLT
     s += i;
   show(s);
   show(i);
   s = 0;
-  for (i = 0; i <= n; i += 2)   /* ADDBRLE */
+  for (i = 0; i <= n; i += 2)   // ADDBRLE
     s += i;
   show(s);
   show(i);
   __putln();
 }
 
-/* Counting down. */
+// Counting down.
 void down(void)
 {
   int i, n = 5, s, t;
   s = 0;
-  for (i = 4; i > 0; i--)       /* DECBRGE, both ends constant */
+  for (i = 4; i > 0; i--)       // DECBRGE, both ends constant
     s = s * 10 + i;
   show(s);
   show(i);
   s = 0;
-  for (i = n; i >= 2; i--)      /* DECBRGE */
+  for (i = n; i >= 2; i--)      // DECBRGE
     s += i;
   show(s);
   show(i);
   s = 0;
   t = 1;
-  for (i = 9; i > t; i -= 3)    /* SUBI 3, BRGT */
+  for (i = 9; i > t; i -= 3)    // SUBI 3, BRGT
     s += i;
   show(s);
   show(i);
   s = 0;
-  for (i = 10; i >= t; i -= 4)  /* SUBBRGE */
+  for (i = 10; i >= t; i -= 4)  // SUBBRGE
     s += i;
   show(s);
   show(i);
   __putln();
 }
 
-/* The limit first; loops that never run. */
+// The limit first; loops that never run.
 void never(void)
 {
   int i, n = 5, s;
@@ -114,7 +114,7 @@ void never(void)
   __putln();
 }
 
-/* break, continue, a switch. */
+// break, continue, a switch.
 void flow(void)
 {
   int i, n, s;
@@ -145,8 +145,8 @@ void flow(void)
   __putln();
 }
 
-/* An inner loop that is counted (its outer loop holds a loop, so it
- * isn't). */
+// An inner loop that is counted (its outer loop holds a loop, so it
+// isn't).
 void nested(void)
 {
   int i, j, s;

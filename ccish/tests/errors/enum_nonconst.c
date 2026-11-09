@@ -1,5 +1,5 @@
 
-/* An enum value must be known at compile time. */
+// An enum value must be known at compile time.
 int x;
 enum { A = x };
 

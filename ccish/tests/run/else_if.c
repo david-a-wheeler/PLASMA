@@ -1,9 +1,9 @@
-/* if and else: else-if chains, which the parser reads as a loop that
- * shares one end label (pstmt.c, parse_statement), with and without a
- * final else; a dangling else inside a chain's branch; an if nested in
- * a branch; and a chain of 40, longer than any nesting limit. */
+// if and else: else-if chains, which the parser reads as a loop that
+// shares one end label (pstmt.c, parse_statement), with and without a
+// final else; a dangling else inside a chain's branch; an if nested in
+// a branch; and a chain of 40, longer than any nesting limit.
 
-/* A chain with a final else: 1-5 by range, else 9. */
+// A chain with a final else: 1-5 by range, else 9.
 int classify(int n)
 {
   int r;
@@ -22,7 +22,7 @@ int classify(int n)
   return r;
 }
 
-/* A chain without a final else: r stays 0 when nothing matches. */
+// A chain without a final else: r stays 0 when nothing matches.
 int partial(int n)
 {
   int r = 0;
@@ -35,8 +35,8 @@ int partial(int n)
   return r;
 }
 
-/* An if nested in a chain's branch, whose else is its own (the
- * dangling else binds to the nearest if), then the chain goes on. */
+// An if nested in a chain's branch, whose else is its own (the
+// dangling else binds to the nearest if), then the chain goes on.
 int nested(int a, int b)
 {
   int r;
@@ -54,8 +54,8 @@ int nested(int a, int b)
   return r;
 }
 
-/* A chain of 40 branches: n's value, or -1. One return, since a
- * function may have at most 32 (MAX_RETURNS). */
+// A chain of 40 branches: n's value, or -1. One return, since a
+// function may have at most 32 (MAX_RETURNS).
 int longchain(int n)
 {
   int r = -1;

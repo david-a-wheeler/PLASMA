@@ -1,6 +1,6 @@
 
-/* A tag declared in a block isn't visible after the block, so
- * struct t afterward is a new, incomplete struct. */
+// A tag declared in a block isn't visible after the block, so
+// struct t afterward is a new, incomplete struct.
 int main()
 {
   {

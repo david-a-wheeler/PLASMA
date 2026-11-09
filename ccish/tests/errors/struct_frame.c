@@ -1,5 +1,5 @@
 
-/* A local struct must fit in the frame, like a local array. */
+// A local struct must fit in the frame, like a local array.
 struct big { char buf[200]; };
 
 int main()

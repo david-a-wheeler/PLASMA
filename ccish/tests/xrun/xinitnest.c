@@ -1,10 +1,10 @@
-/* xinitnest.c: nested braces in initializers (C11 6.7.9). Arrays of
- * structs, 2-D arrays, structs holding arrays, structs and unions,
- * short inner lists (the rest is zero), strings in braces, an outer
- * array of unknown size, empty braces, and a table of structs of
- * function pointers; for globals, static locals and locals. Every
- * inner list is braced, since gcc's -Wall warns about brace elision;
- * tests/run/initnest.c mixes the two. */
+// xinitnest.c: nested braces in initializers (C11 6.7.9). Arrays of
+// structs, 2-D arrays, structs holding arrays, structs and unions,
+// short inner lists (the rest is zero), strings in braces, an outer
+// array of unknown size, empty braces, and a table of structs of
+// function pointers; for globals, static locals and locals. Every
+// inner list is braced, since gcc's -Wall warns about brace elision;
+// tests/run/initnest.c mixes the two.
 #include "ptest.h"
 
 struct pt
@@ -62,7 +62,7 @@ char word[4] = {"hi"};
 struct cmd cmds[] = {{"dbl", twice, 4}, {"neg", neg, 5}, {"nul", 0, 0}};
 int empty[2][2] = {{1, 2}, {}};
 
-/* Print a struct pt as x,y. */
+// Print a struct pt as x,y.
 void showpt(struct pt p)
 {
   puti(p.x);
@@ -71,7 +71,7 @@ void showpt(struct pt p)
   putc(' ');
 }
 
-/* Print the chars of a 4-char array, a 0 byte as '.'. */
+// Print the chars of a 4-char array, a 0 byte as '.'.
 void show4(char *s)
 {
   int i;
@@ -80,7 +80,7 @@ void show4(char *s)
   putc(' ');
 }
 
-/* Print a struct box. */
+// Print a struct box.
 void showbox(struct box *p)
 {
   int i;
@@ -94,7 +94,7 @@ void showbox(struct box *p)
   putln();
 }
 
-/* A static local with nested braces, read twice. */
+// A static local with nested braces, read twice.
 int statk(int k)
 {
   static int t[2][2] = {{1, 2}, {3}};

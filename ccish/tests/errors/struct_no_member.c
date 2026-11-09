@@ -1,5 +1,5 @@
 
-/* A member must be one of the struct's. */
+// A member must be one of the struct's.
 struct pt { int x, y; };
 
 int main()

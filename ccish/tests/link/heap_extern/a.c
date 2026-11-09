@@ -1,11 +1,11 @@
-/* Defines big and buf, large zero-filled globals: big moves to the
- * heap, and buf stays in data, since b.c's initializer holds its
- * address. */
+// Defines big and buf, large zero-filled globals: big moves to the
+// heap, and buf stays in data, since b.c's initializer holds its
+// address.
 int big[300];
 char buf[512];
 static int mine[200];
 
-/* Fill big, buf and mine. */
+// Fill big, buf and mine.
 void fill(void)
 {
   int i;
@@ -16,7 +16,7 @@ void fill(void)
   mine[199] = 8;
 }
 
-/* Return mine's last element. */
+// Return mine's last element.
 int last(void)
 {
   return mine[199];

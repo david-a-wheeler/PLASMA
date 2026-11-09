@@ -1,10 +1,10 @@
-/* genvolatile.c - volatile accesses happen just as the program says
- * (approach.md issue 25), each beside a plain twin that's still
- * optimized. The Apple II's soft switches are volatile chars at
- * constant addresses: SPEAKER ($C030) and KEYBOARD ($C000) are read,
- * KBDSTRB ($C010) is written (any store clears the key strobe). A
- * const pointer's known value folds, for a store too, so each is one
- * absolute op (LAB.v, SAB.v). Under plvm they're ordinary memory. */
+// genvolatile.c - volatile accesses happen just as the program says
+// (approach.md issue 25), each beside a plain twin that's still
+// optimized. The Apple II's soft switches are volatile chars at
+// constant addresses: SPEAKER ($C030) and KEYBOARD ($C000) are read,
+// KBDSTRB ($C010) is written (any store clears the key strobe). A
+// const pointer's known value folds, for a store too, so each is one
+// absolute op (LAB.v, SAB.v). Under plvm they're ordinary memory.
 volatile char *const SPEAKER = (volatile char *)0xC030;
 volatile char *const KEYBOARD = (volatile char *)0xC000;
 volatile char *const KBDSTRB = (volatile char *)0xC010;
@@ -12,30 +12,30 @@ volatile int vg;
 int g;
 char gc;
 
-/* Two clicks: two reads, each kept though its value isn't used. */
+// Two clicks: two reads, each kept though its value isn't used.
 void click(void)
 {
   *SPEAKER;
   *SPEAKER;
 }
 
-/* The plain twin: the reads go. */
+// The plain twin: the reads go.
 void touch(void)
 {
   gc;
   gc;
 }
 
-/* Two stores, both kept, with no copy of the value kept. */
+// Two stores, both kept, with no copy of the value kept.
 void clear(void)
 {
   *KBDSTRB = 0;
   *KBDSTRB = 0;
 }
 
-/* A store through a volatile pointer variable: cccomp keeps a copy of
- * the value (DUP), as it can't know the statement drops it (DROP);
- * ccgen removes the pair (peep.c, drop_dup). Indexed too. */
+// A store through a volatile pointer variable: cccomp keeps a copy of
+// the value (DUP), as it can't know the statement drops it (DROP);
+// ccgen removes the pair (peep.c, drop_dup). Indexed too.
 void poke(volatile char *p, char v)
 {
   *p = v;
@@ -46,7 +46,7 @@ void pokew(volatile int *p, int i)
   p[i] = 5;
 }
 
-/* A counted loop: the read stays in the body. */
+// A counted loop: the read stays in the body.
 void tone(int n)
 {
   int i;
@@ -54,7 +54,7 @@ void tone(int n)
     *SPEAKER;
 }
 
-/* The plain twin: the body is empty. */
+// The plain twin: the body is empty.
 void spin(int n)
 {
   int i;
@@ -62,43 +62,43 @@ void spin(int n)
     gc;
 }
 
-/* Is an octal digit's key down (bit 7 set)? KEYBOARD is read twice,
- * once per comparison. */
+// Is an octal digit's key down (bit 7 set)? KEYBOARD is read twice,
+// once per comparison.
 int voctal(void)
 {
   return *KEYBOARD >= 0x80 + '0' && *KEYBOARD <= 0x80 + '7';
 }
 
-/* The plain twin, on a parameter: one load and one compare
- * (genbetween.c), since '0' to '7' is an aligned block of 8. */
+// The plain twin, on a parameter: one load and one compare
+// (genbetween.c), since '0' to '7' is an aligned block of 8.
 int octal(char c)
 {
   return c >= '0' && c <= '7';
 }
 
-/* A store then a load: both happen. */
+// A store then a load: both happen.
 int vstore(void)
 {
   vg = 3;
   return vg;
 }
 
-/* The plain twin: the load reuses the stored value (DAW). */
+// The plain twin: the load reuses the stored value (DAW).
 int store(void)
 {
   g = 3;
   return g;
 }
 
-/* Compound assignment and ++: one load and one store each, and the
- * value of vg++ is the one loaded, not a read back. */
+// Compound assignment and ++: one load and one store each, and the
+// value of vg++ is the one loaded, not a read back.
 int vbump(void)
 {
   vg += 2;
   return vg++;
 }
 
-/* A local's stores are kept though nothing reads them. */
+// A local's stores are kept though nothing reads them.
 int vlocal(void)
 {
   volatile int t = 5;
@@ -106,7 +106,7 @@ int vlocal(void)
   return 1;
 }
 
-/* The plain twin: the dead stores go. */
+// The plain twin: the dead stores go.
 int local(void)
 {
   int t = 5;
@@ -114,7 +114,7 @@ int local(void)
   return 1;
 }
 
-/* A loop's test reloads vg each pass. */
+// A loop's test reloads vg each pass.
 int vwait(void)
 {
   int n = 0;

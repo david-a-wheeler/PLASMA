@@ -1,12 +1,12 @@
-/* The DLW fix (approach.md, "The DLW fix", and "for any store"): a
- * loop that isn't counted, whose step ends by storing v and whose test
- * starts with v, enters by pushing v and jumping past the test's own
- * load, so the step keeps the v it stores (DLW, or DLB for a char).
- * Pointer, unsigned and int loops; != and < (with a call in the body,
- * so not counted); continue and break; an init just before the loop
- * (which fuses with the entry's push) and not; a loop that never runs;
- * steps that aren't v += k (a linked list, v = v * 2, a char); and a
- * loop the fix must leave alone (the variable second in the test). */
+// The DLW fix (approach.md, "The DLW fix", and "for any store"): a
+// loop that isn't counted, whose step ends by storing v and whose test
+// starts with v, enters by pushing v and jumping past the test's own
+// load, so the step keeps the v it stores (DLW, or DLB for a char).
+// Pointer, unsigned and int loops; != and < (with a call in the body,
+// so not counted); continue and break; an init just before the loop
+// (which fuses with the entry's push) and not; a loop that never runs;
+// steps that aren't v += k (a linked list, v = v * 2, a char); and a
+// loop the fix must leave alone (the variable second in the test).
 // Each of the 12 fixed int and pointer loops (ptrs 3, uns 2, calls 2,
 // flow 1, never 2, stores 2) ends its step with a DLW, and 11 have
 // another where their init meets the entry's push (all but never's
@@ -31,7 +31,7 @@ void show(int n)
   __putc(' ');
 }
 
-/* Pointer loops, up and down. */
+// Pointer loops, up and down.
 void ptrs(void)
 {
   int *p, *e = a + 6, s = 0;
@@ -48,7 +48,7 @@ void ptrs(void)
   show(s);
 }
 
-/* An unsigned counter, through 0 and across $8000. */
+// An unsigned counter, through 0 and across $8000.
 void uns(void)
 {
   unsigned u;
@@ -64,7 +64,7 @@ void uns(void)
   show(s);
 }
 
-/* int loops with a call in the body (not counted): < and !=. */
+// int loops with a call in the body (not counted): < and !=.
 void calls(void)
 {
   int i;
@@ -75,7 +75,7 @@ void calls(void)
   show(i);
 }
 
-/* continue and break. */
+// continue and break.
 void flow(void)
 {
   int i, s = 0;
@@ -91,7 +91,7 @@ void flow(void)
   show(i);
 }
 
-/* Never runs: the start is the end. */
+// Never runs: the start is the end.
 void never(void)
 {
   int *p = a, s = 0;
@@ -106,8 +106,8 @@ void never(void)
   show(p - a);
 }
 
-/* Steps that end by storing the variable, besides v += k: a linked
- * list, v = v * 2, and a char, by c++ and by c = c + 1. */
+// Steps that end by storing the variable, besides v += k: a linked
+// list, v = v * 2, and a char, by c++ and by c = c + 1.
 void stores(void)
 {
   struct node *q;
@@ -125,8 +125,8 @@ void stores(void)
   __putc(' ');
 }
 
-/* Left alone: the variable second in the test (n > i); it must still
- * be right. */
+// Left alone: the variable second in the test (n > i); it must still
+// be right.
 void alone(void)
 {
   int i, n = 4;

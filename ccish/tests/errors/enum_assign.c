@@ -1,5 +1,5 @@
 
-/* An enum constant is a value, not a variable. */
+// An enum constant is a value, not a variable.
 enum { A, B };
 
 int main()

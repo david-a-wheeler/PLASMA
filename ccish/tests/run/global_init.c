@@ -1,13 +1,13 @@
-/* Global initializers, all computed at compile time and stored in the
- * data segment, so main has no code to set them up (no CB 42, and no
- * string addresses in the code: the strings are only reached through
- * the data). Covers integer and char constants, sizeof, string
- * pointers, char arrays from strings (with and without room for the
- * NUL), brace lists with missing elements (zero) and a trailing comma,
- * sizes from the initializer, flat lists for two-dimensional arrays,
- * address constants (&x, an array's name, &m[1][1], + a constant, a
- * cast, a global's own address), arrays of strings, rows of a char
- * array from strings, and a scalar in braces. */
+// Global initializers, all computed at compile time and stored in the
+// data segment, so main has no code to set them up (no CB 42, and no
+// string addresses in the code: the strings are only reached through
+// the data). Covers integer and char constants, sizeof, string
+// pointers, char arrays from strings (with and without room for the
+// NUL), brace lists with missing elements (zero) and a trailing comma,
+// sizes from the initializer, flat lists for two-dimensional arrays,
+// address constants (&x, an array's name, &m[1][1], + a constant, a
+// cast, a global's own address), arrays of strings, rows of a char
+// array from strings, and a scalar in braces.
 // listing-lacks: CB 42
 // listing-lacks: ; string+
 int n = 5;
@@ -45,7 +45,7 @@ void show(int n)
   __putc(' ');
 }
 
-/* Print the C string s, then a space. */
+// Print the C string s, then a space.
 void say(char *s)
 {
   while (*s)
