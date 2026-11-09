@@ -361,7 +361,7 @@ static void end_function(int frame_size)
  * and it takes less memory. */
 static const char *const mnems[(OP_IDXAW - OP_MINUS1) / 2 + 1] = {
   "MINUS1", "BREQ", "BRNE", "LA", "LLA", "CB", "CW", 0,  /* $20 */
-  "DROP", 0, "DUP", 0, "ADDI", "SUBI", "ANDI", 0,  /* $30 */
+  "DROP", "DROP2", "DUP", 0, "ADDI", "SUBI", "ANDI", "ORI",  /* $30 */
   "ISEQ", "ISNE", "ISGT", "ISLT", "ISGE", "ISLE", "BRFLS", "BRTRU",  /* $40 */
   "BRNCH", "SEL", "CALL", "ICAL", "ENTER", "LEAVE", "RET", "CFFB",  /* $50 */
   "LB", "LW", "LLB", "LLW", "LAB", "LAW", "DLB", "DLW",  /* $60 */
@@ -445,7 +445,8 @@ static void list_op(Mop *m, int frame)
     out_num(" ", m->a == FRAME_LATER ? frame : m->a);
     fputs("\n", stdout);
     return;
-  case OP_CB: case OP_CFFB: case OP_ANDI: case OP_ADDI: case OP_SUBI:
+  case OP_CB: case OP_CFFB: case OP_ANDI: case OP_ORI: case OP_ADDI:
+  case OP_SUBI:
     out_num(" ", m->a);
     fputs("\n", stdout);
     return;
@@ -544,7 +545,8 @@ void emit_put(Mop *m)
   if (op >= OP_ADDLB && op <= OP_IDXAW)
     op = op & 4 ? OP_LAW : OP_LLW;
   switch (op) {
-  case OP_CB: case OP_CFFB: case OP_ANDI: case OP_ADDI: case OP_SUBI:
+  case OP_CB: case OP_CFFB: case OP_ANDI: case OP_ORI: case OP_ADDI:
+  case OP_SUBI:
     code_byte(m->a);
     break;
   case OP_LLA: case OP_LLB: case OP_LLW: case OP_DLB: case OP_DLW:

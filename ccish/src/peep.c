@@ -20,6 +20,11 @@
  *   CW a   LB / LW / SB / SW -> LAB / LAW / SAB / SAW a   constant address
  *                                          (also after CB, CFFB, or LA)
  *   const  AND               -> ANDI const for a constant from 0 to 255
+ *   const  IOR               -> ORI const  for a constant from 1 to 255
+ *   DROP  DROP               -> DROP2      one op, as the first leaves
+ *                                          the window (pass_oldest()), so
+ *                                          that every pattern sees each,
+ *                                          and any two that meet merge
  *   ANDI m ANDI n            -> ANDI (m & n)  two byte-ANDs merge: AND
  *                                          is associative, and both clear
  *                                          the high byte, so a (char)
@@ -115,11 +120,15 @@ static Mop win[WINDOW];
 static int nwin;
 static int dead;            /* code is unreachable until the next barrier */
 
-/* Send the oldest op in the window on to stage 4. */
+/* Send the oldest op in the window on to stage 4; or, if it's a DROP
+ * and so is the next, make that a DROP2 (one op, a byte less). */
 static void pass_oldest(void)
 {
   int i;
-  emit_put(&win[0]);
+  if (nwin > 1 && win[0].op == OP_DROP && win[1].op == OP_DROP)
+    win[1].op = OP_DROP2;
+  else
+    emit_put(&win[0]);
   for (i = 1; i < nwin; i++)
     win[i - 1] = win[i];
   nwin--;
@@ -252,7 +261,7 @@ static int stack_effect(Mop *m, int *pops, int *pushes)
     *pops = 0;
     return 1;
   case OP_LW: case OP_LB: case OP_INCR: case OP_DECR: case OP_NEG:
-  case OP_COMP: case OP_ANDI: case OP_NOT:
+  case OP_COMP: case OP_ANDI: case OP_ORI: case OP_NOT:
     *pops = 1;
     return 1;
   case OP_DUP:
@@ -389,9 +398,11 @@ static int rewrite_const(Mop *a, Mop *b)
   int v;
 
   /* const AND -> ANDI const, for a constant from 0 to 255: one
-   * two-byte op (it clears the high byte, as the AND would). */
-  if (b->op == OP_AND && mop_const_value(a, &v) && !(v & 0xFF00)) {
-    a->op = OP_ANDI;
+   * two-byte op (it clears the high byte, as the AND would); and const
+   * IOR -> ORI const, from 1 to 255 (x | 0 is rewrite_noop()'s). */
+  if ((b->op == OP_AND || b->op == OP_IOR) && mop_const_value(a, &v)
+      && !(v & 0xFF00) && (v || b->op == OP_AND)) {
+    a->op = MOP_BYTE_FORM(b->op);
     a->a = v;
     nwin--;
     return 1;
@@ -777,7 +788,7 @@ static void dead_stores(void)
       }
     } else if (reads_local(m)) {
       read[nread++] = m->a;
-    } else if (m->op != OP_DROP
+    } else if (m->op != OP_DROP && m->op != OP_DROP2
                && (!stack_effect(m, &pops, &pushes) || m->op == OP_LW
                    || m->op == OP_LB)) {
       break;

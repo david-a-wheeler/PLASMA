@@ -4,12 +4,14 @@
  * must stay. */
 // What stays: through's 2 SLWs, call's 1; global's SAW; byte's ANDI
 // 255 (from its DLB), and the init function's, of main's exit status;
-// find's 4 DROPs (its two loop values, at the return in the loop and at
-// its exit). one's a * 3 goes with x.
+// find's 2 DROP2s (its two loop values, at the return in the loop and at
+// its exit, where the dead store of its variable joins the limit's DROP),
+// and no other DROP. one's a * 3 goes with x.
 // listing-count: 3  SLW
 // listing-count: 1 SAW
 // listing-count: 2 ANDI
-// listing-count: 4  DROP
+// listing-count: 2  DROP2
+// listing-count: 2  DROP
 // listing-lacks: MUL
 int g;
 int tab[4] = {1, 2, 3, 4};

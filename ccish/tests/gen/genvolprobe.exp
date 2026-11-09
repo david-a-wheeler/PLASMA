@@ -160,8 +160,7 @@
     SLW 2
     INCBRLE 0
     ; label 3
-    DROP
-    DROP
+    DROP2
     LLW 2
     LEAVE 4
 

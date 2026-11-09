@@ -694,11 +694,10 @@ variable (`x;`) emits nothing at all.
 - **Stack:** `( x -- )`.
 - **Now:** `DROP`.
 - **Why it differs:** it doesn't.
-- **Now in the peephole stage:** `DLW n DROP` → `SLW n`, and
-  `DUP op SLW n DROP` → `op SLW n`.
-- **Later:** `DROP DROP` → `DROP2`. And when the dropped value has no
-  side effects, the peephole stage can remove both the value's code
-  and the `DROP`.
+- **Now in the peephole stage:** `DLW n DROP` → `SLW n`,
+  `DUP op SLW n DROP` → `op SLW n`, and `DROP DROP` → `DROP2`; and
+  when the dropped value has no effect (plain loads and arithmetic, no
+  call, store, or volatile access), its code goes with the `DROP`.
 
 ### `IR_RETURN` *a* = the result's words
 

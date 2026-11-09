@@ -51,8 +51,7 @@
     INCR
     ; label 1
     BRLT 0
-    DROP
-    DROP
+    DROP2
     LEAVE 4
 
     ; spin
@@ -66,8 +65,7 @@
     INCR
     ; label 1
     BRLT 0
-    DROP
-    DROP
+    DROP2
     LEAVE 4
 
     ; voctal

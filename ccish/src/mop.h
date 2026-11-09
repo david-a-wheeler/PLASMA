@@ -29,8 +29,8 @@
 enum {
   OP_CN = 0x00, OP_MINUS1 = 0x20, OP_BREQ = 0x22, OP_BRNE = 0x24,
   OP_LA = 0x26, OP_LLA = 0x28, OP_CB = 0x2A,
-  OP_CW = 0x2C, OP_CS = 0x2E, OP_DROP = 0x30, OP_DUP = 0x34, OP_ADDI = 0x38,
-  OP_SUBI = 0x3A, OP_ANDI = 0x3C,
+  OP_CW = 0x2C, OP_CS = 0x2E, OP_DROP = 0x30, OP_DROP2 = 0x32, OP_DUP = 0x34,
+  OP_ADDI = 0x38, OP_SUBI = 0x3A, OP_ANDI = 0x3C, OP_ORI = 0x3E,
   OP_ISEQ = 0x40, OP_ISNE = 0x42, OP_ISGT = 0x44, OP_ISLT = 0x46,
   OP_ISGE = 0x48, OP_ISLE = 0x4A, OP_BRFLS = 0x4C, OP_BRTRU = 0x4E,
   OP_BRNCH = 0x50, OP_SEL = 0x52,
@@ -82,6 +82,8 @@ enum {
  * (NOT to IDXW): no memory, no control, no volatile form. */
 #define MOP_IS_ARITH(op)   (((op) >= OP_ISEQ && (op) <= OP_ISLE) \
                             || ((op) >= OP_NOT && (op) <= OP_IDXW))
+/* ANDI for AND, ORI for IOR: the two pairs are the same distance apart. */
+#define MOP_BYTE_FORM(op)  ((op) - (OP_AND - OP_ANDI))
 #define MOP_CN(v)          (OP_CN + 2 * (v))     /* CN v, for v 0-15 */
 #define MOP_CN_VALUE(op)   ((op) / 2)            /* CN's v */
 

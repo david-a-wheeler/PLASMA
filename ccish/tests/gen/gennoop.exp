@@ -32,8 +32,7 @@
     ENTER 2 1
     ; label 103
     LLW 0
-    CN 1
-    IOR
+    ORI 1
     LEAVE 2
 
     ; main
