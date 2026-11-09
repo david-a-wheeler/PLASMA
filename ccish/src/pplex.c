@@ -434,7 +434,7 @@ static void lex_string(void)
 // The C keywords: the supported ones first, in the order of their
 // codes.
 static const char *const keywords[] = {
-  // supported: in the order of TC_KEYWORDS (CCPP.md) and T_INT ...
+  // supported: in the order of TC_INT ... (token.h, CCPP.md) and T_INT ...
   "int", "char", "signed", "unsigned",
   "void",
   "const", "volatile",
@@ -453,6 +453,10 @@ static const char *const keywords[] = {
   "float", "long", "register",
   NULL
 };
+// pp_word() takes the first NKEYWORDS as the supported ones, the rest
+// as the 5 unsupported, then the NULL.
+_Static_assert(sizeof(keywords) / sizeof(keywords[0]) == NKEYWORDS + 5 + 1,
+               "keywords[] doesn't have NKEYWORDS supported keywords");
 
 // The code of the word (an identifier or keyword) of n characters at
 // word, NUL-terminated: a supported keyword's, or TC_ID or TC_KEYWORD
@@ -465,7 +469,7 @@ int pp_word(const char *word, int n)
 {
   int i;
   if (!strcmp(word, "short"))
-    return TC_KEYWORDS;      // int
+    return TC_INT;
   for (i = 0; keywords[i]; i++)
     if (!strcmp(keywords[i], word)) {
       if (i < NKEYWORDS)
@@ -495,11 +499,13 @@ static int lex_word(void)
 
 // The multi-character operators' spellings, in the order of their codes
 // (TC_EQ ...).
-static const char *const ops[NOPS] = {
+static const char *const ops[] = {
   "==", "!=", "<=", ">=", "<<", ">>", "&&", "||", "++", "--",
   "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=",
   "->", "..."
 };
+_Static_assert(sizeof(ops) / sizeof(ops[0]) == NOPS,
+               "ops[] doesn't have NOPS operators");
 
 // The one-character tokens.
 static const char singles[] = "!%&()*+,-./:;<=>?[]^{|}~";

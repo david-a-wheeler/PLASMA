@@ -65,6 +65,10 @@ static const char *const ir_names[] = {
   // $5C: loop loopstep loopbody loopend
   "LOOP", "LOOPSTEP", "LOOPBODY", "LOOPEND",
 };
+// One name per op number, as ir.h's checks of the numbers say;
+// sized by its entries, so a missing or extra row is caught here.
+_Static_assert(sizeof(ir_names) / sizeof(ir_names[0]) == IR_NOPS,
+               "ir_names[] doesn't have one name per IR op number");
 
 // How each IR op lowers (lw_kind[]), and the PLASMA opcode it lowers
 // to (lw_op[]), as parallel arrays indexed by IR op:
@@ -84,7 +88,7 @@ static const char *const ir_names[] = {
 // byte, which is the value C gives an assignment to a char.
 enum { L_SIMPLE, L_COMPARE, L_OPERAND, L_GLOBAL, L_SPECIAL };
 
-static const char lw_kind[IR_NOPS] = {
+static const char lw_kind[] = {
   // $00: local localb setlocal setlocalb
   L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,
   // $04: global globalb setglobal setglobalb
@@ -131,8 +135,11 @@ static const char lw_kind[IR_NOPS] = {
   // $5C: loop loopstep loopbody loopend
   L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,
 };
+// As ir_names[]: one entry per op number.
+_Static_assert(sizeof(lw_kind) == IR_NOPS,
+               "lw_kind[] doesn't have one entry per IR op number");
 
-static const unsigned char lw_op[IR_NOPS] = {
+static const unsigned char lw_op[] = {
   // $00: local localb setlocal setlocalb
   OP_LLW, OP_LLB, OP_DLW, OP_DLB,
   // $04: global globalb setglobal setglobalb
@@ -182,6 +189,9 @@ static const unsigned char lw_op[IR_NOPS] = {
   // $5C: loop loopstep loopbody loopend
   0, 0, 0, 0,
 };
+// As ir_names[]: one entry per op number.
+_Static_assert(sizeof(lw_op) == IR_NOPS,
+               "lw_op[] doesn't have one entry per IR op number");
 
 // Write s, then n in decimal, to standard output, for the -i and -d
 // dumps. No printf: the small build has none.

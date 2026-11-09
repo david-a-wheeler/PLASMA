@@ -49,6 +49,36 @@ enum {
 #define T_IS_TAGGED(t)      (((t) >= T_STRUCT && (t) <= T_ENUM) || (t) == T_UNION)
 #define T_IS_STORAGE(t)     ((t) >= T_STATIC && (t) <= T_EXTERN)
 #define T_IS_CASE_LABEL(t)  ((t) >= T_CASE && (t) <= T_DEFAULT)
+// Each set is exactly its members: each is in its range, and the range
+// has room for no other token.
+_Static_assert(T_IS_TYPE_START(T_INT) && T_IS_TYPE_START(T_CHAR)
+               && T_IS_TYPE_START(T_SIGNED) && T_IS_TYPE_START(T_UNSIGNED)
+               && T_IS_TYPE_START(T_VOID) && T_IS_TYPE_START(T_CONST)
+               && T_IS_TYPE_START(T_VOLATILE) && T_IS_TYPE_START(T_STRUCT)
+               && T_IS_TYPE_START(T_ENUM) && T_ENUM - T_INT == 8
+               && T_IS_TYPE_START(T_UNION),
+               "T_IS_TYPE_START isn't the int types, void, the qualifiers"
+               " and the tagged types");
+_Static_assert(T_IS_INT_TYPE(T_INT) && T_IS_INT_TYPE(T_CHAR)
+               && T_IS_INT_TYPE(T_SIGNED) && T_IS_INT_TYPE(T_UNSIGNED)
+               && T_UNSIGNED - T_INT == 3,
+               "T_IS_INT_TYPE isn't int, char, signed and unsigned");
+_Static_assert(T_IS_QUAL(T_CONST) && T_IS_QUAL(T_VOLATILE)
+               && T_VOLATILE - T_CONST == 1,
+               "T_IS_QUAL isn't const and volatile");
+_Static_assert(T_IS_TAGGED(T_STRUCT) && T_IS_TAGGED(T_ENUM)
+               && T_IS_TAGGED(T_UNION) && T_ENUM - T_STRUCT == 1,
+               "T_IS_TAGGED isn't struct, enum and union");
+_Static_assert(T_IS_STORAGE(T_STATIC) && T_IS_STORAGE(T_EXTERN)
+               && T_EXTERN - T_STATIC == 1,
+               "T_IS_STORAGE isn't static and extern");
+_Static_assert(T_IS_CASE_LABEL(T_CASE) && T_IS_CASE_LABEL(T_DEFAULT)
+               && T_DEFAULT - T_CASE == 1,
+               "T_IS_CASE_LABEL isn't case and default");
+// A one-character token is its character code, so the others start
+// past them.
+_Static_assert(T_EOF == 0 && T_ID > 0xFF,
+               "a token is also a one-character token's code");
 
 // The current token.
 extern int tok;

@@ -170,6 +170,8 @@ void next(void)
     tok_text[tok_len] = 0;
     return;
   }
+  // By offset: the keywords and operators are in the same order in
+  // both (asserted below next()).
   if (c >= TC_KEYWORDS && c < TC_KEYWORDS + NKEYWORDS)
     tok = T_INT + (c - TC_KEYWORDS);
   else if (c >= TC_EQ && c <= TC_ELLIPSIS)
@@ -179,6 +181,38 @@ void next(void)
   else
     damaged();
 }
+
+// next() maps a stream code to a token by its offset in its block
+// (T_INT + (c - TC_KEYWORDS), T_EQ + (c - TC_EQ)), so the tokens must
+// be in the stream's order (token.h, CCPP.md): each keyword and each
+// operator at its code's place, and every keyword token with a code
+// (T_KEYWORD right after them). Here, since next() is what relies on
+// it. (The keywords' spellings, pplex.c's keywords[], follow the same
+// order; strings can't be checked here, but tests/pp's token streams
+// do.)
+_Static_assert(T_KEYWORD - T_INT == NKEYWORDS,
+               "T_INT ... T_KEYWORD aren't the NKEYWORDS keywords");
+#define SAME_KW(x) _Static_assert(T_##x - T_INT == TC_##x - TC_KEYWORDS, \
+                                  "T_" #x " isn't at TC_" #x "'s place")
+SAME_KW(INT); SAME_KW(CHAR); SAME_KW(SIGNED); SAME_KW(UNSIGNED);
+SAME_KW(VOID); SAME_KW(CONST); SAME_KW(VOLATILE); SAME_KW(STRUCT);
+SAME_KW(ENUM); SAME_KW(RETURN); SAME_KW(IF); SAME_KW(ELSE);
+SAME_KW(WHILE); SAME_KW(DO); SAME_KW(FOR); SAME_KW(BREAK);
+SAME_KW(CONTINUE); SAME_KW(SIZEOF); SAME_KW(STATIC); SAME_KW(EXTERN);
+SAME_KW(SWITCH); SAME_KW(CASE); SAME_KW(DEFAULT); SAME_KW(TYPEDEF);
+SAME_KW(GOTO); SAME_KW(UNION); SAME_KW(STATIC_ASSERT); SAME_KW(CONSTEXPR);
+#undef SAME_KW
+_Static_assert(T_ELLIPSIS - T_EQ == NOPS - 1,
+               "T_EQ ... T_ELLIPSIS aren't the NOPS operators");
+#define SAME_OP(x) _Static_assert(T_##x - T_EQ == TC_##x - TC_EQ, \
+                                  "T_" #x " isn't at TC_" #x "'s place")
+SAME_OP(EQ); SAME_OP(NE); SAME_OP(LE); SAME_OP(GE);
+SAME_OP(SHL); SAME_OP(SHR); SAME_OP(ANDAND); SAME_OP(OROR);
+SAME_OP(INC); SAME_OP(DEC); SAME_OP(ADDEQ); SAME_OP(SUBEQ);
+SAME_OP(MULEQ); SAME_OP(DIVEQ); SAME_OP(MODEQ); SAME_OP(ANDEQ);
+SAME_OP(OREQ); SAME_OP(XOREQ); SAME_OP(SHLEQ); SAME_OP(SHREQ);
+SAME_OP(ARROW); SAME_OP(ELLIPSIS);
+#undef SAME_OP
 
 // Is the token after the current one a ']' on the same line? The
 // parser uses this to see whether an index is simple.
@@ -213,6 +247,19 @@ int next_is_colon(void)
 // in T_EQ's.
 #define MSG_KEYWORDS 262
 #define MSG_OPS      324
+// The ranges above, which ccish.msg must match (tests/spec/msgs.sh
+// checks the comment against it); and tok_desc()'s order: T_ID, T_NUM
+// and T_STR, then the keywords, T_KEYWORD, and the operators last.
+_Static_assert(MSG_KEYWORDS + NKEYWORDS - 1 == 289,
+               "the keywords' messages aren't 262-289: fix the comment"
+               " and ccish.msg");
+_Static_assert(MSG_OPS + NOPS - 1 == 345,
+               "the operators' messages aren't 324-345: fix the comment"
+               " and ccish.msg");
+_Static_assert(T_STR < T_INT && T_NUM < T_INT && T_ID < T_INT
+               && T_CONSTEXPR < T_KEYWORD && T_KEYWORD < T_EQ,
+               "tok_desc() needs the keywords, then T_KEYWORD, then the"
+               " operators, last");
 
 #ifdef CCISH_DIAG
 // Describe the current token for an error message, e.g. "'while'" or

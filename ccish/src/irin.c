@@ -262,7 +262,7 @@ static void reverse(int i, int j)
 // unreachable until a label. A SWAP inside the block, done or not,
 // changes no depth.
 #define STK_NONE 0x7F
-static const char stk_effect[IR_NOPS] = {
+static const char stk_effect[] = {
   // $00: local localb setlocal setlocalb
   0x01, 0x01, 0x11, 0x11,
   // $04: global globalb setglobal setglobalb
@@ -309,6 +309,10 @@ static const char stk_effect[IR_NOPS] = {
   // $5C: loop loopstep loopbody loopend
   STK_NONE, STK_NONE, STK_NONE, STK_NONE,
 };
+// One entry per op number, laid out as ir.h's checks of the numbers
+// say; sized by its entries, so a missing or extra row is caught here.
+_Static_assert(sizeof(stk_effect) == IR_NOPS,
+               "stk_effect[] doesn't have one entry per IR op number");
 
 static char lab_depth[MAX_LABELS];
 

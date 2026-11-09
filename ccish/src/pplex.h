@@ -29,6 +29,14 @@ enum { TC_PARAM = 0x10, TC_PARAM_RAW, TC_HASH_PARAM, TC_PASTE, TC_SPACE };
 // The three parameter tokens, in the enum's order (ppmac.c): a
 // parameter, one not to be expanded first, one after #.
 #define TC_IS_PARAM(c)       ((c) >= TC_PARAM && (c) <= TC_HASH_PARAM)
+_Static_assert(TC_IS_PARAM(TC_PARAM) && TC_IS_PARAM(TC_PARAM_RAW)
+               && TC_IS_PARAM(TC_HASH_PARAM) && TC_HASH_PARAM - TC_PARAM == 2,
+               "TC_IS_PARAM is exactly the three parameter tokens");
+// ccpp's codes share a macro body with the stream's (token.h), so they
+// must differ from those, and from the one-character tokens. (The
+// casts: gcc warns about comparing two enums' constants.)
+_Static_assert((int)TC_PARAM > (int)TC_TAG && TC_SPACE < ' ',
+               "a ccpp code is also a token stream code");
 
 // How the lexer reads (pp_mode): ordinary source; a directive's line,
 // up to its newline; or a group #ifdef leaves out.

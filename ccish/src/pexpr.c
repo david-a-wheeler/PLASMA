@@ -1197,6 +1197,13 @@ static const char *op_name(int op)
     "'+'", "'-'", "'*'", "'/'", "'%'", "'&'", "'|'", "'^'", "'<<'",
     "'>>'"
   };
+  // names[] is in the binary ops' order, from IR_ADD.
+  _Static_assert(sizeof(names) / sizeof(names[0]) == IR_SHR - IR_ADD + 1
+                 && IR_SUB - IR_ADD == 1 && IR_MUL - IR_ADD == 2
+                 && IR_DIV - IR_ADD == 3 && IR_MOD - IR_ADD == 4
+                 && IR_AND - IR_ADD == 5 && IR_OR - IR_ADD == 6
+                 && IR_XOR - IR_ADD == 7 && IR_SHL - IR_ADD == 8,
+                 "op_name(): names[] isn't in the binary ops' order");
   return IR_IS_BINARY(op) ? names[op - IR_ADD] : "operator";
 }
 

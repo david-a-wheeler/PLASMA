@@ -5023,6 +5023,25 @@ issue. In summary:
     storage class, and no check that the value fits; looser: several
     names per declaration. It cost cccomp 85 bytes, ccpp 13, and took
     the last spare keyword slot.
+39. **Assertions guard the token and IR numbers** (decided in
+    discussion, 2026-11-09). So that the values can be reassigned and
+    rearranged safely, every relationship the code relies on is a
+    `_Static_assert`, which costs no code (the objects are identical
+    without them). Each sits near what relies on it, in the same file:
+    a set macro's (T_IS_*, IR_IS_*: exactly its members) and a bit
+    trick's (IR_COMPARE_FLIP, IR_CHAR_FORM, ...) next to the macro; a
+    .c file's own reliance (tokin.c's offset mapping of the stream's
+    codes, parse.c's acc_form(), op_name()'s names[]) in that file,
+    with a comment saying why it's there. The op-indexed tables
+    (stk_effect[], lw_kind[], lw_op[], ir_names[]) are sized by their
+    entries and checked against IR_NOPS, and ir.h pins every op's
+    number, once for all four, where the numbers would be changed. To
+    check each keyword's place, token.h now names every keyword's code
+    (TC_INT ... TC_CONSTEXPR, with NKEYWORDS from them). A cast to int
+    keeps gcc from warning when an assertion compares two enums'
+    constants. What isn't checked: that pplex.c's keyword and operator
+    spellings are in the codes' order (strings aren't constants;
+    tests/pp checks it).
 
 
 ## Milestones

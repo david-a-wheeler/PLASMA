@@ -188,7 +188,8 @@ order, through a 512-byte block buffer (`src/bio.c`).
 Any other code is a damaged file.
 
 **The keywords**, `$80` up, in this order (the order of `T_INT` to
-`T_CONSTEXPR` in `cccomp`, and of `keywords[]` in `src/pplex.c`). The
+`T_CONSTEXPR` in `cccomp`, of `TC_INT` to `TC_CONSTEXPR` in
+`src/token.h`, and of `keywords[]` in `src/pplex.c`). The
 type-name keywords come first, in the groups the parser tests: the
 int-type specifiers, then `void`, the qualifiers, the tagged types
 (approach.md, decision 26):

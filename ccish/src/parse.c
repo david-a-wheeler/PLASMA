@@ -990,6 +990,12 @@ int acc_form(int t, int quals)
 {
   return (t == TY_CHAR) | ((quals & Q_VOLATILE) >> 4);
 }
+// acc_form()'s two tricks: a comparison's 1 is IR_ACC_BYTE, and
+// Q_VOLATILE (type.h) is IR_VOLATILE (ir.h) four bits up. Here, as the
+// one place that relies on them.
+_Static_assert(IR_ACC_BYTE == 1 && (Q_VOLATILE >> 4) == IR_VOLATILE,
+               "acc_form(): IR_ACC_BYTE isn't 1, or Q_VOLATILE isn't"
+               " IR_VOLATILE << 4");
 
 // The IR op that stores a value of type t, with qualifiers quals, at an
 // address (a char's a byte; a volatile's the volatile form).

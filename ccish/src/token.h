@@ -30,6 +30,13 @@ enum {
 // The tokens that carry a 16-bit value in the stream, their bytes
 // the code plus the value's low and high bytes (CCPP.md).
 #define TC_IS_WORDVAL(c)   ((c) >= TC_ID && (c) <= TC_KEYWORD)
+_Static_assert(TC_IS_WORDVAL(TC_ID) && TC_IS_WORDVAL(TC_NUM)
+               && TC_IS_WORDVAL(TC_UNUM) && TC_IS_WORDVAL(TC_KEYWORD)
+               && TC_KEYWORD - TC_ID == 3,
+               "TC_IS_WORDVAL is exactly TC_ID, TC_NUM, TC_UNUM and TC_KEYWORD");
+// A one-character token is itself, $20-$7E, so no other code may be.
+_Static_assert(TC_TAG < ' ' && TC_KEYWORDS > '~',
+               "a token code is among the one-character tokens' ($20-$7E)");
 
 // The multi-character operators, in CCPP.md's order (and T_EQ's).
 enum {
@@ -38,9 +45,22 @@ enum {
   TC_ANDEQ, TC_OREQ, TC_XOREQ, TC_SHLEQ, TC_SHREQ, TC_ARROW, TC_ELLIPSIS
 };
 
-#define TC_STRUCT    (TC_KEYWORDS + 7)    // struct, for TC_TAG
-#define TC_UNION     (TC_KEYWORDS + 25)   // union, for TC_TAG
-#define NKEYWORDS    28       // supported keywords: int ... constexpr
+// The supported keywords' codes, in CCPP.md's order (and pplex.c's
+// keywords[], and T_INT's).
+enum {
+  TC_INT = TC_KEYWORDS, TC_CHAR, TC_SIGNED, TC_UNSIGNED, TC_VOID, TC_CONST,
+  TC_VOLATILE, TC_STRUCT, TC_ENUM, TC_RETURN, TC_IF, TC_ELSE, TC_WHILE,
+  TC_DO, TC_FOR, TC_BREAK, TC_CONTINUE, TC_SIZEOF, TC_STATIC, TC_EXTERN,
+  TC_SWITCH, TC_CASE, TC_DEFAULT, TC_TYPEDEF, TC_GOTO, TC_UNION,
+  TC_STATIC_ASSERT, TC_CONSTEXPR
+};
+#define NKEYWORDS    (TC_CONSTEXPR - TC_KEYWORDS + 1)   // supported keywords
 #define NOPS         22       // operators: == ... "..."
+// The keywords' codes, TC_KEYWORDS up, end before the operators'
+// ($80-$BF), and the operators' fit in a byte ($C0-$DF): CCPP.md.
+_Static_assert(TC_KEYWORDS + NKEYWORDS <= TC_EQ && TC_EQ == 0xC0,
+               "the keywords' codes run into the operators'");
+_Static_assert(TC_ELLIPSIS - TC_EQ == NOPS - 1 && TC_ELLIPSIS <= 0xDF,
+               "NOPS isn't the number of operators, TC_EQ ... TC_ELLIPSIS");
 
 #endif

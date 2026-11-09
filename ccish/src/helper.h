@@ -11,6 +11,10 @@
 // The CMDSYS unsigned comparison that IR op op calls (obj.fmt.h): they
 // follow the helpers in IR_ULT's order. Needs ir.h.
 #define HELP_U_COMPARE(op) (NHELPERS + (op) - IR_ULT)
+_Static_assert(IR_UGE - IR_ULT == 1 && IR_UGT - IR_ULT == 2
+               && IR_ULE - IR_ULT == 3 && IR_ULE - IR_ULT + 1 == NHELP_CMDSYS,
+               "HELP_U_COMPARE: IR_ULT ... IR_ULE aren't in the order of"
+               " HELP_CMDSYS_NAMES (obj.fmt.h)");
 extern int helper_used;             // bit k: helper k is called
 void gen_helpers(void);             // write the helpers used
 const char *helper_name(int k);
