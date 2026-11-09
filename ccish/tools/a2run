@@ -14,6 +14,8 @@
 # F12 (MAME's "UI toggle" key, here, since a Mac keyboard has neither
 # Scroll Lock nor Insert) switches to MAME's own keys and back: then Tab
 # opens MAME's menu, and Esc quits. Closing the window quits too.
+# MAME's mouse input is off (-mouseprovider none): this IIe has no mouse
+# card, and with it on, MAME captures the desktop's mouse.
 set -eu
 [ $# -ge 2 ] || { echo "usage: $0 ROMDIR DISK1.po [DISK2.po]" >&2; exit 2; }
 romdir=$1
@@ -21,4 +23,4 @@ flop2=
 [ $# -ge 3 ] && flop2="-flop2 $3"
 # shellcheck disable=SC2086
 exec mame apple2ee -rompath "$romdir" -aux "" -flop1 "$2" $flop2 \
-  -window -nomaximize -skip_gameinfo -uimodekey F12
+  -window -nomaximize -skip_gameinfo -uimodekey F12 -mouseprovider none
