@@ -5035,7 +5035,11 @@ issue. In summary:
     with a comment saying why it's there. The op-indexed tables
     (stk_effect[], lw_kind[], lw_op[], ir_names[]) are sized by their
     entries and checked against IR_NOPS, which ir.h checks is past
-    every op. The checks are of relationships only, never of a
+    every op; their contents can't be asserted (an entry isn't a
+    constant expression), so tests/spec/tables.c checks them, by
+    symbol, never by number: every op's name, that no gap has a name or
+    stack effect, and each block's first and last entry in the others.
+    ccgen carries none of it. The checks are of relationships only, never of a
     symbol's value, so any op or token may be given another number;
     and of distinctness only where it's a concern (the enums make most
     codes distinct, and other tests catch the rest). To
