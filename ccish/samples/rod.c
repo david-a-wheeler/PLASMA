@@ -94,17 +94,22 @@ static char *qlo_of[RINGS + 1], *qhi_of[RINGS + 1];
 /* Each i's lo and m (fact 2), and the b it was last drawn with. */
 static char lo[RINGS + 1], hi_d[RINGS + 1], lastb[RINGS + 1];
 
-/* Compute qlo[I] and qhi[I]. q(j) = 3j / d for j from 0 to J_MAX
- * needs no divide: with the remainder r, it steps by at most 1. The
- * tables are symmetric, t and SIZE - t, and for t <= MID the later j
- * is SIZE - i - t unless that's past J_MAX. A function of its own, so
- * that its loops are outermost, which ccish needs to count them. */
+/* Compute qlo[I] and qhi[I]: for each position t along a side of i's
+ * ring, the q that its color is q + b. A function of its own, so that
+ * its loops are outermost, which ccish needs to count them. */
 static void make_ring(int i)
 {
   char qj[J_MAX + 1], qjh[J_MAX + 1];
   char *ql, *qh;
   int j, t, d, q, qhv, r, l, e;
 
+  /* First, q for each j: the original's Q_MUL * j / (i + Q_ADD), in
+   * qj[j], and the same in the high nibble, in qjh[j]. As j goes up by
+   * 1, Q_MUL * j goes up by Q_MUL; keeping the quotient q and the
+   * remainder r, the quotient goes up by 1 whenever the remainder
+   * reaches the divisor d, and never by more, since d > Q_MUL. So
+   * there is no divide (a 16-step loop in the VM), and qhv steps the
+   * high-nibble copy along with q, so there is no shift either. */
   d = i + Q_ADD;
   q = 0;
   qhv = 0;
@@ -119,28 +124,38 @@ static void make_ring(int i)
       qhv += 1 << LORES_HI_SHIFT;
     }
   }
+
+  /* Then q for each position t, from lo to SIZE - lo. The original
+   * plots position t at j = t - i (as k = i + j) and at j = SIZE - i - t
+   * (as SIZE - k), whichever of the two are in 0 to J_MAX, and the
+   * later j is the one left on the screen. The two j's sum to
+   * SIZE - 2i, so for t up to MID, SIZE - i - t is the larger: it wins
+   * from e = SIZE - J_MAX - i up, where it comes into range; below e,
+   * t - i is the only one. Past MID it's the same in mirror image (t
+   * and SIZE - t have the same two j's), so those positions are copies.
+   * Each loop steps j along with t, instead of computing it from t on
+   * each pass. qlo_of[] and qhi_of[] keep the tables' addresses, since
+   * draw() would otherwise multiply to find qlo[i] each time. */
   ql = qlo[i];
   qh = qhi[i];
   qlo_of[i] = ql;
   qhi_of[i] = qh;
   l = lo[i];
-  e = SIZE - J_MAX - i;         /* the first t whose later j is SIZE-i-t */
-  j = l - i;
-  for (t = l; t < e; t++) {
+  e = SIZE - J_MAX - i;
+  j = l - i;                    /* below e: j = t - i, going up; none */
+  for (t = l; t < e; t++) {     /* for i >= 11, whose lo is e itself */
     ql[t] = qj[j];
     qh[t] = qjh[j];
     j++;
   }
-  if (e < l)
-    e = l;
-  j = SIZE - i - e;
+  j = SIZE - i - e;             /* e to MID: j = SIZE - i - t, going down */
   for (t = e; t <= MID; t++) {
     ql[t] = qj[j];
     qh[t] = qjh[j];
     j--;
   }
   e = SIZE - l;
-  j = MID - 1;                  /* the mirror of MID + 1 */
+  j = MID - 1;                  /* past MID: t's mirror, SIZE - t */
   for (t = MID + 1; t <= e; t++) {
     ql[t] = ql[j];
     qh[t] = qh[j];
@@ -170,8 +185,7 @@ static void make_tables(void)
  * color offset b, b16 = b in the high nibble, b2 = the rows' b in both
  * bytes of a word, i's tables ql, qh and qh1 = qh + 1, its rows' byte
  * rows pi and pf, and the positions to draw, l to h. (Several small
- * macros, since ccpp limits a line, a macro's joined, to 255
- * characters, and a macro's expansion too.) */
+ * macros, since ccpp limits a macro's expansion to 256 bytes.) */
 
 /* Draw rows i and f from l to h, in nibble NIB (LO or HI), with the
  * colors Q[x] + B: two bytes at a time, then the odd one out. */

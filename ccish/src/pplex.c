@@ -1,6 +1,6 @@
 // ccpp's lexer (approach.md, "ccpp design"). Reads the source a line at
-// a time into a fixed buffer, joining a line that ends in a backslash to
-// the next (C's phase 2), and splits it into tokens: their codes in the
+// a time into a fixed buffer, going on to the next line where one ends
+// in a backslash (C's phase 2) as it reads, and splits it into tokens: their codes in the
 // token stream (../CCPP.md), with numbers converted, escapes decoded,
 // and identifiers given their ids. Accepts LF, CR and CRLF line endings,
 // and the C95 digraphs.
@@ -36,6 +36,7 @@ static Bfile *in;           // the file being read, or NULL for a string
 static unsigned char line[MAX_LINE + 1];  // the current line, no newline
 static int line_len;
 static int line_nl;         // it ended with a newline (not the file's end)
+static int line_bs;         // it ended with a backslash: it goes on
 static int line_extra;      // lines joined to it by backslashes
 static int pos;             // the next character in line[]
 static int ch;              // current character, '\n' at the line's end,
@@ -51,14 +52,18 @@ static int saved_line[MAX_INCLUDE];
 static char saved_extra[MAX_INCLUDE];
 static int nsaved;
 
-// Read the next line into line[], joining any that end in a backslash;
-// 0 at the end of the file.
-static int next_line(void)
+// Read the next physical line into line[]: 0 at the end of the file.
+// A backslash at its end, before the newline, is dropped, and line_bs
+// set: the line goes on in the next one (C's phase 2), which splice()
+// reads when the lexer gets there. Joining there, not here, makes the
+// limit MAX_LINE a physical line's, however many a macro takes, and
+// leaves every literal and comment as it was.
+static int read_line(void)
 {
   int c;
   line_len = 0;
   line_nl = 0;
-  line_extra = 0;
+  line_bs = 0;
   pos = 0;
   if (!in)
     return 0;
@@ -74,9 +79,8 @@ static int next_line(void)
     }
     if (c == '\n') {
       if (line_len > 0 && line[line_len - 1] == '\\') {
-        line_len--;             // a backslash-newline joins the lines
-        line_extra++;
-        continue;
+        line_len--;
+        line_bs = 1;
       }
       line_nl = 1;
       return 1;
@@ -84,6 +88,24 @@ static int next_line(void)
     if (line_len >= MAX_LINE)
       error0(233 /* "line too long (over 255 characters)" */);
     line[line_len++] = (unsigned char)c;
+  }
+}
+
+// Read the next line, the first of a logical line; 0 at the file's end.
+static int next_line(void)
+{
+  line_extra = 0;
+  return read_line();
+}
+
+// At the end of a line that ended in a backslash, go on to the next:
+// a backslash-newline joins the lines, wherever the lexer is.
+static void splice(void)
+{
+  while (pos >= line_len && line_bs) {
+    line_extra++;
+    if (!read_line())
+      return;
   }
 }
 
@@ -100,18 +122,25 @@ static void getch(void)
       return;
     }
   }
-  if (pos < line_len)
-    ch = line[pos++];
-  else
-    ch = line_nl ? '\n' : EOF;
+  if (pos >= line_len) {
+    splice();                   // only at a line's end
+    if (pos >= line_len) {
+      ch = line_nl ? '\n' : EOF;
+      return;
+    }
+  }
+  ch = line[pos++];
 }
 
 // The character after ch, without moving past ch.
 static int peek(void)
 {
-  if (pos < line_len)
-    return line[pos];
-  return line_nl ? '\n' : EOF;
+  if (pos >= line_len) {
+    splice();
+    if (pos >= line_len)
+      return line_nl ? '\n' : EOF;
+  }
+  return line[pos];
 }
 
 // Start reading source from f, at its first line.
@@ -136,6 +165,7 @@ void pp_lex_text(const char *s)
   memcpy(line, s, n);
   line_len = n;
   line_nl = 1;
+  line_bs = 0;
   line_extra = 0;
   pos = 0;
   ch = 0;
@@ -166,6 +196,7 @@ void pp_lex_pop(void)
   line_extra = saved_extra[nsaved];
   line_len = pos = 0;
   line_nl = 1;
+  line_bs = 0;
   at_line_start = 0;
 }
 
@@ -296,18 +327,19 @@ int pp_lex_header(char *buf, int size, int *angle)
 }
 
 // In a directive's line: the rest of it, as it is, after any blanks
-// (#error's text). The line is then at its end.
+// (#error's text), up to MAX_STR characters, in pt_text. The line is
+// then at its end.
 const char *pp_lex_rest(void)
 {
-  int start;
+  int n = 0;
   skip_blank();
-  if (ch == '\n' || ch == EOF)
-    return "";
-  start = pos - 1;
-  line[line_len] = 0;
-  pos = line_len;
-  ch = line_nl ? '\n' : EOF;
-  return (const char *)line + start;
+  while (ch != '\n' && ch != EOF) {
+    if (n < MAX_STR)
+      pt_text[n++] = (unsigned char)ch;
+    getch();
+  }
+  pt_text[n] = 0;
+  return (const char *)pt_text;
 }
 
 // #line n: make the next line number n.

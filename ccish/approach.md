@@ -8618,18 +8618,95 @@ large or that other programs wouldn't use). Built:
   `fold_held()`, the same branch as an address constant's), so it's an
   address constant in an initializer. Tests `ptr_const.c`,
   `ptr_const_void.c`.
+- **Line joins happen as the lexer reads** (pplex.c, `splice()`;
+  discussed: "as you lex you should know your current state"). Before,
+  `next_line()` joined a whole logical line into its 255-character
+  buffer before lexing it, so a long macro with indented lines failed
+  ("line too long"). Now `read_line()` reads one physical line, noting
+  a final backslash, and `getch()` and `peek()` go on to the next line
+  when they reach its end, whatever the lexer is in: a literal, a
+  comment, or code, as C's phase 2 says. So the limit is each physical
+  line's, nothing needs collapsing or a scan of literal states (an
+  earlier try collapsed the blanks at a join outside literals: 317 to
+  340 bytes, and 22.6% more of ccpp's ops when it followed every
+  character), and `#error`'s text now crosses joins too (it's read
+  through `getch()` into `pt_text`). Line numbers are as before
+  (`line_extra`). ccpp +70 bytes of code; its ops on parse.c +0.35%
+  (the end-of-line test stays one comparison a character). Tests
+  `pp_join.c` (a macro of 428 characters, literals spliced, `a\` then
+  `b`, comments with quotes), `pp_error_join.c`.
 
-Sizes (small build, code): ccpp 13,545 to 13,539, cccomp 25,854 to
+Sizes (small build, code): ccpp 13,545 to 13,609, cccomp 25,854 to
 25,882 (module file 44,017 to 44,044), ccgen 19,726 to 19,868, ccrel
-unchanged. 447 tests pass.
+unchanged.
 
-Built and set aside for a decision: **a `?:` statement drops its
-sides' values** (`../,void-cond.patch`): cccomp +71 bytes of code, for
-`?:` used as a statement only. Not done: loop-invariant code motion,
+Not done: **a `?:` statement dropping its sides' values** (built,
+cccomp +71 bytes, then dropped in discussion: `c ? (a = x) : (a = y);`
+is unusual, and the usual `a = c ? x : y;` already compiles to one load
+per side and one store after the join). Loop-invariant code motion,
 common subexpressions in read-modify-writes, and the commutative
 reordering of a store and its reload (each needs temporaries and a
-bigger matcher, for programs written plainly; rod.c shows the source
-can do them); collapsing spaces at a joined line in ccpp (unsafe inside
-a string literal). Proposed: `register`, which guarantees no address,
-so a nested counted loop over register locals could allow stores
-through pointers (doc/rod-optimizing.md, item 3).
+bigger matcher; rod.c shows the source can do them by hand).
+
+**`register`: an important one to return to** (discussed 2026-11-09:
+"very tempted to add register, as that can optimize tight loops, but
+cccomp is large"). Do it once cccomp fits, or if a tight loop needs it.
+
+- *Why.* A counted loop nested in another loop isn't counted if its
+  body stores through a pointer (improvement 4, above): code later in
+  the outer loop might take the variable's or a local limit's address,
+  and a store through that pointer in the next pass would change it
+  behind the counted loop's back. ccgen can't see that later code when
+  it decides (it streams, and so does cccomp), and a look ahead over
+  each function would cost more than it's worth. `register` settles it:
+  C forbids taking a register object's address (C11 6.5.3.2p1, a
+  constraint, and 6.7.1p6's footnote: "the address of any part of an
+  object declared with storage-class specifier register cannot be
+  computed"), so no pointer can ever reach one. rod.c had to move its
+  inner loops into functions (`draw()`, `make_ring()`) to make them
+  outermost; with `register int x, h;` they could stay where they are.
+  Tight nested loops over buffers (graphics, matrices, text) are the
+  usual case, and they're where time goes.
+- *What C says.* `register` is a storage class: at block scope and
+  for parameters only (6.9p2: not at file scope), at most one storage
+  class per declaration (6.7.1p2). Applying `&` to a register object,
+  or to any part of one, is a constraint violation; converting a
+  register array to a pointer (as indexing does) is undefined (6.3.2.1p3).
+  Otherwise a register variable is an ordinary automatic one. C23
+  keeps it.
+- *cccomp.* `register` is already a keyword in ccpp, among the five
+  rejected ones (pplex.c's `keywords[]`; guide 9.2). It would move to
+  the supported codes, in a spare slot by `static` and `extern`
+  (`keywords[]` has spares there), and the declaration parser would
+  take it as a storage class, rejecting it at file scope and, to stay
+  simple, on arrays and structs (scalars and pointers only: what loop
+  variables and limits are). A local would carry a register flag
+  (cccomp keeps per-variable flags already; check `MAX_VARS` and the
+  `var_*` arrays' cost). `&` on one, and on a member of one, is the
+  required diagnostic: a new message ("address of register variable
+  requested", gcc's words). Whether the small build keeps that check
+  (it leaves out others that only an incorrect program fails, guide
+  2.7) is a choice: without it, an incorrect program could miscompile,
+  not just be accepted, so I think it should stay.
+- *The IR.* cccomp tells ccgen which frame slots are register with a
+  new IR op, say `REGLOCAL off` (IR.md, OBJECT.md's IR version), put
+  where the local is declared. Slots are reused when a block ends; that
+  is safe, since a pointer to a variable whose lifetime has ended may
+  not be used (6.2.4p2), so a mark by slot can stay until the function
+  ends.
+- *ccgen.* A bitmap of the frame's register slots (32 bytes for 256
+  offsets, or fewer, frames being at most 255 bytes), set by `REGLOCAL`
+  and cleared at `FUNC_BEGIN`. In irloop.c, the nested-loop rule that
+  rejects a store through a pointer would allow it when the loop
+  variable is a register slot and so is each local the limit reads
+  (`cl_loc[]`), or the limit is a constant. `taken()` stays as it is
+  (a register slot is never taken, by the check above).
+- *Cost, estimated.* cccomp 60 to 100 bytes (the keyword, the storage
+  class, the flag, the `&` check, the message, the IR op), ccgen 40 to
+  80 (the op, the bitmap, the rule). Measure both before deciding, as
+  always.
+- *Later, perhaps.* `register` as a hint could choose which locals go
+  first in the frame (no gain now: every local is a frame slot, and
+  `LLB`/`LLW` cost the same at any offset), or keep a register loop
+  variable only on the eval stack (a counted loop's count is there
+  already; the body's `DLW` refresh is what it would save).

@@ -79,10 +79,9 @@ listed here.
    decay to a pointer, so no pointer can reach one. A nested loop whose
    variable and local limit are `register` could be counted even with
    stores through pointers. ccish rejects `register` today (guide 9.2).
-   Proposed, not built: cccomp would accept it, reject `&` on it (also
-   in the small build, since C requires the diagnostic), and mark the
-   local in the IR; ccgen would relax the nested-loop rule for marked
-   locals. My estimate is 60 to 100 bytes in each of cccomp and ccgen.
+   Not built yet: approach.md ("`register`: an important one to return
+   to") has the design, to do once cccomp fits. My estimate is 60 to
+   100 bytes in cccomp and 40 to 80 in ccgen.
 
 4. **A `?:` whose value isn't used.** In an expression statement,
    `c ? (a = x) : (a = y);` computes the chosen assignment's value and
@@ -93,13 +92,10 @@ listed here.
    and rodsimple got 7% faster. The fix is to pass "value unused" into
    both arms, as for a plain assignment statement.
 
-   *Status (2026-11-09):* built and tested, but not applied: it costs
-   cccomp 71 bytes of code (113 in its module file), cccomp doesn't fit
-   yet, and only a `?:` used as a whole statement gains (no change in
-   ccish's own programs). The patch is `../,void-cond.patch`, kept for
-   a decision: parse_conditional() drops each side's value when the
-   `?:` is the statement's own operator (its nesting depth, set by
-   parse_expr_statement()), so an assignment side just stores.
+   *Status (2026-11-09):* not done. It was built (cccomp +71 bytes),
+   then dropped in discussion: `c ? (a = x) : (a = y);` is unusual, and
+   the usual `a = c ? x : y;` already compiles to one load per side and
+   one store after the join, with nothing to drop.
 
 5. **A store, then a load of the same local, apart.** rod's row loop
    computes the color word `s2`, stores it (`SLW`), loads the screen
@@ -156,36 +152,8 @@ listed here.
    costs ccpp memory; dropping the padding before a `\` when joining
    would ease the first at no cost.
 
-   *Status (2026-11-09):* not done. A backslash-newline may splice a
-   string literal, where the spaces are part of the string, so
-   collapsing them safely means knowing whether the join is inside a
-   literal.
-
-## The VM
-
-Changing the VM means 7 VMs and 3 JITs (approach.md, issue 21), so
-these are for a later VM, in order of payoff for code like rod's:
-
-1. **Load and store through a local pointer plus a local index.**
-   rod's row loop does `LLW p ADDLW x` then `LW` or `SW` six times a
-   pass, each 3 ops; as one op, each would save 2 dispatches, about
-   20% of the loop. PLASMA's own `ptr[i]` would use it too.
-2. **A store with the address below the value, or SWAP.** Every
-   read-modify-write computes its address twice, since a store takes
-   the value below the address and there's no way to move a `DUP`ed
-   address below a value. With either, `*p = (*p & m) | n` needs the
-   address once.
-3. **16-bit AND and OR with an immediate word.** `CW 0xF0F0 AND` is 2
-   ops, about 94 cycles; `ANDI` and `ORI` take only a byte. rod's row
-   loop has 3 a pass.
-
-## Native code
-
-None of the above gets near native code: a small 6502 routine to
-draw one row of a ring would take about 25 cycles a pixel, where
-rod's bytecode loops take about 350 to 450. ccish can call 6502 code only
-through a function pointer to it (the guide, `__call` in section 11),
-so a program would carry the routine as bytes. If it's worth having
-for programs like this, I think the clean way is something like
-PLASMA's `asm` functions (approach.md, "Native code"), not hand-made
-byte arrays.
+   *Status (2026-11-09):* done for the line limit: ccpp now joins a
+   line that ends in a backslash as its lexer reads (pplex.c,
+   `splice()`), so the 255 characters are each physical line's, and a
+   macro may take as many lines as it needs. ccpp +70 bytes. The limit
+   on a macro's expansion is as it was.
