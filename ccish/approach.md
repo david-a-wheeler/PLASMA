@@ -4067,6 +4067,212 @@ to date). Anything added meanwhile, such as issue 23, widens the gap.
   overflow them (measure.py: irin.c needs 87 variables against 79,
   link.c 43 types against 40), so they need to grow, not shrink (B2).
 
+### 25. volatile, and the op numbering (possible, not committed)
+
+Raised in discussion (2026-11-08), written up for review before any
+code. The aim: make `volatile` real, so that ccgen can then optimize
+loads and stores aggressively without breaking it. Every decision
+below was discussed; the numbers are measured unless they say
+"estimate".
+
+**What C requires.** An access to a volatile object is a side effect
+(C11 5.1.2.3p2, 6.7.3p7): each one written must happen, once, in
+order with the other side effects at sequence points; none may be
+added, merged with another, or narrowed (reading 1 byte of a 2-byte
+volatile isn't the same access).
+
+**Where ccish stands.** `volatile` is parsed and kept in the type
+(`Q_VOLATILE`, decision of 2026-10-29), a `const volatile` object is
+never folded, and losing the qualifier in a conversion warns. It
+doesn't reach the IR, so these break it today, or would:
+- **cccomp's `discard()`** drops a plain variable (`K_VAR`) without a
+  load, so `x;` reads nothing for a volatile global `x`. (A `K_DEREF`,
+  such as `*SPEAKER;`, is loaded.)
+- **`between_rewrite` (irin.c)** turns `a <= x && x <= b` into one
+  load of `x`.
+- **A counted loop (irloop.c)** computes its limit once, at entry:
+  safe for addresses of `$C000` and up (the address rule), not for a
+  volatile global.
+- **The DLW fix (irloop.c)** drops the test's load of the loop
+  variable, and **dead stores before a return (peep.c)** go: both only
+  for locals, but a volatile local is still a volatile object.
+- **Planned optimizations**: duplicate loads (P16), byte narrowing
+  (issue 17).
+
+**The approach** (decided in discussion, over fences, a flag field,
+calls to helpers, and the address rule alone): a volatile access is a
+*different op*, at every level, so that a pattern written for a load
+or a store never matches a volatile one. That is safe by default: an
+optimization has to opt in to touch a volatile access, not opt out.
+Fences were rejected because only window-based patterns stop at them
+(the counted loop, `between_rewrite`, the swap blocks and folding a
+loop's initial value would each need checks), and a flag because every
+optimization would have to remember to test it.
+
+#### The IR file's tags
+
+An IR record starts with a tag byte that today carries three things:
+an op number (below `IR_TAG_END`, `$44`), the bit `$80` ("a one-byte
+operand follows": most operands are small, so an op takes 2 bytes, not
+4), and the record letters (`D` `R` `Z` `S` `L` `N` `W` `X` `Y`,
+`$44` to `$59`). That limits the IR to 68 ops, and it has 65.
+- **The IR's record tags become lowercase** (`d` `r` `z` `s` `l` `n`
+  `w` `x` `y`): the object stream's letter `| $20`. So an op is `$00`
+  to `$5F` (96), with its one-byte-operand form at `$80` to `$DF`; the
+  records are `$61` to `$7A`; `$60`, `$7B` to `$7F` and `$E0` to `$FF`
+  are free, and the reader rejects them. `IR_TAG_END` becomes `$60`.
+- ccgen copies a `d`, `r`, `z` or `s` record to `NAME.obj` with its
+  tag `& ~$20` (the object stream keeps its uppercase letters, and
+  doesn't change). The IR file's size doesn't change.
+
+#### The IR op numbers
+
+Renumbered into blocks whose bits mean something, so that one op is
+made from another by a bit operation (the user: "be able to XOR the
+'not volatile' IR operations to become the volatile versions"):
+
+| Ops | Numbers | Bits |
+|---|---|---|
+| The access ops: `LOCAL`, `LOCALB`, `SETLOCAL`, `SETLOCALB`; `GLOBAL`, `GLOBALB`, `SETGLOBAL`, `SETGLOBALB`; `LOAD`, `LOADB`, `STORE`, `STOREB` | `$00`-`$0B` | bit 0: a byte (a char), not a word; bit 1: a store, not a load; bits 2-3: where (0 a local, 1 a global, 2 through an address) |
+| The addresses: `LOCALADDR`, `DATAADDR`, `HEAPADDR`, `STRADDR` | `$0C`-`$0F` | |
+| `FUNC`, `ENDFUNC`, `CONST`, `CALL`, `DROP`, `DUP`, `RETURN`, `FUNCADDR`, `ICALL`, `NEG`, `COMP`, `NOT`, `SWAP`, `UDIV`, `UMOD`, `USHR` | `$10`-`$1F` | |
+| The volatile access ops: `LOCALV` ... `STOREBV` | `$20`-`$2B` | the access op `^ IR_VOLATILE` (`$20`) |
+| (reserved: an address op `^ $20`) | `$2C`-`$2F` | rejected |
+| Binary: `ADD` ... `SHR`, as now | `$30`-`$39` | |
+| Comparisons: `EQ` `NE` `LT` `GE` `GT` `LE` `ULT` `UGE` `UGT` `ULE`, as now | `$40`-`$49` | De Morgan pairs, bit 0 (`IR_COMPARE_FLIP`); the unsigned at `+4` |
+| Control: `LABEL`, `JUMP`, `BRFALSE`, `BRTRUE`, `SEL`, `JOIN`, `CASES`, `CASEVAL`, `CASETO` | `$50`-`$58` | `BRFALSE ^ 1` is `BRTRUE` |
+| The loop markers, last, as now | `$5C`-`$5F` | |
+
+`IR_NOPS` is `$60` (`IR_MOP`, ccgen's own, stays just past it). The
+free numbers (`$3A`-`$3F`, `$4A`-`$4F`, `$59`-`$5B`) are for later
+ops. The macros, in ir.h with the others:
+- `IR_VOLATILE` `$20`; `IR_ACC_BYTE` 1; `IR_ACC_STORE` 2.
+- `IR_IS_ACCESS(op)`: `((op) & ~IR_VOLATILE) < IR_LOCALADDR`, true for
+  both sets; `IR_IS_VOLATILE(op)`: `((op) & $F0) == $20`.
+- The volatile form of an access op is `op | IR_VOLATILE`, its plain
+  form `op & ~IR_VOLATILE`, valid only on access ops (as
+  `IR_COMPARE_FLIP` is only on comparisons), since other ops have bit
+  `$20` set too. Its byte form is `op | IR_ACC_BYTE`; a load's store is
+  `op | IR_ACC_STORE`.
+- Every op stays below `$80`, so cccomp's and ccgen's `char` arrays of
+  ops (`held_op[]`, `buf_op[]`, `lp_op[]`, `fo_op[]`) are safe even on
+  a host whose `char` is signed.
+
+Tables indexed by IR op (irin.c's `stk_effect[]`, lower.c's
+`lw_kind[]` and `lw_op[]`, and the full build's `ir_names[]`) grow to
+`$60` entries, with the volatile ops' own entries, so that nothing
+masks an op to look it up: about 30 bytes each in ccgen, which has
+room.
+
+#### The machine ops
+
+- **A volatile load or store is its opcode `| 1`** (`MOP_VOLATILE`):
+  every real PLASMA opcode is even, so `LW` (`$62`) becomes `$63`, and
+  it stays a byte. emit.c clears the bit as it encodes, so the module
+  holds only real opcodes. (ccgen's `!(op & 1)` tests, at lower.c 193
+  and emit.c 426, only pick out the `CN` opcodes below `$20`.)
+- **ccgen's 7 pseudo-ops move from `$100`-`$106` to odd numbers below
+  `$20`** (`$01`, `$03`, ... `$0D`), which the `CN` test already
+  excludes, so every machine op is a byte (`Mop.op` could then be a
+  `char`). Two tests change: peep.c's barrier test (`m->op >=
+  OP_FUNC_BEGIN`, line 905) becomes `MOP_IS_PSEUDO(op)` (odd, below
+  `$20`), and lower.c stops adding `$100` to a pseudo-op it read from
+  its byte table (line 353).
+- **The rule for patterns:** exact matches and `case` labels skip the
+  volatile ops by default. A range test over loads or stores would not
+  (there are none today, in peep.c, emit.c or lower.c), so masking bit
+  0 first is a review point.
+- **Opting in.** A pattern that keeps each access exactly once, in
+  order, may take a volatile op and pass the bit on. The first ones:
+  `CW addr LB` → `LAB addr` and its kin (`absolute_op`), so that
+  `*SPEAKER` is still one `LAB $C030`; and `LLW n ADD` → `ADDLW n`
+  and the other fused loads. Not `keeping_store` (`SLW n LLW n` →
+  `DLW n` drops a load), nor anything that drops or merges one.
+
+#### cccomp
+
+Where an access op is chosen, it is volatile when the place's
+qualifiers (`Operand.quals`) have `Q_VOLATILE`: a variable's, or for
+`*p` the pointed-to type's, or a struct's member's (which inherits
+the struct's, as `const` already does). The places:
+- `rvalue()`'s loads (`LOCAL`, `GLOBAL`, `LOAD` and the byte forms),
+  and the stores (`finish_store()` and its kin): `op | IR_VOLATILE`.
+- `discard()`: a volatile `K_VAR` is loaded, then dropped.
+- `++`, `--` and compound assignment already load once and store once;
+  they get the volatile forms through the same places.
+- A struct copy goes through CMDSYS's `memcpy`: a call, so it isn't
+  optimized; each byte is copied once.
+- To check: the `assigned` reuse of a just-stored value, and any other
+  shortcut that skips a load or a store.
+
+The bit tricks may pay for some of this (`load_op(t)` becomes `IR_LOAD
+| (t == TY_CHAR)`). Estimate: 40 to 80 bytes more in cccomp.
+
+#### ccgen: what each part must do
+
+- **irin.c**: read the lowercase tags; copy data records with their
+  uppercase tag; reject a reserved op number (a byte table of valid
+  ops, or `stk_effect[]`'s entry); give the volatile ops their stack
+  effects. Its hold-buffer patterns (`run_match`, `not_cmp`,
+  `between_rewrite`, `unsigned_const`) match exact ops, so they skip
+  volatile ones: `between_rewrite`'s hazard goes.
+- **irloop.c**: `limit_ok()` rejects an op it doesn't name, so a
+  volatile load in a limit isn't counted (that hazard goes).
+  `body_ok()` *allows* an op it doesn't name, so its `SETLOCAL`,
+  `SETGLOBAL` and `STORE` cases must take the volatile forms too.
+  `step_shape()`, `dlw_fix()` and `counted_shape()` match exact ops, so
+  a volatile loop variable is never counted or DLW-fixed.
+  `pure_effect()` calls an op it doesn't name impure, which a volatile
+  load is.
+- **lower.c**: `lw_kind[]` and `lw_op[]` map a volatile IR op to its
+  machine op `| 1`.
+- **peep.c**: the opt-ins above; check `dead_stores()` and any code
+  that looks at an op's kind rather than its number.
+- **emit.c**: clear bit 0 before encoding, and before any switch on
+  the op (its length, its operand); the listing marks a volatile op
+  (`LW v`).
+- Estimate: 100 to 200 bytes more in ccgen.
+
+#### Versions and documents
+
+IR version 12 (the tags, the numbers, the volatile ops); `NAME.obj`
+and `NAME.syms` don't change. OBJECT.md (the IR's tags and record
+table), IR.md (each op's number, and the volatile forms), and this
+issue updated as each step lands.
+
+#### Order of work, each step tested and committed
+
+1. **The lowercase tags** (`IR_TAG_END` `$60`). Objects identical.
+2. **The new op numbers and their macros**, with the code that can use
+   the bit tricks. Objects identical: checked on every source, library
+   and test file, as fold_held() was.
+3. **The pseudo-ops below `$20`.** Objects identical.
+4. **volatile**: cccomp, the tables, emit.c's clearing, the opt-ins,
+   and tests (below).
+5. Later, apart from volatile: **constants as one pseudo-op until
+   emit.c** (discussed 2026-11-08), so that no peephole pattern can
+   miss a constant, and one function chooses `CN`, `MINUS1`, `CB`,
+   `CFFB` or `CW`, for emitting and for the cost questions patterns
+   ask; the first step of the optimization work.
+
+#### Tests for step 4
+
+Run tests with listing checks (`listing-count`), each with a
+non-volatile twin that still gets the optimization:
+- `x;` for a volatile global: one load (`LAW`).
+- `a <= x && x <= b`, `x` volatile: two loads of `x`.
+- A counted-loop shape whose limit is a volatile global: not counted
+  (no `INCBRLE`), the limit read each pass.
+- A loop over a volatile local: no DLW fix.
+- A store to a volatile local just before a return: kept.
+- `x++`, `x += 2` on a volatile: one load and one store.
+- `*SPEAKER;` (`volatile char *const`): one `LAB $C030`.
+- A volatile store in a counted loop's body to a global the limit
+  reads: not counted.
+- Damaged-IR tests: a reserved op number, and an old IR version.
+Plus the bootstrap, and the small build's objects identical to the
+full build's (tests/spec/small.sh).
+
 ## Decisions so far
 
 The first round of answers is recorded inline as "Answer:" under each
