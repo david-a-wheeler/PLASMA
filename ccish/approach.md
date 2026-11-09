@@ -5087,6 +5087,21 @@ issue. In summary:
     would need the kinds in type.h; and is_pointer() and its kin as
     macros, which would save time but cost about 100 bytes (a
     prefer-speed option).
+42. **parse.c's small functions and common calls** (decided in
+    discussion, 2026-11-09). error0() and fatal0() for the 150
+    diagnostics with no detail (cccomp 56 bytes smaller, ccpp 25;
+    ccgen and ccrel, with few such calls, grow 24 and 12). IS_UNS,
+    PROMOTED (TY_INT plus IS_UNS's 0 or 1), STORE_OP and VAR_DEPTH
+    as macros (25). fold() with one switch for both signs and one
+    wrap16(); goto_label(id, def) for the two near-copies that found
+    or made a goto label; parse_int_type() inlined into its one
+    caller (90). put_op(op) for the 55 put(op, 0, -1) calls, a copy of
+    put()'s body so the busiest path gets no slower (45). In all,
+    cccomp 27,769 to 27,553. id_kind() and the others: decision 41's
+    follow-up, 21 more. Left as they are: begin_expr() and end_expr(),
+    which as macros would cost about 21 bytes (a prefer-speed option),
+    and functions whose one caller is recursive, whose frame would
+    grow at each level.
 
 
 ## Milestones
