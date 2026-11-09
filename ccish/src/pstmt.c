@@ -762,7 +762,7 @@ static void parse_break_continue(void)
 // whose body holds it uncounted. A label is followed by a statement,
 // which may be another label.
 // A macro, not a function: it has one caller.
-#define parse_label() do { int l_ = define_goto_label(tok_val); \
+#define parse_label() do { int l_ = goto_label(tok_val, 1); \
   next(); expect(':', 315 /* "expected ':' after a label, not" */); \
   place_label(l_); parse_statement(); } while (0)
 
@@ -776,7 +776,7 @@ static void parse_goto(void)
   next();                         // 'goto'
   if (tok != T_ID)
     error(316 /* "expected a label after 'goto', not" */, tok_desc());
-  l = reserve_goto_label(tok_val);
+  l = goto_label(tok_val, 0);
   next();                         // the label
   branch(IR_JUMP, l);
   expect(';', 317 /* "expected ';' after 'goto', not" */);

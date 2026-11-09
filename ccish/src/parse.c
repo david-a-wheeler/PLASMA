@@ -462,54 +462,47 @@ int parse_quals(void)
 // declaration may declare with no declarators (struct pt { ... };).
 int base_tagged;
 
-// Parse int, char, signed and unsigned, in any order, with any
-// qualifiers among them (unsigned const int), adding those to *q, and
-// return the type: unsigned int (TY_UINT), int, or char. unsigned char
-// is plain char, which is unsigned; signed char isn't supported yet.
-static int parse_int_type(int *q)
-{
-  int base = 0, sign = 0;
-  while (T_IS_INT_OR_QUAL(tok)) {
-    if (T_IS_QUAL(tok)) {
-      *q |= parse_quals();
-      continue;
-    }
-    if (tok == T_INT || tok == T_CHAR ? base != 0 : sign != 0)
-      error(226 /* "conflicting or repeated type specifier:" */,
-            tok_desc());
-    if (tok == T_INT || tok == T_CHAR)
-      base = tok;
-    else
-      sign = tok;
-    next();
-  }
-  if (base == T_CHAR) {
-    if (sign == T_SIGNED)
-      error0(227 /* "'signed char' is not supported yet" */);
-    return TY_CHAR;
-  }
-  return sign == T_UNSIGNED ? TY_UINT : TY_INT;
-}
-
 // Parse a basic type name (int, char, void, unsigned, a struct or enum
 // type, or a typedef name), with any qualifiers before or after it
 // (const char, char const), and return its type.
 int parse_base_type(void)
 {
-  int q = parse_quals(), t = TY_INT;
+  int q = parse_quals(), t = TY_INT, base = 0, sign = 0;
   int tagged = T_IS_TAGGED(tok);  // after the quals
   if (T_IS_STRUCT_UNION(tok)) {
     t = parse_struct(tok == T_UNION);
   } else if (tok == T_ENUM) {
     t = parse_enum();
   } else if (T_IS_INT_TYPE(tok)) {
-    t = parse_int_type(&q);
+    // int, char, signed and unsigned, in any order, with any qualifiers
+    // among them (unsigned const int): unsigned int, int, or char.
+    // unsigned char is plain char, which is unsigned; signed char isn't
+    // supported yet.
+    while (T_IS_INT_OR_QUAL(tok)) {
+      if (T_IS_QUAL(tok)) {
+        q |= parse_quals();
+        continue;
+      }
+      if (tok == T_INT || tok == T_CHAR ? base != 0 : sign != 0)
+        error(226 /* "conflicting or repeated type specifier:" */,
+              tok_desc());
+      if (tok == T_INT || tok == T_CHAR)
+        base = tok;
+      else
+        sign = tok;
+      next();
+    }
+    if (base == T_CHAR) {
+      if (sign == T_SIGNED)
+        error0(227 /* "'signed char' is not supported yet" */);
+      t = TY_CHAR;
+    } else if (sign == T_UNSIGNED) {
+      t = TY_UINT;
+    }
   } else {
     if (tok == T_VOID)
       t = TY_VOID;
-    else if (tok == T_ID && typedef_type(tok_val) >= 0)
-      t = typedef_type(tok_val);
-    else
+    else if (tok != T_ID || (t = typedef_type(tok_val)) < 0)
       error(33 /* "expected a type, not" */, tok_desc());
     next();
   }
@@ -660,49 +653,55 @@ void check_right_const(int op, int v)
 // rejects give 0 (they only get here in code that can never run).
 int fold(int op, int a, int b, int uns)
 {
-  unsigned ua = (unsigned)a, ub = (unsigned)b, q;
+  unsigned ua = (unsigned)a, ub = (unsigned)b, r = 0;
   if ((IR_IS_DIVMOD(op) && b == 0)
       || (IR_IS_S_SHIFT(op) && (b < 0 || b > 15)))
     return 0;
   if (uns) {
     ua &= 0xFFFF;
     ub &= 0xFFFF;
-    switch (op) {
-    case IR_LT:  return ua < ub;
-    case IR_GT:  return ua > ub;
-    case IR_LE:  return ua <= ub;
-    case IR_GE:  return ua >= ub;
-    case IR_DIV: return wrap16(ua / ub);
-    case IR_MOD: return wrap16(ua % ub);
-    case IR_SHR: return wrap16(ua >> b);
-    }
   }
+  // One switch for both signs, the result wrapped once at the end (a
+  // comparison's 1 or 0 is itself).
   switch (op) {
-  case IR_EQ:  return a == b;
-  case IR_NE:  return a != b;
-  case IR_LT:  return a < b;
-  case IR_GT:  return a > b;
-  case IR_LE:  return a <= b;
-  case IR_GE:  return a >= b;
-  case IR_ADD: return wrap16(ua + ub);
-  case IR_SUB: return wrap16(ua - ub);
-  case IR_MUL: return wrap16(ua * ub);
+  case IR_EQ:  r = a == b; break;
+  case IR_NE:  r = a != b; break;
+  case IR_LT:  r = uns ? ua < ub : a < b; break;
+  case IR_GT:  r = uns ? ua > ub : a > b; break;
+  case IR_LE:  r = uns ? ua <= ub : a <= b; break;
+  case IR_GE:  r = uns ? ua >= ub : a >= b; break;
+  case IR_ADD: r = ua + ub; break;
+  case IR_SUB: r = ua - ub; break;
+  case IR_MUL: r = ua * ub; break;
   case IR_DIV:
-    q = magnitude(a) / magnitude(b);
-    return wrap16((a < 0) != (b < 0) ? 0u - q : q);
+    if (uns) {
+      r = ua / ub;
+    } else {
+      r = magnitude(a) / magnitude(b);
+      if ((a < 0) != (b < 0))
+        r = 0u - r;
+    }
+    break;
   case IR_MOD:
-    q = magnitude(a) % magnitude(b);
-    return wrap16(a < 0 ? 0u - q : q);
-  case IR_AND: return wrap16(ua & ub);
-  case IR_OR:  return wrap16(ua | ub);
-  case IR_XOR: return wrap16(ua ^ ub);
-  case IR_SHL: return wrap16(ua << b);
+    if (uns) {
+      r = ua % ub;
+    } else {
+      r = magnitude(a) % magnitude(b);
+      if (a < 0)
+        r = 0u - r;
+    }
+    break;
+  case IR_AND: r = ua & ub; break;
+  case IR_OR:  r = ua | ub; break;
+  case IR_XOR: r = ua ^ ub; break;
+  case IR_SHL: r = ua << b; break;
   case IR_SHR:
-    // >> of a negative int is implementation-defined in C, so
-    // shift the non-negative ~a instead.
-    return a < 0 ? ~(~a >> b) : a >> b;
+    // >> of a negative int is implementation-defined in C, so shift
+    // the non-negative ~a instead.
+    r = uns ? ua >> b : (unsigned)(a < 0 ? ~(~a >> b) : a >> b);
+    break;
   }
-  return 0;
+  return wrap16(r);
 }
 
 // The op that gives the same result as binary IR op with its operands
@@ -763,47 +762,26 @@ static int new_goto_label(void)
   return n;
 }
 
-// The goto label reserved or defined for id, or -1 if there is none.
-static int goto_label_find(int id)
-{
-  int i;
-  for (i = 0; i < nlbls; i++)
-    if (lbl_id[i] == id)
-      return lbl_num[i];
-  return -1;
-}
-
-// The goto label for a 'goto id': find it, or reserve it (undefined so
-// far, for the ':' that may come later).
-int reserve_goto_label(int id)
-{
-  int n = goto_label_find(id);
-  if (n < 0) {
-    n = new_goto_label();
-    lbl_id[nlbls] = id;
-    lbl_num[nlbls] = n;
-    lbl_def[nlbls] = 0;
-    nlbls++;
-  }
-  return n;
-}
-
-// The goto label for an 'id:': find and define it, or create it.
-// A second ':' for the same label is a duplicate.
-int define_goto_label(int id)
+// The goto label for id: found, or made. For a 'goto id' (def 0), a
+// label made is reserved, undefined so far, for the ':' that may come
+// later; for an 'id:' (def 1), the label is defined, and a second ':'
+// for the same label is a duplicate.
+int goto_label(int id, int def)
 {
   int i, n;
   for (i = 0; i < nlbls; i++)
     if (lbl_id[i] == id) {
-      if (lbl_def[i])
-        error(313 /* "duplicate label" */, quote(id));
-      lbl_def[i] = 1;
+      if (def) {
+        if (lbl_def[i])
+          error(313 /* "duplicate label" */, quote(id));
+        lbl_def[i] = 1;
+      }
       return lbl_num[i];
     }
   n = new_goto_label();
   lbl_id[nlbls] = id;
   lbl_num[nlbls] = n;
-  lbl_def[nlbls] = 1;
+  lbl_def[nlbls] = (char)def;
   nlbls++;
   return n;
 }

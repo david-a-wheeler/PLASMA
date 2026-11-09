@@ -238,8 +238,7 @@ extern int ngoto_labels;            // goto labels made
 extern int nlbls;                   // goto labels defined or used;
                                     // both reset at a function's start
 
-int  reserve_goto_label(int id);
-int  define_goto_label(int id);
+int  goto_label(int id, int def);   // a goto's (0), or a label's (1)
 void check_goto_labels(void);
 void place_true(Operand *o);
 void cond_branch(Operand *o, int n, int on_true);
