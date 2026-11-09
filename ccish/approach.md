@@ -8811,6 +8811,20 @@ counted loops"). As designed above, with these choices:
   Parameters can't be register yet: `parse_params()` runs before the
   function's `IR_FUNC`, so the marks would have to wait for it.
   cccomp +59 bytes of code (module file +87).
+  *Register parameters: measured, and left out for now* (decided in
+  discussion, 2026-11-09: "Leave register parameters out for now").
+  A working prototype took cccomp's code 73 bytes up (module file
+  +105): `parse_params()` +30 (take the keyword, mark `var_link[]`),
+  and the top-level parser +43, for a loop after `IR_FUNC` that writes
+  each register parameter's `IR_REGLOCAL` (they can't be written while
+  the parameters are parsed: prototypes parse them too, and a stray
+  mark between functions would wrongly apply to the next one). ccgen
+  needs nothing. What it would buy: a parameter as a nested counted
+  loop's limit, or as a hoisted expression's leaf, without copying it
+  to a register local first (`register int m = n;`, a word of frame
+  and a store per call). Not worth 73 bytes of cccomp while it doesn't
+  fit; the prototype is `,register-params.patch` (a scratch file).
+  Revisit once cccomp has room.
 - *ccgen* (irloop.c). `reg_slot[]`, set by `IR_REGLOCAL`, cleared at
   `IR_FUNC`. (1) A counted loop nested in another, or after a goto
   label, may store through pointers when its variable and its limit's
