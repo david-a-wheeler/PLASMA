@@ -203,7 +203,7 @@ static void flush_char(void)
     return;
   put(IR_CONST, held_char, -1);
   put(IR_CHAR_FORM(init_set, 1), held_at, -1);
-  put(IR_DROP, 0, -1);
+  put_op(IR_DROP);
   held_char = -1;
 }
 
@@ -222,7 +222,7 @@ static void init_byte(int off, int v)
   if (held_char >= 0 && held_at == at - 1) {
     put(IR_CONST, held_char | (v << 8), -1);
     put(init_set, held_at, -1);
-    put(IR_DROP, 0, -1);
+    put_op(IR_DROP);
     held_char = -1;
     return;
   }
@@ -268,18 +268,18 @@ static void init_zero(int n, int off)
   }
   if (words + n % 2 > 3 && (f = cmdsys_memset()) >= 0) {
     put(IR_LOCALADDR, at, -1);
-    put(IR_CONST, 0, -1);
+    put_op(IR_CONST);
     put(IR_CONST, n, -1);
     fn_flags[f] |= FN_CALLED;
     put(IR_CALL, 3, f);
     return;
   }
-  put(IR_CONST, 0, -1);
+  put_op(IR_CONST);
   for (i = 0; i < words; i++)
     put(init_set, at + 2 * i, -1);
   if (n % 2)
     put(IR_CHAR_FORM(init_set, 1), at + n - 1, -1);
-  put(IR_DROP, 0, -1);
+  put_op(IR_DROP);
 }
 
 // Parse the initializer of one scalar element of type type, at offset
@@ -307,7 +307,7 @@ static void init_elem(int type, int off)
     v.off = at;
     v.global = 0;
     store_var(&v);
-    put(IR_DROP, 0, -1);
+    put_op(IR_DROP);
   }
   end_expr();
 }

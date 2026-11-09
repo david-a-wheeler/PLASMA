@@ -582,7 +582,7 @@ static void parse_declaration(int is_static)
       v.off = var_off[s];
       v.global = 0;
       store_var(&v);
-      put(IR_DROP, 0, -1);
+      put_op(IR_DROP);
       end_expr();
       if (braced) {
         if (tok == ',')

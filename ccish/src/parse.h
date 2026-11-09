@@ -246,6 +246,7 @@ void enter_nest(void);
 int  wrap16(unsigned u);
 int  code_start(int mark, int h);
 void put(int op, int a, int f);
+void put_op(int op);                // put(op, 0, -1)
 void begin_expr(void);
 void end_expr(void);
 void rvalue(Operand *o);

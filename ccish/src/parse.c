@@ -593,6 +593,20 @@ void put(int op, int a, int f)
   ir_put(op, a, f);
 }
 
+// put_op(op): an op with no operands, the most common. A copy of
+// put()'s body, not a call to it, so it costs no time; the 48 calls
+// each pass two arguments fewer.
+void put_op(int op)
+{
+  int i;
+  if (suppress)
+    return;
+  for (i = 0; i < nheld; i++)
+    ir_put(held_op[i], held_a[i], held_f[i]);
+  nheld = 0;
+  ir_put(op, 0, -1);
+}
+
 // Hold back the op that pushes a left operand (op, a, f), for put() to
 // write out before any other; return its place. The caller checks that
 // there is room (nheld < MAX_HELD).
@@ -893,7 +907,7 @@ void push_var_addr(int off, int global)
     put(IR_HEAPADDR, 0, global - 2);
     if (off != 0) {
       put(IR_CONST, off, -1);
-      put(IR_ADD, 0, -1);
+      put_op(IR_ADD);
     }
   } else if (global) {
     put(IR_DATAADDR, off, data_sym_of(global));
@@ -909,7 +923,7 @@ static void load_var(int off, int global, int form)
 {
   if (movable(global)) {
     push_var_addr(off, global);
-    put(IR_FORM(IR_LOAD, form), 0, -1);
+    put_op(IR_FORM(IR_LOAD, form));
   } else if (global) {
     put(IR_FORM(IR_GLOBAL, form), off, data_sym_of(global));
   } else {
@@ -924,9 +938,9 @@ static void keep_copy(int is_char)
 {
   if (is_char) {
     put(IR_CONST, 0xFF, -1);
-    put(IR_AND, 0, -1);
+    put_op(IR_AND);
   }
-  put(IR_DUP, 0, -1);
+  put_op(IR_DUP);
 }
 
 // Store the top value into the variable o (a K_VAR), keeping the stored
@@ -938,7 +952,7 @@ void store_var(Operand *o)
   if (movable(o->global)) {
     keep_copy(c);
     push_var_addr(o->off, o->global);
-    put(IR_FORM(IR_STORE, form), 0, -1);
+    put_op(IR_FORM(IR_STORE, form));
   } else if (o->global) {
     put(IR_FORM(IR_SETGLOBAL, form), o->off, data_sym_of(o->global));
   } else {
@@ -1053,13 +1067,13 @@ void push_address(Operand *o)
     load_var(o->idx, o->idx_global, IR_CHAR_FORM(0, o->idx_char));
     if (o->scale != 1) {
       put(IR_CONST, o->scale, -1);
-      put(IR_MUL, 0, -1);   // a word index becomes IDXW
+      put_op(IR_MUL);   // a word index becomes IDXW
     }
-    put(IR_ADD, 0, -1);
+    put_op(IR_ADD);
   }
   if (d != 0) {
     put(IR_CONST, d, -1);
-    put(IR_ADD, 0, -1);
+    put_op(IR_ADD);
   }
 }
 
@@ -1118,7 +1132,7 @@ void rvalue(Operand *o)
     push_address(o);
     // fall through
   case K_DEREF:
-    put(IR_FORM(IR_LOAD, acc_form(o->type, o->quals)), 0, -1);
+    put_op(IR_FORM(IR_LOAD, acc_form(o->type, o->quals)));
     o->is_bool = 0;
     break;
   case K_STORE:
@@ -1131,7 +1145,7 @@ void rvalue(Operand *o)
     put(IR_CONST, 1, -1);
     branch(IR_JUMP, e);
     place_forward(o->val);
-    put(IR_CONST, 0, -1);
+    put_op(IR_CONST);
     place_forward(e);
     o->is_bool = 1;
     break;
@@ -1180,7 +1194,7 @@ void spill(Operand *o)
     return;
   off = new_temp();
   put(IR_SETLOCAL, off, -1);
-  put(IR_DROP, 0, -1);
+  put_op(IR_DROP);
   make_elem(o, off, 0, 0);
 }
 
@@ -1204,7 +1218,7 @@ int code_start(int mark, int h)
 void swap_blocks(int start, int mid, int fixed)
 {
   if (start < 0) {
-    put(IR_SWAP, 0, -1);
+    put_op(IR_SWAP);
     return;
   }
   if (nheld != 0 || start > mid || mid > ir_here())
@@ -1222,12 +1236,12 @@ void finish_store(Operand *o, int keep)
   if (ir_here() != o->mend || nheld != 0)
     fatal0(39 /* "internal error: code after a pending store" */);
   if (keep)
-    put(IR_DUP, 0, -1);
+    put_op(IR_DUP);
   swap_blocks(o->m0, o->m1, 0);
-  put(STORE_OP(o->stype, o->quals), 0, -1);
+  put_op(STORE_OP(o->stype, o->quals));
   if (keep && o->vmask) {
     put(IR_CONST, 0xFF, -1);
-    put(IR_AND, 0, -1);
+    put_op(IR_AND);
   }
   o->kind = keep ? K_VALUE : K_VOID;
 }
@@ -1287,7 +1301,7 @@ void assign_to(Operand *o)
   if (o->quals & Q_VOLATILE)
     keep_copy(o->type == TY_CHAR);
   push_address(o);
-  put(STORE_OP(o->type, o->quals), 0, -1);
+  put_op(STORE_OP(o->type, o->quals));
   if (o->quals & Q_VOLATILE)
     o->kind = K_VALUE;
   else
@@ -1319,13 +1333,13 @@ void discard(Operand *o)
   int k;
   if (is_struct(o->type) && is_place(o)) {
     if (o->kind == K_DEREF)
-      put(IR_DROP, 0, -1);  // its address
+      put_op(IR_DROP);  // its address
     o->kind = K_VOID;
     return;
   }
   if (is_struct(o->type) && o->kind == K_VALUE) {
     for (k = 0; k < struct_words(o->type); k++)
-      put(IR_DROP, 0, -1);  // a call's result
+      put_op(IR_DROP);  // a call's result
     o->kind = K_VOID;
     return;
   }
@@ -1342,7 +1356,7 @@ void discard(Operand *o)
       || (o->kind == K_VAR && (o->quals & Q_VOLATILE)))
     rvalue(o);                  // a volatile x; still reads x
   if (o->kind == K_VALUE)
-    put(IR_DROP, 0, -1);
+    put_op(IR_DROP);
 }
 
 // Is o a null pointer constant: an integer constant expression 0? (A

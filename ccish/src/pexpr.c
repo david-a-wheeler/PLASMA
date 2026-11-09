@@ -133,8 +133,8 @@ static void to_bool(Operand *o)
   }
   rvalue(o);
   if (!o->is_bool) {
-    put(IR_CONST, 0, -1);
-    put(IR_NE, 0, -1);
+    put_op(IR_CONST);
+    put_op(IR_NE);
     o->is_bool = 1;
   }
   o->type = TY_INT;
@@ -151,7 +151,7 @@ void to_char(Operand *o)
     rvalue(o);
     if (o->type != TY_CHAR && !o->is_bool) {
       put(IR_CONST, 0xFF, -1);
-      put(IR_AND, 0, -1);
+      put_op(IR_AND);
     }
   }
   o->type = TY_CHAR;
@@ -303,7 +303,7 @@ static void materialize(Operand *o)
     new_temp();                 // the next words, right after t
   for (k = w - 1; k >= 0; k--) {
     put(IR_SETLOCAL, t + 2 * k, -1);
-    put(IR_DROP, 0, -1);
+    put_op(IR_DROP);
   }
   o->kind = K_VAR;
   o->off = t;
@@ -318,7 +318,7 @@ void push_zero_result(int t)
 {
   int k, w = result_words(t);
   for (k = 0; k < w; k++)
-    put(IR_CONST, 0, -1);
+    put_op(IR_CONST);
 }
 
 // Report an error if t is a struct too big to pass or return by value
@@ -428,7 +428,7 @@ static void parse_icall(Operand *o)
     rvalue(o);
     tmp = new_temp();
     put(IR_SETLOCAL, tmp, -1);
-    put(IR_DROP, 0, -1);
+    put_op(IR_DROP);
   }
   nargs = parse_args(-1);
   if (tmp >= 0)
@@ -622,7 +622,7 @@ static int start_incdec(Operand *o)
 // ++x / --x: x = x + 1, and the value is the new x. A macro, not a
 // function: it has one caller, on the recursive expression chain.
 #define pre_incdec(o, ir_op) do { put(IR_CONST, start_incdec(o), -1); \
-  put(ir_op, 0, -1); assign_to(o); (o)->is_bool = 0; } while (0)
+  put_op(ir_op); assign_to(o); (o)->is_bool = 0; } while (0)
 
 // x++ / x--: the value is the old x. Keep a copy of it below the
 // update; when the value is unused, the peephole stage removes the
@@ -630,9 +630,9 @@ static int start_incdec(Operand *o)
 static void post_incdec(Operand *o, int ir_op)
 {
   int step = start_incdec(o);
-  put(IR_DUP, 0, -1);
+  put_op(IR_DUP);
   put(IR_CONST, step, -1);
-  put(ir_op, 0, -1);
+  put_op(ir_op);
   assign_to(o);
   discard(o);                     // the new value
   o->kind = K_VALUE;
@@ -814,7 +814,7 @@ static void offset_place(Operand *o, int off)
     o->disp = wrap16((unsigned)o->disp + (unsigned)off);
   } else if (off != 0) {          // K_DEREF: the address is on the stack
     put(IR_CONST, off, -1);
-    put(IR_ADD, 0, -1);
+    put_op(IR_ADD);
   }
 }
 
@@ -917,11 +917,11 @@ static void parse_unary(Operand *o)
     // A char operand is promoted; ! gives an int.
     o->type = t == '!' ? TY_INT : PROMOTED(o->type);
     if (t == '-')
-      put(IR_NEG, 0, -1);
+      put_op(IR_NEG);
     else if (t == '~')
-      put(IR_COMP, 0, -1);
+      put_op(IR_COMP);
     else if (t == '!')
-      put(IR_NOT, 0, -1);
+      put_op(IR_NOT);
     if (t != '+')
       o->is_bool = t == '!';
     return;
@@ -1222,7 +1222,7 @@ static void push_scaled(Operand *i, int p)
   rvalue(i);
   if (n != 1) {
     put(IR_CONST, n, -1);
-    put(IR_MUL, 0, -1);
+    put_op(IR_MUL);
   }
 }
 
@@ -1260,7 +1260,7 @@ static int unsigned_op(Operand *o, Operand *r, int *op)
     return 0;
   if (is_relational(*op)) {
     *op = IR_U_COMPARE(*op);
-    put(*op, 0, -1);
+    put_op(*op);
   } else if (*op == IR_DIV || *op == IR_MOD || *op == IR_SHR) {
     shift = *op == IR_SHR;
     *op = *op == IR_DIV ? IR_UDIV : *op == IR_MOD ? IR_UMOD : IR_USHR;
@@ -1288,7 +1288,7 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
     // < > <= >= between pointers are unsigned: IR_ULT and the rest
     // (approach.md 18.7, C).
     if (is_relational(op)) {
-      put(IR_U_COMPARE(op), 0, -1);
+      put_op(IR_U_COMPARE(op));
       o->kind = K_VALUE;
       o->type = TY_INT;
       o->is_bool = 1;
@@ -1319,7 +1319,7 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
     if (n != 1) {
       swap_blocks(lstart, mid, 0);
       put(IR_CONST, n, -1);
-      put(IR_MUL, 0, -1);
+      put_op(IR_MUL);
     }
     result = rt;
   } else if (is_pointer(lt) && is_pointer(rt) && op == IR_SUB) {
@@ -1328,13 +1328,13 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
       error(48 /* "incompatible pointer types in" */, "subtraction");
     n = elem_size(lt);
     rvalue(r);
-    put(IR_SUB, 0, -1);
+    put_op(IR_SUB);
     if (n == 2) {
       put(IR_CONST, 1, -1);
-      put(IR_SHR, 0, -1);
+      put_op(IR_SHR);
     } else if (n != 1) {
       put(IR_CONST, n, -1);
-      put(IR_DIV, 0, -1);
+      put_op(IR_DIV);
     }
     o->kind = K_VALUE;
     o->type = TY_INT;
@@ -1482,10 +1482,10 @@ void copy_struct(Operand *o, Operand *r, int start)
       struct_word(&d, o, 2 * k);
       if (d.kind == K_VAR) {
         store_var(&d);
-        put(IR_DROP, 0, -1);
+        put_op(IR_DROP);
       } else {
         push_address(&d);
-        put(STORE_OP(d.type, d.quals), 0, -1);
+        put_op(STORE_OP(d.type, d.quals));
       }
     }
     o->assigned = 1;
@@ -1503,10 +1503,10 @@ void copy_struct(Operand *o, Operand *r, int start)
         rvalue(&v);
         if (d.kind == K_VAR) {
           store_var(&d);
-          put(IR_DROP, 0, -1);
+          put_op(IR_DROP);
         } else {
           push_address(&d);
-          put(STORE_OP(d.type, d.quals), 0, -1);
+          put_op(STORE_OP(d.type, d.quals));
         }
       }
       o->assigned = 1;
@@ -1525,7 +1525,7 @@ void copy_struct(Operand *o, Operand *r, int start)
   put(IR_CONST, n, -1);
   put(IR_CALL, 3, fn);
   if (fn_type[fn] != TY_VOID)
-    put(IR_DROP, 0, -1);
+    put_op(IR_DROP);
   if (o->kind != K_DEREF)
     o->assigned = 1;
 }
@@ -1537,7 +1537,7 @@ static void struct_assign(Operand *o)
   Operand r;
   int mark, h;
   if (o->kind == K_DEREF)
-    put(IR_DUP, 0, -1);       // the address, kept for the result
+    put_op(IR_DUP);       // the address, kept for the result
   mark = ir_here();
   h = nheld;
   parse_expr(PREC_ASSIGN, &r);
@@ -1635,7 +1635,7 @@ static int fold_held(Operand *o, Operand *rp, int ir_op, Operand *addr)
       }
       rvalue(&r);
       push_scaled(&c, r.type);
-      put(IR_ADD, 0, -1);
+      put_op(IR_ADD);
       *o = r;
       return 1;
     }
@@ -1661,7 +1661,7 @@ static int fold_held(Operand *o, Operand *rp, int ir_op, Operand *addr)
     if (is_relational(op)
         && (IS_UNS(o->type) || IS_UNS(value_type(r.type))))
       op = IR_U_COMPARE(op);
-    put(op, 0, -1);
+    put_op(op);
     o->type = is_compare(ir_op) ? TY_INT : arith_type(o->type, r.type);
     o->kind = K_VALUE;
     o->is_bool = is_compare(ir_op);
