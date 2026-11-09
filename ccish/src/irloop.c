@@ -226,18 +226,17 @@ static int limit_global(int a, int f)
  * compute once: one value, of constants, locals other than the variable
  * (whose addresses haven't been taken), globals, addresses, loads
  * through them, and arithmetic, with no side effects? Sets cl_loc[]
- * and the rest. A load through an address of $C000 or above (the
- * Apple's I/O space, where a read may differ each time) isn't one. */
+ * and the rest. A volatile load (such as the Apple's I/O, where a read
+ * may differ each time) isn't one: it has its own op, so none here. */
 static int limit_ok(int from, int to)
 {
-  int depth = 0, hw = 0, op, a;
+  int depth = 0, op, a;
   cl_nloc = cl_ngl = cl_load = 0;
   for (; from < to; from++) {
     op = lp_op[from];
     a = lp_a[from];
     switch (op) {
     case IR_CONST:
-      hw |= (a & 0xFFFF) >= 0xC000;
       depth++;
       break;
     case IR_LOCAL: case IR_LOCALB:
@@ -275,7 +274,7 @@ static int limit_ok(int from, int to)
       return 0;
     }
   }
-  return depth == 1 && !(hw && cl_load);
+  return depth == 1;
 }
 
 /* May IR op op (with a and f) be in a counted loop's body? Not a goto
@@ -426,13 +425,13 @@ static char fo_op[FOLD_MAX];
 static int fo_a[FOLD_MAX], fo_f[FOLD_MAX];
 
 /* Is the swap buffer's tail an init of the counted loop's variable,
- * v = e, with e an expression of no side effects (pure_effect()) and no
- * load through an I/O address ($C000 and above)? If so, copy e's ops
+ * v = e, with e an expression of no side effects (pure_effect(), which
+ * has no volatile load)? If so, copy e's ops
  * to fo_op[] and the rest, and return how many; else 0. Walking back
  * from the store, e starts where the ops met so far leave one value. */
 static int init_fold(void)
 {
-  int need = 1, i = nbuf - 3, n, hw = 0, load = 0, e;
+  int need = 1, i = nbuf - 3, n, e;
   if (nbuf < 3 || buf_op[nbuf - 1] != IR_DROP
       || buf_op[nbuf - 2] != IR_SETLOCAL || buf_a[nbuf - 2] != cl_var
       || buf_pre[nbuf - 2] || buf_pre[nbuf - 1])
@@ -441,11 +440,9 @@ static int init_fold(void)
     if ((e = pure_effect(buf_op[i])) == -2 || buf_pre[i])
       return 0;
     need -= e;
-    hw |= buf_op[i] == IR_CONST && (buf_a[i] & 0xFFFF) >= 0xC000;
-    load |= e == 0 && buf_op[i] != IR_NEG && buf_op[i] != IR_COMP;
   }
   n = nbuf - 3 - i;             /* e is from i + 1 */
-  if (need != 0 || n > FOLD_MAX || (hw && load)
+  if (need != 0 || n > FOLD_MAX
       || (i >= 0 && buf_op[i] == IR_SWAP))
     return 0;
   for (e = 0; e < n; e++) {

@@ -76,12 +76,13 @@
  *        store is SLW, SLB, SAW or SAB n, or SW or SB after an address
  *        computed only on the stack (LLW p, LLA a IDXLW i, LA g IDXAW
  *        i, ...), volatile or not (the store is still made).
- *   expr  DROP               -> (nothing)  for an expression that
- *                                          reads no memory but the frame
- *                                          (constants, LLW, LLB, LLA, LA,
- *                                          DUP, arithmetic: no LW, LAB,
- *                                          ADDAW, ..., which might read
- *                                          I/O)
+ *   expr  DROP               -> (nothing)  for an expression with no
+ *                                          effect: constants, plain loads
+ *                                          (LLW, LAW, LW, ...), DUP, and
+ *                                          arithmetic; not a call, a
+ *                                          store, or a volatile load,
+ *                                          which must happen (I/O is
+ *                                          volatile)
  * And at a LEAVE or RET (dead_stores()), the stores to locals just
  * before it, with nothing between but ops on the stack, are dead (the
  * frame goes), unless a later op loads the local back: SLW or SLB n ->
@@ -229,8 +230,10 @@ static int is_unary(int op)
          || op == OP_ADDI || op == OP_SUBI;
 }
 
-/* If m is an op that only works on the stack (no branch, call or
- * store), set how many values it pops and pushes and return 1. */
+/* If m is an op that only works on the stack (no branch, call, store,
+ * or volatile access; a plain load is one), set how many values it pops
+ * and pushes and return 1. Such an op can go when its value does: a
+ * plain load has no effect a C program may see. */
 static int stack_effect(Mop *m, int *pops, int *pushes)
 {
   int v;
@@ -249,19 +252,16 @@ static int stack_effect(Mop *m, int *pops, int *pushes)
     *pops = 0;
     return 1;
   case OP_LW: case OP_LB: case OP_INCR: case OP_DECR: case OP_NEG:
-  case OP_COMP: case OP_ANDI:
+  case OP_COMP: case OP_ANDI: case OP_NOT:
     *pops = 1;
-    return 1;
-  case OP_ADD: case OP_SUB: case OP_MUL: case OP_IDXW: case OP_SHL:
-  case OP_AND: case OP_IOR: case OP_XOR:
-    *pops = 2;
     return 1;
   case OP_DUP:
     *pops = 1;
     *pushes = 2;
     return 1;
   }
-  return 0;
+  *pops = 2;                    /* the rest of them take two */
+  return MOP_IS_ARITH(m->op);
 }
 
 /* The number of ops in the self-contained expression that ends just
@@ -724,15 +724,6 @@ static int rewrite_mul(Mop *a, Mop *b)
   return 0;
 }
 
-/* Does window op m push a value, reading no memory but the frame (so
- * that a DROP of it can go with it)? */
-static int frame_push(Mop *m)
-{
-  int v;
-  return mop_const_value(m, &v) || m->op == OP_LLW || m->op == OP_LLB
-         || m->op == OP_LLA || m->op == OP_LA || m->op == OP_DUP;
-}
-
 static void remove_op(int i);
 
 /* Does window op m read a local: LLW, LLB, or an add of one? */
@@ -742,27 +733,12 @@ static int reads_local(Mop *m)
          || m->op == OP_ADDLW || m->op == OP_IDXLB || m->op == OP_IDXLW;
 }
 
-/* The number of ops in the expression that ends just before window
- * index end, if it pushes one value and reads no memory but the frame
- * (frame_push(), or arithmetic: no load through an address or from an
- * absolute one, which might read I/O); else 0. */
-static int frame_expr(int end)
-{
-  int n = expr_len(end), i;
-  for (i = end - n; i < end; i++)
-    if (!frame_push(&win[i]) && !(win[i].op >= OP_ADD && win[i].op <= OP_IDXW)
-        && win[i].op != OP_ADDI && win[i].op != OP_SUBI
-        && win[i].op != OP_ANDI && !reads_local(&win[i]))
-      return 0;
-  return n;
-}
-
 /* Remove the DROP at window index i and, if the expression before it
- * has no effect (frame_expr()), that too. Returns how many ops before i
- * went. */
+ * has no effect (expr_len(): plain loads and arithmetic), that too.
+ * Returns how many ops before i went. */
 static int drop_expr(int i)
 {
-  int n = frame_expr(i), k;
+  int n = expr_len(i), k;
   if (n == 0)
     return 0;
   for (k = 0; k <= n; k++)

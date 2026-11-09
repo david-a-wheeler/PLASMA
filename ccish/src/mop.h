@@ -78,6 +78,10 @@ enum {
 #define MOP_VOLATILE       1
 #define MOP_IS_VOLATILE(op) ((op) >= 0x20 && ((op) & 1))
 #define MOP_PLAIN(op)      ((op) >= 0x20 ? (op) & ~MOP_VOLATILE : (op))
+/* An op that only computes, a comparison (ISEQ to ISLE) or arithmetic
+ * (NOT to IDXW): no memory, no control, no volatile form. */
+#define MOP_IS_ARITH(op)   (((op) >= OP_ISEQ && (op) <= OP_ISLE) \
+                            || ((op) >= OP_NOT && (op) <= OP_IDXW))
 #define MOP_CN(v)          (OP_CN + 2 * (v))     /* CN v, for v 0-15 */
 #define MOP_CN_VALUE(op)   ((op) / 2)            /* CN's v */
 

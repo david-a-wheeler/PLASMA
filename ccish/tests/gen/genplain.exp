@@ -1,0 +1,107 @@
+    ; stmts
+    ENTER 2 1
+    ; label 103
+    CN 0
+    LEAVE 2
+
+    ; deadload
+    ENTER 4 0
+    ; label 103
+    CN 0
+    LEAVE 4
+
+    ; dropped
+    ENTER 0 0
+    ; label 103
+    CN 0
+    LEAVE 0
+
+    ; limit
+    ENTER 4 0
+    ; label 103
+    CN 0
+    SLW 2
+    LAB 49152
+    CN 0
+    BRNCH 1
+    ; label 0
+    DLW 0
+    LLW 2
+    INCR
+    SLW 2
+    INCR
+    ; label 1
+    BRLT 0
+    DROP
+    DROP
+    LLW 2
+    LEAVE 4
+
+    ; init
+    ENTER 4 0
+    ; label 103
+    CN 0
+    SLW 2
+    CN 9
+    LAB 49152
+    BRGT 3
+    ; label 0
+    DLW 0
+    LLW 2
+    INCR
+    SLW 2
+    INCBRLE 0
+    ; label 3
+    DROP
+    DROP
+    LLW 2
+    LEAVE 4
+
+    ; delay
+    ENTER 2 0
+    ; label 103
+    CW 499
+    CN 0
+    ; label 0
+    DLW 0
+    INCBRLE 0
+    DROP
+    DROP
+    LEAVE 2
+
+    ; vdelay
+    ENTER 2 0
+    ; label 103
+    CN 0
+    SLW.v 0
+    BRNCH 1
+    ; label 0
+    LLW.v 0
+    INCR
+    SLW.v 0
+    ; label 1
+    LLW.v 0
+    CW 500
+    ISLT
+    BRTRU 0
+    LEAVE 2
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    LA data +2
+    SAW data +14
+    CALL delay
+    CALL vdelay
+    CN 1
+    CALL stmts
+    CALL deadload
+    ADD
+    CALL dropped
+    ADD
+    CALL limit
+    ADD
+    CALL init
+    ADD
+    SUBI 10
+    LEAVE 0

@@ -4381,6 +4381,20 @@ issue updated as each step lands.
      16 bytes smaller, and six other files 2 to 4. ccgen grows 11
      bytes. The point of making volatile correct is that everything
      else can then be optimized freely.
+   - **Plain loads optimized freely** (decided in discussion: with
+     volatile real, a plain load has no effect C lets a program see).
+     Gone: peep.c's frame-only test before deleting a dropped value
+     (`frame_expr()`; `expr_len()` alone now, and `stack_effect()`
+     knows every pure op: comparisons and all arithmetic, under
+     `MOP_IS_ARITH`), and irloop.c's refusal of a limit or init loaded
+     through an address of $C000 or above. `discard()` already loads
+     and drops `*p;`, which ccgen now deletes. dead_stores() still
+     stops at an `LW` or `LB`, which may read a local through a
+     pointer: aliasing, not I/O. ccgen is 320 bytes smaller; only
+     tests/run/pointers.c's object changed (4 bytes less). Test:
+     tests/gen/genplain.c. The guide (4.10) now says I/O must be
+     volatile, and a do-nothing loop needs a volatile in it: C lets
+     such a loop go (C11 6.8.5p6), and ccish may delete one later.
 5. Later, apart from volatile: **constants as one pseudo-op until
    emit.c** (discussed 2026-11-08), so that no peephole pattern can
    miss a constant, and one function chooses `CN`, `MINUS1`, `CB`,

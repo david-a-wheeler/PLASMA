@@ -638,6 +638,28 @@ Both qualifiers go before or after the type (`const char`,
   local volatile's initializer is never dropped, but two chars may be
   stored as one word and the rest zeroed by word or by `memset`: a
   local is in the frame, so it can't be a device register.
+* What isn't volatile, ccish optimizes freely, as C allows: a plain
+  load has no effect a program may see, so it can be dropped, done
+  once instead of each pass, or reused. So **I/O must be volatile.**
+  A pointer to an I/O address declared without `volatile`
+  (`char *const kbd = (char *)0xC000;`) may lose its reads: `*kbd;`
+  emits nothing, and a loop `while (*kbd < 128)` may read it once.
+* **A do-nothing loop must have a volatile in it**, or it may be
+  removed. A delay loop such as
+
+  ```c
+  int i;
+  for (i = 0; i < 500; i++)
+    ;
+  ```
+
+  does nothing a program can see, so C lets a compiler delete it
+  (C11 5.1.2.3, 6.8.5p6), and ccish may (it keeps it today; don't
+  count on that). To keep a delay, make the loop variable volatile
+  (`volatile int i;`), or put a volatile access in the body (such as
+  `*SPEAKER;` for a tone): each of its accesses must happen, so the
+  loop runs every pass. A volatile counter is slower, as each pass
+  stores and loads it in memory, so time the delay with it.
 
 ### 4.11 Unions
 

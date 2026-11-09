@@ -388,6 +388,10 @@ has the details.
     it's large; a local's initializer is never dropped, but may store
     two chars as one word and zero the rest by word or by `memset`,
     since a local can't be a device register.
+  - What isn't volatile is optimized freely, as C allows, so I/O must
+    be volatile, and a do-nothing (delay) loop needs a volatile loop
+    variable or a volatile access in it, or it may be removed (the
+    guide, section 4.10).
 * Warnings are printed like errors (`file:line: warning 49: ...`), and
   compilation continues.
 * Casts between any of these types. `(void)` discards a value.

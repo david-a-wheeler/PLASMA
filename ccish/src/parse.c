@@ -1358,10 +1358,12 @@ int result_words(int t)
 }
 
 /* Discard the value of an expression used as a statement. A pending
- * variable or constant ("x;") emits nothing, nor does the result of an
- * assignment through a pointer. A load through a pointer is still
- * done, since it may read I/O (such as the Apple II's $C010). A struct
- * isn't loaded (*p; evaluates p), and one on the stack is dropped. */
+ * variable or constant ("x;") emits nothing, unless it's volatile, nor
+ * does the result of an assignment through a pointer. A load through a
+ * pointer or of an element is loaded and dropped, which ccgen deletes
+ * unless it's volatile (peep.c, drop_expr), so that its address's code
+ * isn't left on the stack. A struct isn't loaded (*p; evaluates p), and
+ * one on the stack is dropped. */
 void discard(Operand *o)
 {
   int k;
