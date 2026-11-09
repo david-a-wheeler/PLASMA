@@ -447,8 +447,9 @@ static int want_place;
  *
  * Reading a const variable with a constant initializer gives its value
  * at compile time (V_KNOWN), a K_CONST, so const int N = 10; makes
- * x < N use CB 10. Not when it is a place: assigned to (an error, made
- * by need_lvalue()), incremented, or the operand of &, so &N works. */
+ * x < N use CB 10, and *P = 0 store straight to P's address. Not when
+ * it is the operand of & (want_place), so &N works; N = 2 or N++ folds,
+ * and need_lvalue() reports the const. */
 static void parse_primary(Operand *o)
 {
   int name, c, f, v, place = want_place;
@@ -545,9 +546,9 @@ static void parse_primary(Operand *o)
       parse_call(f, o);
       return;
     }
-    if (v >= 0 && (var_flags[v] & V_KNOWN) && !place && !assign_op(&c)
-        && tok != T_INC && tok != T_DEC) {
+    if (v >= 0 && (var_flags[v] & V_KNOWN) && !place) {
       o->kind = K_CONST;      /* a const variable's known value */
+      o->quals = Q_CONST;     /* so N = 2 is an error 42 */
       o->type = unqual(var_type[v]);
       o->val = var_val[v];
       o->nonice = 1;
@@ -904,8 +905,7 @@ static void parse_unary(Operand *o)
     return;
   case T_INC: case T_DEC:
     next();
-    want_place = 1;             /* ++N: an error, not ++10 */
-    parse_unary(o);
+    parse_unary(o);             /* ++N: the folded N's Q_CONST, error 42 */
     pre_incdec(o, t == T_INC ? IR_ADD : IR_SUB);
     return;
   case '*': case '&':

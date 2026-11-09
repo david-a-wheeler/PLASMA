@@ -1,0 +1,215 @@
+    ; click
+    ENTER 0 0
+    ; label 103
+    LAB.v 49200
+    DROP
+    LAB.v 49200
+    DROP
+    LEAVE 0
+
+    ; touch
+    ENTER 0 0
+    ; label 103
+    LEAVE 0
+
+    ; clear
+    ENTER 0 0
+    ; label 103
+    CN 0
+    SAB.v 49168
+    CN 0
+    SAB.v 49168
+    LEAVE 0
+
+    ; poke
+    ENTER 4 2
+    ; label 103
+    LLB 2
+    DUP
+    LLW 0
+    SB.v
+    DROP
+    LEAVE 4
+
+    ; tone
+    ENTER 4 1
+    ; label 103
+    LLW 0
+    CN 0
+    BRNCH 1
+    ; label 0
+    DLW 2
+    LAB.v 49200
+    DROP
+    INCR
+    ; label 1
+    BRLT 0
+    DROP
+    DROP
+    LEAVE 4
+
+    ; spin
+    ENTER 4 1
+    ; label 103
+    LLW 0
+    CN 0
+    BRNCH 1
+    ; label 0
+    DLW 2
+    INCR
+    ; label 1
+    BRLT 0
+    DROP
+    DROP
+    LEAVE 4
+
+    ; voctal
+    ENTER 0 0
+    ; label 103
+    LAB.v 49152
+    CB 176
+    ISGE
+    BRFLS 0
+    LAB.v 49152
+    CB 183
+    ISLE
+    BRFLS 0
+    CN 1
+    BRNCH 1
+    ; label 0
+    CN 0
+    ; label 1
+    LEAVE 0
+
+    ; octal
+    ENTER 2 1
+    ; label 103
+    LLB 0
+    ANDI 248
+    CB 48
+    ISEQ
+    NEG
+    LEAVE 2
+
+    ; vstore
+    ENTER 0 0
+    ; label 103
+    CN 3
+    SAW.v data +6
+    LAW.v data +6
+    LEAVE 0
+
+    ; store
+    ENTER 0 0
+    ; label 103
+    CN 3
+    DAW data +8
+    LEAVE 0
+
+    ; vbump
+    ENTER 0 0
+    ; label 103
+    LAW.v data +6
+    ADDI 2
+    SAW.v data +6
+    LAW.v data +6
+    DUP
+    INCR
+    SAW.v data +6
+    LEAVE 0
+
+    ; vlocal
+    ENTER 2 0
+    ; label 103
+    CN 5
+    SLW.v 0
+    CN 6
+    SLW.v 0
+    CN 1
+    LEAVE 2
+
+    ; local
+    ENTER 2 0
+    ; label 103
+    CN 1
+    LEAVE 2
+
+    ; vwait
+    ENTER 2 0
+    ; label 103
+    CN 0
+    SLW 0
+    BRNCH 1
+    ; label 0
+    LLW 0
+    INCR
+    SLW 0
+    ; label 1
+    LAW.v data +6
+    BRTRU 0
+    LLW 0
+    LEAVE 2
+
+    ; main
+    ENTER 1 0
+    ; label 103
+    CN 0
+    SLB 0
+    CALL click
+    CALL touch
+    CALL clear
+    LLA 0
+    CN 7
+    CALL poke
+    CN 3
+    CALL tone
+    CN 3
+    CALL spin
+    CALL voctal
+    DROP
+    LLB 0
+    CN 7
+    BRNE 1
+    CB 53
+    CALL octal
+    BRFLS 3
+    ; join 1 to 3
+    ; label 2
+    CB 56
+    CALL octal
+    BRFLS 4
+    ; join 4 to 0
+    ; label 3
+    CN 1
+    LEAVE 1
+    ; label 0
+    CALL vstore
+    CN 3
+    BRNE 6
+    CALL store
+    CN 3
+    BRNE 8
+    ; join 6 to 8
+    ; label 7
+    CALL vbump
+    CN 5
+    BRNE 10
+    ; join 8 to 10
+    ; label 9
+    LAW.v data +6
+    CN 6
+    BREQ 11
+    ; join 11 to 5
+    ; label 10
+    CN 2
+    LEAVE 1
+    ; label 5
+    CN 0
+    SAW.v data +6
+    CALL vlocal
+    CALL local
+    ADD
+    CALL vwait
+    ADD
+    SUBI 2
+    LEAVE 1

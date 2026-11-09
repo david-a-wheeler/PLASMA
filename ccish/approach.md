@@ -4359,6 +4359,21 @@ issue updated as each step lands.
      (17 of code, 4 of data). My first version, a byte at a time with
      its own initializer paths, was 175; reusing the existing paths and
      `struct_word()` (which saves more than it costs) brought it down.
+   - **A store through a const pointer** (found by
+     tests/gen/genvolatile.c, which checks the soft switches' code
+     against plain twins). `parse_primary()` didn't fold a known const
+     when `=`, `++` or `--` came next, so that `N = 2` would report the
+     const; but that also caught `*P = 0`, whose target is `*P`, so it
+     loaded P (`LAW P SB`, not `SAB $C010`), as the guide said it
+     didn't. Now a known const always folds, except under `&`, and
+     carries `Q_CONST`, which `need_lvalue()` tests first, so `N = 2`
+     and `++N` still get error 42. No object of the 152 files without
+     such a store changed. cccomp is 22 bytes smaller.
+   - **Still open:** a store through a volatile pointer variable keeps
+     its value (`DUP`) for a use that a statement never makes, then
+     drops it: `LLB v DUP LLW p SB.v DROP`, 2 bytes and two ops more
+     than needed. Through a constant address, ccgen already removes
+     the pair.
 5. Later, apart from volatile: **constants as one pseudo-op until
    emit.c** (discussed 2026-11-08), so that no peephole pattern can
    miss a constant, and one function chooses `CN`, `MINUS1`, `CB`,

@@ -372,7 +372,8 @@ has the details.
     compile time: with `const int N = 10;`, `x < N` is
     `LLW x CN 10 ISLT`, and `N * 2` is 20. With
     `volatile char *const SPEAKER = (volatile char *)0xC030;`,
-    `*SPEAKER` is `LAB $C030`. `&N` still works. As in C, `N` isn't a
+    `*SPEAKER` is `LAB $C030`, and a store through such a pointer
+    (`*KBDSTRB = 0`) is `CN 0 SAB $C010`. `&N` still works. As in C, `N` isn't a
     constant expression, so it can't size an array or initialize a
     global, and a `const int` holding 0 isn't a null pointer.
   - A `volatile` object is read and written just as the program says:

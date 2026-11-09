@@ -1311,10 +1311,10 @@ void need_lvalue(Operand *o, int what)
 {
   if (is_array(o->type) && is_place(o))
     error_in(40 /* "an array can't be the" */, what, NULL);
+  if (o->quals & Q_CONST)      /* first: a folded const isn't a place */
+    error_in(42 /* "a 'const' object can't be the" */, what, NULL);
   if (!is_place(o) || o->assigned || is_func(o->type))
     error_in(41 /* "lvalue required as" */, what, NULL);
-  if (o->quals & Q_CONST)
-    error_in(42 /* "a 'const' object can't be the" */, what, NULL);
   if (holds_qual(o->type, Q_CONST))  /* (a const o stopped above) */
     error_in(43 /* "a struct with a 'const' member can't be the" */,
              what, NULL);
