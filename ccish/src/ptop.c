@@ -836,6 +836,17 @@ void parse_static_assert(void)
   expect(';', 320 /* "bad _Static_assert, at" */);
 }
 
+// Leave a function's scope, after its prototype or its body: no
+// function is being parsed, and its parameters and locals, and the tags
+// and names declared in them, are gone.
+static void end_function_scope(void)
+{
+  cur_fn = -1;
+  nvars = nglobals;
+  tag_hide(0);
+  id_hide(0);
+}
+
 // Parse one top-level item: global variable declarations, a function
 // prototype, or a function definition. Any may start with "static",
 // which makes it local to the file, or "extern", which declares a
@@ -916,10 +927,7 @@ static void parse_toplevel(void)
     }
     fn_flags[f] |= FN_DECLARED;
     next();
-    cur_fn = -1;
-    nvars = nglobals;
-    tag_hide(0);                // tags declared in the parameters
-    id_hide(0);
+    end_function_scope();       // and the tags in its parameters
     return;
   }
   if (nparams < 0)
@@ -964,10 +972,7 @@ static void parse_toplevel(void)
     push_zero_result(type);
   put(IR_RETURN, result_words(type), -1);
   put(IR_ENDFUNC, frame_max, f);
-  cur_fn = -1;
-  nvars = nglobals;
-  tag_hide(0);
-  id_hide(0);
+  end_function_scope();
 }
 
 #ifdef CCISH_STATS

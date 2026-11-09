@@ -54,6 +54,7 @@ int type_count(int t);      // array: the element count, or 0 if unknown
                             // (only while parsing an array parameter)
 int type_size(int t);
 int is_pointer(int t);
+int is_pointer_value(int t);    // a pointer, array or function
 int is_array(int t);
 int pointer_to(int t);
 int array_of(int t, int count);

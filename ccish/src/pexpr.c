@@ -744,15 +744,15 @@ static void parse_index(Operand *o)
     simple = 0;
   }
   if (!simple) {
-    if (!is_pointer(o->type) && !is_pointer(value_type(r.type)))
+    if (!is_pointer(o->type) && !is_pointer_value(r.type))
       error0(69 /* "subscripted value is neither array nor pointer" */);
-    if (is_pointer(o->type) && is_pointer(value_type(r.type)))
+    if (is_pointer(o->type) && is_pointer_value(r.type))
       error0(70 /* "array subscript is not an integer" */);
     binary(o, &r, IR_ADD, start, mid);
     deref(o);
     return;
   }
-  if (is_pointer(value_type(r.type)))
+  if (is_pointer_value(r.type))
     error0(70 /* "array subscript is not an integer" */);
   if (r.kind != K_CONST && r.kind != K_VAR)
     fatal0(71 /* "internal error: unexpected array index" */);
@@ -900,7 +900,7 @@ static void parse_unary(Operand *o)
     next();
     parse_unary(o);
 #ifdef CCISH_LINT
-    if (t != '!' && is_pointer(value_type(o->type)))
+    if (t != '!' && is_pointer_value(o->type))
       error(76 /* "pointer operand to unary" */, t == '-' ? "'-'"
             : t == '+' ? "'+'" : "'~'");
 #endif
@@ -1429,7 +1429,7 @@ static void compound_elem(Operand *x, Operand *r, int op)
     return;
   }
   rvalue(r);
-  if (is_pointer(value_type(r->type))
+  if (is_pointer_value(r->type)
       || (is_pointer(x->type) && op != IR_ADD && op != IR_SUB)) {
     // An error (int op= pointer, pointer *= ...): binary() says so.
     rvalue(x);
@@ -1653,7 +1653,7 @@ static int fold_held(Operand *o, Operand *rp, int ir_op, Operand *addr)
                     + (ir_op == IR_ADD ? (unsigned)a : 0u - (unsigned)a));
     return 1;
   }
-  if (is_pointer(value_type(r.type))) {
+  if (is_pointer_value(r.type)) {
     if (ir_op == IR_ADD && r.kind != K_VOID) {
       // c + p: emit p, then c scaled; c + an address constant
       // folds.

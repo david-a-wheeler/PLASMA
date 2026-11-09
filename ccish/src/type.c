@@ -46,9 +46,14 @@ _Static_assert(MAX_TYPES <= TY_INDEX + 1,
 // The kinds of type, tkind[]'s values: a basic type's kind is its own
 // index (TY_VOID ... TY_UINT, type.h), and the other kinds follow. Only
 // type.c needs them, so they cost the other files no MAX_IDS entries.
-enum { TK_PTR = TY_UINT + 1, TK_FUNC, TK_ARRAY, TK_STRUCT };
-_Static_assert((int)TK_PTR > (int)TY_UINT && TK_STRUCT < 128,
-               "a kind is also a basic type's, or doesn't fit in tkind[]");
+// The kinds whose values are pointers (is_pointer_value()) are a block
+// of 4, with a spare.
+enum { TK_PTR = TY_UINT + 1, TK_FUNC, TK_ARRAY, TK_STRUCT = TK_PTR + 4 };
+_Static_assert((int)TK_PTR > (int)TY_UINT && TK_STRUCT < 128
+               && (TK_PTR & 3) == 0 && TK_ARRAY - TK_PTR < 4
+               && TK_FUNC - TK_PTR < 4 && TK_STRUCT - TK_PTR >= 4,
+               "a kind is also a basic type's, or doesn't fit in tkind[],"
+               " or the pointer-valued kinds aren't an aligned block");
 
 static char tkind[MAX_TYPES] = {TY_VOID, TY_CHAR, TY_INT, TY_UINT};
 static int tsub[MAX_TYPES];     // a handle, with qualifier bits
@@ -105,6 +110,15 @@ int type_size(int t)
 int is_pointer(int t)
 {
   return TYPE_KIND(t) == TK_PTR;
+}
+
+// Is a value of type t a pointer: is t a pointer, or an array or a
+// function, whose values are pointers (parse.c's value_type())? From
+// the kind alone, with no pointer type to find.
+int is_pointer_value(int t)
+{
+  int k = TYPE_KIND(t);         // a local: IN_BLOCK names it twice
+  return IN_BLOCK(k, TK_PTR, 4);
 }
 
 // Is t an array type?

@@ -906,7 +906,7 @@ static void parse_switch(void)
   begin_expr();
   parse_expr(PREC_COMMA, &o);
   if (o.kind == K_VOID || is_struct(o.type)
-      || is_pointer(value_type(o.type)))
+      || is_pointer_value(o.type))
     error0(142 /* "a switch needs an integer value" */);
   rvalue(&o);
   branch(IR_SEL, tab);
