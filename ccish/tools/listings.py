@@ -71,9 +71,10 @@ def dump(name, path):
 
 def function_source(text, name):
     """The comment and definition of function name in source text, or
-    None: from the comment just above "name(" at the left margin, to
-    the "}" at the left margin that ends its body (or the end of the
-    line, for a one-line function)."""
+    None: from the comment just above "name(" at the left margin (a
+    run of // lines, or a /* */ block), to the "}" at the left margin
+    that ends its body (or the end of the line, for a one-line
+    function)."""
     m = re.search(r"^[A-Za-z][^\n;]*\b%s\([^;{]*?\)\s*\{" % re.escape(name),
                   text, re.M)
     if not m:
@@ -93,6 +94,12 @@ def function_source(text, name):
         c = above.rfind("/*")
         if c >= 0 and (c == 0 or text[c - 1] == "\n"):
             start = c
+    else:
+        while start > 0:
+            prev = text.rfind("\n", 0, start - 1) + 1
+            if not text.startswith("//", prev):
+                break
+            start = prev
     return text[start:end]
 
 
