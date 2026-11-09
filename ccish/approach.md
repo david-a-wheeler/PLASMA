@@ -4395,6 +4395,19 @@ issue updated as each step lands.
      tests/gen/genplain.c. The guide (4.10) now says I/O must be
      volatile, and a do-nothing loop needs a volatile in it: C lets
      such a loop go (C11 6.8.5p6), and ccish may delete one later.
+   - **Do-nothing loops deleted** (decided in discussion, documented in
+     the guide, 4.10). A counted loop with an empty body and both ends
+     constant leaves only its variable's last value, so irloop.c's
+     `counted_loop()` drops it and has the init store that value
+     instead; `dead_stores()` then drops the store too if a return
+     follows. The value is c plus k per pass, the distance over k
+     passes (rounded up for < and >, one more for <= and >=), in 16
+     bits so that the host's ccgen and the Apple's agree. A volatile
+     variable isn't a counted shape, so its loop stays. ccgen grows
+     124 bytes, 51 of them for steps other than 1 (the unsigned divide
+     and remainder); kept, for generality. Not yet: a non-constant end,
+     or an empty loop that isn't counted (`while (n--);`). Test:
+     tests/run/empty_loop.c (gcc agrees).
 5. Later, apart from volatile: **constants as one pseudo-op until
    emit.c** (discussed 2026-11-08), so that no peephole pattern can
    miss a constant, and one function chooses `CN`, `MINUS1`, `CB`,

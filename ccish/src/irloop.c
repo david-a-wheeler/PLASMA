@@ -501,7 +501,11 @@ static void replay_body(int from, int to)
  * down, the bottom is INCBRLE (or CB k ADDBRLE, DECBRGE, CB k SUBBRGE)
  * and the entry skips an empty loop (BRGT, or BRLT, exit). With both
  * ends constant, the entry goes; if such a loop would never run, it is
- * written as step 1 writes any loop. Returns 0 if not written. */
+ * written as step 1 writes any loop. With both ends constant and an
+ * empty body, the loop does nothing a program may see but leave v its
+ * last value, so it goes, and the init stores that value instead
+ * (the guide, 4.10: a delay loop needs a volatile). Returns 0 if not
+ * written. */
 static int counted_loop(int d, int lcont, int lbrk)
 {
   int up = cl_step > 0, k = up ? cl_step : -cl_step, lim = cl_lim;
@@ -512,6 +516,17 @@ static int counted_loop(int d, int lcont, int lbrk)
            : cl_cmp == IR_GT ? c > lim : c >= lim;
     if (!sure)
       return 0;                 /* it never runs */
+    if (cl_body == nlp) {
+      /* Do nothing: v's last value is c plus k for each pass, d / k
+       * of them for d the distance (rounded up for < and >; one more
+       * for <= and >=), all 16 bits, as on the Apple II. */
+      unsigned dist = ((unsigned)(up ? lim - c : c - lim)) & 0xFFFF, n;
+      n = dist / k + (cl_cmp == IR_LE || cl_cmp == IR_GE || dist % k != 0);
+      n = (up ? (unsigned)c + n * k : (unsigned)c - n * k) & 0xFFFF;
+      buf_a[nbuf - 3] = (int)((n ^ 0x8000) - 0x8000);
+      label(lbrk);
+      return 1;
+    }
   }
   /* The bottom: a step-and-branch op (INCBRLE ...), or a test (BRLT,
    * BRGT) after the step. */

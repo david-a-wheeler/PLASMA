@@ -391,7 +391,8 @@ has the details.
   - What isn't volatile is optimized freely, as C allows, so I/O must
     be volatile, and a do-nothing (delay) loop needs a volatile loop
     variable or a volatile access in it, or it may be removed (the
-    guide, section 4.10).
+    guide, section 4.10); ccish removes an empty counted loop with
+    constant ends.
 * Warnings are printed like errors (`file:line: warning 49: ...`), and
   compilation continues.
 * Casts between any of these types. `(void)` discards a value.

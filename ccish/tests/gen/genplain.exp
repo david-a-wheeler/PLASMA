@@ -60,13 +60,6 @@
     ; delay
     ENTER 2 0
     ; label 103
-    CW 499
-    CN 0
-    ; label 0
-    DLW 0
-    INCBRLE 0
-    DROP
-    DROP
     LEAVE 2
 
     ; vdelay

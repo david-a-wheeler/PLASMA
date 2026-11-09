@@ -654,8 +654,10 @@ Both qualifiers go before or after the type (`const char`,
   ```
 
   does nothing a program can see, so C lets a compiler delete it
-  (C11 5.1.2.3, 6.8.5p6), and ccish may (it keeps it today; don't
-  count on that). To keep a delay, make the loop variable volatile
+  (C11 5.1.2.3, 6.8.5p6), and ccish does: it sets `i` to 500 instead
+  (and drops that too if nothing reads `i`). Today that's a counted
+  loop with constant ends and an empty body; ccish may delete more
+  such loops later. To keep a delay, make the loop variable volatile
   (`volatile int i;`), or put a volatile access in the body (such as
   `*SPEAKER;` for a tone): each of its accesses must happen, so the
   loop runs every pass. A volatile counter is slower, as each pass

@@ -54,8 +54,9 @@ int init(void)
 }
 
 /* A do-nothing delay loop: C lets a compiler remove it, since nothing
- * it does can be seen (ccish keeps it today, but may not), so a delay
- * needs a volatile counter, whose every store happens. */
+ * it does can be seen, and ccish does (irloop.c), leaving i its last
+ * value, a store dead_stores() then drops. A delay needs a volatile
+ * counter, whose every store happens. */
 void delay(void)
 {
   int i;
