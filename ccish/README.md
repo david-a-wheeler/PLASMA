@@ -319,6 +319,9 @@ has the details.
   `typedef const char *str;`). A typedef name can be used wherever a
   built-in type can, and a function typedef can declare a function or
   a pointer (`typedef int binop(int, int); binop *op;`).
+* `_Static_assert(expr, "message");`, at file scope or in a block: a
+  compile-time check of an integer constant expression, which emits
+  nothing.
 * Enum constants and typedef names have block scope, as in C: one
   declared in a block hides a variable of the same name declared
   outside it, and the other way around.

@@ -308,6 +308,7 @@ The supported keywords are:
 break    const    continue default do     else     enum   extern
 for      goto     if       int    return   sizeof   short    static
 struct   switch   typedef  union    unsigned void     volatile while
+_Static_assert
 ```
 
 plus `signed`, as in `signed int`, which is `int`, and `short`, a
@@ -1036,6 +1037,27 @@ stored in the module, so they cost no code. The forms:
 
 Local initializers may be any expression, and run when the
 declaration is reached.
+
+### 5.7 _Static_assert
+
+```c
+enum { T_FIRST = 0x20, T_LAST = 0x3F };
+_Static_assert((T_FIRST & 0x1F) == 0, "T_FIRST starts a block of 32");
+```
+
+A `_Static_assert` checks a constant expression when the program is
+compiled. If it's 0, the compile stops with "static assertion failed:"
+and the message. A true one costs nothing: it emits no code, and its
+message takes no space. Use them to state what code relies on, such
+as the values of constants chosen for bit tricks, next to the
+constants.
+
+As in C, the expression must be an integer constant expression: an
+enum constant, `sizeof` and the like work, but a const variable's
+value doesn't (gcc rejects it too). As gcc and clang do, ccish
+requires the `;` after the `)`. A `_Static_assert` may be at file
+scope or in a block, but not in a `for` initializer or a struct or
+union's member list (C allows those).
 
 ## 6. Expressions and operators
 

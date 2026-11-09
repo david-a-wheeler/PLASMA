@@ -4999,6 +4999,18 @@ issue. In summary:
     0), xrun tests require 0, and the spec scripts use `run_module`
     (tests/lib.sh). Checking found one wrong test: genunion's expected
     sum was 18, but C (and gcc) gives 16.
+37. **_Static_assert** (decided in discussion, 2026-11-09; plan in
+    doc/static_assert.md). It lets us state the invariants that
+    careful constant choices (token and IR values, for bit tricks)
+    rely on, next to the constants; `#if` can't, since those are
+    enums. It's a keyword in the spare slot `$9A`, at file scope or as
+    a statement in a block, and emits nothing. A const variable's
+    value isn't a constant there, as in C and gcc, which compiles
+    ccish's own headers, so an extension (clang's) couldn't be used
+    where we need it; parse_const() says how to allow one. Its
+    constant check is parse_const(), shared with array sizes, enum
+    values and case labels, which saved 54 bytes and so paid for half
+    of the 107 the keyword costs cccomp.
 
 
 ## Milestones
