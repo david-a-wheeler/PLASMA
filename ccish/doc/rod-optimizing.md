@@ -20,7 +20,7 @@ their larger count). A frame is one pass over i, for one w. Measured
 | rodsimple.c | 61,900 | 4.09 |
 | rod.c | 10,200 | 0.57 (and 1.25 once, at the start, for its tables) |
 | rod.pla (PLASMA) | | about 2.6, estimated from `xplasm -AMOS`'s inner loop (73 ops, about 5,830 cycles) and the native code it calls (about 1,140): plvm doesn't run `conio:grplot`'s 6502 code |
-| rodconio.c | | about 2.1 (2.09), estimated the same way: ccish's inner loop (70 ops, about 4,480 cycles) and the same native code; 2.61 without `register` |
+| rodconio.c | | about 2.1 (2.07), estimated the same way: ccish's inner loop (69 ops, about 4,440 cycles) and the same native code; 2.61 without `register` |
 
 rodconio.c is rod.pla's program in C: the same loops, calling the same
 CONIO routines, with `char` variables where rod.pla has `byte` ones.

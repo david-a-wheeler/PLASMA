@@ -2088,11 +2088,20 @@ The shape:
 
 * `for (i = a; i < b; i++)` and the same with `<=`, `>` or `>=`, and
   the step `i--`, `i += k` or `i -= k` (a constant `k`),
-* `i` an `int` local, compared signed,
+* `i` an `int` local, compared signed, or a `char` local whose count
+  stays in 0 to 255 to the end (below),
 * the limit a constant or another local (not a global, and not a
   pointer),
 * a body that makes no calls, has no `return`, holds no inner loop,
   and changes neither `i` nor the limit, and takes neither's address.
+
+A `char` counter wraps at 256, where the count on the stack doesn't,
+so a `char` loop is counted only when its count can't pass 255 or go
+below 0, the last step included: a constant limit with room for the
+last step (`c < 200`, `c <= 254`, `c > 0`, `c >= 1`, `c < 250` by 5),
+or a `char` local limit with `<` or `>` by 1. `for (c = 0; c <= 255;
+c++)` never ends in C, so it isn't counted, nor is a loop against an
+`int` limit. Its count is stored with `DLB`.
 
 `while` loops can't be counted (a counted loop needs a step to
 check).

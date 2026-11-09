@@ -8810,3 +8810,27 @@ counted loops"). As designed above, with these choices:
   `char` counter can't count past 255); register parameters; and
   common subexpressions among hoisted values (two equal ones take two
   temporaries).
+
+**`char` loop variables in counted loops** (2026-11-09; asked for in
+discussion, "Go ahead with 1"; loop improvement 5's "a `char` counted
+loop variable"). The count is a word on the eval stack, where a `char`
+wraps at 256, so `char_count_ok()` (irloop.c) counts a `char` loop only
+when the count stays in 0 to 255 to its end, its last value included:
+a constant limit N with step k, up to N + k - 1 for `<` and N + k for
+`<=` (down: 255 - N mirrored), or a `char` local limit with `<` or `>`
+by 1. So `c <= 255` and `c >= 0`, which never end in C, aren't counted,
+nor is a wrapping step or an `int` limit. `step_shape()` takes `LOCALB`
+and `SETLOCALB` (`cl_vop`), the count's stores are `DLB` and `SLB`, and
+`init_fold()` folds a `char` init. The `!=` test comes with it, for a
+`char` loop that calls (rodconio's j loop: `CB 20 BRNE`, 2.09 to 2.07 s
+a frame). Found on the way: the checks of what a body stores used
+`near()`, which takes every local for a word, so a store to a word at
+the next offset looked like one to the `char` (and `s += c` stopped
+the count); `overlap()` now compares the bytes each covers, for the
+variable (`is_var()`), the `!=` candidate and hoisting's `invariant()`;
+a limit's locals stay words, to be safe. Test `genloopc.c` (counted:
+each comparison, a `char` limit, by 5; not: `c <= 255`, `c >= 0`, a
+wrapping step of 3, which C runs 87 times and a count would 2, `<=` a
+`char`, an `int` limit; `!=` for one that calls). ccgen +233 bytes.
+Op counts: `arrays.c` -1.9%, no other run test changes. 456 tests
+pass; the bootstrap's stages agree.

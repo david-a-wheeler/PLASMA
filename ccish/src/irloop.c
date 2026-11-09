@@ -87,6 +87,8 @@ static char lab_ref[MAX_LABELS];    // a branch to it has been read
 // ++v (lp_fpost[]).
 static int cl_body;             // where the held body starts
 static int cl_var, cl_cmp, cl_step, cl_nested;
+static int cl_vop;              // how the variable loads: IR_LOCAL, or
+                                // IR_LOCALB for a char
 // The limit: held ops cl_ls up to cl_le, computed once on entry; a
 // constant if cl_const (then cl_lim). The locals it reads (cl_loc[]),
 // the globals (cl_gf[] the symbol or -1, cl_ga[] the offset), and
@@ -120,7 +122,7 @@ static char goto_seen;
 // ne_stop where it stops, and ne_ci and ne_cmp the held test's constant
 // and comparison, to make CONST ne_stop and NE at its LOOPEND. One at a
 // time: a loop inside the candidate that is one takes over.
-static int ne_var, ne_stop, ne_ci, ne_cmp, ne_d;
+static int ne_var, ne_w, ne_stop, ne_ci, ne_cmp, ne_d;
 static char ne_ok;
 
 // Hold a jump to label n.
@@ -226,12 +228,25 @@ static int near(int a, int b)
   return a - b <= 1 && b - a <= 1;
 }
 
-// Is frame offset off the loop variable's, or a local limit's (a word
-// each, so a byte of either)?
-static int counted_var(int off)
+// Do the w bytes at frame offset a reach the wb at b?
+static int overlap(int a, int w, int b, int wb)
+{
+  return a < b + wb && b < a + w;
+}
+
+// Do the w bytes at frame offset off reach the loop variable (its
+// bytes: 1 for a char, 2 for an int)?
+static int is_var(int off, int w)
+{
+  return overlap(off, w, cl_var, 1 + (cl_vop == IR_LOCAL));
+}
+
+// Do the w bytes at frame offset off reach the loop variable, or a
+// local limit's (a word each, to be safe, so a byte of either)?
+static int counted_var(int off, int w)
 {
   int i;
-  if (near(off, cl_var))
+  if (is_var(off, w))
     return 1;
   for (i = 0; i < cl_nloc; i++)
     if (near(off, cl_loc[i]))
@@ -272,9 +287,9 @@ static int limit_ok(int from, int to)
       depth++;
       break;
     case IR_LOCAL: case IR_LOCALB:
-      if (near(a, cl_var) || taken(a))
+      if (is_var(a, 1 + (op == IR_LOCAL)) || taken(a))
         return 0;               // the variable, or reachable
-      if (!counted_var(a)) {
+      if (!counted_var(a, 2)) {
         if (cl_nloc == LIM_NAMES)
           return 0;
         cl_loc[cl_nloc++] = a;
@@ -325,13 +340,15 @@ static int body_ok(int op, int a, int f)
 {
   // A volatile access is checked as its plain form: what it stores to
   // matters here, not how often it runs (the body runs it as written).
-  switch (IR_IS_ACCESS(op) ? IR_PLAIN_FORM(op) : op) {
+  if (IR_IS_ACCESS(op))
+    op = IR_PLAIN_FORM(op);
+  switch (op) {
   case IR_CALL: case IR_ICALL: case IR_UDIV: case IR_UMOD: case IR_USHR:
     return 0;
   case IR_LABEL: case IR_JUMP:
     return !IS_GOTO_LABEL(a);   // a goto, or its target
   case IR_SETLOCAL: case IR_SETLOCALB: case IR_LOCALADDR:
-    return !counted_var(a);
+    return !counted_var(a, 1 + (op == IR_SETLOCAL));
   case IR_STORE: case IR_STOREB:
     return !cl_nested && !cl_load && !cl_ngl;  // a pointer might reach
   case IR_SETGLOBAL: case IR_SETGLOBALB:
@@ -342,18 +359,21 @@ static int body_ok(int op, int a, int f)
 
 // Is open loop d's held step (up to nlp) v++ (LOCAL v, DUP, CONST k,
 // ADD or SUB, SETLOCAL v, DROP, DROP), or ++v or v += k (the same
-// without the DUP and a DROP), for a local v? If so, set *v, and *k
-// (negative for SUB).
+// without the DUP and a DROP), for a local v, an int or a char (LOCALB
+// and SETLOCALB)? If so, set *v, and *k (negative for SUB), and
+// cl_vop.
 static int step_shape(int d, int *v, int *k)
 {
   int st = lp_step[d], n = nlp - st, u;
   if (n != 5 && n != 7)
     return 0;
   u = n == 7;                   // the DUP of v++
-  if (lp_op[st] != IR_LOCAL || (u && lp_op[st + 1] != IR_DUP)
+  cl_vop = lp_op[st];
+  if ((cl_vop != IR_LOCAL && cl_vop != IR_LOCALB)
+      || (u && lp_op[st + 1] != IR_DUP)
       || lp_op[st + 1 + u] != IR_CONST
       || (lp_op[st + 2 + u] != IR_ADD && lp_op[st + 2 + u] != IR_SUB)
-      || lp_op[st + 3 + u] != IR_SETLOCAL
+      || lp_op[st + 3 + u] != IR_STORE_FORM(cl_vop)
       || lp_a[st + 3 + u] != lp_a[st] || lp_op[nlp - 1] != IR_DROP
       || lp_op[st + 4 + u] != IR_DROP)
     return 0;
@@ -404,6 +424,31 @@ static int cl_regs(void)
   return 1;
 }
 
+// char_count_ok() tells <= and >= by bit 0 of the relational.
+_Static_assert((IR_LT & 1) == 0 && (IR_GT & 1) == 0 && (IR_LE & 1)
+               && (IR_GE & 1),
+               "char_count_ok(): <= and >= aren't the odd relationals");
+
+// Can a char loop variable be counted (counted_shape())? The count is a
+// word on the eval stack, where the char wraps at 256: c <= 255 never
+// ends in C, but the count would. So the count must stay in 0 to 255
+// to the end, its last value too: with a constant limit N and step k,
+// up to N + k - 1 for <, N + k for <=, and down to N - k + 1 for >,
+// N - k for >= (the same, mirrored: 255 - N up). With a char local as
+// the limit, < or > by 1. No other limit (an int, a global, an
+// expression) is known to fit. <= and >= add the 1: they are the
+// relationals with bit 0 set (the assert above).
+static int char_count_ok(void)
+{
+  int k = cl_step < 0 ? -cl_step : cl_step, n = cl_lim;
+  if (!cl_const)
+    return cl_le - cl_ls == 1 && lp_op[cl_ls] == IR_LOCALB && k == 1
+           && !(cl_cmp & 1);
+  if (cl_step < 0)
+    n = 255 - n;
+  return n >= 0 && n + k - 1 + (cl_cmp & 1) <= 255;
+}
+
 // Does the held header of open loop d (body label lbody) have the shape
 // of a counted loop? If so, set cl_var and the rest. The step is one
 // that step_shape() knows; the test is
@@ -421,10 +466,10 @@ static int counted_shape(int d, int lbody)
   cl_cmp = lp_op[st - 2];
   if (!IR_IS_RELATIONAL(cl_cmp))
     return 0;
-  if (lp_op[t] == IR_LOCAL && lp_a[t] == cl_var) {
+  if (lp_op[t] == cl_vop && lp_a[t] == cl_var) {
     cl_ls = t + 1;              // v, then the limit
     cl_le = st - 2;
-  } else if (lp_op[st - 3] == IR_LOCAL && lp_a[st - 3] == cl_var) {
+  } else if (lp_op[st - 3] == cl_vop && lp_a[st - 3] == cl_var) {
     cl_ls = t;                  // the limit, then v
     cl_le = st - 3;
     cl_cmp = IR_COMPARE_MIRROR(cl_cmp);
@@ -434,7 +479,8 @@ static int counted_shape(int d, int lbody)
   cl_const = cl_le - cl_ls == 1 && lp_op[cl_ls] == IR_CONST;
   cl_lim = lp_a[cl_ls];
   if (!limit_ok(cl_ls, cl_le) || taken(cl_var) || cl_step == 0
-      || (cl_step > 0) != (cl_cmp == IR_LT || cl_cmp == IR_LE))
+      || (cl_step > 0) != (cl_cmp == IR_LT || cl_cmp == IR_LE)
+      || (cl_vop == IR_LOCALB && !char_count_ok()))
     return 0;
   cl_nested = (d > 0 || goto_seen) && !cl_regs();
   return 1;
@@ -479,7 +525,8 @@ static int init_fold(void)
 {
   int need = 1, i = nbuf - 3, n, e;
   if (nbuf < 3 || buf_op[nbuf - 1] != IR_DROP
-      || buf_op[nbuf - 2] != IR_SETLOCAL || buf_a[nbuf - 2] != cl_var
+      || buf_op[nbuf - 2] != IR_STORE_FORM(cl_vop)
+      || buf_a[nbuf - 2] != cl_var
       || buf_pre[nbuf - 2] || buf_pre[nbuf - 1])
     return 0;
   for (; i >= 0 && need > 0; i--) {
@@ -519,6 +566,7 @@ static void ne_candidate(int d)
   if (cl_step > 0 ? c > stop : c < stop)
     return;
   ne_var = cl_var;
+  ne_w = 1 + (cl_vop == IR_LOCAL);
   ne_stop = stop;
   ne_ci = cl_ls;
   ne_cmp = lp_step[d] - 2;
@@ -561,9 +609,8 @@ static int invariant(int d, int op, int a)
   for (i = lp_test[d]; i < nlp; i++) {
     op = lp_op[i];
     s = lp_a[i];
-    if (((op == IR_SETLOCAL || op == IR_SETLOCALB) && s < end
-         && a < s + 1 + (op == IR_SETLOCAL))
-        || (op == IR_LOCALADDR && s >= a && s < end))
+    if ((op == IR_SETLOCAL || op == IR_SETLOCALB || op == IR_LOCALADDR)
+        && overlap(s, 1 + (op == IR_SETLOCAL), a, end - a))
       return 0;
   }
   return 1;
@@ -749,7 +796,7 @@ static int counted_loop(int d, int lcont, int lbrk)
   else
     replay(cl_ls, cl_le);       // the limit, computed once
   if (!fold)
-    ir_hold(IR_LOCAL, cl_var, -1);
+    ir_hold(cl_vop, cl_var, -1);
   for (i = 0; i < fold; i++)
     ir_hold(fo_op[i], fo_a[i], fo_f[i]);
   if (!sure) {
@@ -760,7 +807,7 @@ static int counted_loop(int d, int lcont, int lbrk)
   }
   lab_ref[top] = 1;
   ir_hold(IR_LABEL, top, -1);
-  ir_hold(IR_SETLOCAL, cl_var, -1);       // DLW v
+  ir_hold(IR_STORE_FORM(cl_vop), cl_var, -1);   // DLW v (DLB: a char)
   replay_body(cl_body, nlp);
   label(lcont);
   if (bottom == OP_BRLT || bottom == OP_BRGT) {
@@ -772,7 +819,7 @@ static int counted_loop(int d, int lcont, int lbrk)
   }
   mop_branch(bottom, top);
   label(lbrk);
-  ir_hold(IR_SETLOCAL, cl_var, -1);       // SLW v
+  ir_hold(IR_STORE_FORM(cl_vop), cl_var, -1);   // SLW v (SLB)
   ir_hold(IR_DROP, 0, -1);
   ir_hold(IR_DROP, 0, -1);                // the limit
   return 1;
@@ -902,7 +949,7 @@ int loop_take(int op, int a, int f)
   // ends its candidacy. (v isn't volatile: counted_shape() takes only
   // a plain LOCAL, so its stores are plain too.)
   if ((op == IR_SETLOCAL || op == IR_SETLOCALB || op == IR_LOCALADDR)
-      && near(a, ne_var))
+      && overlap(a, 1 + (op == IR_SETLOCAL), ne_var, ne_w))
     ne_ok = 0;
   if (IR_REFS_LABEL(op))
     lab_ref[a] = 1;
