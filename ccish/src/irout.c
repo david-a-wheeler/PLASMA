@@ -51,7 +51,7 @@ void ir_open(const char *base)
 {
   base_name = base;
   if (!bopen(&out, stream_name(base, SUFFIX_IR), 1))
-    fatal(176 /* "cannot create" */, stream_name(base, SUFFIX_IR));
+    fatal_d(176 /* "cannot create" */, stream_name(base, SUFFIX_IR));
   bwrite(&out, (const unsigned char *)"CIR", 3);
   bputc(&out, IR_VERSION);
 }
@@ -251,7 +251,7 @@ void ir_finish(void)
     }
   }
   if (bclose(&out) != 0)
-    fatal(187 /* "error writing" */, stream_name(base_name, SUFFIX_IR));
+    fatal_d(187 /* "error writing" */, stream_name(base_name, SUFFIX_IR));
 }
 
 // After an error: close the IR file if it is open, writing out what is

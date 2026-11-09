@@ -92,7 +92,7 @@ void pp_out_open(const char *base)
     return;
 #endif
   if (!bopen(&out, stream_name(base, SUFFIX_I), 1))
-    fatal(176 /* "cannot create" */, stream_name(base, SUFFIX_I));
+    fatal_d(176 /* "cannot create" */, stream_name(base, SUFFIX_I));
   bwrite(&out, (const unsigned char *)"CTK", 3);
   bputc(&out, TOK_VERSION);
 }
@@ -216,15 +216,15 @@ void pp_out_finish(void)
   }
 #endif
   if (!bopen(&nam, stream_name(base_name, SUFFIX_NAM), 1))
-    fatal(176 /* "cannot create" */, stream_name(base_name, SUFFIX_NAM));
+    fatal_d(176 /* "cannot create" */, stream_name(base_name, SUFFIX_NAM));
   sum = pp_names_write(&nam);
   if (bclose(&nam) != 0)
-    fatal(187 /* "error writing" */, stream_name(base_name, SUFFIX_NAM));
+    fatal_d(187 /* "error writing" */, stream_name(base_name, SUFFIX_NAM));
   bputc(&out, TC_END);
   bputw(&out, pp_nids());
   bputw(&out, sum);
   if (bclose(&out) != 0)
-    fatal(187 /* "error writing" */, stream_name(base_name, SUFFIX_I));
+    fatal_d(187 /* "error writing" */, stream_name(base_name, SUFFIX_I));
 }
 
 // After an error: close the output files, so that they can be removed.

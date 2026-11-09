@@ -1141,7 +1141,7 @@ void gen_file(const char *base)
   max_func = -1;
   nwritten = 0;
   if (!bopen(&in, stream_name(base, SUFFIX_IR), 0))
-    fatal(171 /* "cannot open" */, stream_name(base, SUFFIX_IR));
+    fatal_d(171 /* "cannot open" */, stream_name(base, SUFFIX_IR));
   read_header();
   emit_open(base);
   for (;;) {

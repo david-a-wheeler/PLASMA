@@ -26,11 +26,30 @@ extern int opt_keep;        // -k: keep the stream files
 // ccish.msg, and is also written, in double quotes, in a comment right
 // after the number wherever it is used. A part is another message
 // number, printed after the text (0 for none).
-void error(int msg, const char *detail);
 void error0(int msg);                       // error(msg, NULL)
+void fatal0(int msg);                       // fatal(msg, NULL)
+#ifdef CCISH_DIAG
+void error(int msg, const char *detail);
 void error_in(int msg, int part, const char *detail);
 void fatal(int msg, const char *detail);
-void fatal0(int msg);                       // fatal(msg, NULL)
+// The full build prints every detail, so these are the same.
+#define error_d error
+#define fatal_d fatal
+#else
+// The small build prints a diagnostic's detail only for error_d() and
+// fatal_d(): the few details that are the only clue to what went
+// wrong (a function's name, a file's that can't be opened or written,
+// an undefined symbol's, and the program's own text in #error and
+// _Static_assert). error(), error_in() and fatal() drop theirs, not
+// evaluated, so the calls carry no argument for it (approach.md
+// decision 43). So a detail must have no side effect.
+void error_d(int msg, const char *detail);
+void fatal_d(int msg, const char *detail);
+void error_in0(int msg, int part);
+#define error(m, d)        error0(m)
+#define error_in(m, p, d)  error_in0(m, p)
+#define fatal(m, d)        fatal0(m)
+#endif
 #ifdef CCISH_DIAG
 void warning(int msg, const char *detail);  // only cccomp's, in the
 void warning_in(int msg, int part, const char *detail); // full build

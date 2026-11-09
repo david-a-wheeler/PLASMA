@@ -208,7 +208,7 @@ static unsigned char fbuf[MAX_FUNC_CODE];
 // the others.
 static void damaged(const char *what)
 {
-  fatal(188 /* "compiler stream file is damaged:" */, what);
+  fatal_d(188 /* "compiler stream file is damaged:" */, what);
 }
 
 // Stop with an error: the current object's stream file is damaged.
@@ -308,7 +308,7 @@ static void undefined(int msg, const char *name)
   buf[0] = '\'';
   strcpy(buf + 1, name);
   strcat(buf, "'");
-  error(msg, buf);
+  error_d(msg, buf);
 }
 
 // Report error msg about the shared name name, as declared or defined
@@ -324,7 +324,7 @@ static void between(int msg, const char *name, int a, int b)
   strcat(buf, " and ");
   strncat(buf, obj_name[b], 80);
   strcat(buf, ")");
-  error(msg, buf);
+  error_d(msg, buf);
 }
 
 // Open object k's symbol summary, check its header, and read its sizes
@@ -335,7 +335,7 @@ static const char *open_syms(int k)
   const char *name = stream_name(obj_name[k], SUFFIX_SYMS);
   cur = k;
   if (!bopen(&in, name, 0))
-    fatal(171 /* "cannot open" */, name);
+    fatal_d(171 /* "cannot open" */, name);
   if (bgetc(&in) != 'C' || bgetc(&in) != 'I' || bgetc(&in) != OBJ_VERSION)
     damaged(name);
   data_size = bgetw(&in);
@@ -427,8 +427,8 @@ static void close_syms(const char *name, int keep)
       h_name[k][len] = 0;
 #endif
     } else if (h_size[k] != size || h_sum[k] != sum) {
-      error(229 /* "helper functions differ between objects (compiled "
-                   "by different ccgens?):" */, buf);
+      error_d(229 /* "helper functions differ between objects (compiled "
+                     "by different ccgens?):" */, buf);
     }
   }
   if (bgetc(&in) != EOF)
@@ -1029,7 +1029,7 @@ static void open_obj(int k)
 {
   const char *name = stream_name(obj_name[k], SUFFIX_OBJ);
   if (!bopen(&in, name, 0))
-    fatal(171 /* "cannot open" */, name);
+    fatal_d(171 /* "cannot open" */, name);
 }
 
 // Read past the rest of a record whose tag t has just been read.
@@ -1502,7 +1502,7 @@ void link_module(int n, const char **bases, const char *path)
 
   // Step 2.
   if (!bopen(&out, path, 1))
-    fatal(192 /* "cannot create output file" */, path);
+    fatal_d(192 /* "cannot create output file" */, path);
   bputw(&out, subseg - MODULE_BASE + total);
   bputw(&out, 0x6502);                    // magic
   bputw(&out, 0);                         // system flags
@@ -1579,7 +1579,7 @@ void link_module(int n, const char **bases, const char *path)
   bputc(&out, 0);
 
   if (bclose(&out) != 0)
-    fatal(193 /* "error writing output file" */, path);
+    fatal_d(193 /* "error writing output file" */, path);
 #ifdef CCISH_LISTING
   // The modules loaded first, and how full the shared-name table is,
   // to see a limit coming.

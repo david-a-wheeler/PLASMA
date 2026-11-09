@@ -5102,6 +5102,20 @@ issue. In summary:
     which as macros would cost about 21 bytes (a prefer-speed option),
     and functions whose one caller is recursive, whose frame would
     grow at each level.
+43. **The small build drops a diagnostic's detail** (decided in
+    discussion, 2026-11-09), as CCISH_DIAG's design and
+    tests/spec/smalldiag.sh already said it did for cccomp's names:
+    in the small build, error(), error_in() and fatal() are macros
+    that drop their detail without evaluating it, so no call carries
+    it, and code only for details (op_name()) is left out. A message
+    still gives its file, line, number and text. The details that are
+    the only clue to what went wrong are kept, through error_d() and
+    fatal_d(): a function's name (ccgen), a file's that can't be
+    opened, created or written, ccrel's symbols and damaged objects,
+    the #include file that can't be found, and the program's own text
+    in #error and _Static_assert. Measured (code, data and strings):
+    cccomp 329 bytes smaller, ccpp 118, ccgen 10; ccrel 17 bigger,
+    for its kept details. A detail must now have no side effect.
 
 
 ## Milestones

@@ -1,10 +1,12 @@
 #!/bin/sh
 # The small build's diagnostics (src/build.h, CCISH_DIAG): an error
 # gives its file, line, number and text, the full build's message less
-# its detail; the file is right inside a header too (the name is looked
-# up only for the message, tokin.c); and there are no warnings, where
-# the full build gives them. The ccish driver, which removes NAME.nam
-# on an error, still names the header.
+# its detail, except the few details error_d() and fatal_d() keep
+# (diag.h: here the program's own text in #error and _Static_assert);
+# the file is right inside a header too (the name is looked up only for
+# the message, tokin.c); and there are no warnings, where the full
+# build gives them. The ccish driver, which removes NAME.nam on an
+# error, still names the header.
 . "$(dirname "$0")/../lib.sh"
 OUT=tests/out/smalldiag
 bad=0
@@ -13,6 +15,9 @@ mkdir -p "$OUT"
 printf 'int main()\n{\n  return y;\n}\n' >"$OUT/a.c"
 printf 'int f(void);\nint g(void) { return zz; }\n' >"$OUT/h.h"
 printf '#include "h.h"\nint main()\n{\n  return 0;\n}\n' >"$OUT/b.c"
+printf 'int main(void)\n{\n  switch (1) { case 3: case 3: return 0; }\n  return 1;\n}\n' >"$OUT/c.c"
+printf '_Static_assert(0, "kept here");\nint main(void) { return 0; }\n' >"$OUT/s.c"
+printf '#error stop here\nint main(void) { return 0; }\n' >"$OUT/e.c"
 
 # $1 the source's tag, $2 the full build's message, $3 its detail.
 check() {
@@ -32,6 +37,22 @@ check() {
 }
 check a "a.c:3: error 64: undeclared identifier" "'y'"
 check b "h.h:2: error 64: undeclared identifier" "'zz'"
+check c "c.c:3: error 137: duplicate case value" "3"
+
+# $1 the source's tag, $2 the message, the same in both builds, its
+# detail kept.
+check_kept() {
+    full=$(cd "$OUT" && { ../../../ccpp -o "f$1" "$1.c" \
+           && ../../../cccomp "f$1"; } 2>&1)
+    small=$(cd "$OUT" && { ../../../ccpp-small -o "s$1" "$1.c" \
+            && ../../../cccomp-small "s$1"; } 2>&1)
+    if [ "$full" != "$2" ] || [ "$small" != "$2" ]; then
+        echo "FAIL smalldiag $1: wanted '$2' from both builds, got:"
+        echo "    full:  $full"; echo "    small: $small"; bad=1
+    fi
+}
+check_kept s "s.c:1: error 323: static assertion failed: kept here"
+check_kept e "e.c:1: error 258: #error: stop here"
 
 # tests/run/const.c draws four warnings from the full build, none from
 # the small one.

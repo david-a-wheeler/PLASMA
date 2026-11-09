@@ -87,6 +87,9 @@ void check_assign(int to, Operand *o, int where,
                          const char *detail)
 {
   int from = value_type(o->type);
+#ifndef CCISH_DIAG
+  (void)detail;                     // for messages, which drop it (diag.h)
+#endif
   if (o->kind == K_VOID)
     error0(38 /* "void value used in an expression" */);
   if (is_struct(to) || is_struct(from)) {
@@ -1192,6 +1195,7 @@ static int is_relational(int op)
   return IR_IS_RELATIONAL(op);
 }
 
+#ifdef CCISH_DIAG
 // The C spelling of arithmetic IR op, for messages.
 static const char *op_name(int op)
 {
@@ -1208,6 +1212,7 @@ static const char *op_name(int op)
                  "op_name(): names[] isn't in the binary ops' order");
   return IR_IS_BINARY(op) ? names[op - IR_ADD] : "operator";
 }
+#endif
 
 // Push integer operand i scaled by the size of what pointer type p
 // points to, for p + i or p - i.

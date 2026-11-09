@@ -109,6 +109,9 @@ static void after_directive(void)
 // The rest of the directive's line must be empty.
 static void end_directive(const char *name)
 {
+#ifndef CCISH_DIAG
+  (void)name;                       // for the message, which drops it
+#endif
   if (pp_lex() != TC_NL)
     error(246 /* "extra tokens at the end of the directive:" */, name);
 }
@@ -139,6 +142,9 @@ static void do_pragma(void)
 static int macro_name(const char *name)
 {
   int c = pp_lex();
+#ifndef CCISH_DIAG
+  (void)name;                       // for the message, which drops it
+#endif
   if (c != TC_ID && c != TC_KEYWORD)
     error(238 /* "expected a macro name after" */, name);
   return pt_val;
@@ -239,8 +245,8 @@ static void do_include(void)
     found = join(buf, inc_dirs[i], (int)strlen(inc_dirs[i]), name)
             && try_open(buf);
   if (!found)
-    error(236 /* "cannot open the #include file (missing, or too many "
-                 "files open):" */, name);
+    error_d(236 /* "cannot open the #include file (missing, or too many "
+                   "files open):" */, name);
   depth++;
 #ifdef CCISH_STATS
   if (depth > depth_peak)
@@ -310,7 +316,7 @@ static void do_elif(void)
 // #error text: stop, with the text.
 static void do_error(void)
 {
-  error(258 /* "#error:" */, pp_lex_rest());
+  error_d(258 /* "#error:" */, pp_lex_rest());
 }
 
 // #line number "file": the next line has that number, and, with a
@@ -508,7 +514,7 @@ void pp_file(const char *src, const char *base)
     fatal0(1 /* "output name too long" */);
   strcpy(cur_path, src);
   if (!bopen(&files[0], src, 0))
-    fatal(171 /* "cannot open" */, src);
+    fatal_d(171 /* "cannot open" */, src);
   file_no[0] = pp_add_file(src);
   file_conds[0] = 0;
   pp_cur_file = file_no[0];

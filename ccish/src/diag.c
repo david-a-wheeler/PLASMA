@@ -208,10 +208,11 @@ static void stop(const char *kind, int msg, int part, const char *detail)
   exit(1);
 }
 
+#ifdef CCISH_DIAG
 // Report error msg, followed by part (another message number: how or
 // where, such as "left operand of assignment") and detail, in the
-// program being compiled; then remove partial output, and exit.
-// Compilation stops at the first error.
+// form "x.c:2: error 41: lvalue required as left operand of
+// assignment", then remove partial output, and exit.
 void error_in(int msg, int part, const char *detail)
 {
   stop("error", msg, part, detail);
@@ -220,14 +221,29 @@ void error_in(int msg, int part, const char *detail)
 // Report error msg, with detail.
 void error(int msg, const char *detail)
 {
-  error_in(msg, 0, detail);
+  stop("error", msg, 0, detail);
 }
+#else
+// Report error msg, followed by part, with no detail: the small
+// build's error_in() (diag.h).
+void error_in0(int msg, int part)
+{
+  stop("error", msg, part, NULL);
+}
+
+// Report error msg, with detail, which the small build prints only for
+// this (diag.h).
+void error_d(int msg, const char *detail)
+{
+  stop("error", msg, 0, detail);
+}
+#endif
 
 // Report error msg, with no detail: error(msg, NULL), one argument
 // shorter at each of the many calls.
 void error0(int msg)
 {
-  error_in(msg, 0, NULL);
+  stop("error", msg, 0, NULL);
 }
 
 #ifdef CCISH_DIAG
@@ -246,12 +262,21 @@ void warning(int msg, const char *detail)
 }
 #endif
 
+#ifdef CCISH_DIAG
 // Report problem msg, with detail: one that isn't the program's fault
 // (a compiler limit or a file error). Remove partial output, and exit.
 void fatal(int msg, const char *detail)
 {
   stop("fatal", msg, 0, detail);
 }
+#else
+// Report problem msg, with detail, which the small build prints only
+// for this (diag.h).
+void fatal_d(int msg, const char *detail)
+{
+  stop("fatal", msg, 0, detail);
+}
+#endif
 
 // Report problem msg, with no detail: fatal(msg, NULL), one argument
 // shorter at each call.

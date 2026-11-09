@@ -55,11 +55,13 @@
 //   CCISH_TEXT     ccpp -E, the token stream as text (ppout.c): for
 //                  debugging, so in the full build only for now; it can
 //                  be put in the small build if ccpp has room.
-//   CCISH_DIAG     cccomp's detailed diagnostics: the spellings in its
+//   CCISH_DIAG     detailed diagnostics: the spellings in cccomp's
 //                  messages (names, tags and tokens, from NAME.nam and
-//                  ccish.msg) and its warnings. Without it a message
-//                  gives its file, line, number and text, and nothing
-//                  more, and each is printed after cccomp has closed
+//                  ccish.msg), its warnings, and every program's
+//                  details. Without it a message gives its file, line,
+//                  number and text, and nothing more but the few
+//                  details error_d() and fatal_d() keep (diag.h), and
+//                  each is printed after cccomp has closed
 //                  its other files, so it holds two files open, not
 //                  three (approach.md issue 24). Either way, a correct
 //                  compile never opens NAME.nam (CCPP.md, "The

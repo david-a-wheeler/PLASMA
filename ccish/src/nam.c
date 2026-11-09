@@ -49,7 +49,7 @@ static void reopen(void)
 {
   nam_close();
   if (!bopen(nam_bf, stream_name(base_name, SUFFIX_NAM), 0))
-    fatal(171 /* "cannot open" */, stream_name(base_name, SUFFIX_NAM));
+    fatal_d(171 /* "cannot open" */, stream_name(base_name, SUFFIX_NAM));
   at = 1;
 }
 

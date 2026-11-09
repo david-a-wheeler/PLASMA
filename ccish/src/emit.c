@@ -105,7 +105,7 @@ static char label_placed[MAX_LABELS];
 static void open_out(const char *base, const char *suffix)
 {
   if (!bopen(&out, stream_name(base, suffix), 1))
-    fatal(176 /* "cannot create" */, stream_name(base, suffix));
+    fatal_d(176 /* "cannot create" */, stream_name(base, suffix));
 }
 
 // Create the stream file for output name base. No function is written
@@ -143,7 +143,7 @@ int emit_code_size(void)
 static void code_byte(int v)
 {
   if (nfbuf >= MAX_FUNC_CODE)
-    error(177 /* "function too large:" */, func_name(fn));
+    error_d(177 /* "function too large:" */, func_name(fn));
   fbuf[nfbuf++] = (unsigned char)v;
 }
 
@@ -158,8 +158,8 @@ static void code_word(int v)
 static void add_reloc(int kind, int target)
 {
   if (nrelocs >= MAX_FUNC_RELOCS)
-    error(178 /* "too many calls and data references in" */,
-          func_name(fn));
+    error_d(178 /* "too many calls and data references in" */,
+            func_name(fn));
   rel_kind[nrelocs] = (char)kind;
   rel_at[nrelocs] = nfbuf;
   rel_target[nrelocs] = target;
@@ -172,7 +172,7 @@ static void frame_byte(int v)
 {
   if (v == FRAME_LATER) {
     if (nframe >= MAX_RETURNS)
-      error(179 /* "too many returns in" */, func_name(fn));
+      error_d(179 /* "too many returns in" */, func_name(fn));
     frame_at[nframe++] = nfbuf;
     v = 0;
   }
@@ -186,7 +186,7 @@ static void frame_operand(int a)
 {
   if (a <= FRAME_TEMP(0)) {
     if (ntemp >= MAX_TEMP_USES)
-      error(225 /* "too many run-time swaps in" */, func_name(fn));
+      error_d(225 /* "too many run-time swaps in" */, func_name(fn));
     temp_at[ntemp] = nfbuf;
     temp_k[ntemp] = (char)(FRAME_TEMP(0) - a);
     if (temp_k[ntemp] >= temp_words)
@@ -224,8 +224,8 @@ static void patch_label(int n)
 {
   int at = label_word[n];
   if (label_placed[n])
-    fatal(180 /* "internal error: label placed twice in" */,
-          func_name(fn));
+    fatal_d(180 /* "internal error: label placed twice in" */,
+            func_name(fn));
   while (at != NO_LINK) {
     int link = fbuf[at] | (fbuf[at + 1] << 8);
     patch_word(at, nfbuf - at);
@@ -266,8 +266,8 @@ static void drop_frame(void)
 {
   int i;
   if (nframe == 0 || frame_at[0] != 1 || fbuf[0] != OP_ENTER)
-    fatal(183 /* "internal error: no ENTER at the start of" */,
-          func_name(fn));
+    fatal_d(183 /* "internal error: no ENTER at the start of" */,
+            func_name(fn));
   for (i = 1; i < nframe; i++) {      // frame_at[0] is the ENTER's
     fbuf[frame_at[i] - 1] = OP_RET;
     fbuf[frame_at[i]] = OP_RET;
@@ -306,8 +306,8 @@ static void end_function(int frame_size)
   int i, base = frame_size;
   frame_size += 2 * temp_words;     // the back end's temporaries
   if (frame_size > 255)
-    error(184 /* "too many parameters and locals in" */,
-          func_name(fn));
+    error_d(184 /* "too many parameters and locals in" */,
+            func_name(fn));
   for (i = 0; i < ntemp; i++)
     fbuf[temp_at[i]] = (unsigned char)(base + 2 * temp_k[i]);
   for (i = 0; i < nframe; i++)
@@ -316,8 +316,8 @@ static void end_function(int frame_size)
     drop_frame();
   for (i = 0; i < MAX_LABELS; i++)
     if (!label_placed[i] && label_word[i] != NO_LINK)
-      fatal(185 /* "internal error: branch to a label never"
-                   " placed in" */, func_name(fn));
+      fatal_d(185 /* "internal error: branch to a label never"
+                     " placed in" */, func_name(fn));
   if (ncode > 0x7FFF - nfbuf)
     fatal0(186 /* "too much code" */);
   if (fn >= MAX_FUNCS) {
@@ -582,7 +582,7 @@ void emit_put(Mop *m)
 static void close_out(const char *suffix)
 {
   if (bclose(&out) != 0)
-    fatal(187 /* "error writing" */, stream_name(base_name, suffix));
+    fatal_d(187 /* "error writing" */, stream_name(base_name, suffix));
 }
 
 

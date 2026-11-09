@@ -814,7 +814,7 @@ void parse_static_assert(void)
   if (tok != T_STR)
     error(320 /* "bad _Static_assert, at" */, tok_desc());
   if (v == 0)                     // before next(): tok_text is the message
-    error(323 /* "static assertion failed:" */, tok_text);
+    error_d(323 /* "static assertion failed:" */, tok_text);
   next();                         // the message
   expect(')', 320 /* "bad _Static_assert, at" */);
   expect(';', 320 /* "bad _Static_assert, at" */);

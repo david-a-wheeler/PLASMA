@@ -67,7 +67,7 @@ static void read_list(const char *path)
   FILE *f = fopen(path, "rb");
   int c, at = list_len;         // where this line's name starts
   if (!f)
-    fatal(171 /* "cannot open" */, path);
+    fatal_d(171 /* "cannot open" */, path);
   do {
     c = getc(f);
     if (c != EOF && c != '\n' && c != '\r') {
