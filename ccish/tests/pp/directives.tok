@@ -1,7 +1,7 @@
 # Object-like macros, conditional groups, a joined line, the null
 # directive and #pragma (CCPP.md; approach.md, "ccpp design", step 4).
 # Lines 1-3 define N (id 34), S (35) and E (36), and write nothing.
-43 54 4b 06     # "CTK", version 6
+43 54 4b 07     # "CTK", version 7
 01 01 01        # up to line 4: 3 lines, so next-line codes
 # line 4: int x = N;
 80
@@ -11,7 +11,7 @@
 3b
 01
 # line 5: S tag *p;  S is struct, so tag is a struct's tag
-87
+88
 09 26 00 9a bf 5f 74    # tag: id 38; its hash is 49050 ($BF9A), 31^3 = 29791 ($745F)
 2a
 04 27 00        # p: id 39

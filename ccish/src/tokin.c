@@ -174,8 +174,8 @@ void next(void)
   // both (asserted below next()).
   if (c >= TC_KEYWORDS && c < TC_KEYWORDS + NKEYWORDS)
     tok = T_INT + (c - TC_KEYWORDS);
-  else if (c >= TC_EQ && c <= TC_ELLIPSIS)
-    tok = T_EQ + (c - TC_EQ);
+  else if (c >= TC_OPS && c < TC_OPS + NOPS)
+    tok = T_ADDEQ + (c - TC_OPS);
   else if (c >= ' ' && strchr(singles, c))
     tok = c;
   else
@@ -183,7 +183,7 @@ void next(void)
 }
 
 // next() maps a stream code to a token by its offset in its block
-// (T_INT + (c - TC_KEYWORDS), T_EQ + (c - TC_EQ)), so the tokens must
+// (T_INT + (c - TC_KEYWORDS), T_ADDEQ + (c - TC_OPS)), so the tokens must
 // be in the stream's order (token.h, CCPP.md): each keyword and each
 // operator at its code's place. Here, since next() is what relies on
 // it. (The keywords' spellings, pplex.c's keywords[], follow the same
@@ -199,9 +199,7 @@ SAME_KW(CONTINUE); SAME_KW(SIZEOF); SAME_KW(STATIC); SAME_KW(EXTERN);
 SAME_KW(SWITCH); SAME_KW(CASE); SAME_KW(DEFAULT); SAME_KW(TYPEDEF);
 SAME_KW(GOTO); SAME_KW(UNION); SAME_KW(STATIC_ASSERT); SAME_KW(CONSTEXPR);
 #undef SAME_KW
-_Static_assert(T_ELLIPSIS - T_EQ == NOPS - 1,
-               "T_EQ ... T_ELLIPSIS aren't the NOPS operators");
-#define SAME_OP(x) _Static_assert(T_##x - T_EQ == TC_##x - TC_EQ, \
+#define SAME_OP(x) _Static_assert(T_##x - T_ADDEQ == TC_##x - TC_OPS, \
                                   "T_" #x " isn't at TC_" #x "'s place")
 SAME_OP(EQ); SAME_OP(NE); SAME_OP(LE); SAME_OP(GE);
 SAME_OP(SHL); SAME_OP(SHR); SAME_OP(ANDAND); SAME_OP(OROR);
@@ -239,23 +237,23 @@ int next_is_colon(void)
 
 // The spellings of the supported keywords and the multi-character
 // operators, for messages, are in the message file, as messages' texts
-// are, not in cccomp (approach.md, "C2 design"): messages 262-289 are
-// the keywords, in T_INT's order, and messages 324-345 the operators,
-// in T_EQ's.
+// are, not in cccomp (approach.md, "C2 design"): messages 262-301 are
+// the keywords, in T_INT's order, and messages 352-383 the operators,
+// in T_ADDEQ's, each block with a "(spare)" text at each UNUSED code.
 #define MSG_KEYWORDS 262
-#define MSG_OPS      324
+#define MSG_OPS      352
 // The ranges above, which ccish.msg must match (tests/spec/msgs.sh
 // checks the comment against it); and tok_desc()'s order: the
-// one-character tokens below T_INT, and the keywords below T_EQ.
-_Static_assert(MSG_KEYWORDS + NKEYWORDS - 1 == 289,
-               "the keywords' messages aren't 262-289: fix the comment"
+// one-character tokens below T_INT, and the keywords below T_ADDEQ.
+_Static_assert(MSG_KEYWORDS + NKEYWORDS - 1 == 301,
+               "the keywords' messages aren't 262-301: fix the comment"
                " and ccish.msg");
-_Static_assert(MSG_OPS + NOPS - 1 == 345,
-               "the operators' messages aren't 324-345: fix the comment"
+_Static_assert(MSG_OPS + NOPS - 1 == 383,
+               "the operators' messages aren't 352-383: fix the comment"
                " and ccish.msg");
-_Static_assert(T_INT > '~' && T_INT + NKEYWORDS <= T_EQ,
+_Static_assert(T_INT > '~' && T_INT + NKEYWORDS <= T_ADDEQ,
                "tok_desc() needs the one-character tokens below T_INT, and"
-               " the keywords below T_EQ");
+               " the keywords below T_ADDEQ");
 
 #ifdef CCISH_DIAG
 // Describe the current token for an error message, e.g. "'while'" or
@@ -274,7 +272,8 @@ const char *tok_desc(void)
   if (tok == T_ID || tok == T_KEYWORD) {
     strcat(buf, nam_name(tok_val));
   } else if (tok >= T_INT) {
-    n = tok >= T_EQ ? MSG_OPS + (tok - T_EQ) : MSG_KEYWORDS + (tok - T_INT);
+    n = tok >= T_ADDEQ ? MSG_OPS + (tok - T_ADDEQ)
+                       : MSG_KEYWORDS + (tok - T_INT);
     if (!msg_text(n, buf + 1, MAX_NAME + 1))
       strcpy(buf + 1, num_text(n));
   } else {

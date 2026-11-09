@@ -5049,6 +5049,25 @@ issue. In summary:
     constants. What isn't checked: that pplex.c's keyword and operator
     spellings are in the codes' order (strings aren't constants;
     tests/pp checks it).
+40. **The token and IR numbers in aligned blocks** (decided in
+    discussion, 2026-11-09; TOK_VERSION 7, IR_VERSION 15). Each set
+    the compiler tests is a block whose size is a power of 2, starting
+    at a multiple of its size: ccgen tests x >= first && x <= last on
+    such a block with one AND and one compare (between_rewrite(), now
+    for a global such as tok too, not only a local), where an ||
+    chain takes a compare and a branch per member. Spare numbers keep
+    the blocks aligned and give each room to grow; they're marked
+    UNUSED in comments, not named, since each name would cost cccomp a
+    MAX_IDS entry (irin.c is at 198 of 203). Each block's start is the
+    one explicit number; the rest are relative to it, so a block moves
+    with one edit. _Static_asserts check each block's alignment and
+    members, and each bit trick (IR_COMPARE_MIRROR is now one XOR).
+    The IR reader's check that a number is an op is now lw_kind[]
+    (L_NONE), which is right whatever the numbering. Before and after
+    (code bytes): cccomp 28,262 to 27,895, ccgen 19,886 to 19,715,
+    ccpp 13,686 to 13,670 (its spelling tables grew 46 bytes of
+    data), with the group macros of decision 39's follow-up and the
+    global betweenness rewrite included.
 
 
 ## Milestones

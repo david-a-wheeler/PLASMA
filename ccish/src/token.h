@@ -6,7 +6,7 @@
 
 #define SUFFIX_I     ".i"
 #define SUFFIX_NAM   ".nam"
-#define TOK_VERSION  6        // NAME.i's format, after its "CTK"
+#define TOK_VERSION  7        // NAME.i's format, after its "CTK"
 #define NAM_VERSION  2        // NAME.nam's, in its stamp line
 
 // The codes of NAME.i. A one-character token ($20-$7E) is itself.
@@ -38,37 +38,49 @@ _Static_assert(TC_IS_WORDVAL(TC_ID) && TC_IS_WORDVAL(TC_NUM)
 _Static_assert(TC_TAG < ' ' && TC_KEYWORDS > '~',
                "a token code is among the one-character tokens' ($20-$7E)");
 
-// The multi-character operators, in CCPP.md's order (and T_EQ's).
+// The multi-character operators' codes, in CCPP.md's order (and
+// pplex.c's ops[], and T_ADDEQ's: tokin.h has why, and the blocks),
+// TC_OPS up; UNUSED codes are spare, and have a spelling of " ".
 enum {
-  TC_EQ = 0xC0, TC_NE, TC_LE, TC_GE, TC_SHL, TC_SHR, TC_ANDAND, TC_OROR,
-  TC_INC, TC_DEC, TC_ADDEQ, TC_SUBEQ, TC_MULEQ, TC_DIVEQ, TC_MODEQ,
-  TC_ANDEQ, TC_OREQ, TC_XOREQ, TC_SHLEQ, TC_SHREQ, TC_ARROW, TC_ELLIPSIS
+  TC_ADDEQ = 0xC0, TC_SUBEQ, TC_MULEQ, TC_ANDEQ, TC_OREQ, TC_XOREQ,
+  TC_DIVEQ = TC_ADDEQ + 8, TC_MODEQ, TC_SHLEQ, TC_SHREQ, // $C6-$C7, $CC-$CF:
+                                                  // UNUSED
+  TC_INC = TC_ADDEQ + 0x10, TC_DEC, TC_ANDAND, TC_OROR,
+  TC_EQ, TC_NE, TC_LE, TC_GE, TC_SHL, TC_SHR, TC_ARROW, TC_ELLIPSIS
+                                                  // $DC-$DF: UNUSED
 };
+#define TC_OPS       TC_ADDEQ // the first operator's code
+#define NOPS         32       // operator codes, UNUSED ones included
 
 // The supported keywords' codes, in CCPP.md's order (and pplex.c's
-// keywords[], and T_INT's).
+// keywords[], and T_INT's: tokin.h has why, and the blocks); UNUSED
+// codes are spare, and have a spelling of " ".
 enum {
-  TC_INT = TC_KEYWORDS, TC_CHAR, TC_SIGNED, TC_UNSIGNED, TC_VOID, TC_CONST,
-  TC_VOLATILE, TC_STRUCT, TC_ENUM, TC_RETURN, TC_IF, TC_ELSE, TC_WHILE,
-  TC_DO, TC_FOR, TC_BREAK, TC_CONTINUE, TC_SIZEOF, TC_STATIC, TC_EXTERN,
-  TC_SWITCH, TC_CASE, TC_DEFAULT, TC_TYPEDEF, TC_GOTO, TC_UNION,
-  TC_STATIC_ASSERT, TC_CONSTEXPR
+  TC_INT = TC_KEYWORDS, TC_CHAR, TC_SIGNED, TC_UNSIGNED,
+  TC_CONST, TC_VOLATILE,                          // $86-$87: UNUSED
+  TC_STRUCT = TC_INT + 0x08, TC_UNION, TC_ENUM,   // $8B: UNUSED
+  TC_VOID = TC_INT + 0x0C,                        // $8D-$8F: UNUSED
+  TC_STATIC = TC_INT + 0x10, TC_EXTERN,           // $92-$93: UNUSED
+  TC_TYPEDEF = TC_INT + 0x14, TC_CONSTEXPR, TC_CASE, TC_DEFAULT,
+  TC_RETURN, TC_IF, TC_ELSE, TC_WHILE, TC_DO, TC_FOR, TC_BREAK, TC_CONTINUE,
+  TC_SIZEOF, TC_SWITCH, TC_GOTO, TC_STATIC_ASSERT // $A4-$A7: UNUSED
 };
-#define NKEYWORDS    (TC_CONSTEXPR - TC_KEYWORDS + 1)   // supported keywords
-#define NOPS         22       // operators: == ... "..."
+#define NKEYWORDS    40       // keyword codes, UNUSED ones included
+
 // struct or union, after which an identifier is a tag (TC_TAG), and
-// && or ||, which #if evaluates lazily. (Smaller and faster as ranges.)
-#define TC_IS_STRUCT_UNION(c) ((c) == TC_STRUCT || (c) == TC_UNION)
-#define TC_IS_LOGICAL(c)      ((c) == TC_ANDAND || (c) == TC_OROR)
-_Static_assert(TC_IS_STRUCT_UNION(TC_STRUCT) && TC_IS_STRUCT_UNION(TC_UNION)
-               && TC_IS_LOGICAL(TC_ANDAND) && TC_IS_LOGICAL(TC_OROR),
-               "TC_IS_STRUCT_UNION or TC_IS_LOGICAL lost a member");
+// && or ||, which #if evaluates lazily: aligned pairs, as tokin.h's.
+#define TC_IS_STRUCT_UNION(c) IN_BLOCK(c, TC_STRUCT, 2)
+#define TC_IS_LOGICAL(c)      IN_BLOCK(c, TC_ANDAND, 2)
+_Static_assert((TC_STRUCT & 1) == 0 && TC_IS_STRUCT_UNION(TC_UNION)
+               && (TC_ANDAND & 1) == 0 && TC_IS_LOGICAL(TC_OROR),
+               "TC_IS_STRUCT_UNION or TC_IS_LOGICAL isn't an aligned pair");
 // The keywords' codes, TC_KEYWORDS up, end before the operators', and
-// those fit in a byte.
-_Static_assert(TC_KEYWORDS + NKEYWORDS <= TC_EQ,
-               "the keywords' codes run into the operators'");
-_Static_assert(TC_ELLIPSIS - TC_EQ == NOPS - 1 && TC_ELLIPSIS <= 0xFF,
-               "NOPS isn't the number of operators, TC_EQ ... TC_ELLIPSIS,"
-               " or they aren't bytes");
+// those fit in a byte; each block's last code is inside it.
+_Static_assert(TC_KEYWORDS + NKEYWORDS <= TC_OPS
+               && TC_STATIC_ASSERT < TC_KEYWORDS + NKEYWORDS,
+               "the keywords' codes run into the operators', or past"
+               " NKEYWORDS");
+_Static_assert(TC_OPS + NOPS - 1 <= 0xFF && TC_ELLIPSIS < TC_OPS + NOPS,
+               "the operators' codes aren't bytes, or run past NOPS");
 
 #endif

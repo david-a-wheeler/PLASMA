@@ -470,7 +470,7 @@ int base_tagged;
 static int parse_int_type(int *q)
 {
   int base = 0, sign = 0;
-  while (T_IS_INT_TYPE(tok) || T_IS_QUAL(tok)) {
+  while (T_IS_INT_OR_QUAL(tok)) {
     if (T_IS_QUAL(tok)) {
       *q |= parse_quals();
       continue;

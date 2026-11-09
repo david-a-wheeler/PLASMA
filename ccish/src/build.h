@@ -78,4 +78,11 @@
 #define CCISH_DIAG
 #endif
 
+// Is x in the block of size numbers from first? With size a power of 2
+// and first a multiple of it, ccgen tests this with one AND and one
+// compare (irin.c, between_rewrite()); the token and IR op sets are
+// such blocks (tokin.h, token.h, ir.h), each checked where defined.
+#define IN_BLOCK(x, first, size) ((x) >= (first) \
+                                  && (x) <= (first) + (size) - 1)
+
 #endif

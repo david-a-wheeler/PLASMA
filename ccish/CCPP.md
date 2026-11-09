@@ -164,7 +164,7 @@ All words are 16-bit little-endian. The file is written once, in
 order, through a 512-byte block buffer (`src/bio.c`).
 
 **The header**: the 3 bytes `CTK`, then the format version, a byte:
-**6**. The source file's name is not here: it is file 1 in
+**7**. The source file's name is not here: it is file 1 in
 `NAME.nam`.
 
 **Then the tokens**, each a code byte, followed by its operands:
@@ -188,26 +188,36 @@ order, through a 512-byte block buffer (`src/bio.c`).
 Any other code is a damaged file.
 
 **The keywords**, `$80` up, in this order (the order of `T_INT` to
-`T_CONSTEXPR` in `cccomp`, of `TC_INT` to `TC_CONSTEXPR` in
-`src/token.h`, and of `keywords[]` in `src/pplex.c`). The
-type-name keywords come first, in the groups the parser tests: the
-int-type specifiers, then `void`, the qualifiers, the tagged types
-(approach.md, decision 26):
+`T_STATIC_ASSERT` in `cccomp`'s src/tokin.h, of `TC_INT` to
+`TC_STATIC_ASSERT` in `src/token.h`, and of `keywords[]` in
+`src/pplex.c`). Each set the parser tests is a block whose size is a
+power of 2, starting at a multiple of its size, so a test is one AND
+and one compare; a block's spare codes (blank here, UNUSED in the
+sources) are room for a new keyword of its kind, and are never
+written. `$80`-`$8F` are the type-name keywords: the int-type
+specifiers and the qualifiers, a block of 8; the tagged types, struct
+and union first; `void`. Then the storage classes, `typedef` and
+`constexpr`, and the switch labels; then the rest:
 
 | | +0 | +1 | +2 | +3 | +4 | +5 | +6 | +7 |
 |---|---|---|---|---|---|---|---|---|
-| `$80` | `int` | `char` | `signed` | `unsigned` | `void` | `const` | `volatile` | `struct` |
-| `$88` | `enum` | `return` | `if` | `else` | `while` | `do` | `for` | `break` |
-| `$90` | `continue` | `sizeof` | `static` | `extern` | `switch` | `case` | `default` | `typedef` |
-| `$98` | `goto` | `union` | `_Static_assert` | `constexpr` | | | | |
+| `$80` | `int` | `char` | `signed` | `unsigned` | `const` | `volatile` | | |
+| `$88` | `struct` | `union` | `enum` | | `void` | | | |
+| `$90` | `static` | `extern` | | | `typedef` | `constexpr` | `case` | `default` |
+| `$98` | `return` | `if` | `else` | `while` | `do` | `for` | `break` | `continue` |
+| `$A0` | `sizeof` | `switch` | `goto` | `_Static_assert` | | | | |
 
-**The operators**, `$C0` up (the order of `T_EQ` to `T_ELLIPSIS`):
+**The operators**, `$C0` up (the order of `T_ADDEQ` to `T_ELLIPSIS`),
+in blocks as the keywords are: first the compound assignments, in the
+order of the binary IR ops they do (with the same spare places), then
+`++` and `--`, `&&` and `||`, each a pair, then the rest:
 
 | | +0 | +1 | +2 | +3 | +4 | +5 | +6 | +7 |
 |---|---|---|---|---|---|---|---|---|
-| `$C0` | `==` | `!=` | `<=` | `>=` | `<<` | `>>` | `&&` | `\|\|` |
-| `$C8` | `++` | `--` | `+=` | `-=` | `*=` | `/=` | `%=` | `&=` |
-| `$D0` | `\|=` | `^=` | `<<=` | `>>=` | `->` | `...` | | |
+| `$C0` | `+=` | `-=` | `*=` | `&=` | `\|=` | `^=` | | |
+| `$C8` | `/=` | `%=` | `<<=` | `>>=` | | | | |
+| `$D0` | `++` | `--` | `&&` | `\|\|` | `==` | `!=` | `<=` | `>=` |
+| `$D8` | `<<` | `>>` | `->` | `...` | | | | |
 
 Keywords and operators have separate ranges so that adding a keyword
 (`long`) doesn't renumber the operators. Adding or reordering either
@@ -352,7 +362,7 @@ For `t.c` holding the one line `int main() { return 0; }`, `ccpp`
 writes `t.i`:
 
 ```
-43 54 4B 06    "CTK", version 6
+43 54 4B 07    "CTK", version 7
 80             int
 04 1A 00       an identifier: id 26, main
 28 29 7B       ( ) {

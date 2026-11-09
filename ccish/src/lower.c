@@ -27,41 +27,44 @@ static const char *const ir_names[] = {
   "LOAD", "LOADB", "STORE", "STOREB",
   // $0C: localaddr dataaddr heapaddr straddr
   "LOCALADDR", "DATAADDR", "HEAPADDR", "STRADDR",
-  // $10: func endfunc const call
-  "FUNC", "ENDFUNC", "CONST", "CALL",
-  // $14: drop dup return funcaddr
-  "DROP", "DUP", "RETURN", "FUNCADDR",
-  // $18: icall neg comp not
-  "ICALL", "NEG", "COMP", "NOT",
-  // $1C: swap udiv umod ushr
-  "SWAP", "UDIV", "UMOD", "USHR",
+  // $10: func call funcaddr -
+  "FUNC", "CALL", "FUNCADDR", 0,
+  // $14: endfunc const drop dup
+  "ENDFUNC", "CONST", "DROP", "DUP",
+  // $18: return icall swap -
+  "RETURN", "ICALL", "SWAP", 0,
+  // $1C: neg comp not -
+  "NEG", "COMP", "NOT", 0,
   // $20: localv localbv setlocalv setlocalbv
   "LOCALV", "LOCALBV", "SETLOCALV", "SETLOCALBV",
   // $24: globalv globalbv setglobalv setglobalbv
   "GLOBALV", "GLOBALBV", "SETGLOBALV", "SETGLOBALBV",
   // $28: loadv loadbv storev storebv
   "LOADV", "LOADBV", "STOREV", "STOREBV",
-  0, 0, 0, 0,  // $2C: none
-  // $30: add sub mul div
-  "ADD", "SUB", "MUL", "DIV",
-  // $34: mod and or xor
-  "MOD", "AND", "OR", "XOR",
-  // $38: shl shr - -
-  "SHL", "SHR", 0, 0,
-  0, 0, 0, 0,  // $3C: none
-  // $40: eq ne lt ge
-  "EQ", "NE", "LT", "GE",
-  // $44: gt le ult uge
-  "GT", "LE", "ULT", "UGE",
-  // $48: ugt ule - -
-  "UGT", "ULE", 0, 0,
-  0, 0, 0, 0,  // $4C: none
-  // $50: label jump brfalse brtrue
-  "LABEL", "JUMP", "BRFALSE", "BRTRUE",
-  // $54: sel join cases caseval
-  "SEL", "JOIN", "CASES", "CASEVAL",
-  // $58: caseto - - -
-  "CASETO", 0, 0, 0,
+  // $2C: udiv umod ushr -
+  "UDIV", "UMOD", "USHR", 0,
+  // $30: add sub mul and
+  "ADD", "SUB", "MUL", "AND",
+  // $34: or xor - -
+  "OR", "XOR", 0, 0,
+  // $38: div mod shl shr
+  "DIV", "MOD", "SHL", "SHR",
+  // $3C: - - - -
+  0, 0, 0, 0,
+  // $40: lt ge gt le
+  "LT", "GE", "GT", "LE",
+  // $44: eq ne - -
+  "EQ", "NE", 0, 0,
+  // $48: ult uge ugt ule
+  "ULT", "UGE", "UGT", "ULE",
+  // $4C: - - - -
+  0, 0, 0, 0,
+  // $50: jump - brfalse brtrue
+  "JUMP", 0, "BRFALSE", "BRTRUE",
+  // $54: sel caseto - -
+  "SEL", "CASETO", 0, 0,
+  // $58: label join cases caseval
+  "LABEL", "JOIN", "CASES", "CASEVAL",
   // $5C: loop loopstep loopbody loopend
   "LOOP", "LOOPSTEP", "LOOPBODY", "LOOPEND",
 };
@@ -82,13 +85,15 @@ _Static_assert(sizeof(ir_names) / sizeof(ir_names[0]) == IR_NOPS,
 //   L_GLOBAL   that opcode, the absolute-address form, with a's address
 //              relocated as data (data_fix())
 //   L_SPECIAL  lowered by lower_special()
+//   L_NONE     no op: an UNUSED number in ir.h (IR_IS_OP, lower.h)
 // The stores keep their value (DLW, DLB, DAW, DAB): an assignment's
 // value can be used, and when it isn't, the following DROP lets the
 // peephole stage make the plain store (SLW, ...). DLB keeps the stored
 // byte, which is the value C gives an assignment to a char.
-enum { L_SIMPLE, L_COMPARE, L_OPERAND, L_GLOBAL, L_SPECIAL };
+enum { L_NONE, L_SIMPLE, L_COMPARE, L_OPERAND, L_GLOBAL, L_SPECIAL };
+_Static_assert(L_NONE == 0, "IR_IS_OP (lower.h) tests lw_kind[] for 0");
 
-static const char lw_kind[] = {
+const char lw_kind[] = {
   // $00: local localb setlocal setlocalb
   L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,
   // $04: global globalb setglobal setglobalb
@@ -97,41 +102,44 @@ static const char lw_kind[] = {
   L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,
   // $0C: localaddr dataaddr heapaddr straddr
   L_OPERAND, L_GLOBAL, L_SPECIAL, L_SPECIAL,
-  // $10: func endfunc const call
-  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,
-  // $14: drop dup return funcaddr
-  L_SIMPLE, L_SIMPLE, L_SPECIAL, L_SPECIAL,
-  // $18: icall neg comp not
-  L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SPECIAL,
-  // $1C: swap udiv umod ushr
-  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,
+  // $10: func call funcaddr -
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_NONE,
+  // $14: endfunc const drop dup
+  L_SPECIAL, L_SPECIAL, L_SIMPLE, L_SIMPLE,
+  // $18: return icall swap -
+  L_SPECIAL, L_SIMPLE, L_SPECIAL, L_NONE,
+  // $1C: neg comp not -
+  L_SIMPLE, L_SIMPLE, L_SPECIAL, L_NONE,
   // $20: localv localbv setlocalv setlocalbv
   L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,
   // $24: globalv globalbv setglobalv setglobalbv
   L_GLOBAL, L_GLOBAL, L_GLOBAL, L_GLOBAL,
   // $28: loadv loadbv storev storebv
   L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,
-  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  // $2C: none
-  // $30: add sub mul div
+  // $2C: udiv umod ushr -
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_NONE,
+  // $30: add sub mul and
   L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,
-  // $34: mod and or xor
+  // $34: or xor - -
+  L_SIMPLE, L_SIMPLE, L_NONE, L_NONE,
+  // $38: div mod shl shr
   L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,
-  // $38: shl shr - -
-  L_SIMPLE, L_SIMPLE, L_SPECIAL, L_SPECIAL,
-  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  // $3C: none
-  // $40: eq ne lt ge
+  // $3C: - - - -
+  L_NONE, L_NONE, L_NONE, L_NONE,
+  // $40: lt ge gt le
   L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,
-  // $44: gt le ult uge
+  // $44: eq ne - -
+  L_COMPARE, L_COMPARE, L_NONE, L_NONE,
+  // $48: ult uge ugt ule
   L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,
-  // $48: ugt ule - -
-  L_COMPARE, L_COMPARE, L_SPECIAL, L_SPECIAL,
-  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  // $4C: none
-  // $50: label jump brfalse brtrue
-  L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,
-  // $54: sel join cases caseval
+  // $4C: - - - -
+  L_NONE, L_NONE, L_NONE, L_NONE,
+  // $50: jump - brfalse brtrue
+  L_OPERAND, L_NONE, L_OPERAND, L_OPERAND,
+  // $54: sel caseto - -
+  L_OPERAND, L_OPERAND, L_NONE, L_NONE,
+  // $58: label join cases caseval
   L_OPERAND, L_SPECIAL, L_OPERAND, L_OPERAND,
-  // $58: caseto - - -
-  L_OPERAND, L_SPECIAL, L_SPECIAL, L_SPECIAL,
   // $5C: loop loopstep loopbody loopend
   L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,
 };
@@ -148,14 +156,14 @@ static const unsigned char lw_op[] = {
   OP_LW, OP_LB, OP_SW, OP_SB,
   // $0C: localaddr dataaddr heapaddr straddr
   OP_LLA, OP_LA, OP_LA, 0,
-  // $10: func endfunc const call
+  // $10: func call funcaddr -
   0, 0, 0, 0,
-  // $14: drop dup return funcaddr
-  OP_DROP, OP_DUP, 0, 0,
-  // $18: icall neg comp not
-  OP_ICAL, OP_NEG, OP_COMP, 0,
-  // $1C: swap udiv umod ushr
-  0, 0, 0, 0,
+  // $14: endfunc const drop dup
+  0, 0, OP_DROP, OP_DUP,
+  // $18: return icall swap -
+  0, OP_ICAL, 0, 0,
+  // $1C: neg comp not -
+  OP_NEG, OP_COMP, 0, 0,
   // $20: localv localbv setlocalv setlocalbv
   OP_LLW | MOP_VOLATILE, OP_LLB | MOP_VOLATILE,
   OP_DLW | MOP_VOLATILE, OP_DLB | MOP_VOLATILE,
@@ -165,27 +173,30 @@ static const unsigned char lw_op[] = {
   // $28: loadv loadbv storev storebv
   OP_LW | MOP_VOLATILE, OP_LB | MOP_VOLATILE,
   OP_SW | MOP_VOLATILE, OP_SB | MOP_VOLATILE,
-  0, 0, 0, 0,  // $2C: none
-  // $30: add sub mul div
-  OP_ADD, OP_SUB, OP_MUL, OP_DIV,
-  // $34: mod and or xor
-  OP_MOD, OP_AND, OP_IOR, OP_XOR,
-  // $38: shl shr - -
-  OP_SHL, OP_SHR, 0, 0,
-  0, 0, 0, 0,  // $3C: none
-  // $40: eq ne lt ge
-  OP_ISEQ, OP_ISNE, OP_ISLT, OP_ISGE,
-  // $44: gt le ult uge
-  OP_ISGT, OP_ISLE, OP_ISLT, OP_ISGE,
-  // $48: ugt ule - -
-  OP_ISGT, OP_ISLE, 0, 0,
-  0, 0, 0, 0,  // $4C: none
-  // $50: label jump brfalse brtrue
-  OP_LABEL, OP_BRNCH, OP_BRFLS, OP_BRTRU,
-  // $54: sel join cases caseval
-  OP_SEL, 0, OP_CASES, OP_CASEVAL,
-  // $58: caseto - - -
-  OP_CASETO, 0, 0, 0,
+  // $2C: udiv umod ushr -
+  0, 0, 0, 0,
+  // $30: add sub mul and
+  OP_ADD, OP_SUB, OP_MUL, OP_AND,
+  // $34: or xor - -
+  OP_IOR, OP_XOR, 0, 0,
+  // $38: div mod shl shr
+  OP_DIV, OP_MOD, OP_SHL, OP_SHR,
+  // $3C: - - - -
+  0, 0, 0, 0,
+  // $40: lt ge gt le
+  OP_ISLT, OP_ISGE, OP_ISGT, OP_ISLE,
+  // $44: eq ne - -
+  OP_ISEQ, OP_ISNE, 0, 0,
+  // $48: ult uge ugt ule
+  OP_ISLT, OP_ISGE, OP_ISGT, OP_ISLE,
+  // $4C: - - - -
+  0, 0, 0, 0,
+  // $50: jump - brfalse brtrue
+  OP_BRNCH, 0, OP_BRFLS, OP_BRTRU,
+  // $54: sel caseto - -
+  OP_SEL, OP_CASETO, 0, 0,
+  // $58: label join cases caseval
+  OP_LABEL, 0, OP_CASES, OP_CASEVAL,
   // $5C: loop loopstep loopbody loopend
   0, 0, 0, 0,
 };

@@ -431,23 +431,21 @@ static void lex_string(void)
   getch();
 }
 
+// The spelling of an UNUSED keyword or operator code (token.h): one
+// that no word or operator is, shared, as one string.
+static const char spare[] = " ";
+
 // The C keywords: the supported ones first, in the order of their
 // codes.
 static const char *const keywords[] = {
-  // supported: in the order of TC_INT ... (token.h, CCPP.md) and T_INT ...
-  "int", "char", "signed", "unsigned",
-  "void",
-  "const", "volatile",
-  "struct", "enum",
+  // supported: in the order of TC_INT ... (token.h, CCPP.md) and T_INT
+  // ..., with spare at each UNUSED code
+  "int", "char", "signed", "unsigned", "const", "volatile", spare, spare,
+  "struct", "union", "enum", spare, "void", spare, spare, spare,
+  "static", "extern", spare, spare, "typedef", "constexpr", "case",
+  "default",
   "return", "if", "else", "while", "do", "for", "break", "continue",
-  "sizeof",
-  "static", "extern",
-  "switch", "case", "default",
-  "typedef",
-  "goto",
-  "union",
-  "_Static_assert",
-  "constexpr",
+  "sizeof", "switch", "goto", "_Static_assert", spare, spare, spare, spare,
   // the rest of C89's keywords: recognized so the error is clear
   "auto", "double",
   "float", "long", "register",
@@ -498,11 +496,12 @@ static int lex_word(void)
 }
 
 // The multi-character operators' spellings, in the order of their codes
-// (TC_EQ ...).
+// (TC_OPS ...), with spare at each UNUSED code.
 static const char *const ops[] = {
-  "==", "!=", "<=", ">=", "<<", ">>", "&&", "||", "++", "--",
-  "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=",
-  "->", "..."
+  "+=", "-=", "*=", "&=", "|=", "^=", spare, spare,
+  "/=", "%=", "<<=", ">>=", spare, spare, spare, spare,
+  "++", "--", "&&", "||", "==", "!=", "<=", ">=",
+  "<<", ">>", "->", "...", spare, spare, spare, spare
 };
 _Static_assert(sizeof(ops) / sizeof(ops[0]) == NOPS,
                "ops[] doesn't have NOPS operators");
@@ -518,7 +517,7 @@ int pp_op(const char *s)
     return s[0];
   for (i = 0; i < NOPS; i++)
     if (!strcmp(ops[i], s))
-      return TC_EQ + i;
+      return TC_OPS + i;
   if (!strcmp(s, "#"))
     return '#';
   if (!strcmp(s, "##"))
@@ -552,8 +551,8 @@ int pp_spell_token(int code, int val, const unsigned char *s, int n,
     w = pp_id_spelling(val);
   } else if (code >= TC_KEYWORDS && code < TC_KEYWORDS + NKEYWORDS) {
     w = keywords[code - TC_KEYWORDS];
-  } else if (code >= TC_EQ && code <= TC_ELLIPSIS) {
-    w = ops[code - TC_EQ];
+  } else if (code >= TC_OPS && code < TC_OPS + NOPS) {
+    w = ops[code - TC_OPS];
   } else if (code == TC_PASTE) {
     w = "##";
   } else if (code == TC_NUM || code == TC_UNUM) {

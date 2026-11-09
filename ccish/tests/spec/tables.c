@@ -65,14 +65,14 @@ int main(void)
   NAME(JOIN); NAME(CASES); NAME(CASEVAL); NAME(CASETO);
   NAME(LOOP); NAME(LOOPSTEP); NAME(LOOPBODY); NAME(LOOPEND);
 
-  // A number that's no op has no name and no stack effect, and one
-  // that's an op has both.
+  // A number that's no op (STK_NOOP) has no name and no machine op, and
+  // one that's an op has a name.
   for (op = 0; op < IR_NOPS; op++) {
     if (!IR_IS_OP(op) != !ir_names[op])
       fail(IR_IS_OP(op) ? "an op has no name" : "a number that's no op has"
                                                 " a name", op);
-    if (!IR_IS_OP(op) && stk_effect[op] != STK_NONE)
-      fail("a number that's no op has a stack effect", op);
+    if (!IR_IS_OP(op) && lw_op[op] != 0)
+      fail("a number that's no op has a machine op", op);
   }
 
   // Spot checks: each block's first and last op, and a volatile form.

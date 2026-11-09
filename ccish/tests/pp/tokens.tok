@@ -1,5 +1,5 @@
 # Each code step 1 writes (CCPP.md), from tokens.c.
-43 54 4b 06     # "CTK", version 6
+43 54 4b 07     # "CTK", version 7
 # line 1: a comment's newline is a line too
 01
 # line 2: x = 0x8000 + 10u - 'A' * 65535;
@@ -16,7 +16,7 @@
 01
 # line 3: the name's first 31 characters only, then +=
 04 23 00        # id 35
-ca              # +=
+c0              # +=
 04 22 00        # x again: id 34
 3b
 01
@@ -32,11 +32,11 @@ ca              # +=
 01
 # line 6: the operators
 04 22 00        # x
-d2              # <<=
+ca              # <<=
 04 26 00        # y: id 38
-d3              # >>=
+cb              # >>=
 04 27 00        # z: id 39
-d5 d4 c1 c0 c6 c7 c8 c9 ce    # ... -> != == && || ++ -- %=
+db da d5 d4 d2 d3 d0 d1 c9    # ... -> != == && || ++ -- %=
 3b
 01
 00 27 00 ss ss  # the end: 39 ids, the checksum

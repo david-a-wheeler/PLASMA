@@ -1,19 +1,19 @@
 # A struct or union tag (CCPP.md, $09): an identifier after "struct"
 # or "union", with its spelling's hash h (each byte b: h = h * 31 + b,
 # from 0) and 31^length.
-43 54 4b 06     # "CTK", version 6
-87              # struct
+43 54 4b 07     # "CTK", version 7
+88              # struct
 09 22 00 73 00 1f 00    # s: id 34, h = 's' = 115, 31^1 = 31
 2a
 04 23 00        # p: id 35, not a tag
 3b
 01
-87              # struct
+88              # struct
 01              # a newline between it and the tag
 09 24 00 21 0c c1 03    # ab: id 36, h = 97 * 31 + 98 = 3105, 31^2 = 961
 3b
 01
-99              # union
+89              # union
 09 25 00 75 00 1f 00    # u: id 37, h = 'u' = 117, 31^1 = 31
 2a
 04 26 00        # q: id 38, not a tag

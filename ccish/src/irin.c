@@ -252,13 +252,13 @@ static void reverse(int i, int j)
 // comparison says (1, or 2 for a top block ending in DUP), and never
 // use a value from below it. Each op's effect is in stk_effect[]: the
 // values it pops times 16, plus those it pushes, or STK_NONE for an op
-// that can't be in an expression, and for a number that is no op (the
-// reader refuses those: IR_IS_OP). It's a char table, and char is
-// unsigned (as in ccish), so STK_NONE is a value no op's effect has,
-// not -1. A CALL pops its arguments and pushes a
-// value if its function returns one (from the name record). Branches
-// are followed: lab_depth[] is the depth at each label the block
-// branches to (plus 1; 0 if none yet), and code after a JUMP is
+// that can't be in an expression, and for a number that is no op (an
+// UNUSED one in ir.h; the reader refuses those: IR_IS_OP, lower.h).
+// It's a char table, and char is unsigned (as in ccish), so STK_NONE
+// is a value no op's effect has, not -1. A CALL pops its arguments and
+// pushes a value if its function returns one (from the name record).
+// Branches are followed: lab_depth[] is the depth at each label the
+// block branches to (plus 1; 0 if none yet), and code after a JUMP is
 // unreachable until a label. A SWAP inside the block, done or not,
 // changes no depth.
 #define STK_NONE 0x7F
@@ -271,41 +271,44 @@ static const char stk_effect[] = {
   0x11, 0x11, 0x20, 0x20,
   // $0C: localaddr dataaddr heapaddr straddr
   0x01, 0x01, 0x01, 0x01,
-  // $10: func endfunc const call
-  STK_NONE, STK_NONE, 0x01, 0x00,
-  // $14: drop dup return funcaddr
-  0x10, 0x12, STK_NONE, 0x01,
-  // $18: icall neg comp not
-  0x00, 0x11, 0x11, 0x11,
-  // $1C: swap udiv umod ushr
-  0x22, 0x21, 0x21, 0x21,
+  // $10: func call funcaddr -
+  STK_NONE, 0x00, 0x01, STK_NONE,
+  // $14: endfunc const drop dup
+  STK_NONE, 0x01, 0x10, 0x12,
+  // $18: return icall swap -
+  STK_NONE, 0x00, 0x22, STK_NONE,
+  // $1C: neg comp not -
+  0x11, 0x11, 0x11, STK_NONE,
   // $20: localv localbv setlocalv setlocalbv
   0x01, 0x01, 0x11, 0x11,
   // $24: globalv globalbv setglobalv setglobalbv
   0x01, 0x01, 0x11, 0x11,
   // $28: loadv loadbv storev storebv
   0x11, 0x11, 0x20, 0x20,
-  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  // $2C: none
-  // $30: add sub mul div
+  // $2C: udiv umod ushr -
+  0x21, 0x21, 0x21, STK_NONE,
+  // $30: add sub mul and
   0x21, 0x21, 0x21, 0x21,
-  // $34: mod and or xor
-  0x21, 0x21, 0x21, 0x21,
-  // $38: shl shr - -
+  // $34: or xor - -
   0x21, 0x21, STK_NONE, STK_NONE,
-  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  // $3C: none
-  // $40: eq ne lt ge
+  // $38: div mod shl shr
   0x21, 0x21, 0x21, 0x21,
-  // $44: gt le ult uge
-  0x21, 0x21, 0x21, 0x21,
-  // $48: ugt ule - -
-  0x21, 0x21, STK_NONE, STK_NONE,
-  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  // $4C: none
-  // $50: label jump brfalse brtrue
-  0x00, 0x00, 0x10, 0x10,
-  // $54: sel join cases caseval
-  STK_NONE, 0x00, STK_NONE, STK_NONE,
-  // $58: caseto - - -
+  // $3C: - - - -
   STK_NONE, STK_NONE, STK_NONE, STK_NONE,
+  // $40: lt ge gt le
+  0x21, 0x21, 0x21, 0x21,
+  // $44: eq ne - -
+  0x21, 0x21, STK_NONE, STK_NONE,
+  // $48: ult uge ugt ule
+  0x21, 0x21, 0x21, 0x21,
+  // $4C: - - - -
+  STK_NONE, STK_NONE, STK_NONE, STK_NONE,
+  // $50: jump - brfalse brtrue
+  0x00, STK_NONE, 0x10, 0x10,
+  // $54: sel caseto - -
+  STK_NONE, STK_NONE, STK_NONE, STK_NONE,
+  // $58: label join cases caseval
+  0x00, 0x00, STK_NONE, STK_NONE,
   // $5C: loop loopstep loopbody loopend
   STK_NONE, STK_NONE, STK_NONE, STK_NONE,
 };

@@ -19,16 +19,16 @@ else
     echo "FAIL no message file: wanted 'error 41 (194):', got:"
     sed 's/^/    /' "$OUT/nomsg/t.err"; bad=1
 fi
-# A keyword in a message is its number (tok_desc(): 'while' is 274, the
-# keywords being 262-289 in T_INT's order).
+# A keyword in a message is its number (tok_desc(): 'while' is 289, the
+# keywords being 262-301 in T_INT's order).
 printf 'int main() { return while; }\n' > "$OUT/nomsg/k.c"
 if "$OUT/nomsg/ccish" -o "$OUT/nomsg/k" "$OUT/nomsg/k.c" 2>"$OUT/nomsg/k.err"
 then
     echo "FAIL no message file: compiled, but should have failed"; bad=1
-elif grep -qF "k.c:1: error 65: '274'" "$OUT/nomsg/k.err"; then
+elif grep -qF "k.c:1: error 65: '289'" "$OUT/nomsg/k.err"; then
     :
 else
-    echo "FAIL no message file: wanted \"error 65: '274'\", got:"
+    echo "FAIL no message file: wanted \"error 65: '289'\", got:"
     sed 's/^/    /' "$OUT/nomsg/k.err"; bad=1
 fi
 exit $bad
