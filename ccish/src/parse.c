@@ -403,11 +403,13 @@ void set_param_types(int f, int n)
 {
   int i;
   if (fn_ptypes[f] >= 0) {
+#ifdef CCISH_LINT
     for (i = 0; i < n; i++)
       if (param_types[fn_ptypes[f] + i]
           != UNQUAL(var_type[nglobals + i]))
         error(31 /* "conflicting parameter types for" */,
               quote(fn_name[f]));
+#endif
     return;
   }
   if (nparam_types + n > MAX_PARAM_TYPES)
@@ -485,9 +487,11 @@ int parse_base_type(void)
         q |= parse_quals();
         continue;
       }
+#ifdef CCISH_LINT
       if (tok == T_INT || tok == T_CHAR ? base != 0 : sign != 0)
         error(226 /* "conflicting or repeated type specifier:" */,
               tok_desc());
+#endif
       if (tok == T_INT || tok == T_CHAR)
         base = tok;
       else
@@ -1281,8 +1285,10 @@ int holds_qual(int t, int q)
 // part saying how it was used ("left operand of assignment").
 void need_lvalue(Operand *o, int what)
 {
+#ifdef CCISH_LINT
   if (is_array(o->type) && is_place(o))
     error_in(40 /* "an array can't be the" */, what, NULL);
+#endif
 #ifdef CCISH_LINT
   if (o->quals & Q_CONST)      // first: a folded const isn't a place
     error_in(42 /* "a 'const' object can't be the" */, what, NULL);

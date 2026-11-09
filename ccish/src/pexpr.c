@@ -213,9 +213,13 @@ int parse_const(int msg, int part)
   parse_skipped(PREC_COND, &e);
   if (e.kind != K_CONST || is_pointer(e.type))
     error(msg, NULL);
+#ifdef CCISH_LINT
   if (e.nonice)
     error_in(201 /* "a const variable's value isn't a constant"
                   " expression in C" */, part, NULL);
+#else
+  (void)part;
+#endif
   return e.val;
 }
 
@@ -396,9 +400,11 @@ static void parse_call(int f, Operand *o)
   int nargs = parse_args(f);
   if (nparams_of(f) < 0)
     set_nparams(f, nargs);      // first use fixes the count
+#ifdef CCISH_LINT
   else if (nparams_of(f) != nargs)
     error(55 /* "wrong number of arguments in call to" */,
           quote(fn_name[f]));
+#endif
   fn_flags[f] |= FN_CALLED;
   put(IR_CALL, nargs, f);
   o->kind = fn_type[f] != TY_VOID ? K_VALUE : K_VOID;
@@ -893,9 +899,11 @@ static void parse_unary(Operand *o)
   case '-': case '+': case '~': case '!':
     next();
     parse_unary(o);
+#ifdef CCISH_LINT
     if (t != '!' && is_pointer(value_type(o->type)))
       error(76 /* "pointer operand to unary" */, t == '-' ? "'-'"
             : t == '+' ? "'+'" : "'~'");
+#endif
     if (o->kind == K_CONST) {
       if (t == '-')
         o->val = wrap16(0u - (unsigned)o->val);
@@ -1015,6 +1023,7 @@ static void parse_sizeof(Operand *o)
   in_sizeof--;
   nheld = saved;              // drop anything held inside it
   nest--;
+#ifdef CCISH_LINT
   if (UNQUAL(t) == TY_VOID)
     error0(78 /* "sizeof can't be applied to type void" */);
   if (is_struct(t) && type_size(t) == 0)
@@ -1022,6 +1031,7 @@ static void parse_sizeof(Operand *o)
           tag_desc(STRUCT_TAG(t)));
   if (is_array(t) && type_count(t) == 0)    // extern int a[];
     error0(79 /* "sizeof can't be applied to the incomplete type" */);
+#endif
   o->kind = K_CONST;
   o->val = type_size(t);
   o->type = TY_UINT;          // C's size_t
@@ -1130,7 +1140,9 @@ static int cond_type(Operand *b, int b_null, Operand *c, int c_null)
     return bt;
   if (is_pointer(ct) && b_null)
     return ct;
+#ifdef CCISH_LINT
   error0(80 /* "type mismatch in conditional expression" */);
+#endif
   return TY_INT;
 }
 
@@ -1355,7 +1367,9 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
     o->is_bool = 0;
     return;
   } else {
+#ifdef CCISH_LINT
     error(85 /* "invalid operands to binary" */, op_name(op));
+#endif
   }
   put(op, a, -1);
   o->kind = K_VALUE;

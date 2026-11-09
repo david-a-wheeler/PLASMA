@@ -252,8 +252,10 @@ int parse_type_name(void)
 // size can't be left out.
 int parse_var_type(int type, int may_omit)
 {
+#ifdef CCISH_LINT
   if (UNQUAL(type) == TY_VOID)
     error0(94 /* "a variable can't have type void" */);
+#endif
   if (!may_omit && is_array(type) && type_count(type) == 0)
     error0(87 /* "array size missing" */);
   need_complete(type, 207 /* "a variable can't have the incomplete type" */);
@@ -285,19 +287,25 @@ static void parse_members(int tag, int is_union)
     base = parse_base_type();
     for (;;) {
       t = parse_declarator(base, 0, &name);
+#ifdef CCISH_LINT
       if (is_func(t))
         error(97 /* "a struct or union member can't be a function:" */,
               quote(name));
+#endif
       if (is_array(t) && type_count(t) == 0)
         error0(87 /* "array size missing" */);
+#ifdef CCISH_LINT
       if (UNQUAL(t) == TY_VOID)
         error0(98 /* "a struct or union member can't have type void" */);
+#endif
 #ifdef CCISH_LINT
       need_complete(t, 208 /* "a struct or union member can't have the"
                               " incomplete type" */);
 #endif
+#ifdef CCISH_LINT
       if (member_find(tag, name) >= 0)
         error(99 /* "duplicate struct or union member" */, quote(name));
+#endif
       if (off > MAX_OBJECT - type_size(t))
         error0(100 /* "struct or union too large (over 32767 bytes)" */);
       member_add(tag, name, t, is_union ? 0 : off);
@@ -450,8 +458,10 @@ void parse_typedef(void)
     }
     i = id_find(name);
     if (i >= 0 && ID_DEPTH(i) == depth) {
+#ifdef CCISH_LINT
       if (id_k[i] != kind || id_v[i] != t)
         error(27 /* "redeclaration of" */, quote(name));
+#endif
     } else {
       check_not_var(name);
       id_add(name, kind, t, depth);
@@ -816,8 +826,10 @@ NULL);
     l = new_label();
     if (tok == T_DEFAULT) {
       next();
+#ifdef CCISH_LINT
       if (sw_default >= 0)
         error0(135 /* "more than one 'default' in a switch" */);
+#endif
       sw_default = l;
     } else {
       next();
@@ -1002,9 +1014,11 @@ static void parse_statement(void)
       if (fn_type[cur_fn] != TY_VOID)
         push_zero_result(fn_type[cur_fn]);  // C89 allows this
     } else {
+#ifdef CCISH_LINT
       if (fn_type[cur_fn] == TY_VOID)
         error(145 /* "void function returns a value:" */,
               quote(fn_name[cur_fn]));
+#endif
       begin_expr();
       parse_expr(PREC_COMMA, &o);
       check_assign(fn_type[cur_fn], &o, 199 /* "return" */, NULL);
@@ -1105,7 +1119,9 @@ int parse_params(void)
         next();
         return 0;           // (void): no parameters
       }
+#ifdef CCISH_LINT
       error0(152 /* "a parameter can't have type void" */);
+#endif
     }
     if (n >= MAX_PARAMS)
       fatal0(153 /* "too many parameters" */);

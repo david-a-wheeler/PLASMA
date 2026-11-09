@@ -124,10 +124,12 @@ static void parse_scalar_init(int type)
     addr_const(&o);
   if (o.kind != K_CONST && o.kind != K_ADDR && o.kind != K_FUNC)
     error0(206 /* "initializer is not a constant ccish supports" */);
+#ifdef CCISH_LINT
   if (o.nonice && o.kind == K_CONST)
     error_in(201 /* "a const variable's value isn't a constant"
                   " expression in C" */,
              205 /* "(an initializer here must be one)" */, NULL);
+#endif
   check_assign(type, &o, 198 /* "initialization" */, NULL);
   init_known = o.kind == K_CONST;
   init_val = o.val;
@@ -886,9 +888,11 @@ static void parse_toplevel(void)
   type = UNQUAL(type_sub(type));
   check_byval(type, 0);
   if (storage == T_STATIC) {
+#ifdef CCISH_LINT
     if ((fn_flags[f] & FN_DECLARED) && !(fn_flags[f] & FN_STATIC))
       error(217 /* "static declaration follows a non-static declaration"
                    " of" */, quote(name));
+#endif
     fn_flags[f] |= FN_STATIC;
   }
   pwords = frame_next / 2;
@@ -896,13 +900,17 @@ static void parse_toplevel(void)
   if (tok == ';') {
     // A prototype. "()" leaves the parameter count unspecified.
     note_import(f, i);
+#ifdef CCISH_LINT
     if ((fn_flags[f] & FN_DECLARED) && fn_type[f] != type)
       error(165 /* "conflicting declaration of" */, quote(fn_name[f]));
+#endif
     fn_type[f] = type;
     if (nparams >= 0) {
+#ifdef CCISH_LINT
       if (nparams_of(f) >= 0 && nparams_of(f) != nparams)
         error(166 /* "conflicting parameter count for" */,
               quote(fn_name[f]));
+#endif
       set_nparams(f, nparams);
       set_param_types(f, nparams);
     }
@@ -919,21 +927,25 @@ static void parse_toplevel(void)
   if (tok != '{')
     error(167 /* "expected '{' or ';' after function header, not" */,
           tok_desc());
+#ifdef CCISH_LINT
   for (i = nglobals; i < nvars; i++)
     if (var_name[i] < 0)
       error(168 /* "parameter name missing in definition of" */,
             quote(fn_name[f]));
+#endif
   if (fn_flags[f] & FN_DEFINED)
     error(104 /* "redefinition of" */, quote(fn_name[f]));
 #ifdef CCISH_LINT
   if ((fn_flags[f] & FN_DECLARED) && fn_type[f] != type)
     error(165 /* "conflicting declaration of" */, quote(fn_name[f]));
 #endif
+#ifdef CCISH_LINT
   if (nparams_of(f) >= 0 && nparams_of(f) != nparams)
     error(169 /* "parameter count differs from earlier use of" */,
           quote(fn_name[f]));
   if (fn_name[f] == ID_MAIN && nparams != 0 && nparams != 2)
     error0(170 /* "main takes no parameters, or two" */);
+#endif
   set_param_types(f, nparams);
   fn_type[f] = type;
   set_nparams(f, nparams);

@@ -56,14 +56,15 @@
 //                  debugging, so in the full build only for now; it can
 //                  be put in the small build if ccpp has room.
 //   CCISH_LINT     the checks that only reject invalid programs, where
-//                  a valid one compiles the same either way: the type
-//                  checks of assignments, initializers, arguments,
-//                  returns and pointer comparisons and subtractions,
-//                  const, conflicting redeclarations, duplicate cases
-//                  and labels, undefined labels, incomplete members and
-//                  array elements, and constant operands with undefined
-//                  behavior (the guide's section 2.7; approach.md
-//                  decision 44). Without them, the small build accepts
+//                  a valid one compiles the same either way: types of
+//                  assignments, arguments, returns and operands,
+//                  argument counts, const, conflicting declarations,
+//                  void and function types where they can't be,
+//                  struct members, sizeof, duplicate cases, defaults
+//                  and labels, undefined labels, const variables in
+//                  constant expressions, and constant operands with
+//                  undefined behavior (the guide's section 2.7 lists
+//                  them; approach.md decision 44). Without them, the small build accepts
 //                  such a program, and compiles something; the full
 //                  build rejects it. Not here: any check of what ccish
 //                  can't compile, valid C or not (two definitions with

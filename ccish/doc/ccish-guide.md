@@ -330,26 +330,47 @@ standard requires a diagnostic for each (C11 clauses given):
    comparing a pointer with an integer other than a null pointer
    constant, or pointers to incompatible types, and subtracting
    pointers to incompatible types.
-3. **Assigning to a const object** (6.5.16, 6.3.2.1), or to a struct
-   with a const member. (Assigning to a const variable whose value is
-   known still fails, as "lvalue required".)
-4. **Conflicting declarations** (6.7): a global or function declared
-   again with a different type; an enum constant, typedef name,
-   variable or function declared twice in one scope with different
-   meanings; and `static` after a declaration that isn't (6.2.2,
-   undefined in C).
-5. **Duplicate case values** in one `switch` (6.8.4.2), and **labels
-   defined twice** in one function (6.8.1). (A label defined twice
-   still stops `ccgen`, with an internal error message.)
-6. **A goto to a label never defined** (6.8.6.1). (This also still
-   stops `ccgen`, with an internal error message.)
-7. **A struct member or array element of an incomplete type**
-   (6.7.2.1, 6.7.6.2).
+3. **Operand types**: unary `-`, `+` or `~` on a pointer (6.5.3.3);
+   a binary operator on operands it doesn't take, such as `*` on a
+   pointer (6.5.5 to 6.5.14); a `?:` whose two results have
+   incompatible types (6.5.15).
+4. **Assigning to an array** (6.5.16, 6.3.2.1), **or to a const
+   object**, or to a struct with a const member. (Assigning to a
+   const variable whose value is known still fails, as "lvalue
+   required".)
+5. **Calls** (6.5.2.2): the wrong number of arguments to a function
+   with a known parameter count.
+6. **Conflicting declarations** (6.7, 6.7.6.3): a global or function
+   declared again with a different type, a different parameter count
+   or different parameter types; an enum constant, typedef name,
+   constexpr name, variable or function declared twice in one scope
+   with different meanings; and repeated or conflicting type
+   specifiers (`int int`, `char int`; 6.7.2).
+7. **Void and function types where they can't be** (6.7, 6.7.2.1,
+   6.7.6.3): a variable, struct member or parameter of type `void`,
+   and a struct member of function type.
+8. **Struct members** (6.7.2.1): two members of one struct with the
+   same name, and a member or array element of an incomplete type
+   (6.7.6.2).
+9. **A parameter without a name** in a function's definition (6.9.1).
+10. **`sizeof`** (6.5.3.4) of `void`, or of an incomplete type.
+11. **Statements**: duplicate case values, or two `default` labels,
+    in one `switch` (6.8.4.2); labels defined twice in one function
+    (6.8.1); a goto to a label never defined (6.8.6.1); a `return`
+    with a value in a `void` function (6.8.6.4). (A label defined
+    twice, and a goto to no label, still stop `ccgen`, with an
+    internal error message.)
+12. **Integer constant expressions** (6.6): a const variable's value
+    where C requires one, as in an array size, a case label, an enum
+    value or a static initializer. The small build uses the value, as
+    if the variable were `constexpr` (section 5.8).
 
-The small build also doesn't reject division by a constant 0, or a
-shift by a constant outside 0 to 15. C doesn't require a diagnostic
-for those (the behavior is undefined), so leaving them out doesn't
-change conformance; the full build reports them.
+The small build also doesn't reject these, for which C requires no
+diagnostic (the behavior is undefined), so leaving them out doesn't
+change conformance; the full build reports them: division by a
+constant 0, or a shift by a constant outside 0 to 15; `static` after
+a declaration that isn't (6.2.2); and a `main` with a parameter
+count other than 0 or 2 (5.1.2.2.1).
 
 To find these errors, compile with the full build of ccish on a host
 (section 2.6), or with another C compiler, such as `gcc -fsyntax-only

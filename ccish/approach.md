@@ -5136,7 +5136,17 @@ issue. In summary:
     a correct program both builds still write the same objects (the
     small build's tests check it); the full build still rejects each
     error (the error tests). cccomp 960 bytes smaller (27,357 to
-    26,397), the most of any change in this series.
+    26,397), the most of any change in this series. A review the same
+    day moved 24 more: argument counts, operand types (unary on a
+    pointer, binary operands, ?:), assigning to an array, void and
+    function types where they can't be, duplicate members, sizeof of
+    void or an incomplete type, two defaults, a value returned from a
+    void function, repeated type specifiers, conflicting parameter
+    types and counts, a parameter without a name in a definition,
+    main's parameters, and a const variable's value in a constant
+    expression (which the small build simply uses): 534 bytes more,
+    cccomp 25,863. Kept: "array elements can't have type void",
+    since array_of() divides by the element's size.
 
 
 ## Milestones
