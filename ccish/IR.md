@@ -828,6 +828,23 @@ stage 4 replaces it with an offset.
   signed. VM opcodes for them (issue 21) would be a change to `ccgen`
   alone.
 
+## Register locals: `IR_REGLOCAL` *a* = frame offset
+
+(Approach.md, "`register`"; IR version 16.)
+
+- **Stack:** none. It marks the local at frame offset *a* as declared
+  `register`, from there to the end of the function. cccomp writes one
+  for each `register` local, where it's declared.
+- **Lowering:** nothing. `ccgen` notes the offset (irloop.c,
+  `reg_slot[]`), since no pointer can reach such a local: C forbids
+  taking its address (C11 6.5.3.2p1), and cccomp's full build reports
+  it. Code anywhere in the function can't change it but by its name,
+  so a loop over register locals may be counted though it's nested in
+  another and stores through a pointer, may end at `!=`, and has its
+  costly invariant expressions hoisted (approach.md).
+- **Why it differs from PLASMA:** PLASMA has no `register`; its
+  locals' addresses can always be taken.
+
 ## Adding ops
 
 New IR ops arrive with the milestones that need them. Reordering

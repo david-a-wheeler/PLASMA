@@ -17,17 +17,21 @@ their larger count). A frame is one pass over i, for one w. Measured
 
 | Version | VM ops a frame | Seconds a frame at 1.023 MHz |
 |---|---|---|
-| rodsimple.c | 62,300 | 4.11 |
+| rodsimple.c | 61,900 | 4.09 |
 | rod.c | 10,200 | 0.57 (and 1.25 once, at the start, for its tables) |
 | rod.pla (PLASMA) | | about 2.6, estimated from `xplasm -AMOS`'s inner loop (73 ops, about 5,830 cycles) and the native code it calls (about 1,140): plvm doesn't run `conio:grplot`'s 6502 code |
-| rodconio.c | | about 2.6 (2.61), estimated the same way: ccish's inner loop (75 ops, about 5,890 cycles) and the same native code |
+| rodconio.c | | about 2.1 (2.09), estimated the same way: ccish's inner loop (70 ops, about 4,480 cycles) and the same native code; 2.61 without `register` |
 
 rodconio.c is rod.pla's program in C: the same loops, calling the same
-CONIO routines, with `char` variables where rod.pla has `byte` ones. So
-on the same work, ccish's code is within 1% of PLASMA's compiler's.
-Its loop over j isn't counted, since its body makes calls (approach.md,
-loop improvement 3), so each pass takes 6 ops of loop work where
-rod.pla's takes 2; ccish's code is otherwise op for op the same.
+CONIO routines, with `char` variables where rod.pla has `byte` ones.
+Without `register`, ccish's code is within 1% of PLASMA's compiler's,
+op for op the same but for the loop over j, which isn't counted, since
+its body makes calls (approach.md, loop improvement 3): 6 ops of loop
+work a pass where rod.pla's takes 2. With its variables `register`, as
+it now has them, ccish computes `i * w / W_DIV` once for each i
+instead of on every pass over j (a MUL and a DIV, about 1,400 cycles),
+which PLASMA's compiler doesn't, and runs about 19% faster than
+rod.pla.
 rodsimple.c is slower than both only because it plots in bytecode,
 about 1,000 cycles a pixel, where CONIO's `grplot` is 6502 code, about
 360 with its call.
@@ -40,7 +44,10 @@ listed here.
 
 ## Compiler: front end and back end
 
-1. **Loop-invariant code motion.** rodsimple computes
+1. **Loop-invariant code motion.** *(Built 2026-11-09, narrowly:
+   approach.md, "`register` is built": costly invariant expressions in
+   the innermost loop, whose leaves are register locals, or locals of
+   an outermost loop whose addresses are never taken.)* rodsimple computes
    `i * w / W_DIV` (a MUL and a DIV, about 1,430 cycles) and
    `SIZE - i` in its inner loop over j, which changes neither; hoisted
    out of that loop, they'd cost once per i. That's about 13% of
@@ -99,9 +106,9 @@ listed here.
    decay to a pointer, so no pointer can reach one. A nested loop whose
    variable and local limit are `register` could be counted even with
    stores through pointers. ccish rejects `register` today (guide 9.2).
-   Not built yet: approach.md ("`register`: an important one to return
-   to") has the design, to do once cccomp fits. My estimate is 60 to
-   100 bytes in cccomp and 40 to 80 in ccgen.
+   Built 2026-11-09 (approach.md, "`register` is built"): cccomp +59
+   bytes, and in ccgen, counted nested loops over register locals,
+   `!=` tests at any depth, and hoisting.
 
 4. **A `?:` whose value isn't used.** In an expression statement,
    `c ? (a = x) : (a = y);` computes the chosen assignment's value and

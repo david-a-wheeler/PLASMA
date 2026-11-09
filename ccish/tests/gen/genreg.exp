@@ -1,0 +1,295 @@
+    ; tick
+    ENTER 2 1
+    ; label 103
+    LAW data +0
+    ADDLW 0
+    SAW data +0
+    LEAVE 2
+
+    ; fill
+    ENTER 6 1
+    ; label 103
+    CN 0
+    DLW 4
+    BRNCH 1
+    ; label 0
+    CN 3
+    CN 0
+    ; label 4
+    DLW 2
+    DUP
+    ADDLW 4
+    LLW 0
+    LLW 4
+    CN 2
+    SHL
+    ADDLW 2
+    ADD
+    SB
+    INCBRLE 4
+    SLW 2
+    DROP
+    LLW 4
+    INCR
+    DLW 4
+    ; label 1
+    CN 3
+    ISLT
+    BRTRU 0
+    LEAVE 6
+
+    ; fill_plain
+    ENTER 6 1
+    ; label 103
+    CN 0
+    DLW 4
+    BRNCH 1
+    ; label 0
+    CN 0
+    DLW 2
+    BRNCH 5
+    ; label 4
+    LLW 2
+    ADDLW 4
+    LLW 0
+    LLW 4
+    CN 2
+    SHL
+    ADDLW 2
+    ADD
+    SB
+    LLW 2
+    INCR
+    DLW 2
+    ; label 5
+    CN 4
+    ISLT
+    BRTRU 4
+    LLW 4
+    INCR
+    DLW 4
+    ; label 1
+    CN 3
+    BRNE 0
+    LEAVE 6
+
+    ; ne_reg
+    ENTER 4 0
+    ; label 103
+    CN 0
+    DLW 2
+    BRNCH 1
+    ; label 0
+    CN 0
+    DLW 0
+    BRNCH 5
+    ; label 4
+    LLW 0
+    CALL tick
+    LLW 0
+    INCR
+    DLW 0
+    ; label 5
+    CN 5
+    BRNE 4
+    LLW 2
+    INCR
+    DLW 2
+    ; label 1
+    CN 2
+    ISLT
+    BRTRU 0
+    LEAVE 4
+
+    ; h_reg
+    ENTER 12 2
+    ; label 103
+    LLW 0
+    SLW 4
+    LLW 2
+    SLW 6
+    CN 0
+    SLW 10
+    LLW 4
+    LLW 6
+    MUL
+    CN 3
+    DIV
+    SLW -2
+    CN 4
+    CN 0
+    ; label 0
+    DLW 8
+    LLW 10
+    LLW -2
+    ADDLW 8
+    ADD
+    SLW 10
+    INCBRLE 0
+    DROP2
+    LLW 10
+    LEAVE 12
+
+    ; h_outer
+    ENTER 8 2
+    ; label 103
+    CN 0
+    SLW 6
+    LLW 0
+    LLW 2
+    MUL
+    CN 3
+    DIV
+    SLW -2
+    CN 4
+    CN 0
+    ; label 0
+    DLW 4
+    LLW 6
+    LLW -2
+    ADDLW 4
+    ADD
+    SLW 6
+    INCBRLE 0
+    DROP2
+    LLW 6
+    LEAVE 8
+
+    ; h_div
+    ENTER 8 2
+    ; label 103
+    CN 0
+    SLW 6
+    CN 4
+    CN 0
+    ; label 0
+    DLW 4
+    LLW 6
+    LLW 0
+    LLW 2
+    DIV
+    ADDLW 4
+    ADD
+    SLW 6
+    INCBRLE 0
+    DROP2
+    LLW 6
+    LEAVE 8
+
+    ; h_nested
+    ENTER 14 0
+    ; label 103
+    CN 2
+    SLW 0
+    CN 3
+    SLW 2
+    CN 0
+    SLW 4
+    LLA 6
+    SLW 12
+    CN 0
+    DLW 10
+    BRNCH 1
+    ; label 0
+    CN 0
+    DLW 8
+    BRNCH 5
+    ; label 4
+    LLW 4
+    LLW 0
+    LLW 2
+    MUL
+    ADD
+    SLW 4
+    CN 7
+    LLW 12
+    SW
+    LLW 8
+    INCR
+    DLW 8
+    ; label 5
+    CN 2
+    ISLT
+    BRTRU 4
+    LLA 0
+    SLW 12
+    LLW 10
+    INCR
+    DLW 10
+    ; label 1
+    CN 2
+    BRNE 0
+    LLW 4
+    LEAVE 14
+
+    ; main
+    ENTER 6 0
+    ; label 103
+    CN 0
+    SLW 2
+    CN 0
+    SLW 4
+    LA data +2
+    CALL fill
+    CN 11
+    CN 0
+    ; label 0
+    DLW 0
+    LLW 2
+    LA data +2
+    ADDLW 0
+    LB
+    ADD
+    SLW 2
+    INCBRLE 0
+    SLW 0
+    DROP
+    LA data +2
+    CALL fill_plain
+    CN 11
+    CN 0
+    ; label 4
+    DLW 0
+    LLW 4
+    LA data +2
+    ADDLW 0
+    LB
+    ADD
+    SLW 4
+    INCBRLE 4
+    SLW 0
+    DROP
+    CALL ne_reg
+    LLW 2
+    CB 30
+    BRNE 8
+    LLW 4
+    CB 30
+    BRNE 8
+    LAW data +0
+    CB 20
+    BRNE 8
+    CN 2
+    CN 3
+    CALL h_reg
+    CB 20
+    BRNE 8
+    CN 2
+    CN 3
+    CALL h_outer
+    CB 20
+    BRNE 8
+    CN 6
+    CN 2
+    CALL h_div
+    CB 25
+    BRNE 8
+    CALL h_nested
+    CB 39
+    BRNE 8
+    CN 1
+    LEAVE 6
+    ; label 8
+    CN 0
+    ; label 9
+    LEAVE 6

@@ -31,8 +31,8 @@ static const char *const ir_names[] = {
   "FUNC", "CALL", "FUNCADDR", 0,
   // $14: endfunc const drop dup
   "ENDFUNC", "CONST", "DROP", "DUP",
-  // $18: return icall swap -
-  "RETURN", "ICALL", "SWAP", 0,
+  // $18: return icall swap reglocal
+  "RETURN", "ICALL", "SWAP", "REGLOCAL",
   // $1C: neg comp not -
   "NEG", "COMP", "NOT", 0,
   // $20: localv localbv setlocalv setlocalbv
@@ -106,8 +106,8 @@ const char lw_kind[] = {
   L_SPECIAL, L_SPECIAL, L_SPECIAL, L_NONE,
   // $14: endfunc const drop dup
   L_SPECIAL, L_SPECIAL, L_SIMPLE, L_SIMPLE,
-  // $18: return icall swap -
-  L_SPECIAL, L_SIMPLE, L_SPECIAL, L_NONE,
+  // $18: return icall swap reglocal
+  L_SPECIAL, L_SIMPLE, L_SPECIAL, L_SPECIAL,
   // $1C: neg comp not -
   L_SIMPLE, L_SIMPLE, L_SPECIAL, L_NONE,
   // $20: localv localbv setlocalv setlocalbv
@@ -160,7 +160,7 @@ static const unsigned char lw_op[] = {
   0, 0, 0, 0,
   // $14: endfunc const drop dup
   0, 0, OP_DROP, OP_DUP,
-  // $18: return icall swap -
+  // $18: return icall swap reglocal
   0, OP_ICAL, 0, 0,
   // $1C: neg comp not -
   OP_NEG, OP_COMP, 0, 0,
@@ -241,7 +241,7 @@ void dump_ir(int op, int a, int f)
   case IR_FUNCADDR: fputs(" ", stdout); fputs(func_name(f), stdout); break;
   case IR_ICALL:    out_num(" nargs=", a); out_num(" words=", f); break;
   case IR_LOCAL: case IR_SETLOCAL:
-  case IR_LOCALB: case IR_SETLOCALB: case IR_LOCALADDR:
+  case IR_LOCALB: case IR_SETLOCALB: case IR_LOCALADDR: case IR_REGLOCAL:
                     out_num(" [", a); fputs("]", stdout); break;
   case IR_CALL:     fputs(" ", stdout); fputs(func_name(f), stdout);
                     out_num(" nargs=", a); break;

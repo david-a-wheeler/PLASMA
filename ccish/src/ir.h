@@ -97,7 +97,9 @@ enum {
   IR_SWAP,        // a = the top block's length in IR ops, f = the
                   // block below's, or -1 if code must not move:
                   // exchange the values the two blocks left
-                  // $1B: UNUSED
+  IR_REGLOCAL,    // a = frame offset: the local there is register, so
+                  // no pointer ever reaches it (C11 6.5.3.2p1); from
+                  // here to the function's end
   // unary: ( x -- op x )
   IR_NEG = IR_FUNC + 0x0C, IR_COMP,
   IR_NOT,         // C's !: 1 if x is 0, else 0 (not PLASMA's NOT)
@@ -172,7 +174,7 @@ enum {
 // The IR file: the output name plus this suffix, and its format's
 // version (in its header, after the magic "CIR").
 #define SUFFIX_IR   ".ir"
-#define IR_VERSION  15
+#define IR_VERSION  16
 
 // The sets of ops the compiler tests, and its value manipulations on
 // ops, each defined here next to the values it names, so all such

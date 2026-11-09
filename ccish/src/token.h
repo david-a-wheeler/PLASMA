@@ -6,7 +6,7 @@
 
 #define SUFFIX_I     ".i"
 #define SUFFIX_NAM   ".nam"
-#define TOK_VERSION  7        // NAME.i's format, after its "CTK"
+#define TOK_VERSION  8        // NAME.i's format, after its "CTK"
 #define NAM_VERSION  2        // NAME.nam's, in its stamp line
 
 // The codes of NAME.i. A one-character token ($20-$7E) is itself.
@@ -60,7 +60,7 @@ enum {
   TC_CONST, TC_VOLATILE,                          // $86-$87: UNUSED
   TC_STRUCT = TC_INT + 0x08, TC_UNION, TC_ENUM,   // $8B: UNUSED
   TC_VOID = TC_INT + 0x0C,                        // $8D-$8F: UNUSED
-  TC_STATIC = TC_INT + 0x10, TC_EXTERN,           // $92-$93: UNUSED
+  TC_STATIC = TC_INT + 0x10, TC_EXTERN, TC_REGISTER, // $93: UNUSED
   TC_TYPEDEF = TC_INT + 0x14, TC_CONSTEXPR, TC_CASE, TC_DEFAULT,
   TC_RETURN, TC_IF, TC_ELSE, TC_WHILE, TC_DO, TC_FOR, TC_BREAK, TC_CONTINUE,
   TC_SIZEOF, TC_SWITCH, TC_GOTO, TC_STATIC_ASSERT // $A4-$A7: UNUSED

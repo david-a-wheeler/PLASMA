@@ -870,6 +870,10 @@ static void parse_toplevel(void)
   }
   if (T_IS_STORAGE(tok)) {
     storage = tok;
+#ifdef CCISH_LINT
+    if (storage == T_REGISTER)
+      error0(247 /* "a declaration at file scope can't be register" */);
+#endif
     next();
     if (!is_type_start())
       error(storage == T_STATIC

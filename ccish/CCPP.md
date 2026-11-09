@@ -164,7 +164,7 @@ All words are 16-bit little-endian. The file is written once, in
 order, through a 512-byte block buffer (`src/bio.c`).
 
 **The header**: the 3 bytes `CTK`, then the format version, a byte:
-**7**. The source file's name is not here: it is file 1 in
+**8**. The source file's name is not here: it is file 1 in
 `NAME.nam`.
 
 **Then the tokens**, each a code byte, followed by its operands:
@@ -203,7 +203,7 @@ and union first; `void`. Then the storage classes, `typedef` and
 |---|---|---|---|---|---|---|---|---|
 | `$80` | `int` | `char` | `signed` | `unsigned` | `const` | `volatile` | | |
 | `$88` | `struct` | `union` | `enum` | | `void` | | | |
-| `$90` | `static` | `extern` | | | `typedef` | `constexpr` | `case` | `default` |
+| `$90` | `static` | `extern` | `register` | | `typedef` | `constexpr` | `case` | `default` |
 | `$98` | `return` | `if` | `else` | `while` | `do` | `for` | `break` | `continue` |
 | `$A0` | `sizeof` | `switch` | `goto` | `_Static_assert` | | | | |
 
@@ -362,7 +362,7 @@ For `t.c` holding the one line `int main() { return 0; }`, `ccpp`
 writes `t.i`:
 
 ```
-43 54 4B 07    "CTK", version 7
+43 54 4B 08    "CTK", version 8
 80             int
 04 1A 00       an identifier: id 26, main
 28 29 7B       ( ) {
@@ -408,6 +408,8 @@ programs fit too.
   the `$02` and `$03` records, all reserved from the start. Step 4
   added four fixed ids (`__CCISH__`, `__FILE__`, `__LINE__`,
   `defined`: 28-31), which a version-1 reader takes as it finds them.
+- **`NAME.i` version 8** (2026-11-09): `register` is a supported
+  keyword, `$92`, where it was an unsupported one (`$08`).
 - **`NAME.nam` version 2** (2026-11-07, phase 4 of
   doc/bootstrap-test.md): two more fixed ids, `__asm__` (32) and
   `__plasma_import` (33), so every other id is 2 higher.

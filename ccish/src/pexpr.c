@@ -474,6 +474,13 @@ static void parse_pstr(void)
 // it. Then a const variable isn't folded to its value.
 static int want_place;
 
+#ifdef CCISH_LINT
+// The variable parse_primary() found last was register, and is &'s
+// operand: & of it is an error, unless what & takes is a part of what
+// it points to (&p[i], &p->m), which isn't a K_VAR.
+static int reg_place;
+#endif
+
 // Parse a primary expression: a constant, string, variable, call, or
 // expression in parentheses. Constants and variables stay pending. A
 // cast is parsed here too, since it also starts with '('.
@@ -589,6 +596,9 @@ static void parse_primary(Operand *o)
       return;
     }
     if (v >= 0) {
+#ifdef CCISH_LINT
+      reg_place = place && (var_link[v] & VL_REGISTER);
+#endif
       o->kind = K_VAR;        // load it later, if needed
       o->type = UNQUAL(var_type[v]);
       o->quals = var_type[v] & Q_ALL;
@@ -792,6 +802,10 @@ static void address_of(Operand *o)
   if (o->assigned)
     error_in(41 /* "lvalue required as" */,
              196 /* "unary '&' operand" */, NULL);
+#ifdef CCISH_LINT
+  if (o->kind == K_VAR && reg_place)
+    error0(228 /* "address of register variable requested" */);
+#endif
   if (o->kind == K_VAR && o->global)
     o->kind = K_ADDR;               // &g, &a[2], &s.x: a constant
   else if (o->kind == K_VAR)

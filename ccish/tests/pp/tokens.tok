@@ -1,5 +1,5 @@
 # Each code step 1 writes (CCPP.md), from tokens.c.
-43 54 4b 07     # "CTK", version 7
+43 54 4b 08     # "CTK", version 8
 # line 1: a comment's newline is a line too
 01
 # line 2: x = 0x8000 + 10u - 'A' * 65535;

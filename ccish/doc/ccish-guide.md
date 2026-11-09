@@ -364,6 +364,11 @@ standard requires a diagnostic for each (C11 clauses given):
     where C requires one, as in an array size, a case label, an enum
     value or a static initializer. The small build uses the value, as
     if the variable were `constexpr` (section 5.8).
+13. **`register`**: taking a register variable's address (6.5.3.2),
+    and `register` at file scope (6.9). Unlike the others, the first
+    can make the small build compile an incorrect program wrongly,
+    not just accept it: ccgen relies on no pointer reaching a
+    register local (section 5.2).
 
 The small build also doesn't reject these, for which C requires no
 diagnostic (the behavior is undefined), so leaving them out doesn't
@@ -394,16 +399,16 @@ The supported keywords are:
 
 ```
 break    const    continue default do     else     enum   extern
-for      goto     if       int    return   sizeof   short    static
-struct   switch   typedef  union    unsigned void     volatile while
-_Static_assert   constexpr
+for      goto     if       int    register return  sizeof   short
+static   struct   switch   typedef  union    unsigned void   volatile
+while    _Static_assert   constexpr
 ```
 
 plus `signed`, as in `signed int`, which is `int`, and `short`, a
 synonym for `int` (section 4.1). A `union` is a tagged type as `struct`
-is (section 4.11). Five more of C89's keywords are recognized so the
+is (section 4.11). Four more of C89's keywords are recognized so the
 error is clear, but not supported (section 9.1): `auto`, `double`,
-`float`, `long` and `register`.
+`float` and `long`.
 
 `enum tag` used as a type does not have to match a definition
 (section 1.1).
@@ -941,6 +946,18 @@ Two consequences, both as in C:
 * Recursion works as expected: each call reserves its own frame, below
   the previous one's, so each call's locals are separate. The depth is
   limited only by the evaluation stack (section 9.3).
+
+A local may be declared `register` (`register int i;`, also in a
+`for`: `for (register int i = 0; ...)`). It is an ordinary local, in
+the frame, but C forbids taking its address (C11 6.5.3.2: `&i` is an
+error, though `&p[1]` is fine for a register pointer `p`), so no
+pointer can ever reach it. ccish uses that: in a loop over register
+locals, nothing but their own names can change them, even code later
+in an outer loop, or a call. So such a loop may be counted though it
+is nested in another and stores through a pointer (section 12.2), may
+end at `!=`, and has its costly invariant expressions computed once,
+before it (section 12.4). Parameters can't be `register` yet, nor can
+a file-scope variable (C forbids that).
 
 ### 5.3 Calling CMDSYS
 
@@ -1618,8 +1635,7 @@ These are deliberate limits, each a clear compile-time error:
 
 * The types `long`, `float` and `double` (no 32-bit or floating
   arithmetic on the 6502, and no room for it in the compiler).
-* `auto` and `register` (locals are automatic anyway; there is no
-  register storage to name).
+* `auto` (locals are automatic anyway).
 * The comma operator.
 * Bitfields.
 * Variable argument lists (`...` in a function's parameters; the
@@ -1792,6 +1808,11 @@ ccgen works in stages over the IR stream:
    followed by a branch becomes the single branch op
    (`ISEQ BRFLS` to `BRNE`, `NOT BRFLS` to `BRTRU`). This optimization runs to
    completion across statements, with labels as the only barriers.
+   Before that, in a loop's held body, a costly expression that
+   doesn't change in the loop (a multiply or divide whose operands are
+   constants and locals nothing in the loop changes, and no pointer
+   reaches) is computed once, before the loop, into a temporary
+   (section 12.4).
 5. **Encoding.** One function at a time, to bytes, with fixup chains
    that fill in each branch's offset as its target is reached.
 
@@ -2105,7 +2126,10 @@ nothing else can change `i`. In a nested loop, code after it in the
 outer loop could take `i`'s address before it runs again, so a loop in
 another loop, or after a `goto` label (a `goto` back makes a loop too),
 keeps its `<`; and for the same reason such a loop isn't counted if
-its body stores through a pointer.
+its body stores through a pointer. Unless its variable, and any local
+its limit reads, are `register` (section 5.2): no pointer can reach
+those, so then a nested loop is counted, or ends at `!=`, all the
+same.
 
 ### 12.3 Writing small code
 
@@ -2173,6 +2197,16 @@ approach.md section 20 (each measured against the VM's code):
 * **Multiplying by a constant** is cheap for 0, 1, 2, 3 and powers
   of two (shifts and a doubled add); other constants use the VM's
   `MUL`, a 16-step loop. Dividing by a constant uses `DIV`.
+* **Declare hot loops' variables `register`** (section 5.2). ccgen
+  then knows no pointer reaches them, so a loop in another loop can be
+  counted, and an expensive expression of them that doesn't change in
+  the loop (`i * w / 12` in a loop over `j`) is computed once, before
+  it, not on every pass. Without `register`, it does both only for an
+  outermost loop whose variables' addresses are never taken. Hoisting
+  takes a multiply (but not by 0 to 3 or a power of 2, which is cheap
+  anyway) or a divide by a constant, from the innermost loop, if its
+  body fits ccgen's 128-op loop buffer and moves no store ahead of its
+  address (`a[i] = x` does, so such a loop isn't hoisted from yet).
 * **Pick the loop's test with care** (section 12.2): an `int`
   counter in a loop that can be counted takes `<` with a constant or
   local limit, with calls kept out of the body; otherwise, and for

@@ -8654,6 +8654,8 @@ bigger matcher; rod.c shows the source can do them by hand).
 **`register`: an important one to return to** (discussed 2026-11-09:
 "very tempted to add register, as that can optimize tight loops, but
 cccomp is large"). Do it once cccomp fits, or if a tight loop needs it.
+(Built the same day, after measuring cccomp's cost at under 100
+bytes, as asked: "`register` is built", below.)
 
 - *Why.* A counted loop nested in another loop isn't counted if its
   body stores through a pointer (improvement 4, above): code later in
@@ -8742,3 +8744,69 @@ implement item 2 under option 1's conditions").**
   neither rodconio's nor rodsimple's inner loops, which are nested; the
   narrow hoisting of expensive invariant expressions (doc/
   rod-optimizing.md) waits for `register` for the same reason.
+
+**`register` is built** (2026-11-09; asked for in discussion: "If you
+can estimate the cccomp size increase to be < 100 bytes, it's worth
+doing ... implement the other optimizations that now become possible
+within ccgen: hoisting expensive calculations & allowing more in
+counted loops"). As designed above, with these choices:
+- *cccomp.* `register` moved from the rejected keywords to a supported
+  code, `T_REGISTER`, in the storage block's spare slot.
+  `parse_declaration()` reads a leading `register` itself, so the
+  statement parser's case and `for`'s init each just let it through,
+  and writes `IR_REGLOCAL off` (a new IR op, `$1B`; IR version 16) for
+  each register local. Both diagnostics are `CCISH_LINT` checks, in the
+  full build only, as the small build's policy has it (guide 2.7, item
+  13): `&` of a register variable (`reg_place`, noted at the
+  identifier's lookup, checked in `address_of()` only if the operand is
+  still the variable, so `&p[1]` is fine) and `register` at file scope.
+  Parameters can't be register yet: `parse_params()` runs before the
+  function's `IR_FUNC`, so the marks would have to wait for it.
+  cccomp +59 bytes of code (module file +87).
+- *ccgen* (irloop.c). `reg_slot[]`, set by `IR_REGLOCAL`, cleared at
+  `IR_FUNC`. (1) A counted loop nested in another, or after a goto
+  label, may store through pointers when its variable and its limit's
+  locals are register (`cl_regs()`). (2) The `!=` test applies at any
+  depth to a register variable (one candidate at a time, the latest;
+  a goto label in its body still stops it). (3) Hoisting (`hoist()`):
+  every loop's body is now held until its end (`lp_fill` 3, besides 2
+  for a counted candidate), unless a loop or a `return` comes in it
+  (a `return` goes through irin.c's tail-call check), or it overflows
+  the 128-op buffer. At its end, each costly op (`costly()`: a `MUL`
+  unless by 0 to 3 or a power of 2, which the peephole stage makes
+  cheap; a divide; an unsigned helper) whose whole expression is pure,
+  with leaves that are constants or locals nothing in the loop stores
+  and no pointer reaches (register, or in an outermost loop after no
+  goto label, address never taken), and any divide in it by a constant
+  other than 0 (so it can't fail where the loop wouldn't have run it),
+  is computed before the loop into `FRAME_TEMP(0)` or `(1)`, and the
+  body loads that. Only the innermost loop hoists, so no two loops'
+  temporaries are live at once, and a body holding an `IR_SWAP` (whose
+  blocks are counted in ops) doesn't, which also keeps those
+  temporaries apart from the swap's: so hoisting adds at most the two
+  words a run-time swap might. A first version also hoisted `x * 2`
+  (an index's scaling), which made cccomp's own code bigger for
+  nothing; `costly()` came of that. Holding every body changed no
+  code where nothing is hoisted (every expected listing passed).
+  ccgen +980 bytes of code (module file about +1.3K): hoisting about
+  640 of it.
+- *Tests.* `register.c` (run), `register_addr.c` and
+  `register_global.c` (errors), `genreg.c` (gen: counted with and
+  without `register`, `!=` nested, hoisted with register and outermost
+  locals, not hoisted for a divide by a variable or nested plain
+  locals, where a store through a pointer taken later in the outer
+  loop changes the value). 455 tests pass; the bootstrap's stages
+  agree. Sizes now (small build, code): ccpp 13,607, cccomp 25,940
+  (module file 44,130), ccgen 21,137, ccrel 8,563.
+- *Rod's Colors.* With its loop variables `register`, rodconio's
+  `i * w / W_DIV` is computed once per `i`: about 2.09 s a frame,
+  against 2.61 without, and rod.pla's 2.59 (cycles from the listings,
+  as before). rodsimple gains only the `!=` test (4.11 to 4.09 s): its
+  j loop's body is 327 IR ops, past the 128-op buffer.
+- *Open.* Hoisting from bodies with an `IR_SWAP` (array stores, `a[i]
+  = x`: adjust the swap's block lengths, or hoist only what follows
+  the last swap); a bigger loop buffer (each op is 5 bytes of ccgen's
+  data); `char` loop variables in counted loops and `!=` tests (a
+  `char` counter can't count past 255); register parameters; and
+  common subexpressions among hoisted values (two equal ones take two
+  temporaries).

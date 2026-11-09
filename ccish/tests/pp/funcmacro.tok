@@ -2,7 +2,7 @@
 # design", step 5). Lines 1-6 define F (id 34; its parameters a 35,
 # b 36), B (37), S (38; x 39), CAT (40), V (41; __VA_ARGS__ 42, f 43)
 # and G (44).
-43 54 4b 07     # "CTK", version 7
+43 54 4b 08     # "CTK", version 8
 02 07 00        # up to line 7: 6 lines, so a jump
 # line 7: F(1, x) is 1 + x * 2
 05 01 00 2b 04 27 00 2a 05 02 00

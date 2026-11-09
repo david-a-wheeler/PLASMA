@@ -521,14 +521,20 @@ void set_known(int s, int v)
 // A declaration: a base type, then declarators, each a name with any
 // '*'s before it, any array sizes after it, and an optional
 // initializer: int a = 1, *p = &a, v[10]; A struct or enum type may
-// have no declarators (struct pt { int x, y; };). If is_static is set (after
-// "static"), the variables are static locals: in the data segment, with
-// constant initializers applied once, when the module loads. A
-// function declared here (int g(int);) is declared as at file scope,
-// from here on: C would hide it after the block, and ccish doesn't.
+// have no declarators (struct pt { int x, y; };). is_static is set
+// after "static": the variables are static locals, in the data
+// segment, with constant initializers applied once, when the module
+// loads. A "register" that starts it is read here: each variable is an
+// ordinary local, which ccgen is told no pointer can reach
+// (IR_REGLOCAL), since C forbids taking its address. A function
+// declared here (int g(int);) is declared as at file scope, from here
+// on: C would hide it after the block, and ccish doesn't.
 static void parse_declaration(int is_static)
 {
-  int base = parse_base_type();
+  int reg = tok == T_REGISTER, base;
+  if (reg)
+    next();
+  base = parse_base_type();
   if (tok == ';' && base_tagged) {
     next();                     // struct pt { ... }; declares only
     return;
@@ -573,6 +579,12 @@ static void parse_declaration(int is_static)
     // whose size comes from its initializer grows as it is parsed:
     // see reserve().)
     s = add_local(name, type, type_size(type));
+    if (reg) {
+#ifdef CCISH_LINT
+      var_link[s] = VL_REGISTER;    // & of it is an error (pexpr.c)
+#endif
+      put(IR_REGLOCAL, var_off[s], -1);
+    }
     if (tok == '=' && (is_array(type) || is_struct(type))) {
       next();
       if (is_struct(type) && tok != '{')
@@ -727,10 +739,10 @@ static void parse_for(void)
   next();                         /* "for" */
   expect('(', 124 /* "expected '(' after 'for', not" */);
   depth++;
-  if (T_IS_STORAGE(tok))
+  if (tok == T_STATIC || tok == T_EXTERN)
     error0(125 /* "a 'for' loop can't declare a static or extern"
                   " variable" */);
-  if (is_type_start()) {
+  if (tok == T_REGISTER || is_type_start()) {
     parse_declaration(0);       // includes the ';'
   } else {
     if (tok != ';')
@@ -1051,6 +1063,9 @@ static void parse_statement(void)
     if (!is_type_start())
       error(147 /* "expected a type after 'static', not" */, tok_desc());
     parse_declaration(1);
+    return;
+  case T_REGISTER:
+    parse_declaration(0);       // which reads the "register"
     return;
   case T_KEYWORD:
     not_yet();

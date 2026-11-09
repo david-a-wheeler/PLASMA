@@ -474,18 +474,17 @@ static const char *const keywords[] = {
   // ..., with spare at each UNUSED code
   "int", "char", "signed", "unsigned", "const", "volatile", spare, spare,
   "struct", "union", "enum", spare, "void", spare, spare, spare,
-  "static", "extern", spare, spare, "typedef", "constexpr", "case",
+  "static", "extern", "register", spare, "typedef", "constexpr", "case",
   "default",
   "return", "if", "else", "while", "do", "for", "break", "continue",
   "sizeof", "switch", "goto", "_Static_assert", spare, spare, spare, spare,
   // the rest of C89's keywords: recognized so the error is clear
-  "auto", "double",
-  "float", "long", "register",
+  "auto", "double", "float", "long",
   NULL
 };
 // pp_word() takes the first NKEYWORDS as the supported ones, the rest
-// as the 5 unsupported, then the NULL.
-_Static_assert(sizeof(keywords) / sizeof(keywords[0]) == NKEYWORDS + 5 + 1,
+// as the 4 unsupported, then the NULL.
+_Static_assert(sizeof(keywords) / sizeof(keywords[0]) == NKEYWORDS + 4 + 1,
                "keywords[] doesn't have NKEYWORDS supported keywords");
 
 // The code of the word (an identifier or keyword) of n characters at

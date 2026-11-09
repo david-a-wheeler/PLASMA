@@ -225,6 +225,7 @@
 225 too many run-time swaps in
 226 conflicting or repeated type specifier:
 227 'signed char' is not supported yet
+228 address of register variable requested
 229 helper functions differ between objects (compiled by different ccgens?):
 230 not a token file from ccpp, or the wrong version:
 231 token file is damaged:
@@ -243,6 +244,7 @@
 244 too many macros, or macros too long
 245 macro expansion nested too deeply
 246 extra tokens at the end of the directive:
+247 a declaration at file scope can't be register
 248 too many -I, -D and -U options
 249 unterminated call of macro
 250 a directive inside a macro's arguments
@@ -275,7 +277,7 @@
 277 (spare)
 278 static
 279 extern
-280 (spare)
+280 register
 281 (spare)
 282 typedef
 283 constexpr

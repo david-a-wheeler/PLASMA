@@ -97,6 +97,11 @@ static int cl_ls, cl_le, cl_const, cl_lim, cl_load;
 static int cl_loc[LIM_NAMES], cl_nloc;
 static int cl_gf[LIM_NAMES], cl_ga[LIM_NAMES], cl_ngl;
 static unsigned char addr_taken[32];    // frame offsets: a bit each
+// Frame offsets of register locals (IR_REGLOCAL), a bit each: no
+// pointer can reach one, since C forbids taking its address, so code
+// anywhere in the function, before or after, can't change it but by
+// its name.
+static unsigned char reg_slot[32];
 // A goto label has been placed in this function: a goto back to it
 // makes a loop around what follows, as an enclosing loop does, so a
 // loop after it counts as nested (code after the loop may take its
@@ -106,15 +111,16 @@ static char goto_seen;
 // A loop that can't be counted (a call in its body, say) can still end
 // at != when it has a counted loop's shape, steps by 1, and has a
 // constant limit: v <= 19 is v != 20 (BRNE, one op) once v starts at a
-// constant no further than 20 and nothing else changes v. Only for an
-// outermost loop with no goto label before it or in it (goto_seen),
-// whose variable's address isn't taken (counted_shape()): then nothing
-// but the step can change v, since a pointer can't reach it, and code
-// after the loop can't run before it. ne_ok says the outermost open
-// loop is such a candidate, so far: ne_var its variable, ne_stop where
-// it stops, and ne_ci and ne_cmp the held test's constant and
-// comparison, to make CONST ne_stop and NE at LOOPEND.
-static int ne_var, ne_stop, ne_ci, ne_cmp;
+// constant no further than 20 and nothing else changes v: no store in
+// the body, and no goto label in it (a goto could jump in past the
+// stop). And no pointer to v: v is register (is_reg()), or the loop is
+// outermost, with no goto label before it, and v's address isn't taken
+// (counted_shape()), so code after it can't run before it again. ne_ok
+// says open loop ne_d is such a candidate, so far: ne_var its variable,
+// ne_stop where it stops, and ne_ci and ne_cmp the held test's constant
+// and comparison, to make CONST ne_stop and NE at its LOOPEND. One at a
+// time: a loop inside the candidate that is one takes over.
+static int ne_var, ne_stop, ne_ci, ne_cmp, ne_d;
 static char ne_ok;
 
 // Hold a jump to label n.
@@ -171,13 +177,14 @@ static void enter_test(int d)
   jump(lp_ltest[d]);
 }
 
-// The innermost loop's held body can't be counted: lower what it holds,
-// as step 1 does (its test is never just a jump), and the rest as it
-// comes.
+// The innermost loop's held body isn't counted: lower what it holds,
+// as step 1 does (with no entry jump when the test is just a jump to
+// the body, for (;;)), and the rest as it comes.
 static void body_plain(void)
 {
-  int d = lp_depth - 1;
-  enter_test(d);
+  int d = lp_depth - 1, t = lp_test[d];
+  if (lp_step[d] - t != 1 || lp_op[t] != IR_JUMP || lp_a[t] != lp_lbody[d])
+    enter_test(d);
   label(lp_lbody[d]);
   replay(cl_body, nlp);
   nlp = cl_body;
@@ -188,7 +195,7 @@ static void body_plain(void)
 static void keep(int op, int a, int f)
 {
   if (nlp == LOOP_BUF) {
-    if (lp_fill == 2)
+    if (lp_fill >= 2)
       body_plain();
     else
       loop_overflow();
@@ -205,6 +212,12 @@ static void keep(int op, int a, int f)
 static int taken(int off)
 {
   return (addr_taken[off >> 3] >> (off & 7)) & 1;
+}
+
+// Is frame offset off a register local's?
+static int is_reg(int off)
+{
+  return (reg_slot[off >> 3] >> (off & 7)) & 1;
 }
 
 // Does offset a reach the word at offset b (the same, or a byte of it)?
@@ -377,6 +390,20 @@ static void dlw_fix(int d)
   lp_fload[d] = (char)load;
 }
 
+// Are the counted loop's variable and the locals its limit reads all
+// register (is_reg())? Then no pointer reaches them, so no store
+// through one can change them, nested loop or not.
+static int cl_regs(void)
+{
+  int i;
+  if (!is_reg(cl_var))
+    return 0;
+  for (i = 0; i < cl_nloc; i++)
+    if (!is_reg(cl_loc[i]))
+      return 0;
+  return 1;
+}
+
 // Does the held header of open loop d (body label lbody) have the shape
 // of a counted loop? If so, set cl_var and the rest. The step is one
 // that step_shape() knows; the test is
@@ -409,7 +436,7 @@ static int counted_shape(int d, int lbody)
   if (!limit_ok(cl_ls, cl_le) || taken(cl_var) || cl_step == 0
       || (cl_step > 0) != (cl_cmp == IR_LT || cl_cmp == IR_LE))
     return 0;
-  cl_nested = d > 0 || goto_seen;
+  cl_nested = (d > 0 || goto_seen) && !cl_regs();
   return 1;
 }
 
@@ -479,9 +506,8 @@ static int init_fold(void)
 static void ne_candidate(int d)
 {
   int stop = cl_lim, c;
-  if (d)
-    return;                     // an inner loop: the outer's stays
-  if (goto_seen || !cl_const || (cl_step != 1 && cl_step != -1)
+  if (((d || goto_seen) && !is_reg(cl_var)) || !cl_const
+      || (cl_step != 1 && cl_step != -1)
       || init_fold() != 1 || fo_op[0] != IR_CONST)
     return;
   if (cl_cmp == IR_LE || cl_cmp == IR_GE) {
@@ -496,7 +522,137 @@ static void ne_candidate(int d)
   ne_stop = stop;
   ne_ci = cl_ls;
   ne_cmp = lp_step[d] - 2;
+  ne_d = d;
   ne_ok = 1;
+}
+
+// Hoisting (approach.md, "register"): a pure expression in a held loop
+// body that doesn't change in the loop, and holds a costly op (costly())
+// is computed once, before the loop, into a temporary, which the body
+// loads instead: i * w / 12 in a loop over j (costly(): a MUL or a
+// divide that isn't cheap anyway). Its leaves must be
+// constants, or locals (invariant()) that nothing in the loop stores
+// and no pointer can reach: register ones, or, in an outermost loop
+// after no goto label, ones whose addresses aren't taken. Its ops can't
+// fail (a divide only by a constant, not 0), so computing it when the
+// loop wouldn't have, or once when a branch would have skipped it, is
+// safe. Only from the innermost loop, whose body is held (lp_fill 2 or
+// 3), so no two loops' hoisted values are live at once, and each takes
+// FRAME_TEMP(0) and (1), as IR_SWAP does: so not from a body that holds
+// an IR_SWAP, and at most two. ho_op[] and the rest hold the ops to
+// write before the loop: each expression, then its temporary's store.
+#define HOIST_OPS 16
+static char ho_op[HOIST_OPS];
+static int ho_a[HOIST_OPS], ho_f[HOIST_OPS];
+static int nho;
+
+// Is the value of IR op op (with a) the same on every pass of held
+// loop d?
+static int invariant(int d, int op, int a)
+{
+  int i, end = a + 1 + (op == IR_LOCAL), s;
+  if (op == IR_CONST)
+    return 1;
+  if ((op != IR_LOCAL && op != IR_LOCALB) || a < 0
+      || (!is_reg(a) && (d || goto_seen || taken(a))))
+    return 0;
+  // A store to any of its bytes (a byte store, or a word's two), or
+  // its address (a pointer to another local can't reach it).
+  for (i = lp_test[d]; i < nlp; i++) {
+    op = lp_op[i];
+    s = lp_a[i];
+    if (((op == IR_SETLOCAL || op == IR_SETLOCALB) && s < end
+         && a < s + 1 + (op == IR_SETLOCAL))
+        || (op == IR_LOCALADDR && s >= a && s < end))
+      return 0;
+  }
+  return 1;
+}
+
+// Is the held op at m costly enough to hoist: a divide (DIV, MOD, UDIV,
+// UMOD, about 700 cycles, or a call), an unsigned shift (a call), or a
+// MUL (a 16-step loop) unless by a constant the peephole stage makes
+// cheap (0 to 3, or a power of 2: x * 2 is DUP ADD), as an index's
+// scaling is?
+static int costly(int m)
+{
+  int op = lp_op[m], c = lp_a[m - 1];
+  if (op == IR_MUL)
+    return lp_op[m - 1] != IR_CONST || (c > 3 && (c & (c - 1)));
+  return IR_IS_DIVMOD(op) || IR_IS_U_ARITH(op);
+}
+
+// Where, in held loop d's body, the expression of pure ops and
+// invariant leaves that ends at m starts; or -1 if none does. A divide
+// in it must be by a constant other than 0, so that it can't fail
+// where the loop wouldn't have run it.
+static int expr_start(int d, int m)
+{
+  int need = 1, i, op;
+  for (i = m; i >= cl_body; i--) {
+    op = lp_op[i];
+    if ((IR_IS_DIVMOD(op) || op == IR_UDIV || op == IR_UMOD)
+        && (lp_op[i - 1] != IR_CONST || lp_a[i - 1] == 0))
+      return -1;
+    if (IR_IS_BINARY(op) || IR_IS_U_ARITH(op))
+      need++;
+    else if (op != IR_NEG && op != IR_COMP)
+      if (!invariant(d, op, lp_a[i]) || --need == 0)
+        return need ? -1 : i;
+  }
+  return -1;
+}
+
+// Append IR op op (with a and f) to the ops to write before the loop.
+static void ho_put(int op, int a, int f)
+{
+  ho_op[nho] = (char)op;
+  ho_a[nho] = a;
+  ho_f[nho++] = f;
+}
+
+// Hoist what can be hoisted from held loop d's body (above): from the
+// end back, each costly op (costly()) whose whole expression is
+// invariant goes, with its expression, to ho_op[], and a load of its
+// temporary takes its place.
+static void hoist(int d)
+{
+  int i, s, k = 0, n;
+  nho = 0;
+  for (i = cl_body; i < nlp; i++)
+    if (lp_op[i] == IR_SWAP)
+      return;
+  for (i = nlp - 1; i > cl_body && k < 2; i--) {
+    if (!costly(i))
+      continue;
+    s = expr_start(d, i);
+    if (s < 0 || nho + i - s + 3 > HOIST_OPS)
+      continue;
+    n = i - s;                  // the ops that go, but one
+    for (; s <= i; s++)
+      ho_put(lp_op[s], lp_a[s], lp_f[s]);
+    ho_put(IR_SETLOCAL, FRAME_TEMP(k), -1);
+    ho_put(IR_DROP, 0, -1);
+    i -= n;                     // its place: a load of the temporary
+    lp_op[i] = IR_LOCAL;
+    lp_a[i] = FRAME_TEMP(k++);
+    lp_f[i] = -1;
+    for (s = i + 1; s + n < nlp; s++) {
+      lp_op[s] = lp_op[s + n];
+      lp_a[s] = lp_a[s + n];
+      lp_f[s] = lp_f[s + n];
+    }
+    nlp -= n;
+  }
+}
+
+// Write the hoisted ops (hoist()), before the loop, and forget them.
+static void replay_hoisted(void)
+{
+  int i;
+  for (i = 0; i < nho; i++)
+    ir_hold(ho_op[i], ho_a[i], ho_f[i]);
+  nho = 0;
 }
 
 // Lower a counted loop's held body, from from up to (not including) to:
@@ -587,6 +743,7 @@ static int counted_loop(int d, int lcont, int lbrk)
   }
   if (fold)
     nbuf -= fold + 2;           // the init: its value is the count
+  replay_hoisted();
   if (cl_const)
     ir_hold(IR_CONST, lim, -1);
   else
@@ -628,8 +785,8 @@ static void loop_op(int op, int a, int f)
   if (op == IR_LOOP) {
     if (lp_fill)
       ir_damaged();             // a loop in a header
-    if (!lp_depth)
-      ne_ok = 0;                // only its own ne_candidate() sets it
+    if (lp_depth <= ne_d)
+      ne_ok = 0;                // the candidate has ended
     d = lp_depth++;
     if (d < LOOP_NEST) {
       lp_held[d] = 1;
@@ -663,16 +820,14 @@ static void loop_op(int op, int a, int f)
         ir_damaged();
       lp_lbody[d] = a;
       dlw_fix(d);
+      // Hold the body too: to count the loop, or to hoist from it.
+      lp_fill = 3;
       if (counted_shape(d, a)) {
         ne_candidate(d);
-        lp_fill = 2;            // hold the body too
-        cl_body = nlp;
-        return;
+        lp_fill = 2;
       }
-      if (lp_step[d] - lp_test[d] != 1 || lp_op[lp_test[d]] != IR_JUMP
-          || lp_a[lp_test[d]] != a)
-        enter_test(d);          // enter at the test
-      label(a);
+      cl_body = nlp;
+      return;
     } else {
       jump(f);
       ir_hold(IR_LABEL, a, -1);
@@ -680,15 +835,19 @@ static void loop_op(int op, int a, int f)
   } else {
     if (lp_fill == 1)
       ir_damaged();
+    if (lp_fill >= 2)
+      hoist(d);
     if (lp_fill == 2 && counted_loop(d, a, f)) {
       lp_fill = 0;
       nlp = lp_test[d];
       lp_depth--;
       return;
     }
-    if (lp_fill == 2)
+    if (lp_fill >= 2) {
+      replay_hoisted();
       body_plain();
-    if (d == 0 && ne_ok && !goto_seen) {
+    }
+    if (ne_ok && ne_d == d) {
       lp_a[ne_ci] = ne_stop;    // v != stop: one BRNE
       lp_op[ne_cmp] = IR_NE;
     }
@@ -729,14 +888,16 @@ int loop_take(int op, int a, int f)
     for (i = 0; i < MAX_LABELS; i++)
       lab_ref[i] = 0;
     for (i = 0; i < 32; i++)
-      addr_taken[i] = 0;
+      addr_taken[i] = reg_slot[i] = 0;
     goto_seen = 0;
     ne_ok = 0;
   } else if (op == IR_ENDFUNC && lp_depth) {
     ir_damaged();               // a loop not ended
   }
-  if (op == IR_LABEL && IS_GOTO_LABEL(a))
+  if (op == IR_LABEL && IS_GOTO_LABEL(a)) {
     goto_seen = 1;
+    ne_ok = 0;                  // a goto may jump into a candidate
+  }
   // Anything in the body that may change v, a store or its address,
   // ends its candidacy. (v isn't volatile: counted_shape() takes only
   // a plain LOCAL, so its stores are plain too.)
@@ -749,8 +910,15 @@ int loop_take(int op, int a, int f)
     lab_ref[f] = 1;             // a's branches go to f
   if (op == IR_LOCALADDR && a >= 0 && a < 256)
     addr_taken[a >> 3] |= (unsigned char)(1 << (a & 7));
-  if (lp_fill == 2 && (op == IR_LOOP || !body_ok(op, a, f)))
-    body_plain();               // this loop can't be counted
+  if (op == IR_REGLOCAL) {
+    reg_slot[a >> 3] |= (unsigned char)(1 << (a & 7));
+    return 1;                   // nothing to lower
+  }
+  if (lp_fill >= 2 && (op == IR_LOOP || (op == IR_RETURN && lp_fill == 3)))
+    body_plain();               // a loop in it, or a return (which irin.c
+                                // must see, for a tail call)
+  else if (lp_fill == 2 && !body_ok(op, a, f))
+    lp_fill = 3;                // it can't be counted, but stays held
   if (IR_IS_LOOP_MARKER(op))
     loop_op(op, a, f);
   else if (lp_fill)

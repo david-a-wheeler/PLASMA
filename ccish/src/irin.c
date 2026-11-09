@@ -275,7 +275,7 @@ static const char stk_effect[] = {
   STK_NONE, 0x00, 0x01, STK_NONE,
   // $14: endfunc const drop dup
   STK_NONE, 0x01, 0x10, 0x12,
-  // $18: return icall swap -
+  // $18: return icall swap reglocal
   STK_NONE, 0x00, 0x22, STK_NONE,
   // $1C: neg comp not -
   0x11, 0x11, 0x11, STK_NONE,

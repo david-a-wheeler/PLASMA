@@ -15,10 +15,11 @@ For output `NAME`, the files are `NAME.obj` and `NAME.syms`. `ccish`
 removes them after the module is written, and after any error, unless
 `-k` is given; `ccgen` leaves them for `ccrel`, which keeps them.
 `NAME.obj` and `NAME.syms` are format version 8 (`OBJ_VERSION`), and
-the IR file, `NAME.ir`, is IR format version 15 (`IR_VERSION`); the
+the IR file, `NAME.ir`, is IR format version 16 (`IR_VERSION`); the
 history below gives both. Object version 8 added the CMDSYS unsigned
 comparisons as helper numbers 3-6 (calls, with no code), and lets a
-data or string target be any offset, wrapped. IR version 15
+data or string target be any offset, wrapped. IR version 16 added
+`IR_REGLOCAL` (`$1B`), which marks a `register` local. IR version 15
 renumbered the ops into aligned blocks, one per set the compiler
 tests, with spare numbers (the table below). IR version 14 added the access ops'
 volatile forms, at `$20`-`$2B` (approach.md issue 25). IR version 13
@@ -398,7 +399,7 @@ The op numbers are the order of the `IR_*` enum in `src/ir.h`
 | `$00`-`$0B` | the access ops: bit 0 a byte, bit 1 a store, bits 2-3 where (the frame, the data, an address): `LOCAL`, `LOCALB`, `SETLOCAL`, `SETLOCALB`, `GLOBAL`, `GLOBALB`, `SETGLOBAL`, `SETGLOBALB`, `LOAD`, `LOADB`, `STORE`, `STOREB` |
 | `$0C`-`$0F` | addresses: `LOCALADDR`, `DATAADDR`, `HEAPADDR` (*f* = a data symbol index; version 4), `STRADDR` |
 | `$10`-`$12` | the ops whose *f* is a function: `FUNC`, `CALL`, `FUNCADDR` |
-| `$14`-`$1A` | `ENDFUNC`, `CONST`, `DROP`, `DUP`, `RETURN`, `ICALL`, `SWAP` (*a* = top block's length in ops, *f* = the block below's, or -1: don't move code; approach.md 18.7, A) |
+| `$14`-`$1B` | `ENDFUNC`, `CONST`, `DROP`, `DUP`, `RETURN`, `ICALL`, `SWAP` (*a* = top block's length in ops, *f* = the block below's, or -1: don't move code; approach.md 18.7, A), `REGLOCAL` (*a* = a `register` local's frame offset; version 16) |
 | `$1C`-`$1E` | unary: `NEG`, `COMP`, `NOT` |
 | `$20`-`$2B` | the access ops' volatile forms, in the same order: each `$00`-`$0B` op plus `$20` |
 | `$2C`-`$2E` | unsigned: `UDIV` (*a* = 1 if the right operand is a constant), `UMOD`, `USHR` |
@@ -417,7 +418,7 @@ size, starting at a multiple of its size, so that ccgen tests it with
 one AND and one compare. `$20`-`$2B` are the access ops' volatile
 forms, each its access op `| $20` (`IR_VOLATILE`; version 14,
 approach.md issue 25), with no names of their own in ir.h. The other
-numbers not listed (`$13`, `$1B`, `$1F`, `$2F`, `$36`-`$37`,
+numbers not listed (`$13`, `$1F`, `$2F`, `$36`-`$37`,
 `$3C`-`$3F`, `$46`-`$47`, `$4C`-`$4F`, `$51`, `$56`-`$57`) are spare,
 marked UNUSED in ir.h, room for a new op in their block, and the reader
 refuses them.

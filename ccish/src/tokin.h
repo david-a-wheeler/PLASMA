@@ -27,7 +27,8 @@ enum {
   T_VOID = T_INT + 0x0C,        // +$0D-$0F: UNUSED (T_IS_TYPE_START's 16)
   // $10-$17: the storage classes (T_IS_STORAGE), typedef and constexpr
   // (T_IS_ID_DECL), case and default (T_IS_CASE_LABEL)
-  T_STATIC = T_INT + 0x10, T_EXTERN, // +$12-$13: UNUSED (T_IS_STORAGE's 4)
+  T_STATIC = T_INT + 0x10, T_EXTERN, T_REGISTER,
+                                // +$13: UNUSED (T_IS_STORAGE's 4)
   T_TYPEDEF = T_INT + 0x14, T_CONSTEXPR,
   T_CASE, T_DEFAULT,
   // $18-$27: the other keywords
@@ -82,6 +83,7 @@ _Static_assert((T_INT & 15) == 0 && T_IS_INT_TYPE(T_UNSIGNED)
                " qualifiers (4) a block of 8, then the tagged types (4,"
                " struct and union a pair), and void, in a block of 16");
 _Static_assert((T_STATIC & 3) == 0 && T_IS_STORAGE(T_EXTERN)
+               && T_IS_STORAGE(T_REGISTER)
                && (T_TYPEDEF & 1) == 0 && T_IS_ID_DECL(T_CONSTEXPR)
                && (T_CASE & 1) == 0 && T_IS_CASE_LABEL(T_DEFAULT)
                && !T_IS_STORAGE(T_TYPEDEF),

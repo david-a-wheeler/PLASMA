@@ -43,7 +43,7 @@ constexpr int KBD_READY = 1 << 7;
  * ROD_TEST rounds of w). */
 int main(void)
 {
-  int w, i, j, k, fi, fk, c;
+  register int w, i, j, k, fi, fk, c;  /* no pointer reaches them */
 #ifdef ROD_TEST
   int round;
 

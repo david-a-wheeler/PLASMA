@@ -67,8 +67,11 @@ struct t_conio conio = {
  * ROD_TEST rounds of w). */
 int main(void)
 {
-  char w, i, j, k, fi, fk;     /* bytes, as rod.pla's: all fit, and a
-                                   byte loads faster than a word */
+  /* Bytes, as rod.pla's: all fit, and a byte loads faster than a word.
+   * register, which rod.pla can't say: no pointer can reach them, so
+   * ccgen computes i * w / W_DIV once for each i, not on every pass
+   * over j, though the loop calls CONIO (irloop.c, hoist()). */
+  register char w, i, j, k, fi, fk;
 #ifdef ROD_TEST
   int round;
 

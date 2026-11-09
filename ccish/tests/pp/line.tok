@@ -1,5 +1,5 @@
 # #line, __LINE__ and __FILE__ (approach.md, "ccpp design", step 6).
-43 54 4b 07     # "CTK", version 7
+43 54 4b 08     # "CTK", version 8
 80 04 22 00 3b  # line 1: int a;  (a: id 34)
 # line 2 makes the next line 50, of a file named other.c (file 2)
 03 02 32 00     # file 2, line 50

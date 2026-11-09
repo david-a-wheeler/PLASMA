@@ -170,7 +170,7 @@ extern int var_val[MAX_VARS];     // its known value (V_KNOWN)
 // on the heap"); VL_INDATA if an initializer holds its address, which
 // stops that. 0 for a local.
 enum { VL_STATIC = 1, VL_USED = 2, VL_EXTERN = 4, VL_BSS = 8,
-       VL_INDATA = 16 };
+       VL_INDATA = 16, VL_REGISTER = 32 };
 
 // Parameter types of declared functions, in parse.c.
 #define MAX_PARAM_TYPES 352 // parameter types of all declared functions
