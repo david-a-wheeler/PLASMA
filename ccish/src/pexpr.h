@@ -13,6 +13,11 @@ void parse_expr(int min_prec, Operand *o);
 // check it, but emit nothing.
 void parse_skipped(int min_prec, Operand *o);
 
+// Parse a constant expression, emitting nothing, and return its value.
+// msg is the error if it isn't an integer constant; part is message
+// 201's part if a const variable's value went into it.
+int parse_const(int msg, int part);
+
 // Check a value *o against an assignment to, or an argument of, type
 // to, as C requires (the rules in pexpr.c's check_assign). where is
 // a message part saying where: "assignment", or "argument" with a

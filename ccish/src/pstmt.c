@@ -102,20 +102,13 @@ static void skip_params(void)
 // constant, or 0 if it is left out.
 static int parse_dim(void)
 {
-  Operand e;
   int n = 0;
   next();                         // '['
   if (tok != ']') {
-    parse_expr(PREC_COND, &e);
-    if (e.kind != K_CONST || is_pointer(e.type))
-      error(88 /* "array size must be a constant" */, NULL);
-    if (e.nonice)
-      error_in(201 /* "a const variable's value isn't a constant"
-                    " expression in C" */,
-               202 /* "(an array size must be one)" */, NULL);
-    if (e.val <= 0)
+    n = parse_const(88 /* "array size must be a constant" */,
+                    202 /* "(an array size must be one)" */);
+    if (n <= 0)
       error(89 /* "array size must be positive" */, NULL);
-    n = e.val;
   }
   expect(']', 90 /* "expected ']' after an array size, not" */);
   return n;
@@ -382,7 +375,6 @@ int parse_struct(int is_union)
 // (a known difference from C: ccish accepts some wrong programs).
 int parse_enum(void)
 {
-  Operand e;
   int v = 0, full = 0, name;
 
   next();                         // enum
@@ -405,15 +397,9 @@ int parse_enum(void)
     next();
     if (tok == '=') {
       next();
-      parse_skipped(PREC_COND, &e);
-      if (e.kind != K_CONST || is_pointer(e.type))
-        error(108 /* "an enum value must be an integer constant" */,
-              NULL);
-      if (e.nonice)
-        error_in(201 /* "a const variable's value isn't a constant"
-                      " expression in C" */,
-                 203 /* "(an enum value must be one)" */, NULL);
-      v = e.val;
+      v = parse_const(108 /* "an enum value must be an integer"
+                             " constant" */,
+                      203 /* "(an enum value must be one)" */);
       full = 0;
     } else if (full) {
       error(109 /* "enum value too large for an int (over 32767)" */,
@@ -801,8 +787,7 @@ static int sw_default = -1;
 static void parse_case_labels(void)
 {
   char buf[8];
-  Operand e;
-  int l, i;
+  int l, i, v;
   while (T_IS_CASE_LABEL(tok)) {
     if (sw_first < 0)
       error(tok == T_CASE ? 133 /* "'case' is not inside a switch" */
@@ -816,25 +801,19 @@ NULL);
       sw_default = l;
     } else {
       next();
-      parse_skipped(PREC_COND, &e);
-      if (e.kind != K_CONST || is_pointer(e.type))
-        error(136 /* "a case label must be an integer constant" */,
-              NULL);
-      if (e.nonice)
-        error_in(201 /* "a const variable's value isn't a constant"
-                      " expression in C" */,
-                 204 /* "(a case label must be one)" */, NULL);
+      v = parse_const(136 /* "a case label must be an integer constant" */,
+                      204 /* "(a case label must be one)" */);
       for (i = sw_first; i < ncases; i++)
-        if (case_val[i] == e.val) {
+        if (case_val[i] == v) {
           // A copy: reporting uses num_text() too.
-          strcpy(buf, num_text(e.val));
+          strcpy(buf, num_text(v));
           error(137 /* "duplicate case value" */, buf);
         }
       if (ncases >= MAX_CASES)
         fatal(138 /* "too many case labels in the switches open at "
                      "once" */,
               NULL);
-      case_val[ncases] = e.val;
+      case_val[ncases] = v;
       case_label[ncases++] = l;
     }
     expect(':', 139 /* "expected ':' after a case label, not" */);

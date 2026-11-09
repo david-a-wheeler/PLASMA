@@ -188,6 +188,24 @@ void parse_skipped(int min_prec, Operand *o)
   nheld = saved;      // drop anything held inside it
 }
 
+// Parse a constant expression (C's constant-expression, a
+// conditional-expression), emitting nothing, and return its value. msg
+// is the error if it isn't an integer constant; part is message 201's
+// part if a const variable's value went into it, which C doesn't count
+// as a constant (C11 6.6), nor does gcc. To accept one, as clang does,
+// drop the nonice check, or skip it for a part of 0.
+int parse_const(int msg, int part)
+{
+  Operand e;
+  parse_skipped(PREC_COND, &e);
+  if (e.kind != K_CONST || is_pointer(e.type))
+    error(msg, NULL);
+  if (e.nonice)
+    error_in(201 /* "a const variable's value isn't a constant"
+                  " expression in C" */, part, NULL);
+  return e.val;
+}
+
 // Binary operators: precedence and IR op. Returns 0 if tok is not a
 // binary operator. Sets *supported to 0 for C operators we don't
 // support yet; they still get their real precedence, so that, say, a
