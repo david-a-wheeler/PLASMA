@@ -8416,6 +8416,40 @@ M1 is built fresh around the pipeline.
     `SWAP`? If so, when, behind which ccish option, and can they go
     upstream?
 
+**Optimizing ccgen's output, 2026-11-09** (asked for in discussion:
+general rules that cut size and time, documented with the others; the
+peephole rules are in peep.c's list at its top, the IR ones in IR.md).
+Found by reading the listings of ccish's own four programs
+(tools/listings.py, tools/opstats.py) and counting shapes:
+- **DROP2 and ORI**, PLASMA ops ccgen didn't use (every VM has them):
+  two DROPs as one, merged as they leave the window; a constant IOR as
+  ORI.
+- **A jump to a return is that return** (irin.c, `jump_return()`):
+  167 `BRNCH`es to a `LEAVE` in the four programs. emit.c's
+  `MAX_RETURNS` became 64 (pplex.c's `lex_op` has 47).
+- **a[i + c] puts c in the address** (`LA a+c ADDLW i`), 200 times;
+  ccrel now wraps a data or string offset outside its object.
+- **Small rules:** `NEG NEG`; `x == 0` as `NOT`, and `NOT` then a test
+  branch; `x << 1` as `DUP ADD`; an address plus a constant. Dropped:
+  the same load twice as a load and a `DUP`, which needed two more
+  rules to keep `x + x` fused: 260 bytes of ccgen for 22 uses.
+- **Unsigned and pointer comparisons call CMDSYS's native `ISULT` and
+  the rest** (decided in discussion: smaller and faster than the
+  sign-bit flips, with a constant too; numbers in IR.md), as helper
+  numbers 3-6 that ccrel imports (object version 8). A compare that
+  tests zero (`x <u 1`, `x >u 0`) is that test. irin.c's flip
+  machinery (`PRE_FLIP`, `U_INLINE`, `U_LATE`, `U_FOLDED`) is gone, and
+  cccomp no longer counts the right operand's block for it.
+- **Do-nothing counted loops** with constant ends go (issue 25).
+In all, from before DROP2 to after the comparisons: cccomp's code
+28321 to 28124 bytes, ccpp's 13850 to 13686, ccrel's 8542 to 8553;
+ccgen's grew from 19495 to 19886 (and 72 bytes of data), for the
+rules. Not done, for lack of a clear win: jump threading (a branch to
+a `BRNCH`, 118 of them: time only, and emit.c would have to hold a
+label until the op after it); `CN 0 ISGE`/`ISLT` (257: PLASMA has no
+shorter form); `x * 6` and the like as shifts and adds (faster but
+bigger; for a "prefer speed" option).
+
 **Header names, 2026-11-08** (decided in discussion): a header split
 for scope is NAME.SCOPE.h (AGENTS.md, "Split headers"), so diagsrc.h
 is now diag.src.h, and objfmt.h and objsym.h, split from obj.h for

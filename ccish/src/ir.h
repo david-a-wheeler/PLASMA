@@ -113,8 +113,7 @@ enum {
    * pairs from an even number, so the opposite of any is its number
    * with bit 0 flipped (IR_COMPARE_FLIP): EQ NE, LT GE, GT LE, then the
    * unsigned (18.7, C) in the same order, at IR_U_COMPARE() of them;
-   * the unsigned's a = the right operand's block length in IR ops, or
-   * 0 if not known */
+   * the unsigned's a = 0 */
   IR_EQ = 0x40, IR_NE, IR_LT, IR_GE, IR_GT, IR_LE,
   IR_ULT, IR_UGE, IR_UGT, IR_ULE,
   /* control flow, $50-$58; a = label number, local to the function.

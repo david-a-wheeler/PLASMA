@@ -199,19 +199,16 @@ static void put_name(void)
  * A stash needs the top block still here, and holding no other SWAP
  * that uses a temporary, whose use would overlap.
  *
- * The unsigned comparisons (IR_ULT ...; 18.7, C) are signed ones with
- * both sign bits flipped (XOR $8000), the left operand's before the
- * right operand's code, which is the a ops just before the comparison.
- * If those are here, the flip goes in front of them (PRE_FLIP), and the
- * right one after (U_INLINE), or into the right operand itself if it is
- * one constant (U_FOLDED). If not, both are flipped afterward, the
- * right one saved in temporary 1 meanwhile (U_LATE): a stash uses
- * temporary 0, so the two never overlap.
+ * The unsigned comparisons (IR_ULT ...; 18.7, C) call CMDSYS's native
+ * ISULT and the rest (lower.c), which is smaller and faster than the
+ * signed comparison with both sign bits flipped (XOR $8000) that ccgen
+ * used to write, even with a constant right operand (3 bytes and about
+ * 123 cycles, against 5 and 131 then, 9 and 218 for two variables). A
+ * comparison with 0 or 1 that is a test of zero is one (u_const()).
  *
  * If the VM gains more comparison ops (approach.md, "Loop design",
  * and issue 21), this is where they would go. Unsigned comparison
- * opcodes (ISULT and the rest, not CMDSYS calls) would replace the
- * flips above. For loops, step-and-branch-if-not-equal ops (INCBRNE,
+ * opcodes would replace the CMDSYS calls. For loops, step-and-branch-if-not-equal ops (INCBRNE,
  * ADDBRNE, DECBRNE, SUBBRNE) would let every != loop, of int,
  * unsigned or a pointer, keep its count on the eval stack as PLASMA's
  * FOR does (2 ops per pass), since != has no sign; and unsigned
@@ -221,8 +218,7 @@ static void put_name(void)
  * use them.
  */
 enum { SW_DONE, SW_PENDING, SW_FREE, SW_STASH, SW_EXCHANGE };
-enum { U_INLINE, U_FOLDED, U_LATE };
-enum { PRE_STASH = 1, PRE_FLIP = 2 };   /* buf_pre[] bits */
+enum { PRE_STASH = 1 };         /* buf_pre[] bits */
 
 char buf_op[IR_BUF];
 int buf_a[IR_BUF];
@@ -455,34 +451,6 @@ static int lower_free_swap(int i)
   return 1;
 }
 
-/* Is IR op op one of the unsigned comparisons? */
-static int is_unsigned_cmp(int op)
-{
-  return IR_IS_U_COMPARE(op);
-}
-
-/* Lower an XOR $8000: flip the top value's sign bit. */
-static void lower_flip(void)
-{
-  lower_op(IR_CONST, -32768, -1);
-  lower_op(IR_XOR, 0, -1);
-}
-
-/* Lower unsigned comparison op, in way how (U_*). */
-static void lower_unsigned(int op, int how)
-{
-  if (how == U_INLINE) {
-    lower_flip();
-  } else if (how == U_LATE) {
-    lower_flip();
-    lower_op(IR_SETLOCAL, FRAME_TEMP(1), -1);
-    lower_op(IR_DROP, 0, -1);
-    lower_flip();
-    lower_op(IR_LOCAL, FRAME_TEMP(1), -1);
-  }
-  lower_op(op, 0, -1);
-}
-
 /* Label reference counts, by the target a branch names: lab_cnt[]
  * counts the branches that have been lowered (gone from the hold
  * buffer), buf_cnt[] the branches still held, and lab_placed[] the
@@ -527,11 +495,7 @@ static void lower_held(int n)
       lower_op(IR_SETLOCAL, FRAME_TEMP(0), -1);
       lower_op(IR_DROP, 0, -1);
     }
-    if (buf_pre[i] & PRE_FLIP)
-      lower_flip();
-    if (is_unsigned_cmp(op)) {
-      lower_unsigned(op, buf_a[i]);
-    } else if (op != IR_SWAP) {
+    if (op != IR_SWAP) {
       lower_op(op, buf_a[i], buf_f[i]);
     } else if (buf_a[i] == SW_FREE) {
       i += lower_free_swap(i) - 1;
@@ -742,9 +706,7 @@ static void run_match(void)
 /* The held tail is a comparison and its !: the De Morgan opposite of
  * the comparison, IR_COMPARE_FLIP, is the same value, one op shorter,
  * and it holds wherever the value goes, a branch, a run or an
- * expression, so the ! is dropped. The unsigned comparisons' sign-bit
- * flips (a, and PRE_FLIP on the operand block) are kept, as they are
- * independent of the De Morgan flip. */
+ * expression, so the ! is dropped (unsigned too: !(a <u b) is a >=u b). */
 static void not_cmp(void)
 {
   buf_op[nbuf - 2] = (char)IR_COMPARE_FLIP(buf_op[nbuf - 2]);
@@ -896,6 +858,22 @@ static int unsigned_const(int *op)
   return n;
 }
 
+/* An unsigned comparison op is about to be held. If its right operand
+ * is a constant 0 or 1 that makes it a test of zero, make it that, an
+ * EQ or NE with 0, which the peephole stage makes one branch or a NOT:
+ * x <u 1 and x <=u 0 are x == 0, and x >=u 1 and x >u 0 are x != 0.
+ * Returns the op to hold. */
+static int u_const(int op)
+{
+  int c = nbuf > 0 && buf_op[nbuf - 1] == IR_CONST ? buf_a[nbuf - 1] : -1;
+  if ((c == 1 && (op == IR_ULT || op == IR_UGE))
+      || (c == 0 && (op == IR_ULE || op == IR_UGT))) {
+    buf_a[nbuf - 1] = 0;
+    return op == IR_ULT || op == IR_ULE ? IR_EQ : IR_NE;
+  }
+  return op;
+}
+
 /* A RETURN a (with f) is about to be held, just after the labels (and
  * joins) at the buffer's tail, from index k: make each held JUMP that
  * goes to one of them that RETURN, which is a byte smaller (LEAVE n,
@@ -947,21 +925,9 @@ void ir_hold(int op, int a, int f)
     f = unsigned_const(&op);
     a = 0;
   }
-  if (is_unsigned_cmp(op)) {
-    if (a >= 1 && a <= nbuf) {
-#ifdef CCISH_CHECKS
-      check_block(nbuf - a, a, 1);
-#endif
-      buf_pre[nbuf - a] |= PRE_FLIP;
-      if (a == 1 && buf_op[nbuf - 1] == IR_CONST) {
-        buf_a[nbuf - 1] ^= 0x8000;
-        a = U_FOLDED;
-      } else {
-        a = U_INLINE;
-      }
-    } else {
-      a = U_LATE;
-    }
+  if (IR_IS_U_COMPARE(op)) {
+    op = u_const(op);
+    a = 0;                      /* (the parser's block length: unused) */
   }
   if (op == IR_SWAP) {
     if (f >= 0 && a + f <= nbuf) {
@@ -1158,15 +1124,15 @@ static void read_summary(void)
   }
   if (bgetc(&in) != EOF)
     ir_damaged();
-  for (i = n = 0; i < NHELPERS; i++)
+  for (i = n = 0; i < NHELPERS + NHELP_CMDSYS; i++)
     n += (helper_used >> i) & 1;
   emit_byte(n);
-  for (i = 0; i < NHELPERS; i++) {
+  for (i = 0; i < NHELPERS + NHELP_CMDSYS; i++) {
     if (!(helper_used & (1 << i)))
       continue;
-    emit_byte(i);
-    emit_word(helper_size[i]);
-    emit_word(helper_sum[i]);
+    emit_byte(i);               /* a CMDSYS comparison has no code */
+    emit_word(i < NHELPERS ? helper_size[i] : 0);
+    emit_word(i < NHELPERS ? helper_sum[i] : 0);
     s = helper_name(i);
     emit_byte((int)strlen(s));
     while (*s)

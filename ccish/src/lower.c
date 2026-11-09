@@ -430,7 +430,15 @@ void lower_op(int op, int a, int f)
   kind = lw_kind[op];
   m.op = lw_op[op];
   if (kind == L_COMPARE) {
-    put_simple(m.op);
+    if (IR_IS_U_COMPARE(op)) {
+      /* CMDSYS's native ISULT and the rest (irin.c): $FFFF or 0, as
+       * ISLT gives. */
+      helper_call(&m, HELP_U_COMPARE(op));
+      peep_put(&m);
+      memset(&m, 0, sizeof(m));
+    } else {
+      put_simple(m.op);
+    }
     m.op = OP_NEG;
   } else if (kind == L_SPECIAL) {
     lower_special(&m, op, a, f);

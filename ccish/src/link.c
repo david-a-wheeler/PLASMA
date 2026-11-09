@@ -145,6 +145,9 @@ static int nhelpers;            /* helpers in the module */
 #define MAX_HNAME 8
 static char h_name[NHELPERS][MAX_HNAME + 1];   /* for the listing */
 #endif
+/* The CMDSYS comparisons, numbered after the helpers (obj.fmt.h). */
+static const char *const h_cmdsys[NHELP_CMDSYS] = { HELP_CMDSYS_NAMES };
+static void use_cmdsys(const char *name);
 
 /* A name's flags. The first three are what its entries say, over all
  * the objects: it is used; some entry isn't a CMDSYS function; some is a
@@ -389,25 +392,31 @@ static void read_sym(Lsym *s, int data, const char *name)
 /* Read the list of helpers at the summary's end (file name): each
  * one's number, size, checksum and name. If keep is set (step 1), note
  * the first object to hold each, and check that the others' copies
- * agree. Then check that nothing follows, and close the summary. */
+ * agree; a CMDSYS comparison (numbered after the helpers, with no
+ * code) is imported instead. Then check that nothing follows, and
+ * close the summary. */
 static void close_syms(const char *name, int keep)
 {
   int n = bgetc(&in), k, size, sum, len, j;
   char buf[MAX_NAME + 1];
-  if (n == EOF || n > NHELPERS)
+  if (n == EOF || n > NHELPERS + NHELP_CMDSYS)
     damaged(name);
   while (n-- > 0) {
     k = bgetc(&in);
     size = bgetw(&in);
     sum = bgetw(&in);
     len = bgetc(&in);
-    if (k < 0 || k >= NHELPERS || len < 1 || len > MAX_NAME)
+    if (k < 0 || k >= NHELPERS + NHELP_CMDSYS || len < 1 || len > MAX_NAME)
       damaged(name);
     for (j = 0; j < len; j++)
       buf[j] = (char)bgetc(&in);
     buf[len] = 0;
     if (!keep)
       continue;
+    if (k >= NHELPERS) {
+      use_cmdsys(h_cmdsys[k - NHELPERS]);
+      continue;
+    }
     if (h_def[k] == NO_OBJ) {
       h_def[k] = (unsigned char)cur;
       h_size[k] = size;
@@ -797,6 +806,8 @@ static const char *reloc_note(int at)
         sprintf(buf, "  ; data+%d", t);
       } else if (lr_kind[i] == REL_STR) {
         sprintf(buf, "  ; string+%d", t);
+      } else if (lr_kind[i] == REL_HELPER && t >= NHELPERS) {
+        sprintf(buf, "  ; %s (import)", h_cmdsys[t - NHELPERS]);
       } else if (lr_kind[i] == REL_HELPER) {
         sprintf(buf, "  ; helper %s", h_name[t]);
       } else if (lr_kind[i] == REL_DSYM) {
@@ -983,8 +994,11 @@ static int add_reloc(int kind, int at, int target, int add, int list)
     target = (target + obj_data[cur]) & 0xFFFF;
   } else if (kind == REL_STR) {
     target = (target + obj_strs[cur]) & 0xFFFF;
+  } else if (kind == REL_HELPER && target >= NHELPERS) {
+    if (target >= NHELPERS + NHELP_CMDSYS)
+      bad_obj();                /* a CMDSYS comparison: an import */
   } else if (kind == REL_HELPER) {
-    if (target >= NHELPERS || h_def[target] == NO_OBJ)
+    if (h_def[target] == NO_OBJ)
       bad_obj();
   } else if (kind != REL_FUNC || target >= nfsyms || fmap[target] == -1) {
     bad_obj();
@@ -1001,7 +1015,7 @@ static int add_reloc(int kind, int at, int target, int add, int list)
   if (kind == REL_STR)
     return strs_base + target;
   if (kind == REL_HELPER)
-    return subseg + h_off[target];
+    return target >= NHELPERS ? 0 : subseg + h_off[target];
   v = fmap[target];
   return v < 0 ? 0 : subseg + v;    /* an import: the loader fills it in */
 }
@@ -1275,6 +1289,8 @@ static void reloc_entry(int kind, int target, int at)
   } else if (kind == REL_DSYM && target < ndsyms
              && IS_DIMPORT(dmap[target])) {
     v = -2 - (DM_IMPORT - dmap[target]);    /* an imported global */
+  } else if (kind == REL_HELPER && target >= NHELPERS) {
+    v = -2 - g_off[gsym_find(h_cmdsys[target - NHELPERS])];   /* CMDSYS */
   }
   if (v < -1)
     rld_entry(0x91, at - MODULE_BASE, -2 - v);

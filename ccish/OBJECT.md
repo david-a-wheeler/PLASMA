@@ -14,9 +14,11 @@ version number bumped.
 For output `NAME`, the files are `NAME.obj` and `NAME.syms`. `ccish`
 removes them after the module is written, and after any error, unless
 `-k` is given; `ccgen` leaves them for `ccrel`, which keeps them.
-`NAME.obj` and `NAME.syms` are format version 7 (`OBJ_VERSION`), and
+`NAME.obj` and `NAME.syms` are format version 8 (`OBJ_VERSION`), and
 the IR file, `NAME.ir`, is IR format version 14 (`IR_VERSION`); the
-history below gives both. IR version 14 added the access ops'
+history below gives both. Object version 8 added the CMDSYS unsigned
+comparisons as helper numbers 3-6 (calls, with no code), and lets a
+data or string target be any offset, wrapped. IR version 14 added the access ops'
 volatile forms, at `$20`-`$2B` (approach.md issue 25). IR version 13
 renumbered the ops into blocks
 whose bits mean something (the table below; approach.md issue 25), so
@@ -193,7 +195,7 @@ compiler's function buffer, so they need no records here.
 | Size | Field |
 |------|-------|
 | byte | tag `H` |
-| byte | the helper's number: 0 udiv, 1 umod, 2 ushr |
+| byte | the helper's number: 0 udiv, 1 umod, 2 ushr (3-6 are CMDSYS's, with no `H` record: below) |
 | word | code length *L* |
 | *L* bytes | its bytecode |
 
@@ -227,7 +229,7 @@ of its own so that the compiler needn't seek back to patch a header.
 | *N* entries | function symbols, in index order |
 | *M* entries | data symbols, in index order |
 | byte | helper count *H* |
-| *H* entries | the helpers in the stream, by number |
+| *H* entries | the helpers in the stream, and the CMDSYS comparisons called, by number |
 
 Each helper entry:
 
@@ -238,6 +240,13 @@ Each helper entry:
 | word | a checksum of its code: `h = (h * 31 + byte) & 0xFFFF`, from 0 |
 | byte | name length *n* (1-31) |
 | *n* bytes | name, for the listing (`udiv`) |
+
+Numbers 3 to 6 are CMDSYS's unsigned comparisons, which `ccgen` calls
+for `IR_ULT`, `IR_UGE`, `IR_UGT` and `IR_ULE`: `__isult`, `__isuge`,
+`__isugt` and `__isule` (native code, smaller and faster than the
+signed comparison with both sign bits flipped). Their entry has code
+length 0 and checksum 0, and no `H` record; the final pass imports
+the CMDSYS function, and a kind 5 relocation to one is that import.
 
 Each function symbol entry:
 
@@ -527,7 +536,10 @@ module. It has at most one input file open at a time, and the module.
 A kind 1 or 3 target is offset by where its object's data or strings
 start; a kind 4 relocation becomes a kind 1 relocation to the symbol's
 final data offset plus the addend; a kind 5 is the helper's address in
-the module, relocated like a function's. The final pass checks that the
+the module, relocated like a function's, or for numbers 3 to 6 the
+CMDSYS import's. A kind 1 or 3 target may be outside its object's data
+or strings (`ccgen` folds `a[i - 1]`'s -1 into `a`'s address), and is
+wrapped to 16 bits. The final pass checks that the
 files agree with each other (sizes, offsets, indexes, record tags), and
 reports "compiler stream file is damaged" if not.
 

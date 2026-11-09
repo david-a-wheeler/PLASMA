@@ -1,0 +1,220 @@
+    ; lt
+    ENTER 4 2
+    ; label 103
+    LLW 0
+    LLW 2
+    CALL __isult
+    NEG
+    LEAVE 4
+
+    ; ge
+    ENTER 4 2
+    ; label 103
+    LLW 0
+    LLW 2
+    CALL __isuge
+    NEG
+    LEAVE 4
+
+    ; gt
+    ENTER 4 2
+    ; label 103
+    LLW 0
+    LLW 2
+    CALL __isugt
+    NEG
+    LEAVE 4
+
+    ; le
+    ENTER 4 2
+    ; label 103
+    LLW 0
+    LLW 2
+    CALL __isule
+    NEG
+    LEAVE 4
+
+    ; below
+    ENTER 4 2
+    ; label 103
+    LLW 0
+    LLW 2
+    CALL __isult
+    NEG
+    LEAVE 4
+
+    ; big
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CW 40000
+    CALL __isugt
+    NEG
+    LEAVE 2
+
+    ; small
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CW 40000
+    CALL __isult
+    NEG
+    LEAVE 2
+
+    ; lt1
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    NOT
+    NEG
+    LEAVE 2
+
+    ; le0
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    NOT
+    NEG
+    LEAVE 2
+
+    ; gt0
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    BRFLS 0
+    CN 5
+    LEAVE 2
+    ; label 0
+    CN 6
+    LEAVE 2
+
+    ; ge1
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CN 0
+    ISNE
+    NEG
+    LEAVE 2
+
+    ; main
+    ENTER 2 0
+    ; label 103
+    CN 1
+    CW 50000
+    CALL lt
+    CN 1
+    BRNE 1
+    CW 50000
+    CN 1
+    CALL lt
+    BRTRU 3
+    ; join 1 to 3
+    ; label 2
+    CW 50000
+    CN 1
+    CALL ge
+    CN 1
+    BRNE 5
+    ; join 3 to 5
+    ; label 4
+    CN 1
+    CW 50000
+    CALL gt
+    BRTRU 7
+    ; join 5 to 7
+    ; label 6
+    CW 50000
+    DUP
+    CALL le
+    CN 1
+    BRNE 9
+    ; join 7 to 9
+    ; label 8
+    LLA 0
+    LLA 1
+    CALL below
+    CN 1
+    BRNE 11
+    ; join 9 to 11
+    ; label 10
+    LLA 1
+    LLA 0
+    CALL below
+    BRFLS 12
+    ; join 12 to 0
+    ; label 11
+    CN 1
+    LEAVE 2
+    ; label 0
+    CW 50000
+    CALL big
+    CN 1
+    BRNE 14
+    CW 30000
+    CALL big
+    BRTRU 16
+    ; join 14 to 16
+    ; label 15
+    CW 30000
+    CALL small
+    CN 1
+    BRNE 18
+    ; join 16 to 18
+    ; label 17
+    CW 50000
+    CALL small
+    BRFLS 19
+    ; join 19 to 13
+    ; label 18
+    CN 2
+    LEAVE 2
+    ; label 13
+    CN 0
+    CALL lt1
+    CN 1
+    BRNE 20
+    CN 9
+    CALL lt1
+    BRTRU 22
+    ; join 20 to 22
+    ; label 21
+    CN 0
+    CALL le0
+    CN 1
+    BRNE 24
+    ; join 22 to 24
+    ; label 23
+    CW 60000
+    CALL le0
+    BRTRU 26
+    ; join 24 to 26
+    ; label 25
+    CN 0
+    CALL gt0
+    CN 6
+    BRNE 28
+    ; join 26 to 28
+    ; label 27
+    CW 60000
+    CALL gt0
+    CN 5
+    BRNE 30
+    ; join 28 to 30
+    ; label 29
+    CN 0
+    CALL ge1
+    BRTRU 32
+    ; join 30 to 32
+    ; label 31
+    CN 2
+    CALL ge1
+    CN 1
+    BREQ 33
+    ; label 32
+    CN 1
+    LEAVE 2
+    ; label 33
+    CN 0
+    ; label 34
+    LEAVE 2

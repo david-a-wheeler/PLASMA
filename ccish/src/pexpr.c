@@ -1221,14 +1221,13 @@ static void compare_pointers(Operand *o, Operand *r, int op)
 /* Push r for binary op *op on integers o and r, and make *op the
  * unsigned op when the operation is unsigned: when either operand is
  * unsigned int (for a shift, the left one). < > <= >= become IR_ULT
- * and the rest, put here with the length of r's code (0 if not known:
- * no positions, or a constant left operand, written at r's start), so
- * that ccgen can flip both sign bits; / % >> become IR_UDIV, IR_UMOD,
+ * and the rest, put here (ccgen calls CMDSYS's ISULT and the rest);
+ * / % >> become IR_UDIV, IR_UMOD,
  * IR_USHR, which the caller puts, with the a returned: 1 if r is a
  * constant (just written) that ccgen can do inline (a shift count, or a
  * power of 2 for / and %), else 0, for a call to a helper function
  * (approach.md, "unsigned and helper functions design"). */
-static int unsigned_op(Operand *o, Operand *r, int *op, int mid)
+static int unsigned_op(Operand *o, Operand *r, int *op)
 {
   int shift = IR_IS_S_SHIFT(*op), k = r->kind, v = r->val;
   rvalue(r);
@@ -1237,7 +1236,7 @@ static int unsigned_op(Operand *o, Operand *r, int *op, int mid)
     return 0;
   if (is_relational(*op)) {
     *op = IR_U_COMPARE(*op);
-    put(*op, mid >= 0 && o->kind != K_CONST ? ir_here() - mid : 0, -1);
+    put(*op, 0, -1);
   } else if (*op == IR_DIV || *op == IR_MOD || *op == IR_SHR) {
     shift = *op == IR_SHR;
     *op = *op == IR_DIV ? IR_UDIV : *op == IR_MOD ? IR_UMOD : IR_USHR;
@@ -1264,18 +1263,17 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
     rvalue(r);                  /* an error */
   if (is_compare(op) && (is_pointer(lt) || is_pointer(rt))) {
     compare_pointers(o, r, op);
-    /* < > <= >= between pointers are unsigned: IR_ULT and the rest,
-     * with the length of r's code, which ccgen needs to flip both sign
-     * bits (approach.md 18.7, C). */
+    /* < > <= >= between pointers are unsigned: IR_ULT and the rest
+     * (approach.md 18.7, C). */
     if (is_relational(op)) {
-      put(IR_U_COMPARE(op), mid >= 0 ? ir_here() - mid : 0, -1);
+      put(IR_U_COMPARE(op), 0, -1);
       o->kind = K_VALUE;
       o->type = TY_INT;
       o->is_bool = 1;
       return;
     }
   } else if (!is_pointer(lt) && !is_pointer(rt)) {
-    a = unsigned_op(o, r, &op, mid);
+    a = unsigned_op(o, r, &op);
     if (IR_IS_U_COMPARE(op)) {     /* already put */
       o->kind = K_VALUE;
       o->type = TY_INT;
@@ -1645,9 +1643,8 @@ static int fold_held(Operand *o, Operand *rp, int ir_op, Operand *addr)
     put(IR_CONST, o->val, -1);
     if (is_relational(op)
         && (is_uns(o->type) || is_uns(value_type(r.type))))
-      put(IR_U_COMPARE(op), 1, -1);
-    else
-      put(op, 0, -1);
+      op = IR_U_COMPARE(op);
+    put(op, 0, -1);
     o->type = is_compare(ir_op) ? TY_INT : arith_type(o->type, r.type);
     o->kind = K_VALUE;
     o->is_bool = is_compare(ir_op);

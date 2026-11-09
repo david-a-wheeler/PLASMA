@@ -66,10 +66,8 @@
     ENTER 0 0
     ; label 103
     LAW.v data +2
-    CW 32768
-    XOR
-    CW 32768
-    ISGE
+    CN 0
+    CALL __isuge
     NEG
     LEAVE 0
 

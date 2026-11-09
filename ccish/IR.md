@@ -505,10 +505,8 @@ false.
 - **In the parser:** constants fold to 1 or 0, and `c < x` with a
   constant `c` is emitted as `x > c`, like other swappable operators.
   Pointers are compared **unsigned**, since addresses at or above
-  `$8000` are normal: for `< > <= >=`, the parser flips the sign bit of
-  each side (`CONST $8000 XOR`, folded into a constant right side)
-  before the signed comparison. `==` and `!=` need no change.
-- **Later:** `unsigned` integers (M11) can use the same sign flip.
+  `$8000` are normal: `< > <= >=` are `IR_ULT` and the rest (below).
+  `==` and `!=` need no change.
 
 ### Labels and branches: `IR_LABEL`, `IR_JUMP`, `IR_BRFALSE`, `IR_BRTRUE` (*a* = label), `IR_JOIN` (*a* = label, *f* = label)
 
@@ -785,22 +783,25 @@ stage 4 replaces it with an offset.
 - **Why it differs from PLASMA:** PLASMA has no `SWAP` (issue 21).
   With one, the exchange becomes that opcode, in `ccgen` alone.
 
-## Unsigned comparisons: `IR_ULT`, `IR_UGT`, `IR_ULE`, `IR_UGE` *a* = the right operand's block length
+## Unsigned comparisons: `IR_ULT`, `IR_UGT`, `IR_ULE`, `IR_UGE` *a* = 0
 
 (Approach.md 18.7, C; since step 5.)
 
 - **Stack:** `( x y -- x op y )`, comparing as unsigned 16-bit
-  values; the result is 1 or 0, like the signed comparisons. *a* is
-  the length of `y`'s code in IR ops, just before the op (0 if not
-  known).
-- **Lowering (in `ccgen`, `src/irin.c`):** flip both sign bits and
-  compare signed. If `y`'s code is still held, `CONST $8000 XOR` goes
-  just before it (flipping `x`) and after it (flipping `y`), or, if
-  `y` is one constant, into that constant: `x CONST $8000 XOR y CONST
-  $8000 XOR ISLT NEG`, exactly what the parser once wrote itself. If
-  not, both are flipped afterward, with `y` saved in `ccgen`'s
-  temporary 1 meanwhile: `CONST $8000 XOR SLW t1 CONST $8000 XOR LLW
-  t1`, then the comparison.
+  values; the result is 1 or 0, like the signed comparisons. *a* is 0
+  (it was the length of `y`'s code, for sign flips; `ccgen` ignores
+  it).
+- **Lowering (in `ccgen`, `src/lower.c`):** a call of CMDSYS's native
+  `ISULT` and the rest (`__isult` ...; OBJECT.md, helper numbers 3-6),
+  which give `$FFFF` or 0 as `ISLT` does, then `NEG`: `x y CALL
+  __isult NEG`. That's 3 bytes and about 123 cycles; the signed
+  comparison with both sign bits flipped (`CONST $8000 XOR`), which
+  `ccgen` wrote before, was 9 bytes and about 218 cycles for two
+  variables, and 5 bytes and 131 cycles with the flip folded into a
+  constant `y`.
+- **A constant 0 or 1** that makes it a test of zero is one, in
+  `ccgen` (irin.c, `u_const()`): `x <u 1` and `x <=u 0` are `x == 0`,
+  and `x >=u 1` and `x >u 0` are `x != 0` (one branch, or `NOT`).
 - **Why it differs from PLASMA:** PLASMA's comparisons are signed. VM
   opcodes `ISULT` and the rest (issue 21) would make this one op, a
   change to `ccgen` alone.

@@ -10,6 +10,9 @@
  * with relocation REL_HELPER, target k. In ccgen, helper k is function
  * number HELPER_FN(k) while it is lowered (helper.c). */
 #define HELPER_FN(k) (MAX_FUNCS + (k))
+/* The CMDSYS unsigned comparison that IR op op calls (obj.fmt.h): they
+ * follow the helpers in IR_ULT's order. Needs ir.h. */
+#define HELP_U_COMPARE(op) (NHELPERS + (op) - IR_ULT)
 extern int helper_used;             /* bit k: helper k is called */
 void gen_helpers(void);             /* write the helpers used */
 const char *helper_name(int k);

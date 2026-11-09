@@ -107,12 +107,14 @@ static const int h_a[] = {
 static const char h_start[NHELPERS + 1] = { 0, 43, 91, 108 };
 
 /* Each helper's name, for messages and ccrel's listing. */
-static const char *const h_names[NHELPERS] = { "udiv", "umod", "ushr" };
+static const char *const h_names[NHELPERS + NHELP_CMDSYS] = {
+  "udiv", "umod", "ushr", HELP_CMDSYS_NAMES
+};
 
 /* Helper k's name. */
 const char *helper_name(int k)
 {
-  return k >= 0 && k < NHELPERS ? h_names[k] : "?";
+  return k >= 0 && k < NHELPERS + NHELP_CMDSYS ? h_names[k] : "?";
 }
 
 /* Write each helper that a call needs, after the object's functions:

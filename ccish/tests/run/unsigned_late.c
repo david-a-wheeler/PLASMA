@@ -1,12 +1,9 @@
-/* Pointer comparisons are unsigned (approach.md 18.7, C): ccgen flips
- * both sign bits, the left operand's before the right operand's code.
- * When that code is too long for ccgen's IR buffer (here a sum of 100
- * x's, 199 IR ops), both are flipped afterward, the right one saved in
- * ccgen's temporary 1 meanwhile (frame offset 6, past main's two
- * locals and temporary 0). A short right operand is flipped in place. */
-// listing-has: ENTER 8,0
-// listing-has: SLW 6
-// listing-has: LLW 6
+/* Pointer comparisons are unsigned (approach.md 18.7, C): each calls
+ * CMDSYS's ISULT or the rest (irin.c), however long the right
+ * operand's code (here a sum of 100 x's, 199 IR ops, longer than
+ * ccgen's IR buffer, which a sign-bit flip once had to reach past). */
+// listing-count: 1 __isult (import)
+// listing-count: 1 __isuge (import)
 int a[4];
 
 int main()

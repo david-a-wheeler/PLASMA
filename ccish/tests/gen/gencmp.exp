@@ -346,12 +346,8 @@
     ENTER 4 2
     ; label 103
     LLW 0
-    CW 32768
-    XOR
     LLW 2
-    CW 32768
-    XOR
-    ISLE
+    CALL __isule
     NEG
     LEAVE 4
 
