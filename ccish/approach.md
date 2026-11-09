@@ -4369,11 +4369,18 @@ issue updated as each step lands.
      carries `Q_CONST`, which `need_lvalue()` tests first, so `N = 2`
      and `++N` still get error 42. No object of the 152 files without
      such a store changed. cccomp is 22 bytes smaller.
-   - **Still open:** a store through a volatile pointer variable keeps
+   - **A store's unused copy** (decided in discussion: the simpler
+     fix, in ccgen). A store through a volatile pointer variable kept
      its value (`DUP`) for a use that a statement never makes, then
-     drops it: `LLB v DUP LLW p SB.v DROP`, 2 bytes and two ops more
-     than needed. Through a constant address, ccgen already removes
-     the pair.
+     dropped it: `LLB v DUP LLW p SB.v DROP`. cccomp can't know the
+     value goes unused, so peep.c's `drop_dup()`, which removed `DUP
+     update store DROP`, now allows no update and a volatile store
+     (only the copy goes; the store is still made). It pays in plain
+     code too: a store to a global that may move to the heap keeps a
+     copy the same way (`store_var()`), so tests/run/heap_globals.c is
+     16 bytes smaller, and six other files 2 to 4. ccgen grows 11
+     bytes. The point of making volatile correct is that everything
+     else can then be optimized freely.
 5. Later, apart from volatile: **constants as one pseudo-op until
    emit.c** (discussed 2026-11-08), so that no peephole pattern can
    miss a constant, and one function chooses `CN`, `MINUS1`, `CB`,

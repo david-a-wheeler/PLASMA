@@ -71,10 +71,11 @@
  *   const MUL, const = 2^n   -> CN n SHL   for n from 2 to 15
  *   DUP  ADD  ADD            -> IDXW       p + 2*i
  *   DUP  update  store  DROP -> update  store   x++ whose old value is
- *        unused. update is INCR, DECR, NEG, COMP, ADDI, SUBI, or a
- *        constant then ADD or SUB; store is SLW, SLB, SAW or SAB n, or SW
- *        or SB after an address computed only on the stack (LLW p, LLA a
- *        IDXLW i, LA g IDXAW i, ...).
+ *        unused, or (with no update) an assignment's. update is INCR,
+ *        DECR, NEG, COMP, ADDI, SUBI, or a constant then ADD or SUB;
+ *        store is SLW, SLB, SAW or SAB n, or SW or SB after an address
+ *        computed only on the stack (LLW p, LLA a IDXLW i, LA g IDXAW
+ *        i, ...), volatile or not (the store is still made).
  *   expr  DROP               -> (nothing)  for an expression that
  *                                          reads no memory but the frame
  *                                          (constants, LLW, LLB, LLA, LA,
@@ -281,11 +282,13 @@ static int expr_len(int end)
 }
 
 /* The number of ops in the store that ends just before window index
- * end: SLW / SLB / SAW / SAB n, or an address expression then SW / SB.
- * 0 if there isn't one. */
+ * end: SLW / SLB / SAW / SAB n, or an address expression then SW / SB,
+ * either of them volatile (only the copy of its value goes). 0 if
+ * there isn't one. */
 static int store_len(int end)
 {
   int op = end >= 1 ? win[end - 1].op : -1, n;
+  op = MOP_PLAIN(op);
   if (op == OP_SLW || op == OP_SLB || op == OP_SAW || op == OP_SAB)
     return 1;
   if (op == OP_SW || op == OP_SB) {
@@ -309,8 +312,9 @@ static int update_len(int end)
 }
 
 /* With DROP at the end of the window, match DUP update store DROP (an
- * x++ whose old value is unused) and remove the DUP and the DROP.
- * Returns 1 if it did. */
+ * x++ whose old value is unused), or DUP store DROP (an assignment
+ * whose value is unused, such as a volatile's, which cccomp keeps),
+ * and remove the DUP and the DROP. Returns 1 if it did. */
 static int drop_dup(void)
 {
   int s = store_len(nwin - 1), u, d, i;
@@ -318,7 +322,7 @@ static int drop_dup(void)
     return 0;
   u = update_len(nwin - 1 - s);
   d = nwin - 2 - s - u;           /* where the DUP must be */
-  if (u == 0 || d < 0 || win[d].op != OP_DUP)
+  if (d < 0 || win[d].op != OP_DUP)
     return 0;
   for (i = d; i < nwin - 2; i++)
     win[i] = win[i + 1];
@@ -845,7 +849,7 @@ static int rewrite(void)
     return 1;
   }
   /* DUP update store DROP -> update store: x++ (or a similar update)
-   * whose old value is unused needs no copy of it. */
+   * whose old value is unused needs no copy of it; nor does a store. */
   if (b->op == OP_DROP && drop_dup())
     return 1;
   /* expr DROP -> nothing, for an expression that reads no memory but

@@ -33,11 +33,17 @@ void clear(void)
   *KBDSTRB = 0;
 }
 
-/* A store through a volatile pointer variable: the store's value is
- * kept (DUP) and then dropped, which a later fix may remove. */
+/* A store through a volatile pointer variable: cccomp keeps a copy of
+ * the value (DUP), as it can't know the statement drops it (DROP);
+ * ccgen removes the pair (peep.c, drop_dup). Indexed too. */
 void poke(volatile char *p, char v)
 {
   *p = v;
+}
+
+void pokew(volatile int *p, int i)
+{
+  p[i] = 5;
 }
 
 /* A counted loop: the read stays in the body. */
@@ -124,11 +130,14 @@ int main(void)
   touch();
   clear();
   poke(&c, 7);
+  pokew(&g, 0);
   tone(3);
   spin(3);
   voctal();
   if (c != 7 || !octal('5') || octal('8'))
     return 1;
+  if (g != 5)
+    return 3;
   if (vstore() != 3 || store() != 3 || vbump() != 5 || vg != 6)
     return 2;
   vg = 0;

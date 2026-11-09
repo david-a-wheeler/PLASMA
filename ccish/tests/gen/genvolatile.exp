@@ -25,10 +25,17 @@
     ENTER 4 2
     ; label 103
     LLB 2
-    DUP
     LLW 0
     SB.v
-    DROP
+    LEAVE 4
+
+    ; pokew
+    ENTER 4 2
+    ; label 103
+    CN 5
+    LLW 0
+    IDXLW 2
+    SW.v
     LEAVE 4
 
     ; tone
@@ -161,6 +168,9 @@
     LLA 0
     CN 7
     CALL poke
+    LA data +8
+    CN 0
+    CALL pokew
     CN 3
     CALL tone
     CN 3
@@ -183,27 +193,33 @@
     CN 1
     LEAVE 1
     ; label 0
-    CALL vstore
-    CN 3
-    BRNE 6
-    CALL store
-    CN 3
-    BRNE 8
-    ; join 6 to 8
-    ; label 7
-    CALL vbump
+    LAW data +8
     CN 5
-    BRNE 10
-    ; join 8 to 10
-    ; label 9
-    LAW.v data +6
-    CN 6
-    BREQ 11
-    ; join 11 to 5
-    ; label 10
-    CN 2
+    BREQ 5
+    CN 3
     LEAVE 1
     ; label 5
+    CALL vstore
+    CN 3
+    BRNE 7
+    CALL store
+    CN 3
+    BRNE 9
+    ; join 7 to 9
+    ; label 8
+    CALL vbump
+    CN 5
+    BRNE 11
+    ; join 9 to 11
+    ; label 10
+    LAW.v data +6
+    CN 6
+    BREQ 12
+    ; join 12 to 6
+    ; label 11
+    CN 2
+    LEAVE 1
+    ; label 6
     CN 0
     SAW.v data +6
     CALL vlocal
