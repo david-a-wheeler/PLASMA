@@ -1,0 +1,148 @@
+    ; cond
+    ENTER 6 3
+    ; label 103
+    LLW 0
+    BRFLS 0
+    LLW 2
+    LEAVE 6
+    ; label 0
+    LLW 4
+    ; label 1
+    LEAVE 6
+
+    ; both
+    ENTER 4 2
+    ; label 103
+    LLW 0
+    BRFLS 0
+    LLW 2
+    BRFLS 0
+    CN 1
+    LEAVE 4
+    ; label 0
+    CN 0
+    ; label 1
+    LEAVE 4
+
+    ; chain
+    ENTER 4 2
+    ; label 103
+    LLW 0
+    CN 1
+    BRNE 0
+    CN 10
+    LLW 2
+    SW
+    LEAVE 4
+    ; label 0
+    LLW 0
+    CN 2
+    BRNE 2
+    CB 20
+    LLW 2
+    SW
+    LEAVE 4
+    ; label 2
+    CB 30
+    LLW 2
+    SW
+    ; label 1
+    LEAVE 4
+
+    ; inloop
+    ENTER 4 1
+    ; label 103
+    CN 9
+    CN 0
+    ; label 0
+    DLW 2
+    LLW 2
+    LLW 0
+    BRNE 4
+    LLW 2
+    BRFLS 5
+    CN 5
+    BRNCH 6
+    ; label 5
+    CN 6
+    ; label 6
+    SLW -2
+    DROP2
+    LLW -2
+    LEAVE 4
+    ; label 4
+    INCBRLE 0
+    DROP2
+    CN 7
+    LEAVE 4
+
+    ; main
+    ENTER 4 0
+    ; label 103
+    CN 2
+    LLA 0
+    CALL chain
+    CN 9
+    LLA 2
+    CALL chain
+    CN 1
+    CN 2
+    CN 3
+    CALL cond
+    CN 2
+    BRNE 1
+    CN 0
+    CN 2
+    CN 3
+    CALL cond
+    CN 3
+    BRNE 3
+    ; join 1 to 3
+    ; label 2
+    CN 1
+    CN 1
+    CALL both
+    CN 1
+    BRNE 5
+    ; join 3 to 5
+    ; label 4
+    CN 1
+    CN 0
+    CALL both
+    BRTRU 7
+    ; join 5 to 7
+    ; label 6
+    LLW 0
+    CB 20
+    BRNE 9
+    ; join 7 to 9
+    ; label 8
+    LLW 2
+    CB 30
+    BREQ 10
+    ; join 10 to 0
+    ; label 9
+    CN 1
+    LEAVE 4
+    ; label 0
+    CN 0
+    CALL inloop
+    CN 6
+    BRNE 11
+    CN 3
+    CALL inloop
+    CN 5
+    BRNE 13
+    ; join 11 to 13
+    ; label 12
+    CB 20
+    CALL inloop
+    CN 7
+    BREQ 14
+    ; label 13
+    CN 1
+    LEAVE 4
+    ; label 14
+    CN 0
+    ; label 15
+    LEAVE 4

@@ -896,6 +896,35 @@ static int unsigned_const(int *op)
   return n;
 }
 
+/* A RETURN a (with f) is about to be held, just after the labels (and
+ * joins) at the buffer's tail, from index k: make each held JUMP that
+ * goes to one of them that RETURN, which is a byte smaller (LEAVE n,
+ * not BRNCH) and one op less where it runs. The stack is the same at a
+ * jump as at its label, so the jump and the return do the same. A
+ * JUMP's label is where the JOINs held after it send it. */
+static void jump_return(int a, int f)
+{
+  int k = nbuf, i, j, t;
+  while (k > 0 && (buf_op[k - 1] == IR_LABEL || buf_op[k - 1] == IR_JOIN))
+    k--;
+  for (i = 0; i < k; i++) {
+    if (buf_op[i] != IR_JUMP)
+      continue;
+    t = buf_a[i];
+    for (j = i + 1; j < nbuf; j++) {
+      if (buf_op[j] == IR_JOIN && buf_a[j] == t) {
+        t = buf_f[j];           /* (a label is joined only unplaced) */
+      } else if (j >= k && buf_op[j] == IR_LABEL && buf_a[j] == t) {
+        buf_cnt[buf_a[i]]--;
+        buf_op[i] = IR_RETURN;
+        buf_a[i] = a;
+        buf_f[i] = f;
+        break;
+      }
+    }
+  }
+}
+
 /* Hold IR op op until it is lowered. A pending SWAP just before it is
  * decided first. A SWAP whose two blocks are here is done at once, by
  * moving them; one that can't be waits. An unsigned comparison's way is
@@ -912,6 +941,8 @@ void ir_hold(int op, int a, int f)
   if (nbuf > 0 && buf_op[nbuf - 1] == IR_SWAP
       && buf_a[nbuf - 1] == SW_PENDING)
     decide(nbuf - 1, op);
+  if (op == IR_RETURN)
+    jump_return(a, f);
   if (IR_IS_U_ARITH(op) && a == 1) {
     f = unsigned_const(&op);
     a = 0;

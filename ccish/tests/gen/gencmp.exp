@@ -113,7 +113,7 @@
     LLW 2
     BRFLS 0
     CN 1
-    BRNCH 1
+    LEAVE 4
     ; label 0
     CN 0
     ; label 1
@@ -128,7 +128,7 @@
     BRFLS 1
     ; label 0
     CN 1
-    BRNCH 2
+    LEAVE 4
     ; label 1
     CN 0
     ; label 2
@@ -286,7 +286,7 @@
     LLW 0
     BRFLS 0
     CN 7
-    BRNCH 1
+    LEAVE 2
     ; label 0
     CN 5
     ; label 1
@@ -298,7 +298,7 @@
     LLW 0
     BRFLS 0
     CN 5
-    BRNCH 1
+    LEAVE 2
     ; label 0
     CN 7
     ; label 1

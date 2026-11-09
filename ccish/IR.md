@@ -718,6 +718,14 @@ struct (returned by value), its words are. *a* says how many (version
   must first drop the two from under its result: `ccgen` does it, with
   *a* to know how many words to keep (approach.md, "A `return` in a
   counted loop's body").
+- **A jump to a return:** an `IR_JUMP` to a label that an `IR_RETURN`
+  follows (through any labels and joins just before it) becomes that
+  return, while both are in `ccgen`'s hold buffer (irin.c,
+  `jump_return()`): `LEAVE n` is a byte smaller than `BRNCH`, and the
+  branch it saves never runs. The stack at a jump is the same as at its
+  label, so the two do the same. The `?:` and `&&` values a function
+  returns, and an `if`/`else` chain at a `void` function's end, take
+  it (tests/gen/genret.c).
 
 ## Between stages 2 and 4: machine ops
 

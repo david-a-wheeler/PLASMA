@@ -114,7 +114,7 @@
     ISLE
     BRFLS 0
     CN 1
-    BRNCH 1
+    LEAVE 1
     ; label 0
     CN 0
     ; label 1

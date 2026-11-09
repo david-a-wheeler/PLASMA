@@ -1,5 +1,5 @@
     ; both
-    ENTER 4 2
+    ENTER 6 2
     ; label 103
     LLW 0
     BRFLS 0
@@ -10,10 +10,10 @@
     ; label 0
     CN 0
     ; label 1
-    LEAVE 4
+    LEAVE 6
 
     ; either
-    ENTER 4 2
+    ENTER 6 2
     ; label 103
     LLW 0
     BRTRU 0
@@ -25,10 +25,10 @@
     ; label 1
     CN 0
     ; label 2
-    LEAVE 4
+    LEAVE 6
 
     ; neither
-    ENTER 4 2
+    ENTER 6 2
     ; label 103
     LLW 0
     BRFLS 0
@@ -40,7 +40,7 @@
     ; label 1
     CN 0
     ; label 2
-    LEAVE 4
+    LEAVE 6
 
     ; main
     ENTER 0 0

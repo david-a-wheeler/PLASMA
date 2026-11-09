@@ -37,7 +37,7 @@
 #include "lower.h"
 #include "helper.h"
 
-#define MAX_RETURNS  32     /* frame-size bytes (ENTER, LEAVEs) in one
+#define MAX_RETURNS  64     /* frame-size bytes (ENTER, LEAVEs) in one
                              * function (23) */
 #define MAX_TEMP_USES 32    /* operands on ccgen's own temporaries in one
                              * function: 4 to 6 for each IR_SWAP done
