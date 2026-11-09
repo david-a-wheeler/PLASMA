@@ -36,14 +36,19 @@
  * the VM). Within a frame, the screen differs from the original's
  * only in the order its pixels change.
  *
- * Build with -DROD_TEST=N (and lores.c with -DLORES_TEST) to run N
- * rounds of w from 3 to 50 under plvm, with the screen an array; with
- * -DROD_SUMS as well, after each frame it prints a checksum of the
- * screen, which rodref.c (compiled with gcc) computes from the
- * original. "make check" compares the two. */
+ * Testing (ROD_TEST): normally this builds the demo for the Apple II,
+ * which draws on the real screen until a key is pressed. Defined, as
+ * -DROD_TEST=N, it builds a test version instead, which "make check"
+ * runs on the host under plvm: it draws N rounds of w from 3 to 50 on
+ * an array (lores.c built with -DLORES_TEST), since plvm's memory at
+ * $400 is its heap, not a screen; never reads the keyboard; and ends.
+ * With -DROD_SUMS as well, after each frame (each w) it prints a
+ * checksum of that array, which "make check" compares with rodref.c's,
+ * the original algorithm compiled with gcc. The code under ROD_TEST is
+ * for that test only. */
 #include "lores.h"
 
-#ifndef ROD_TEST
+#ifndef ROD_TEST                /* not in the test build (see the top) */
 #include "conio.h"
 #endif
 

@@ -6,13 +6,19 @@
  * same work. Press any key to exit. rodsimple.c plots in C instead;
  * rod.c is the optimized version.
  *
- * Build with -DROD_TEST=N (and lores.c with -DLORES_TEST) to run N
- * rounds of w from 3 to 50 under plvm. plvm's CONIO is C that prints
- * terminal escapes, so the test build defines its own CONIO table,
- * whose grcolor and grplot draw on lores.c's test screen; the program's
- * calls go through the table as they do on the Apple II. With
- * -DROD_SUMS as well, after each frame it prints a checksum of the
- * screen, as rod.c and rodref.c do. */
+ * Testing (ROD_TEST): normally this builds the demo for the Apple II,
+ * which draws on the real screen until a key is pressed. Defined, as
+ * -DROD_TEST=N, it builds a test version instead, which "make check"
+ * runs on the host under plvm: it draws N rounds of w from 3 to 50 on
+ * an array (lores.c built with -DLORES_TEST), since plvm's memory at
+ * $400 is its heap, not a screen; never reads the keyboard; and ends.
+ * With -DROD_SUMS as well, after each frame (each w) it prints a
+ * checksum of that array, which "make check" compares with rodref.c's,
+ * the original algorithm compiled with gcc. The code under ROD_TEST is
+ * for that test only. Here it also defines a CONIO table of its own
+ * (below), whose grcolor and grplot draw on the test array, since
+ * plvm's CONIO is C that prints terminal escapes; the program's calls
+ * go through that table as they do on the Apple II. */
 #include "lores.h"
 #include "conio.h"
 
@@ -34,8 +40,14 @@ constexpr int MSG_X = 11;
 constexpr int MSG_Y = 1;
 
 #ifdef ROD_TEST
-/* The test's CONIO: grcolor and grplot as the Apple's, on the test
- * screen; keypressed says no key. The rest aren't called. */
+/* For testing only (ROD_TEST, at the top): a CONIO of the test's own,
+ * which replaces the import (a CONIO defined in the program is used
+ * instead of the module's). grcolor and grplot do what the Apple's do,
+ * on the test array; keypressed says no key. The rest aren't called.
+ * Each returns a value, though only keypressed's means anything: a
+ * PLASMA function always returns one word, so CONIO's do, and the
+ * program's calls drop it (ICAL, then DROP); a function that returned
+ * none would leave nothing there to drop. */
 static int test_color;
 
 /* Set the color for test_grplot, as CONIO's grcolor: its low nibble. */
