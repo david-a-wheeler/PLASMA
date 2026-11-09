@@ -18,7 +18,7 @@ below would remove one:
 |---|---|
 | 1. Stream the RLD | None possible: cccomp can't load on a 64K Apple II |
 | 2. plvm exits with the status | tools/ccstat.pla, its marker, and tools/ccrun's parsing (and xplasm and acme in ccish's build) |
-| 3. Unsigned comparison ops | A CMDSYS call (3 bytes, about 123 cycles) for every unsigned and pointer `<`, `>`, `<=`, `>=`; counted loops limited to `int` |
+| 3. Unsigned comparison ops | Mainly speed, not size: a CMDSYS call (3 bytes, about 123 cycles) for every unsigned and pointer `<`, `>`, `<=`, `>=`, where an op would be 1 byte and about 44 cycles; counted loops limited to `int` |
 | 4. Reject a bad import | Nothing to drop, but import mistakes found at load, not at run time |
 | 5. Stop on an eval stack error | Nothing to drop, but a compiler bug can't pass a test |
 | 6. A way to unwind | tools/plvmexit.c, the BRK stand-in for `exit()`; the library could then define `exit` |
@@ -108,7 +108,11 @@ Modules that return a negative init result are failing already, so
 nothing that works today changes. With that, `plvm prog; echo $?`
 just works, and ccstat becomes unnecessary.
 
-## 3. VM opcodes for unsigned comparisons
+## 3. VM opcodes for unsigned comparisons (for speed)
+
+This one is mainly about speed, not size: it saves only 2 bytes per
+comparison, but makes each about three times faster, and lets
+unsigned and pointer loops use the fast counted-loop ops.
 
 **What's there.** PLASMA's ordered comparisons (`ISLT`, `ISGT`,
 `ISLE`, `ISGE`, and the counted-loop branches like `INCBRLE`) are all
@@ -122,7 +126,8 @@ a 1-byte opcode (`ISLT` is about 44 cycles, the call about 123), plus
 ccish calls the CMDSYS routines (since 2026-11-09: that beat its
 earlier sign-bit flip, which took 5 to 9 bytes and about 131 to 218
 cycles; approach.md and OBJECT.md, object version 8). An opcode would
-make each 1 byte and about three times faster. Loops are where speed
+make each 1 byte instead of 3, a small saving (cccomp has few such
+comparisons), but about three times faster. Loops are where speed
 matters most, and today only `int` loops can use the counted-loop
 ops; unsigned and pointer loops can't.
 
