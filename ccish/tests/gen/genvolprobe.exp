@@ -1,0 +1,369 @@
+    ; elem
+    ENTER 0 0
+    ; label 103
+    LAB.v data +6
+    ANDI 0
+    LEAVE 0
+
+    ; member
+    ENTER 0 0
+    ; label 103
+    LAW.v data +10
+    DROP
+    LAW.v data +12
+    ANDI 0
+    LEAVE 0
+
+    ; times0
+    ENTER 0 0
+    ; label 103
+    LAW.v data +0
+    ANDI 0
+    LEAVE 0
+
+    ; and0
+    ENTER 0 0
+    ; label 103
+    LAW.v data +0
+    ANDI 0
+    LAW.v data +0
+    LAW.v data +0
+    SUB
+    ADD
+    LEAVE 0
+
+    ; plus0
+    ENTER 0 0
+    ; label 103
+    LAW.v data +0
+    LEAVE 0
+
+    ; tovoid
+    ENTER 0 0
+    ; label 103
+    LAW.v data +0
+    ANDI 0
+    LEAVE 0
+
+    ; emptyif
+    ENTER 0 0
+    ; label 103
+    LAW.v data +0
+    BRFLS 0
+    ; label 0
+    CN 0
+    LEAVE 0
+
+    ; samearms
+    ENTER 0 0
+    ; label 103
+    LAW.v data +0
+    DROP
+    CN 1
+    LEAVE 0
+
+    ; uge0
+    ENTER 0 0
+    ; label 103
+    LAW.v data +2
+    CW 32768
+    XOR
+    CW 32768
+    ISGE
+    NEG
+    LEAVE 0
+
+    ; notnot
+    ENTER 0 0
+    ; label 103
+    LAW.v data +0
+    NOT
+    ANDI 1
+    NOT
+    ANDI 1
+    LEAVE 0
+
+    ; selfeq
+    ENTER 0 0
+    ; label 103
+    LAW.v data +0
+    LAW.v data +0
+    ISEQ
+    NEG
+    LEAVE 0
+
+    ; selfset
+    ENTER 0 0
+    ; label 103
+    LAW.v data +0
+    SAW.v data +0
+    CN 0
+    LEAVE 0
+
+    ; vrange
+    ENTER 1 0
+    ; label 103
+    CB 50
+    SLB.v 0
+    LLB.v 0
+    CB 48
+    ISGE
+    BRFLS 0
+    LLB.v 0
+    CB 55
+    ISLE
+    BRFLS 0
+    CN 1
+    BRNCH 1
+    ; label 0
+    CN 0
+    ; label 1
+    LEAVE 1
+
+    ; vlimit
+    ENTER 4 0
+    ; label 103
+    CN 0
+    SLW 2
+    CN 0
+    DLW 0
+    BRNCH 1
+    ; label 0
+    LLW 2
+    INCR
+    SLW 2
+    LLW 0
+    INCR
+    DLW 0
+    ; label 1
+    LAW data +16
+    LW.v
+    ISLT
+    BRTRU 0
+    LLW 2
+    LEAVE 4
+
+    ; vinit
+    ENTER 4 0
+    ; label 103
+    CN 0
+    SLW 2
+    LAW.v data +0
+    SLW 0
+    CN 9
+    LLW 0
+    BRGT 3
+    ; label 0
+    DLW 0
+    LLW 2
+    INCR
+    SLW 2
+    INCBRLE 0
+    ; label 3
+    DROP
+    DROP
+    LLW 2
+    LEAVE 4
+
+    ; deadstore
+    ENTER 2 0
+    ; label 103
+    LAW.v data +0
+    DROP
+    CN 1
+    LEAVE 2
+
+    ; vbody
+    ENTER 2 0
+    ; label 103
+    CN 2
+    CN 0
+    ; label 0
+    DLW 0
+    LAW.v data +0
+    DROP
+    INCBRLE 0
+    DROP
+    ANDI 0
+    LEAVE 2
+
+    ; vbodyset
+    ENTER 2 0
+    ; label 103
+    CN 2
+    CN 0
+    ; label 0
+    DLW 0
+    LLW 0
+    SAW.v data +0
+    INCBRLE 0
+    DROP
+    ANDI 0
+    LEAVE 2
+
+    ; size
+    ENTER 0 0
+    ; label 103
+    CN 2
+    LEAVE 0
+
+    ; ushift
+    ENTER 0 0
+    ; label 103
+    LAW.v data +2
+    CN 2
+    SHR
+    CW 16383
+    AND
+    LAW.v data +2
+    ANDI 3
+    ADD
+    LAW.v data +2
+    CN 1
+    SHR
+    CW 32767
+    AND
+    ADD
+    LEAVE 0
+
+    ; twice
+    ENTER 0 0
+    ; label 103
+    LAW.v data +0
+    SAW data +18
+    LAW.v data +0
+    SAW data +18
+    CN 0
+    LEAVE 0
+
+    ; vwait
+    ENTER 0 0
+    ; label 103
+    BRNCH 1
+    ; label 0
+    ; label 1
+    LAW.v data +0
+    BRTRU 0
+    CN 0
+    LEAVE 0
+
+    ; bumps
+    ENTER 0 0
+    ; label 103
+    LAW.v data +0
+    INCR
+    SAW.v data +0
+    LAW.v data +0
+    INCR
+    SAW.v data +0
+    LAW.v data +0
+    DECR
+    SAW.v data +0
+    CN 0
+    LEAVE 0
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    LA data +18
+    SAW data +16
+    CALL vwait
+    DROP
+    CALL elem
+    BRTRU 1
+    CALL member
+    BRTRU 3
+    ; join 1 to 3
+    ; label 2
+    CALL times0
+    BRTRU 5
+    ; join 3 to 5
+    ; label 4
+    CALL and0
+    BRTRU 7
+    ; join 5 to 7
+    ; label 6
+    CALL plus0
+    BRTRU 9
+    ; join 7 to 9
+    ; label 8
+    CALL tovoid
+    BRTRU 11
+    ; join 9 to 11
+    ; label 10
+    CALL emptyif
+    BRTRU 13
+    ; join 11 to 13
+    ; label 12
+    CALL samearms
+    CN 1
+    BRNE 15
+    ; join 13 to 15
+    ; label 14
+    CALL uge0
+    CN 1
+    BRNE 17
+    ; join 15 to 17
+    ; label 16
+    CALL notnot
+    BRTRU 19
+    ; join 17 to 19
+    ; label 18
+    CALL selfeq
+    CN 1
+    BRNE 21
+    ; join 19 to 21
+    ; label 20
+    CALL selfset
+    BRFLS 22
+    ; join 22 to 0
+    ; label 21
+    CN 1
+    LEAVE 0
+    ; label 0
+    CALL vrange
+    CN 1
+    BRNE 24
+    CALL vlimit
+    BRTRU 26
+    ; join 24 to 26
+    ; label 25
+    CALL vinit
+    CN 10
+    BRNE 28
+    ; join 26 to 28
+    ; label 27
+    CALL deadstore
+    CN 1
+    BRNE 30
+    ; join 28 to 30
+    ; label 29
+    CALL vbody
+    BRTRU 32
+    ; join 30 to 32
+    ; label 31
+    CALL size
+    CN 2
+    BRNE 34
+    ; join 32 to 34
+    ; label 33
+    CALL ushift
+    BRTRU 36
+    ; join 34 to 36
+    ; label 35
+    CALL twice
+    BRFLS 37
+    ; join 37 to 23
+    ; label 36
+    CN 2
+    LEAVE 0
+    ; label 23
+    CALL vbodyset
+    DROP
+    CALL bumps
+    DROP
+    LAW.v data +0
+    CN 3
+    ISNE
+    NEG
+    LEAVE 0
