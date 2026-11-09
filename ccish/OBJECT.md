@@ -15,8 +15,11 @@ For output `NAME`, the files are `NAME.obj` and `NAME.syms`. `ccish`
 removes them after the module is written, and after any error, unless
 `-k` is given; `ccgen` leaves them for `ccrel`, which keeps them.
 `NAME.obj` and `NAME.syms` are format version 7 (`OBJ_VERSION`), and
-the IR file, `NAME.ir`, is IR format version 12 (`IR_VERSION`); the
-history below gives both. IR version 12 made the IR's record tags
+the IR file, `NAME.ir`, is IR format version 13 (`IR_VERSION`); the
+history below gives both. IR version 13 renumbered the ops into blocks
+whose bits mean something (the table below; approach.md issue 25), so
+that one op is made from another with a bit operation, and the reader
+refuses a number that is no op. IR version 12 made the IR's record tags
 lowercase letters (`y` for the summary, and so on), so that an op may
 be numbered up to `$5F` (`$DF` with a byte operand), room for 96 ops
 (approach.md issue 25); the stream file keeps its capital letters, and
@@ -379,28 +382,23 @@ The op numbers are the order of the `IR_*` enum in `src/ir.h`
 
 | Numbers | Ops |
 |---------|-----|
-| `$00`-`$04` | `FUNC`, `ENDFUNC`, `CONST`, `DATAADDR`, `STRADDR` |
-| `$05`-`$09` | `LOCAL`, `SETLOCAL`, `LOCALB`, `SETLOCALB`, `LOCALADDR` |
-| `$0A`-`$0D` | `GLOBAL`, `SETGLOBAL`, `GLOBALB`, `SETGLOBALB` |
-| `$0E`-`$15` | `LOAD`, `LOADB`, `STORE`, `STOREB`, `CALL`, `DROP`, `DUP`, `RETURN` |
-| `$16`-`$1F` | `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, `AND`, `OR`, `XOR`, `SHL`, `SHR` |
-| `$20`-`$25` | `EQ`, `NE`, `LT`, `GE`, `GT`, `LE` |
-| `$26`-`$29` | `ULT`, `UGE`, `UGT`, `ULE` (*a* = the right operand's block length in ops, or 0; 18.7, C) |
-| `$2A`-`$2C` | `NEG`, `COMP`, `NOT` |
-| `$2D`-`$32` | `LABEL`, `JUMP`, `BRFALSE`, `BRTRUE`, `SEL`, `JOIN` |
-| `$33`-`$35` | `CASES`, `CASEVAL`, `CASETO` |
-| `$36` | `SWAP` (*a* = top block's length in ops, *f* = the block below's, or -1: don't move code; approach.md 18.7, A) |
-| `$37`-`$39` | `UDIV`, `UMOD`, `USHR` (*a* = 1 if the right operand is a constant) |
-| `$3A` | `HEAPADDR` (*f* = a data symbol index; version 4) |
-| `$3B`-`$3C` | `FUNCADDR`, `ICALL` |
-| `$3D`-`$40` | `LOOP`, `LOOPSTEP`, `LOOPBODY`, `LOOPEND` (*a*, *f* = labels; version 5; IR.md, "Loops") |
+| `$00`-`$0B` | the access ops: bit 0 a byte, bit 1 a store, bits 2-3 where (the frame, the data, an address): `LOCAL`, `LOCALB`, `SETLOCAL`, `SETLOCALB`, `GLOBAL`, `GLOBALB`, `SETGLOBAL`, `SETGLOBALB`, `LOAD`, `LOADB`, `STORE`, `STOREB` |
+| `$0C`-`$0F` | addresses: `LOCALADDR`, `DATAADDR`, `HEAPADDR` (*f* = a data symbol index; version 4), `STRADDR` |
+| `$10`-`$1F` | `FUNC`, `ENDFUNC`, `CONST`, `CALL`, `DROP`, `DUP`, `RETURN`, `FUNCADDR`, `ICALL`, `NEG`, `COMP`, `NOT`, `SWAP` (*a* = top block's length in ops, *f* = the block below's, or -1: don't move code; approach.md 18.7, A), `UDIV` (*a* = 1 if the right operand is a constant), `UMOD`, `USHR` |
+| `$30`-`$39` | binary: `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, `AND`, `OR`, `XOR`, `SHL`, `SHR` |
+| `$40`-`$49` | comparisons, in De Morgan pairs; the unsigned at +4: `EQ`, `NE`, `LT`, `GE`, `GT`, `LE`, `ULT` (*a* = the right operand's block length in ops, or 0; 18.7, C), `UGE`, `UGT`, `ULE` |
+| `$50`-`$58` | control: `LABEL`, `JUMP`, `BRFALSE`, `BRTRUE`, `SEL`, `JOIN`, `CASES`, `CASEVAL`, `CASETO` |
+| `$5C`-`$5F` | loop markers: `LOOP` (*a*, *f* = labels; version 5; IR.md, "Loops"), `LOOPSTEP`, `LOOPBODY`, `LOOPEND` |
 
-The rest, to `$5F`, are free for new ops (issue 25 of approach.md
-plans a renumbering that uses them).
+The numbers are in blocks whose bits mean something (src/ir.h has a
+macro for each such use, as `IR_CHAR_FORM`). `$20`-`$2F` are kept for
+the access ops' volatile forms (approach.md issue 25); the other
+numbers not named (`$3A`-`$3F`, `$4A`-`$4F`, `$59`-`$5B`) are free, and
+the reader refuses them.
 
-Examples: `IR_ADD` is `16`. `IR_CONST 0` is `02`. `IR_LOCAL 4` is
-`85 04`. `IR_CONST 1000` is `77 E8 03 02` (`w` $03E8, then `CONST`).
-`IR_CALL` of function 12 with 2 arguments is `78 0C 00 92 02` (`x`
+Examples: `IR_ADD` is `30`. `IR_CONST 0` is `12`. `IR_LOCAL 4` is
+`80 04`. `IR_CONST 1000` is `77 E8 03 12` (`w` $03E8, then `CONST`).
+`IR_CALL` of function 12 with 2 arguments is `78 0C 00 93 02` (`x`
 12, then `CALL` with *a* = 2).
 
 Every op is inside a function, from its `FUNC` to its `ENDFUNC`, and

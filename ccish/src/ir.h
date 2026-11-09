@@ -34,54 +34,86 @@
 /* ---------- Stage 1 -> 2: IR ops, through NAME.ir ----------
  * Each op's meaning, and why it differs from PLASMA's, is in ../IR.md;
  * the file's format is in ../OBJECT.md. The op numbers are part of the
- * format: changing them changes IR_VERSION. */
+ * format: changing them changes IR_VERSION. They are grouped in blocks
+ * whose bits mean something, so that one op is made from another with
+ * a bit operation; each such operation is a macro below (IR_ACC_BYTE
+ * and the rest), so a change to the numbers shows what it touches. The
+ * tables indexed by op (irin.c's stk_effect[], lower.c's lw_kind[],
+ * lw_op[] and ir_names[]) follow the numbers too. */
 
 enum {
-  IR_FUNC,        /* f: start a function */
-  IR_ENDFUNC,     /* a = frame size: end the current function */
-  IR_CONST,       /* a = value: push a constant */
-  IR_DATAADDR,    /* a = data offset: push the address of data */
-  IR_STRADDR,     /* a = string pool offset: push a string's address */
-  IR_LOCAL,       /* a = frame offset: push a local word */
-  IR_SETLOCAL,    /* a = frame offset: store top value there, keep it */
+  /* The access ops, $00-$0B: a variable's or an address's value, and
+   * stores to it. Their bits mean something (IR_ACC_BYTE and the rest,
+   * below): bit 0 a byte (a char) rather than a word, bit 1 a store
+   * rather than a load, bits 2-3 where (0 the frame, 1 the data, 2
+   * through an address on the stack). $20-$2F are kept for their
+   * volatile forms (approach.md issue 25). */
+  IR_LOCAL = 0x00,  /* a = frame offset: push a local word */
   IR_LOCALB,      /* a = frame offset: push a local byte (a char) */
+  IR_SETLOCAL,    /* a = frame offset: store top value there, keep it */
   IR_SETLOCALB,   /* a = frame offset: store the top value's low byte
                    * there, and keep that byte as the value */
-  IR_LOCALADDR,   /* a = frame offset: push the address of a local */
   IR_GLOBAL,      /* a = data offset: push a global word */
-  IR_SETGLOBAL,   /* a = data offset: store top value there, keep it */
   IR_GLOBALB,     /* a = data offset: push a global byte (a char) */
+  IR_SETGLOBAL,   /* a = data offset: store top value there, keep it */
   IR_SETGLOBALB,  /* a = data offset: store the top value's low byte
                    * there, and keep that byte as the value */
   IR_LOAD,        /* ( addr -- word ) load a word */
   IR_LOADB,       /* ( addr -- byte ) load a byte (a char) */
   IR_STORE,       /* ( val addr -- ) store a word */
   IR_STOREB,      /* ( val addr -- ) store val's low byte */
+  /* addresses, $0C-$0F: */
+  IR_LOCALADDR,   /* a = frame offset: push the address of a local */
+  IR_DATAADDR,    /* a = data offset: push the address of data */
+  /* f = data symbol: push the address of a global that may move to
+   * the heap (approach.md, "Large zero-filled data on the heap"):
+   * always an LA of the symbol itself, which ccrel may turn into an
+   * LAW of its pointer word, so never folded into another op */
+  IR_HEAPADDR,
+  IR_STRADDR,     /* a = string pool offset: push a string's address */
+  /* $10-$1F: */
+  IR_FUNC = 0x10, /* f: start a function */
+  IR_ENDFUNC,     /* a = frame size: end the current function */
+  IR_CONST,       /* a = value: push a constant */
   IR_CALL,        /* f, a = argument count: call, push the result */
   IR_DROP,        /* discard the top value */
   IR_DUP,         /* duplicate the top value */
   IR_RETURN,      /* a = the result's words (0 for void, a struct's
                    * words, else 1): return them from the current
                    * function */
-  /* binary: ( x y -- x op y ) */
-  IR_ADD, IR_SUB, IR_MUL, IR_DIV, IR_MOD,
-  IR_AND, IR_OR, IR_XOR, IR_SHL, IR_SHR,
-  /* comparisons, binary, giving C's 1 or 0 (not PLASMA's $FFFF): all
-   * in one range (IR_IS_COMPARE), in adjacent De Morgan pairs, so the
-   * opposite of any is its number with bit 0 flipped
-   * (IR_COMPARE_FLIP): EQ NE, LT GE, GT LE, then the unsigned (18.7,
-   * C) in the same order at the offset IR_ULT - IR_LT from them
-   * (parse.c adds that offset to find one); the unsigned's a = the
-   * right operand's block length in IR ops, or 0 if not known */
-  IR_EQ, IR_NE, IR_LT, IR_GE, IR_GT, IR_LE,
-  IR_ULT, IR_UGE, IR_UGT, IR_ULE,
+  /* function pointers (approach.md, "Function pointer design"): */
+  IR_FUNCADDR,    /* f = function: push its address */
+  IR_ICALL,       /* a = argument count, f = the result's words:
+                   * ( args addr -- result ) call the function at
+                   * addr */
   /* unary: ( x -- op x ) */
   IR_NEG, IR_COMP,
   IR_NOT,         /* C's !: 1 if x is 0, else 0 (not PLASMA's NOT) */
-  /* control flow; a = label number, local to the function. JUMP
-   * through SEL are the ops that name a label in a (IR_REFS_LABEL),
-   * JOIN behind them */
-  IR_LABEL,       /* a branch target */
+  /* reordering (approach.md 18.7, A), done by ccgen: */
+  IR_SWAP,        /* a = the top block's length in IR ops, f = the
+                   * block below's, or -1 if code must not move:
+                   * exchange the values the two blocks left */
+  /* unsigned arithmetic PLASMA lacks, binary ( x y -- x op y ), for
+   * unsigned operands; ccgen lowers them (approach.md, "unsigned and
+   * helper functions design") */
+  IR_UDIV, IR_UMOD, IR_USHR,
+  /* binary, $30-$39: ( x y -- x op y ) */
+  IR_ADD = 0x30, IR_SUB, IR_MUL, IR_DIV, IR_MOD,
+  IR_AND, IR_OR, IR_XOR, IR_SHL, IR_SHR,
+  /* comparisons, $40-$49, binary, giving C's 1 or 0 (not PLASMA's
+   * $FFFF): all in one range (IR_IS_COMPARE), in adjacent De Morgan
+   * pairs from an even number, so the opposite of any is its number
+   * with bit 0 flipped (IR_COMPARE_FLIP): EQ NE, LT GE, GT LE, then the
+   * unsigned (18.7, C) in the same order, at IR_U_COMPARE() of them;
+   * the unsigned's a = the right operand's block length in IR ops, or
+   * 0 if not known */
+  IR_EQ = 0x40, IR_NE, IR_LT, IR_GE, IR_GT, IR_LE,
+  IR_ULT, IR_UGE, IR_UGT, IR_ULE,
+  /* control flow, $50-$58; a = label number, local to the function.
+   * JUMP through SEL are the ops that name a label in a
+   * (IR_REFS_LABEL), JOIN behind them; BRFALSE is even and BRTRUE
+   * the next (IR_BR_IF) */
+  IR_LABEL = 0x50,  /* a branch target */
   IR_JUMP,        /* always branch */
   IR_BRFALSE,     /* ( x -- ) branch if x is 0 */
   IR_BRTRUE,      /* ( x -- ) branch if x is not 0 */
@@ -91,36 +123,20 @@ enum {
   IR_CASES,       /* a = the number of cases that follow */
   IR_CASEVAL,     /* a = one case's value; then: */
   IR_CASETO,      /* a = the label of that case's code */
-  /* reordering (approach.md 18.7, A), done by ccgen: */
-  IR_SWAP,        /* a = the top block's length in IR ops, f = the
-                   * block below's, or -1 if code must not move:
-                   * exchange the values the two blocks left */
-  /* unsigned arithmetic PLASMA lacks, binary ( x y -- x op y ), for
-   * unsigned operands; ccgen lowers them (approach.md, "unsigned and
-   * helper functions design") */
-  IR_UDIV, IR_UMOD, IR_USHR,
-  /* f = data symbol: push the address of a global that may move to
-   * the heap (approach.md, "Large zero-filled data on the heap"):
-   * always an LA of the symbol itself, which ccrel may turn into an
-   * LAW of its pointer word, so never folded into another op */
-  IR_HEAPADDR,
-  /* function pointers (approach.md, "Function pointer design"): */
-  IR_FUNCADDR,    /* f = function: push its address */
-  IR_ICALL,       /* a = argument count, f = the result's words:
-                   * ( args addr -- result ) call the function at
-                   * addr */
   /* loop markers (approach.md, "Loop design"), in source order around
    * a loop's parts; ccgen writes the loop's own jumps and labels, and
    * moves the test and step after the body. They must stay last. */
-  IR_LOOP,        /* a = the test's label, f = the break label: the
+  IR_LOOP = 0x5C, /* a = the test's label, f = the break label: the
                    * test follows, branching to the body when true */
   IR_LOOPSTEP,    /* a = the continue label, f = the break label: the
                    * step follows (none in a while loop) */
   IR_LOOPBODY,    /* a = the body's label, f = the test's: the body
                    * follows */
   IR_LOOPEND,     /* a = the continue label, f = the break label */
-  IR_NOPS,        /* the number of IR ops: at most IR_TAG_END (96),
-                   * since an op's tag is a byte below it (below) */
+  IR_NOPS,        /* past the highest IR op: at most IR_TAG_END (96),
+                   * since an op's tag is a byte below it (below). The
+                   * numbers not named here are no op: the reader
+                   * refuses them (irin.c, stk_effect[]) */
   /* not in the IR file: ccgen's own, for a counted loop's branches
    * (irin.c), which have no IR op: machine op a, with label f */
   IR_MOP = IR_NOPS
@@ -129,7 +145,7 @@ enum {
 /* The IR file: the output name plus this suffix, and its format's
  * version (in its header, after the magic "CIR"). */
 #define SUFFIX_IR   ".ir"
-#define IR_VERSION  12
+#define IR_VERSION  13
 
 /* The sets of ops the compiler tests in more than one place, and its
  * value manipulations on ops, each defined here next to the values it
@@ -156,6 +172,26 @@ enum {
 #define IR_REFS_LABEL(op)    (((op) >= IR_JUMP && (op) <= IR_SEL) \
                               || (op) == IR_CASETO)
 #define IR_IS_LOOP_MARKER(op) ((op) >= IR_LOOP && (op) <= IR_LOOPEND)
+/* Is op (0 or more) a number some IR op has? The gaps between the
+ * blocks are none, and the reader refuses them (irin.c). */
+#define IR_IS_OP(op)  ((op) <= IR_USHR || IR_IS_BINARY(op) \
+                       || IR_IS_COMPARE(op) \
+                       || ((op) >= IR_LABEL && (op) <= IR_CASETO) \
+                       || IR_IS_LOOP_MARKER(op))
+/* An unsigned comparison, from the signed one of the same sense (LT
+ * to ULT, and so on); valid only on IR_IS_RELATIONAL. */
+#define IR_U_COMPARE(op)     ((op) + (IR_ULT - IR_LT))
+/* BRTRUE if t, else BRFALSE; t must be 0 or 1 (BRTRUE is BRFALSE | 1). */
+#define IR_BR_IF(t)          (IR_BRFALSE | (t))
+/* The access ops' bits (IR_LOCAL ... IR_STOREB), valid only on them:
+ * IR_IS_ACCESS. The char form of a word access, if c (which must be 0
+ * or 1, as IR_ACC_BYTE is 1); a load's store, which keeps its value
+ * for LOCAL and GLOBAL (SETLOCAL), not for LOAD (STORE). */
+#define IR_ACC_BYTE          0x01
+#define IR_ACC_STORE         0x02
+#define IR_IS_ACCESS(op)     ((op) < IR_LOCALADDR)
+#define IR_CHAR_FORM(op, c)  ((op) | (c))
+#define IR_STORE_FORM(op)    ((op) | IR_ACC_STORE)
 
 /* The bit that marks an IR op followed by a one-byte operand. An IR
  * op's tag is its number, below IR_TAG_END ($60), so up to 96 ops; a

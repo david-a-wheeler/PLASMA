@@ -889,7 +889,7 @@ void cond_branch(Operand *o, int n, int on_true)
     return;
   }
   rvalue(o);
-  branch(on_true ? IR_BRTRUE : IR_BRFALSE, n);
+  branch(IR_BR_IF(on_true), n);
 }
 
 /* ---------- Expressions ---------- */
@@ -945,11 +945,11 @@ static void load_var(int off, int global, int is_char)
 {
   if (movable(global)) {
     push_var_addr(off, global);
-    put(is_char ? IR_LOADB : IR_LOAD, 0, -1);
+    put(IR_CHAR_FORM(IR_LOAD, is_char), 0, -1);
   } else if (global) {
-    put(is_char ? IR_GLOBALB : IR_GLOBAL, off, data_sym_of(global));
+    put(IR_CHAR_FORM(IR_GLOBAL, is_char), off, data_sym_of(global));
   } else {
-    put(is_char ? IR_LOCALB : IR_LOCAL, off, -1);
+    put(IR_CHAR_FORM(IR_LOCAL, is_char), off, -1);
   }
 }
 
@@ -966,11 +966,11 @@ void store_var(Operand *o)
     }
     put(IR_DUP, 0, -1);
     push_var_addr(o->off, o->global);
-    put(c ? IR_STOREB : IR_STORE, 0, -1);
+    put(IR_CHAR_FORM(IR_STORE, c), 0, -1);
   } else if (o->global) {
-    put(c ? IR_SETGLOBALB : IR_SETGLOBAL, o->off, data_sym_of(o->global));
+    put(IR_CHAR_FORM(IR_SETGLOBAL, c), o->off, data_sym_of(o->global));
   } else {
-    put(c ? IR_SETLOCALB : IR_SETLOCAL, o->off, -1);
+    put(IR_CHAR_FORM(IR_SETLOCAL, c), o->off, -1);
   }
 }
 
@@ -983,12 +983,12 @@ int max_offset(int global)
 
 /* The IR op that loads a value of type t from an address (a char is a
  * byte). A macro, not a function: it has one caller. */
-#define load_op(t) ((t) == TY_CHAR ? IR_LOADB : IR_LOAD)
+#define load_op(t) IR_CHAR_FORM(IR_LOAD, (t) == TY_CHAR)
 
 /* The IR op that stores a value of type t at an address. */
 int store_op(int t)
 {
-  return t == TY_CHAR ? IR_STOREB : IR_STORE;
+  return IR_CHAR_FORM(IR_STORE, t == TY_CHAR);
 }
 
 /* Is o a place (a variable, or an object reached through an address)

@@ -260,31 +260,61 @@ static void reverse(int i, int j)
  * So each block must leave exactly the values IR_SWAP or the unsigned
  * comparison says (1, or 2 for a top block ending in DUP), and never
  * use a value from below it. Each op's effect is in stk_effect[]: the
- * values it pops times 16, plus those it pushes, or -1 for an op that
- * can't be in an expression. A CALL pops its arguments and pushes a
+ * values it pops times 16, plus those it pushes, or STK_NONE for an op
+ * that can't be in an expression, and for a number that is no op (the
+ * reader refuses those: IR_IS_OP). It's a char table, and char is
+ * unsigned (as in ccish), so STK_NONE is a value no op's effect has,
+ * not -1. A CALL pops its arguments and pushes a
  * value if its function returns one (from the name record). Branches
  * are followed: lab_depth[] is the depth at each label the block
  * branches to (plus 1; 0 if none yet), and code after a JUMP is
  * unreachable until a label. A SWAP inside the block, done or not,
  * changes no depth.
  */
+#define STK_NONE 0x7F
 static const char stk_effect[IR_NOPS] = {
-  -1, -1, 0x01, 0x01, 0x01,                 /* FUNC ... STRADDR */
-  0x01, 0x11, 0x01, 0x11, 0x01,             /* locals */
-  0x01, 0x11, 0x01, 0x11,                   /* globals */
-  0x11, 0x11, 0x20, 0x20,                   /* LOAD ... STOREB */
-  0x00, 0x10, 0x12, -1,                     /* CALL, DROP, DUP, RETURN */
-  0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21, 0x21,
-  0x21, 0x21, 0x21, 0x21, 0x21, 0x21,       /* ... SHR, comparisons */
-  0x21, 0x21, 0x21, 0x21,                   /* both signs */
-  0x11, 0x11, 0x11,                         /* NEG, COMP, NOT */
-  0x00, 0x00, 0x10, 0x10, -1,               /* LABEL ... SEL */
-  0x00, -1, -1, -1,                          /* JOIN, the case table */
-  0x22,                                     /* SWAP */
-  0x21, 0x21, 0x21,                         /* UDIV, UMOD, USHR */
-  0x01,                                     /* HEAPADDR */
-  0x01, 0x00,                               /* FUNCADDR, ICALL */
-  -1, -1, -1, -1                            /* loop markers: never held */
+  /* $00: local localb setlocal setlocalb */
+  0x01, 0x01, 0x11, 0x11,
+  /* $04: global globalb setglobal setglobalb */
+  0x01, 0x01, 0x11, 0x11,
+  /* $08: load loadb store storeb */
+  0x11, 0x11, 0x20, 0x20,
+  /* $0C: localaddr dataaddr heapaddr straddr */
+  0x01, 0x01, 0x01, 0x01,
+  /* $10: func endfunc const call */
+  STK_NONE, STK_NONE, 0x01, 0x00,
+  /* $14: drop dup return funcaddr */
+  0x10, 0x12, STK_NONE, 0x01,
+  /* $18: icall neg comp not */
+  0x00, 0x11, 0x11, 0x11,
+  /* $1C: swap udiv umod ushr */
+  0x22, 0x21, 0x21, 0x21,
+  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  /* $20: none */
+  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  /* $24: none */
+  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  /* $28: none */
+  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  /* $2C: none */
+  /* $30: add sub mul div */
+  0x21, 0x21, 0x21, 0x21,
+  /* $34: mod and or xor */
+  0x21, 0x21, 0x21, 0x21,
+  /* $38: shl shr - - */
+  0x21, 0x21, STK_NONE, STK_NONE,
+  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  /* $3C: none */
+  /* $40: eq ne lt ge */
+  0x21, 0x21, 0x21, 0x21,
+  /* $44: gt le ult uge */
+  0x21, 0x21, 0x21, 0x21,
+  /* $48: ugt ule - - */
+  0x21, 0x21, STK_NONE, STK_NONE,
+  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  /* $4C: none */
+  /* $50: label jump brfalse brtrue */
+  0x00, 0x00, 0x10, 0x10,
+  /* $54: sel join cases caseval */
+  STK_NONE, 0x00, STK_NONE, STK_NONE,
+  /* $58: caseto - - - */
+  STK_NONE, STK_NONE, STK_NONE, STK_NONE,
+  /* $5C: loop loopstep loopbody loopend */
+  STK_NONE, STK_NONE, STK_NONE, STK_NONE,
 };
 
 static char lab_depth[MAX_LABELS];
@@ -308,7 +338,7 @@ static int block_ok(int start, int len, int want)
     lab_depth[i] = 0;
   for (i = start; i < start + len; i++) {
     op = buf_op[i];
-    if ((e = stk_effect[op]) < 0)
+    if ((e = stk_effect[op]) == STK_NONE)
       return 0;
     if (op == IR_LABEL) {
       if ((d = lab_depth[buf_a[i]]) != 0) {
@@ -965,8 +995,8 @@ static int good_label(int n)
 static void do_op(int op, int a, int f)
 {
   int i;
-  if (op >= IR_NOPS || (op == IR_FUNC) == in_func)
-    ir_damaged();               /* FUNC outside a function, all else in */
+  if (!IR_IS_OP(op) || (op == IR_FUNC) == in_func)
+    ir_damaged();     /* no such op; FUNC outside a function, all else in */
   switch (op) {
   case IR_FUNC: case IR_CALL: case IR_FUNCADDR:
     if (f < 0 || f >= MAX_FUNCS || !fn_id[f])

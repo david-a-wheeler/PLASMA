@@ -18,20 +18,51 @@
 #include "peep.h"
 #include "helper.h"
 
-/* Each IR op's name, for -i. */
+/* Each IR op's name, for -i; 0 for a number that is no op, which
+ * irin.c refuses before it prints one. */
 static const char *const ir_names[] = {
-  "FUNC", "ENDFUNC", "CONST", "DATAADDR", "STRADDR", "LOCAL", "SETLOCAL",
-  "LOCALB", "SETLOCALB", "LOCALADDR", "GLOBAL", "SETGLOBAL", "GLOBALB",
-  "SETGLOBALB", "LOAD", "LOADB", "STORE", "STOREB", "CALL",
-  "DROP", "DUP", "RETURN",
-  "ADD", "SUB", "MUL", "DIV", "MOD", "AND", "OR", "XOR", "SHL", "SHR",
-  "EQ", "NE", "LT", "GE", "GT", "LE",
-  "ULT", "UGE", "UGT", "ULE",
-  "NEG", "COMP", "NOT",
-  "LABEL", "JUMP", "BRFALSE", "BRTRUE", "SEL",
-  "JOIN", "CASES", "CASEVAL", "CASETO", "SWAP",
-  "UDIV", "UMOD", "USHR", "HEAPADDR", "FUNCADDR", "ICALL",
-  "LOOP", "LOOPSTEP", "LOOPBODY", "LOOPEND"
+  /* $00: local localb setlocal setlocalb */
+  "LOCAL", "LOCALB", "SETLOCAL", "SETLOCALB",
+  /* $04: global globalb setglobal setglobalb */
+  "GLOBAL", "GLOBALB", "SETGLOBAL", "SETGLOBALB",
+  /* $08: load loadb store storeb */
+  "LOAD", "LOADB", "STORE", "STOREB",
+  /* $0C: localaddr dataaddr heapaddr straddr */
+  "LOCALADDR", "DATAADDR", "HEAPADDR", "STRADDR",
+  /* $10: func endfunc const call */
+  "FUNC", "ENDFUNC", "CONST", "CALL",
+  /* $14: drop dup return funcaddr */
+  "DROP", "DUP", "RETURN", "FUNCADDR",
+  /* $18: icall neg comp not */
+  "ICALL", "NEG", "COMP", "NOT",
+  /* $1C: swap udiv umod ushr */
+  "SWAP", "UDIV", "UMOD", "USHR",
+  0, 0, 0, 0,  /* $20: none */
+  0, 0, 0, 0,  /* $24: none */
+  0, 0, 0, 0,  /* $28: none */
+  0, 0, 0, 0,  /* $2C: none */
+  /* $30: add sub mul div */
+  "ADD", "SUB", "MUL", "DIV",
+  /* $34: mod and or xor */
+  "MOD", "AND", "OR", "XOR",
+  /* $38: shl shr - - */
+  "SHL", "SHR", 0, 0,
+  0, 0, 0, 0,  /* $3C: none */
+  /* $40: eq ne lt ge */
+  "EQ", "NE", "LT", "GE",
+  /* $44: gt le ult uge */
+  "GT", "LE", "ULT", "UGE",
+  /* $48: ugt ule - - */
+  "UGT", "ULE", 0, 0,
+  0, 0, 0, 0,  /* $4C: none */
+  /* $50: label jump brfalse brtrue */
+  "LABEL", "JUMP", "BRFALSE", "BRTRUE",
+  /* $54: sel join cases caseval */
+  "SEL", "JOIN", "CASES", "CASEVAL",
+  /* $58: caseto - - - */
+  "CASETO", 0, 0, 0,
+  /* $5C: loop loopstep loopbody loopend */
+  "LOOP", "LOOPSTEP", "LOOPBODY", "LOOPEND",
 };
 
 /* How each IR op lowers (lw_kind[]), and the PLASMA opcode it lowers
@@ -54,48 +85,93 @@ static const char *const ir_names[] = {
 enum { L_SIMPLE, L_COMPARE, L_OPERAND, L_GLOBAL, L_PSEUDO, L_SPECIAL };
 
 static const char lw_kind[IR_NOPS] = {
-  L_SPECIAL, L_SPECIAL, L_SPECIAL,          /* FUNC, ENDFUNC, CONST */
-  L_GLOBAL, L_SPECIAL,                      /* DATAADDR, STRADDR */
-  L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,   /* locals */
-  L_GLOBAL, L_GLOBAL, L_GLOBAL, L_GLOBAL,   /* globals */
-  L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,   /* LOAD ... STOREB */
-  L_SPECIAL, L_SIMPLE, L_SIMPLE, L_SPECIAL, /* CALL, DROP, DUP, RETURN */
-  L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,        /* ADD ... */
-  L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,        /* ... SHR */
-  L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,
-  L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,   /* the unsigned (irin.c
-                                                 * flips the sign bits first) */
-  L_SIMPLE, L_SIMPLE, L_SPECIAL,            /* NEG, COMP, NOT */
-  L_PSEUDO, L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,    /* ... SEL */
-  L_SPECIAL, L_PSEUDO, L_PSEUDO, L_PSEUDO,  /* JOIN, the case table */
-  L_SPECIAL,                                /* SWAP */
-  L_SPECIAL, L_SPECIAL, L_SPECIAL,          /* UDIV, UMOD, USHR */
-  L_SPECIAL,                                /* HEAPADDR */
-  L_SPECIAL, L_SIMPLE,                      /* FUNCADDR, ICALL */
-  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL    /* loop markers: irin.c
-                                                 * takes them */
+  /* $00: local localb setlocal setlocalb */
+  L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,
+  /* $04: global globalb setglobal setglobalb */
+  L_GLOBAL, L_GLOBAL, L_GLOBAL, L_GLOBAL,
+  /* $08: load loadb store storeb */
+  L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,
+  /* $0C: localaddr dataaddr heapaddr straddr */
+  L_OPERAND, L_GLOBAL, L_SPECIAL, L_SPECIAL,
+  /* $10: func endfunc const call */
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,
+  /* $14: drop dup return funcaddr */
+  L_SIMPLE, L_SIMPLE, L_SPECIAL, L_SPECIAL,
+  /* $18: icall neg comp not */
+  L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SPECIAL,
+  /* $1C: swap udiv umod ushr */
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  /* $20: none */
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  /* $24: none */
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  /* $28: none */
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  /* $2C: none */
+  /* $30: add sub mul div */
+  L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,
+  /* $34: mod and or xor */
+  L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,
+  /* $38: shl shr - - */
+  L_SIMPLE, L_SIMPLE, L_SPECIAL, L_SPECIAL,
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  /* $3C: none */
+  /* $40: eq ne lt ge */
+  L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,
+  /* $44: gt le ult uge */
+  L_COMPARE, L_COMPARE, L_COMPARE, L_COMPARE,
+  /* $48: ugt ule - - */
+  L_COMPARE, L_COMPARE, L_SPECIAL, L_SPECIAL,
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  /* $4C: none */
+  /* $50: label jump brfalse brtrue */
+  L_PSEUDO, L_OPERAND, L_OPERAND, L_OPERAND,
+  /* $54: sel join cases caseval */
+  L_OPERAND, L_SPECIAL, L_PSEUDO, L_PSEUDO,
+  /* $58: caseto - - - */
+  L_PSEUDO, L_SPECIAL, L_SPECIAL, L_SPECIAL,
+  /* $5C: loop loopstep loopbody loopend */
+  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,
 };
 
 static const unsigned char lw_op[IR_NOPS] = {
-  0, 0, 0,
-  OP_LA, 0,
-  OP_LLW, OP_DLW, OP_LLB, OP_DLB, OP_LLA,
-  OP_LAW, OP_DAW, OP_LAB, OP_DAB,
+  /* $00: local localb setlocal setlocalb */
+  OP_LLW, OP_LLB, OP_DLW, OP_DLB,
+  /* $04: global globalb setglobal setglobalb */
+  OP_LAW, OP_LAB, OP_DAW, OP_DAB,
+  /* $08: load loadb store storeb */
   OP_LW, OP_LB, OP_SW, OP_SB,
-  0, OP_DROP, OP_DUP, 0,
-  OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD,
-  OP_AND, OP_IOR, OP_XOR, OP_SHL, OP_SHR,
-  OP_ISEQ, OP_ISNE, OP_ISLT, OP_ISGE, OP_ISGT, OP_ISLE,
-  OP_ISLT, OP_ISGE, OP_ISGT, OP_ISLE,       /* the unsigned: the signed
-                                             * opcode, after the flip */
-  OP_NEG, OP_COMP, 0,
-  OP_LABEL & 0xFF, OP_BRNCH, OP_BRFLS, OP_BRTRU, OP_SEL,
-  0, OP_CASES & 0xFF, OP_CASEVAL & 0xFF, OP_CASETO & 0xFF,
-  0,
-  0, 0, 0,
-  OP_LA,
-  0, OP_ICAL,
-  0, 0, 0, 0
+  /* $0C: localaddr dataaddr heapaddr straddr */
+  OP_LLA, OP_LA, OP_LA, 0,
+  /* $10: func endfunc const call */
+  0, 0, 0, 0,
+  /* $14: drop dup return funcaddr */
+  OP_DROP, OP_DUP, 0, 0,
+  /* $18: icall neg comp not */
+  OP_ICAL, OP_NEG, OP_COMP, 0,
+  /* $1C: swap udiv umod ushr */
+  0, 0, 0, 0,
+  0, 0, 0, 0,  /* $20: none */
+  0, 0, 0, 0,  /* $24: none */
+  0, 0, 0, 0,  /* $28: none */
+  0, 0, 0, 0,  /* $2C: none */
+  /* $30: add sub mul div */
+  OP_ADD, OP_SUB, OP_MUL, OP_DIV,
+  /* $34: mod and or xor */
+  OP_MOD, OP_AND, OP_IOR, OP_XOR,
+  /* $38: shl shr - - */
+  OP_SHL, OP_SHR, 0, 0,
+  0, 0, 0, 0,  /* $3C: none */
+  /* $40: eq ne lt ge */
+  OP_ISEQ, OP_ISNE, OP_ISLT, OP_ISGE,
+  /* $44: gt le ult uge */
+  OP_ISGT, OP_ISLE, OP_ISLT, OP_ISGE,
+  /* $48: ugt ule - - */
+  OP_ISGT, OP_ISLE, 0, 0,
+  0, 0, 0, 0,  /* $4C: none */
+  /* $50: label jump brfalse brtrue */
+  OP_LABEL & 0xFF, OP_BRNCH, OP_BRFLS, OP_BRTRU,
+  /* $54: sel join cases caseval */
+  OP_SEL, 0, OP_CASES & 0xFF, OP_CASEVAL & 0xFF,
+  /* $58: caseto - - - */
+  OP_CASETO & 0xFF, 0, 0, 0,
+  /* $5C: loop loopstep loopbody loopend */
+  0, 0, 0, 0,
 };
 
 /* Write s, then n in decimal, to standard output, for the -i and -d

@@ -1212,7 +1212,7 @@ static int unsigned_op(Operand *o, Operand *r, int *op, int mid)
               : is_uns(o->type) || is_uns(value_type(r->type))))
     return 0;
   if (is_relational(*op)) {
-    *op += IR_ULT - IR_LT;
+    *op = IR_U_COMPARE(*op);
     put(*op, mid >= 0 && o->kind != K_CONST ? ir_here() - mid : 0, -1);
   } else if (*op == IR_DIV || *op == IR_MOD || *op == IR_SHR) {
     shift = *op == IR_SHR;
@@ -1244,7 +1244,7 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
      * with the length of r's code, which ccgen needs to flip both sign
      * bits (approach.md 18.7, C). */
     if (is_relational(op)) {
-      put(op - IR_LT + IR_ULT, mid >= 0 ? ir_here() - mid : 0, -1);
+      put(IR_U_COMPARE(op), mid >= 0 ? ir_here() - mid : 0, -1);
       o->kind = K_VALUE;
       o->type = TY_INT;
       o->is_bool = 1;
@@ -1626,7 +1626,7 @@ static int fold_held(Operand *o, Operand *rp, int ir_op, Operand *addr)
     put(IR_CONST, o->val, -1);
     if (is_relational(op)
         && (is_uns(o->type) || is_uns(value_type(r.type))))
-      put(op + IR_ULT - IR_LT, 1, -1);
+      put(IR_U_COMPARE(op), 1, -1);
     else
       put(op, 0, -1);
     o->type = is_compare(ir_op) ? TY_INT : arith_type(o->type, r.type);

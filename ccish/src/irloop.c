@@ -334,7 +334,7 @@ static int step_shape(int d, int *v, int *k)
 static void dlw_fix(int d)
 {
   int t = lp_test[d], st = lp_step[d], v = lp_a[t], load = lp_op[t];
-  int store = load == IR_LOCAL ? IR_SETLOCAL : IR_SETLOCALB, i;
+  int store = IR_STORE_FORM(load), i;
   lp_fvar[d] = -1;
   if (st - t < 2 || (load != IR_LOCAL && load != IR_LOCALB))
     return;
