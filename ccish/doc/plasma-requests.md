@@ -18,12 +18,16 @@ below would remove one:
 |---|---|
 | 1. Stream the RLD | None possible: cccomp can't load on a 64K Apple II |
 | 2. plvm exits with the status | tools/ccstat.pla, its marker, and tools/ccrun's parsing (and xplasm and acme in ccish's build) |
-| 3. Unsigned comparison ops | The sign-flip on every unsigned and pointer comparison (4 to 8 bytes each); counted loops limited to `int` |
+| 3. Unsigned comparison ops | A CMDSYS call (3 bytes, about 123 cycles) for every unsigned and pointer `<`, `>`, `<=`, `>=`; counted loops limited to `int` |
 | 4. Reject a bad import | Nothing to drop, but import mistakes found at load, not at run time |
 | 5. Stop on an eval stack error | Nothing to drop, but a compiler bug can't pass a test |
 | 6. A way to unwind | tools/plvmexit.c, the BRK stand-in for `exit()`; the library could then define `exit` |
 | 7. FILEIO fidelity | The library's ignoring of `create` and `destroy` results (lib/fopen.c) |
 | 11. A stderr route | Error messages mixed into stdout under plvm |
+| 12. Zero runs in the data segment | About 12.4K of zeros in ccish's four module files (4.3K in cccomp's) |
+| 13. Run `main` after init | One-time startup code held in memory for the whole run |
+| 14. Call bytecode directly | A 5-byte def entry for each function (1,465 bytes in cccomp, kept while it runs) |
+| 15. A map of free memory | Guesses about what a 64K Apple II has free |
 
 ## 1. The loaders: stream the RLD (needed to run ccish on an Apple II)
 
@@ -35,12 +39,26 @@ applies the RLD, and only then frees the RLD and ESD. So a module's
 load peak is its whole file.
 
 **Why it's a problem.** It's the blocker for running ccish on a real
-64K Apple II now. cccomp's module file is 44,110 bytes (2026-11-07),
-about 12.9K of it RLD and ESD, and free memory on such a machine is
-under about 40K (approach.md 18.6), so cccomp can't load at all, even
-though its body (about 31K) would fit. The RLD is a run-once table:
-each entry is applied once and thrown away, so it never needs to be in
-memory all at once.
+64K Apple II now. cccomp's module file is 44,017 bytes (2026-11-09),
+12,266 of it RLD and ESD, and free memory on such a machine is under
+about 40K (approach.md 18.6, never measured), so cccomp can't load at
+all, even though its body (31,751 bytes) would fit. The RLD is a
+run-once table: each entry is applied once and thrown away, so it
+never needs to be in memory all at once.
+
+**Will cccomp fit with it?** Probably, but only just. Measured
+2026-11-09, cccomp needs, while it runs: its body (31,751), the
+loader's def table, kept (1,465: 5 bytes for each of 293 functions),
+the zero-filled tables it puts on the heap at start (2,388), a frame
+stack of at least about 1,560 (more for deeply nested expressions),
+and one 1K ProDOS I/O buffer for its second open file (the first uses
+ProDOS's buffer at $0800): about 38.2K in all, against "under about
+40K". So streaming is necessary, and likely enough, but the margin is
+under 2K, against a figure no one has measured. The next step after
+streaming is to measure free memory on an emulator or a real 64K
+machine; items 13 to 15 below would add margin if it's needed. (ccish
+has shrunk cccomp's code from 28,321 to 25,854 bytes in 2026-11-08 and
+-09, and will keep trying.)
 
 **The fix.** Read the body into the heap, then stream the RLD four
 bytes at a time from the open file, applying each entry as it
@@ -61,10 +79,9 @@ comes after the RLD. Three options:
   loads as today. This makes the transition easiest, and it's the one
   I'd ask for.
 
-cccomp's load peak would drop from about 44K to about 31K. While the
-format is open, a zero-run encoding of the data segment (flagged by a
-free `sysflags` bit) would also shrink cccomp's file by about 2.7K,
-since 85% of its data segment is zeros.
+cccomp's load peak would drop from about 44K to about 32K. While the
+format is open, item 12's zero-run encoding of the data segment would
+fit in well.
 
 ## 2. plvm: exit with the module's status
 
@@ -97,16 +114,17 @@ just works, and ccstat becomes unnecessary.
 `ISLE`, `ISGE`, and the counted-loop branches like `INCBRLE`) are all
 signed. CMDSYS provides `isult`, `isugt`, `isule` and `isuge`, but
 each use is a `CALL` into a native routine, several times slower than
-a 1-byte opcode (`ISLT` is about 54 cycles), plus 3 bytes for the
-call.
+a 1-byte opcode (`ISLT` is about 44 cycles, the call about 123), plus
+3 bytes for the call.
 
 **Why it's a problem.** C needs unsigned comparisons for every
 `unsigned` comparison and every pointer `<`, `>`, `<=` and `>=`.
-ccish avoids the CMDSYS calls by flipping the sign bit of both sides
-and comparing signed, which costs 8 bytes and 4 ops per comparison (4
-bytes with a constant side; src/irin.c). Loops are where speed
-matters most, and today only `int` loops can use the counted-loop ops;
-unsigned and pointer loops can't.
+ccish calls the CMDSYS routines (since 2026-11-09: that beat its
+earlier sign-bit flip, which took 5 to 9 bytes and about 131 to 218
+cycles; approach.md and OBJECT.md, object version 8). An opcode would
+make each 1 byte and about three times faster. Loops are where speed
+matters most, and today only `int` loops can use the counted-loop
+ops; unsigned and pointer loops can't.
 
 **The fix.** Four opcodes, `ISULT`, `ISUGT`, `ISULE` and `ISUGE`,
 giving `$FFFF` for true like the existing comparisons, in the free
@@ -260,3 +278,89 @@ whole.
 for example, a CMDSYS or CONIO entry, or a reserved FILEIO reference
 number. On the Apple II it would just be the screen, so programs stay
 portable.
+
+## 12. The loaders: zero runs in the data segment (smaller files)
+
+**What's there.** A module file holds its data segment byte for byte,
+and most of it is zeros: the zero-filled globals and tables too small
+for ccrel to move to the heap (approach.md, "Large zero-filled data on
+the heap").
+
+**Why it's a problem.** Disk space and load time. A 140K floppy holds
+the PLASMA system, ccish's four programs, its library and its message
+file; reading from it is slow. Measured 2026-11-09, storing each run of
+5 or more zeros as a count would save:
+
+| Program | Module file | Data segment | Zero bytes | File saved |
+|---|---|---|---|---|
+| cccomp | 44,017 | 4,799 | 4,444 (92%) | about 4,300 (10%) |
+| ccpp | 27,386 | 4,877 | 3,698 (75%) | about 3,500 (13%) |
+| ccgen | 33,624 | 4,411 | 3,140 (71%) | about 2,700 (8%) |
+| ccrel | 16,595 | 2,326 | 1,953 (83%) | about 1,850 (11%) |
+
+About 12.4K across the four. Without streaming (item 1) it would also
+lower the load peak by as much (cccomp's to about 39.7K: not enough
+alone); with streaming, it doesn't change memory, since the data takes
+the same memory once loaded. It would also let ccrel keep more zero
+tables in the file instead of on the heap, whose pointer indirection
+costs code.
+
+**The fix.** Store the data segment as chunks: a 2-byte length then
+that many bytes, or a marker length ($FFFF) then a count of zeros.
+Only the data segment: the bytecode has many short zero runs, where
+the framing would cost more than it saves. A free bit in the header's
+`sysflags` word marks a file that uses it, so old files load as they
+do now. ccrel would write it (src/link.c).
+
+## 13. CMD: run `main` after init, so startup code can be freed
+
+**What's there.** CMD frees a module's init function after it runs
+(unless init asks to keep it). But a ccish program runs all of `main`
+inside init: ccrel's init calls `main` and returns its status
+(approach.md decision 36), so nothing is freed until the program is
+done.
+
+**Why it's a problem.** Code that runs once at startup (argument
+parsing, finding the message file, opening the files, filling
+tables) stays in memory for the whole run, while cccomp's margin on a
+64K machine is under 2K (item 1). I'd guess 0.5K to 1.5K for cccomp;
+measuring which functions run only at startup would tell.
+
+**The fix.** A way for init to return and have CMD then call another
+entry (say, an export named `main`, or a flag in the header), after
+freeing init's code. ccrel would put the startup-only code in the init
+segment. The exit status would come from that entry instead of init.
+
+## 14. VM: call bytecode directly (no def entry per function)
+
+**What's there.** Every function in a module gets a 5-byte def entry
+(`JSR $03D6` and the address, src/vmsrc/apple/cmd.pla `adddef`), kept
+for the life of the module, because `CALL` enters machine code, and
+the entry is what jumps into the interpreter.
+
+**Why it's a problem.** cccomp has 293 functions: 1,465 bytes of def
+entries, held the whole run, and every call goes through the extra
+`JSR`. Nearly all are called only from inside cccomp itself.
+
+**The fix.** A call op that enters a bytecode function directly (say
+`CALLB addr`), so that only exported and address-taken functions need
+def entries: about 1.4K for cccomp, and faster calls. It's a VM change
+like item 3's (every VM and JIT), with the same marker-module caution.
+
+## 15. Documentation: a map of a 64K Apple II's free memory
+
+**What's there.** No one has measured what a 64K Apple II has free
+for a module once ProDOS, the VM, CMD, the zero page, the stacks and
+the text screen are in; "under about 40K" is an estimate
+(approach.md 18.6, E1).
+
+**Why it's a problem.** cccomp's fit (item 1) turns on it. A map
+would also show any holes the loader could use for small fixed things,
+such as the def table or a second ProDOS I/O buffer (FILEIO already
+uses ProDOS's buffer at $0800 for the first open file).
+
+**The fix.** Measure it on an emulator or a real machine (the
+available heap after CMD starts, and what lies in the language card),
+and record it in PLASMA's docs. ccish will need an emulator for this
+anyway, once streaming exists.
+
