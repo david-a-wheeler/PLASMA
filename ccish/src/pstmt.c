@@ -587,6 +587,7 @@ static void parse_declaration(int is_static)
       rvalue(&e);
       v.kind = K_VAR;
       v.type = unqual(type);
+      v.quals = type & Q_ALL;     /* a volatile x = e; stores volatile */
       v.off = var_off[s];
       v.global = 0;
       store_var(&v);

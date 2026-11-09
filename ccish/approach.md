@@ -4291,7 +4291,45 @@ issue updated as each step lands.
    and `ccgen -d`'s listings change only for the three edited files.
    ccgen is 22 bytes smaller.
 4. **volatile**: cccomp, the tables, emit.c's clearing, the opt-ins,
-   and tests (below).
+   and tests (below). **Done** (2026-11-08, IR version 14):
+   - **The ops**: `$20`-`$2B`, each access op `| IR_VOLATILE`, with no
+     names in ir.h (twelve names put irin.c at 212 of `MAX_IDS` 203);
+     `IR_IS_VOLATILE`, `IR_PLAIN_FORM` and `IR_FORM` are the macros.
+     On the machine, `MOP_VOLATILE` (bit 0), `MOP_IS_VOLATILE` and
+     `MOP_PLAIN`; emit.c clears the bit, and `ccgen -d` marks the op
+     (`LAW.v`).
+   - **cccomp**: `acc_form()` gives an access's bits (a byte; volatile,
+     from `Q_VOLATILE >> 4`); `load_var()`, `store_var()`, `rvalue()`,
+     `store_op()` and `finish_store()` use them; `discard()` loads a
+     volatile `x;`; `assign_to()` keeps a volatile object's value with
+     a `DUP` instead of reading it back; a volatile pointer or index
+     variable is read where it is written (`deref()`,
+     `pending_base()`, `parse_index()` and `var_volatile()`), since a
+     pending element would load it later, and twice for `x op= e`.
+     A local's initializer stores plainly. Three operands built by hand
+     (a struct's temporaries, a local's and an aggregate initializer's
+     store) never set `quals`, which only `const` checks had read: the
+     small and full builds then disagreed on which stores were volatile
+     (tests/run/globals.c). They set it now.
+   - **ccgen**: the tables' volatile rows; irloop.c's `body_ok()` takes
+     a volatile store as its plain form. peep.c's opt-ins:
+     `plain_store()`, `absolute_op()` and `fused_op()`; and
+     `is_add_op()` excludes a volatile fused load, which
+     `drop_expr()` would otherwise delete with a dropped value.
+   - **Tests**: tests/run/volatile_access.c, volatile_between.c,
+     volatile_loop.c, volatile_store.c and volatile_ptr.c, each case
+     beside a plain twin that is still optimized (outputs worked out
+     by hand; gcc agrees). The objects of every file without volatile
+     are unchanged (and tests/run/speaker.c's `*SPEAKER` is still one
+     `LAB $C030`).
+   - **Costs**: cccomp 237 bytes of code (`assign_to()` 67,
+     `var_volatile()` 35, `acc_form()` 19, `discard()` 19,
+     `parse_index()` 18, `store_var()` 15, `deref()` and
+     `pending_base()` 12 each, `rvalue()` 10), against an estimate of
+     40 to 80; ccgen 152 of code and 116 of strings (the new names,
+     for `-i`); ccpp's macro tables raised again, `MAX_MACROS` 119 and
+     `MAX_MACRO_BYTES` 976 (peaks 108 and 887), about 150 bytes, most
+     of them on the heap.
 5. Later, apart from volatile: **constants as one pseudo-op until
    emit.c** (discussed 2026-11-08), so that no peephole pattern can
    miss a constant, and one function chooses `CN`, `MINUS1`, `CB`,
@@ -7383,7 +7421,8 @@ Decided:
     the same code as `*(char *)0xC030`. Without the `const`, it is an
     ordinary global, and `*SPEAKER` costs two loads
     (`LAW SPEAKER LB`).
-- **`volatile` is accepted and otherwise ignored** (decided in
+- **`volatile` is accepted and otherwise ignored** (superseded
+  2026-11-08 by issue 25, which makes it real; decided in
   discussion, 2026-10-29; step 6). Real C needs it for memory-mapped
   I/O: an optimizing compiler such as gcc may delete
   `*SPEAKER;` unless `SPEAKER` points to `volatile char`. Accepting it

@@ -375,8 +375,13 @@ has the details.
     `*SPEAKER` is `LAB $C030`. `&N` still works. As in C, `N` isn't a
     constant expression, so it can't size an array or initialize a
     global, and a `const int` holding 0 isn't a null pointer.
-  - `volatile` changes no code: ccish never drops or merges memory
-    reads. It is checked as part of the type, as above.
+  - A `volatile` object is read and written just as the program says:
+    no access is dropped, merged with another, added, or narrowed, as
+    C requires (C11 5.1.2.3, 6.7.3). So `x;` reads a volatile `x`, and
+    an assignment's value isn't read back from a volatile object. The
+    optimizations that change accesses leave volatile ones alone
+    (approach.md issue 25). It is checked as part of the type, as
+    above.
 * Warnings are printed like errors (`file:line: warning 49: ...`), and
   compilation continues.
 * Casts between any of these types. `(void)` discards a value.

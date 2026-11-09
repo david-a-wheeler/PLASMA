@@ -292,7 +292,9 @@ static int limit_ok(int from, int to)
  * label's number. */
 static int body_ok(int op, int a, int f)
 {
-  switch (op) {
+  /* A volatile access is checked as its plain form: what it stores to
+   * matters here, not how often it runs (the body runs it as written). */
+  switch (IR_IS_ACCESS(op) ? IR_PLAIN_FORM(op) : op) {
   case IR_CALL: case IR_ICALL: case IR_UDIV: case IR_UMOD: case IR_USHR:
     return 0;
   case IR_LABEL: case IR_JUMP:

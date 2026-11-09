@@ -400,7 +400,10 @@ static void list_word(Mop *m)
 /* Print one op of a function's listing; frame is its size. */
 static void list_op(Mop *m, int frame)
 {
-  int v;
+  Mop p = *m;                   /* its plain op, and a mark if volatile */
+  int v, vol = MOP_IS_VOLATILE(m->op);
+  p.op = MOP_PLAIN(m->op);
+  m = &p;
   switch (m->op) {
   case OP_LABEL:
     out_num("    ; label ", m->a);
@@ -430,6 +433,8 @@ static void list_op(Mop *m, int frame)
   }
   fputs("    ", stdout);
   fputs(mnems[(m->op - OP_MINUS1) / 2], stdout);
+  if (vol)
+    fputs(".v", stdout);        /* volatile (tools/opstats.py reads LW) */
   switch (m->op) {
   case OP_ENTER:
     out_num(" ", m->a == FRAME_LATER ? frame : m->a);
@@ -496,6 +501,7 @@ void emit_put(Mop *m)
       && nlbuf < NLBUF)
     lbuf[nlbuf++] = *m;
 #endif
+  m->op = MOP_PLAIN(m->op);     /* a volatile op's opcode is the plain one */
   switch (m->op) {
   case OP_FUNC_BEGIN:
     fn = m->fn;

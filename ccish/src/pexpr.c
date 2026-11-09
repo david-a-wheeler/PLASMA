@@ -287,6 +287,7 @@ static void materialize(Operand *o)
   o->kind = K_VAR;
   o->off = t;
   o->global = 0;
+  o->quals = 0;                 /* a temporary: never volatile */
   o->assigned = 1;
 }
 
@@ -652,9 +653,9 @@ static void deref(Operand *o)
     error(66 /* "unary '*' needs a pointer operand" */, NULL);
   if (is_void_ptr(t))
     error(67 /* "dereferencing a 'void *'" */, NULL);
-  if (o->kind == K_VAR) {
+  if (o->kind == K_VAR && !(o->quals & Q_VOLATILE)) {
     make_elem(o, o->off, o->global, 0);     /* *p: the address is in p */
-  } else {
+  } else {                      /* (a volatile p is read now, once) */
     rvalue(o);
     o->kind = K_DEREF;
     o->is_bool = 0;
@@ -663,14 +664,23 @@ static void deref(Operand *o)
   set_object(o, type_sub(t));
 }
 
+/* Is name a variable whose type is volatile? Such an index must be
+ * read where it is written, not later from a pending K_ELEM. */
+static int var_volatile(int name)
+{
+  int v = find_var(name);
+  return v >= 0 && (var_type[v] & Q_VOLATILE);
+}
+
 /* Can o take an index (a variable one if var is set, else a constant)
  * and stay pending? It can if it is an array or pointer variable (local
  * or global), or a K_ELEM of array type (a row of a multi-dimensional
  * array) that has no variable index yet, since a K_ELEM holds only one. */
 static int pending_base(Operand *o, int var)
 {
-  if (o->kind == K_VAR)
-    return is_array(o->type) || is_pointer(o->type);
+  if (o->kind == K_VAR)         /* not a volatile pointer: read it now */
+    return is_array(o->type)
+           || (is_pointer(o->type) && !(o->quals & Q_VOLATILE));
   return o->kind == K_ELEM && is_array(o->type) && !(var && o->idx >= 0);
 }
 
@@ -688,7 +698,7 @@ static void parse_index(Operand *o)
 
   next();                         /* '[' */
   simple = (tok == T_NUM || tok == T_ID) && pending_base(o, tok == T_ID)
-           && next_is_rbracket();
+           && !(tok == T_ID && var_volatile(tok_val)) && next_is_rbracket();
   if (!simple)
     rvalue(o);
   start = code_start(start, h);   /* o's code, for i[p] (binary()) */
@@ -1448,7 +1458,7 @@ void copy_struct(Operand *o, Operand *r, int start)
         put(IR_DROP, 0, -1);
       } else {
         push_address(&d);
-        put(store_op(d.type), 0, -1);
+        put(store_op(d.type, d.quals), 0, -1);
       }
     }
     o->assigned = 1;
@@ -1472,7 +1482,7 @@ void copy_struct(Operand *o, Operand *r, int start)
           put(IR_DROP, 0, -1);
         } else {
           push_address(&d);
-          put(store_op(d.type), 0, -1);
+          put(store_op(d.type, d.quals), 0, -1);
         }
       }
       o->assigned = 1;

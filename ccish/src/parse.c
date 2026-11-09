@@ -938,18 +938,18 @@ void push_var_addr(int off, int global)
   }
 }
 
-/* Push the variable at off, where global says (var_where()): a word,
- * or a byte if is_char; through its address, for a global that may
- * move. */
-static void load_var(int off, int global, int is_char)
+/* Push the variable at off, where global says (var_where()), with the
+ * access form bits form (acc_form(): a byte, volatile); through its
+ * address, for a global that may move. */
+static void load_var(int off, int global, int form)
 {
   if (movable(global)) {
     push_var_addr(off, global);
-    put(IR_CHAR_FORM(IR_LOAD, is_char), 0, -1);
+    put(IR_FORM(IR_LOAD, form), 0, -1);
   } else if (global) {
-    put(IR_CHAR_FORM(IR_GLOBAL, is_char), off, data_sym_of(global));
+    put(IR_FORM(IR_GLOBAL, form), off, data_sym_of(global));
   } else {
-    put(IR_CHAR_FORM(IR_LOCAL, is_char), off, -1);
+    put(IR_FORM(IR_LOCAL, form), off, -1);
   }
 }
 
@@ -958,7 +958,7 @@ static void load_var(int off, int global, int is_char)
  * after a copy of the value, for a global that may move. */
 void store_var(Operand *o)
 {
-  int c = o->type == TY_CHAR;
+  int c = o->type == TY_CHAR, form = acc_form(o->type, o->quals);
   if (movable(o->global)) {
     if (c) {
       put(IR_CONST, 0xFF, -1);
@@ -966,11 +966,11 @@ void store_var(Operand *o)
     }
     put(IR_DUP, 0, -1);
     push_var_addr(o->off, o->global);
-    put(IR_CHAR_FORM(IR_STORE, c), 0, -1);
+    put(IR_FORM(IR_STORE, form), 0, -1);
   } else if (o->global) {
-    put(IR_CHAR_FORM(IR_SETGLOBAL, c), o->off, data_sym_of(o->global));
+    put(IR_FORM(IR_SETGLOBAL, form), o->off, data_sym_of(o->global));
   } else {
-    put(IR_CHAR_FORM(IR_SETLOCAL, c), o->off, -1);
+    put(IR_FORM(IR_SETLOCAL, form), o->off, -1);
   }
 }
 
@@ -981,14 +981,19 @@ int max_offset(int global)
   return global ? 0x7FFF : 255;
 }
 
-/* The IR op that loads a value of type t from an address (a char is a
- * byte). A macro, not a function: it has one caller. */
-#define load_op(t) IR_CHAR_FORM(IR_LOAD, (t) == TY_CHAR)
-
-/* The IR op that stores a value of type t at an address. */
-int store_op(int t)
+/* The form bits (IR_FORM, ir.h) of an access to a place of type t with
+ * qualifiers quals: IR_ACC_BYTE for a char, IR_VOLATILE if volatile.
+ * It relies on IR_ACC_BYTE being 1 and Q_VOLATILE IR_VOLATILE << 4. */
+int acc_form(int t, int quals)
 {
-  return IR_CHAR_FORM(IR_STORE, t == TY_CHAR);
+  return (t == TY_CHAR) | ((quals & Q_VOLATILE) >> 4);
+}
+
+/* The IR op that stores a value of type t, with qualifiers quals, at an
+ * address (a char's a byte; a volatile's the volatile form). */
+int store_op(int t, int quals)
+{
+  return IR_FORM(IR_STORE, acc_form(t, quals));
 }
 
 /* Is o a place (a variable, or an object reached through an address)
@@ -1087,7 +1092,7 @@ void push_address(Operand *o)
     load_var(o->off, o->global, 0);
   }
   if (o->idx >= 0) {
-    load_var(o->idx, o->idx_global, o->idx_char);
+    load_var(o->idx, o->idx_global, IR_CHAR_FORM(0, o->idx_char));
     if (o->scale != 1) {
       put(IR_CONST, o->scale, -1);
       put(IR_MUL, 0, -1);   /* a word index becomes IDXW */
@@ -1148,14 +1153,14 @@ void rvalue(Operand *o)
     o->is_bool = 0;
     break;
   case K_VAR:
-    load_var(o->off, o->global, o->type == TY_CHAR);
+    load_var(o->off, o->global, acc_form(o->type, o->quals));
     o->is_bool = 0;
     break;
   case K_ELEM:
     push_address(o);
     /* fall through */
   case K_DEREF:
-    put(load_op(o->type), 0, -1);
+    put(IR_FORM(IR_LOAD, acc_form(o->type, o->quals)), 0, -1);
     o->is_bool = 0;
     break;
   case K_STORE:
@@ -1261,7 +1266,7 @@ void finish_store(Operand *o, int keep)
   if (keep)
     put(IR_DUP, 0, -1);
   swap_blocks(o->m0, o->m1, 0);
-  put(store_op(o->stype), 0, -1);
+  put(store_op(o->stype, o->quals), 0, -1);
   if (keep && o->vmask) {
     put(IR_CONST, 0xFF, -1);
     put(IR_AND, 0, -1);
@@ -1306,7 +1311,9 @@ void need_lvalue(Operand *o, int what)
  * K_ELEM (spill() first). o becomes the assignment's result: for a
  * variable, its value is kept on the stack (DLW, DAW); for an object
  * reached through an address, it is read back from the object only if
- * needed. */
+ * needed, unless the object is volatile, whose store must not be
+ * followed by a read C didn't ask for: then a copy of the value is kept
+ * below the address (for a char, its low byte). */
 void assign_to(Operand *o)
 {
   if (o->kind == K_VAR) {
@@ -1314,9 +1321,19 @@ void assign_to(Operand *o)
     o->kind = K_VALUE;
     return;
   }
+  if (o->quals & Q_VOLATILE) {
+    if (o->type == TY_CHAR) {
+      put(IR_CONST, 0xFF, -1);
+      put(IR_AND, 0, -1);
+    }
+    put(IR_DUP, 0, -1);
+  }
   push_address(o);
-  put(store_op(o->type), 0, -1);
-  o->assigned = 1;
+  put(store_op(o->type, o->quals), 0, -1);
+  if (o->quals & Q_VOLATILE)
+    o->kind = K_VALUE;
+  else
+    o->assigned = 1;
 }
 
 /* The number of words a struct of type t takes on the stack. */
@@ -1361,8 +1378,9 @@ void discard(Operand *o)
     o->kind = K_VOID;
     return;
   }
-  if (o->kind == K_DEREF || (o->kind == K_ELEM && !o->assigned))
-    rvalue(o);
+  if (o->kind == K_DEREF || (o->kind == K_ELEM && !o->assigned)
+      || (o->kind == K_VAR && (o->quals & Q_VOLATILE)))
+    rvalue(o);                  /* a volatile x; still reads x */
   if (o->kind == K_VALUE)
     put(IR_DROP, 0, -1);
 }

@@ -97,6 +97,14 @@ enum {
    * unsigned operands; ccgen lowers them (approach.md, "unsigned and
    * helper functions design") */
   IR_UDIV, IR_UMOD, IR_USHR,
+  /* The volatile access ops, $20-$2B (no names of their own here, so
+   * that they cost cccomp no MAX_IDS entries): each access op, in the
+   * same order, | IR_VOLATILE (IR_FORM, below), for an object whose
+   * type is volatile (approach.md issue 25). Each does what its plain
+   * form does, but no optimization that would change how often it
+   * runs, or merge it, matches it: a pattern names the ops it
+   * rewrites, and these aren't those. $2C-$2F, an address op |
+   * IR_VOLATILE, are no op. */
   /* binary, $30-$39: ( x y -- x op y ) */
   IR_ADD = 0x30, IR_SUB, IR_MUL, IR_DIV, IR_MOD,
   IR_AND, IR_OR, IR_XOR, IR_SHL, IR_SHR,
@@ -145,7 +153,7 @@ enum {
 /* The IR file: the output name plus this suffix, and its format's
  * version (in its header, after the magic "CIR"). */
 #define SUFFIX_IR   ".ir"
-#define IR_VERSION  13
+#define IR_VERSION  14
 
 /* The sets of ops the compiler tests in more than one place, and its
  * value manipulations on ops, each defined here next to the values it
@@ -174,7 +182,7 @@ enum {
 #define IR_IS_LOOP_MARKER(op) ((op) >= IR_LOOP && (op) <= IR_LOOPEND)
 /* Is op (0 or more) a number some IR op has? The gaps between the
  * blocks are none, and the reader refuses them (irin.c). */
-#define IR_IS_OP(op)  ((op) <= IR_USHR || IR_IS_BINARY(op) \
+#define IR_IS_OP(op)  ((op) <= (IR_STOREB | IR_VOLATILE) || IR_IS_BINARY(op) \
                        || IR_IS_COMPARE(op) \
                        || ((op) >= IR_LABEL && (op) <= IR_CASETO) \
                        || IR_IS_LOOP_MARKER(op))
@@ -183,15 +191,24 @@ enum {
 #define IR_U_COMPARE(op)     ((op) + (IR_ULT - IR_LT))
 /* BRTRUE if t, else BRFALSE; t must be 0 or 1 (BRTRUE is BRFALSE | 1). */
 #define IR_BR_IF(t)          (IR_BRFALSE | (t))
-/* The access ops' bits (IR_LOCAL ... IR_STOREB), valid only on them:
- * IR_IS_ACCESS. The char form of a word access, if c (which must be 0
- * or 1, as IR_ACC_BYTE is 1); a load's store, which keeps its value
- * for LOCAL and GLOBAL (SETLOCAL), not for LOAD (STORE). */
+/* The access ops' bits (IR_LOCAL ... IR_STOREB, and their volatile
+ * forms), valid only on them: IR_IS_ACCESS. The char form of a word
+ * access, if c (which must be 0 or 1, as IR_ACC_BYTE is 1); a load's
+ * store, which keeps its value for LOCAL and GLOBAL (SETLOCAL), not
+ * for LOAD (STORE); the volatile form, and the plain form of either.
+ * IR_FORM adds form, a mix of IR_ACC_BYTE and IR_VOLATILE, to an
+ * access op. (Q_VOLATILE, in type.h, is IR_VOLATILE << 4: parse.c's
+ * acc_form() relies on it.) */
 #define IR_ACC_BYTE          0x01
 #define IR_ACC_STORE         0x02
-#define IR_IS_ACCESS(op)     ((op) < IR_LOCALADDR)
+#define IR_VOLATILE          0x20
+#define IR_IS_ACCESS(op)     (((op) & ~IR_VOLATILE) < IR_LOCALADDR)
+#define IR_IS_VOLATILE(op)   ((op) >= (IR_LOCAL | IR_VOLATILE) \
+                              && (op) <= (IR_STOREB | IR_VOLATILE))
 #define IR_CHAR_FORM(op, c)  ((op) | (c))
 #define IR_STORE_FORM(op)    ((op) | IR_ACC_STORE)
+#define IR_PLAIN_FORM(op)    ((op) & ~IR_VOLATILE)
+#define IR_FORM(op, form)    ((op) | (form))
 
 /* The bit that marks an IR op followed by a one-byte operand. An IR
  * op's tag is its number, below IR_TAG_END ($60), so up to 96 ops; a

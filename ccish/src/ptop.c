@@ -301,6 +301,7 @@ static void init_elem(int type, int off)
     rvalue(&e);
     v.kind = K_VAR;
     v.type = type;
+    v.quals = 0;                /* an initializer's store: plain */
     v.off = at;
     v.global = 0;
     store_var(&v);

@@ -37,9 +37,12 @@ static const char *const ir_names[] = {
   "ICALL", "NEG", "COMP", "NOT",
   /* $1C: swap udiv umod ushr */
   "SWAP", "UDIV", "UMOD", "USHR",
-  0, 0, 0, 0,  /* $20: none */
-  0, 0, 0, 0,  /* $24: none */
-  0, 0, 0, 0,  /* $28: none */
+  /* $20: localv localbv setlocalv setlocalbv */
+  "LOCALV", "LOCALBV", "SETLOCALV", "SETLOCALBV",
+  /* $24: globalv globalbv setglobalv setglobalbv */
+  "GLOBALV", "GLOBALBV", "SETGLOBALV", "SETGLOBALBV",
+  /* $28: loadv loadbv storev storebv */
+  "LOADV", "LOADBV", "STOREV", "STOREBV",
   0, 0, 0, 0,  /* $2C: none */
   /* $30: add sub mul div */
   "ADD", "SUB", "MUL", "DIV",
@@ -100,9 +103,12 @@ static const char lw_kind[IR_NOPS] = {
   L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SPECIAL,
   /* $1C: swap udiv umod ushr */
   L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,
-  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  /* $20: none */
-  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  /* $24: none */
-  L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  /* $28: none */
+  /* $20: localv localbv setlocalv setlocalbv */
+  L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,
+  /* $24: globalv globalbv setglobalv setglobalbv */
+  L_GLOBAL, L_GLOBAL, L_GLOBAL, L_GLOBAL,
+  /* $28: loadv loadbv storev storebv */
+  L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,
   L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  /* $2C: none */
   /* $30: add sub mul div */
   L_SIMPLE, L_SIMPLE, L_SIMPLE, L_SIMPLE,
@@ -145,9 +151,15 @@ static const unsigned char lw_op[IR_NOPS] = {
   OP_ICAL, OP_NEG, OP_COMP, 0,
   /* $1C: swap udiv umod ushr */
   0, 0, 0, 0,
-  0, 0, 0, 0,  /* $20: none */
-  0, 0, 0, 0,  /* $24: none */
-  0, 0, 0, 0,  /* $28: none */
+  /* $20: localv localbv setlocalv setlocalbv */
+  OP_LLW | MOP_VOLATILE, OP_LLB | MOP_VOLATILE,
+  OP_DLW | MOP_VOLATILE, OP_DLB | MOP_VOLATILE,
+  /* $24: globalv globalbv setglobalv setglobalbv */
+  OP_LAW | MOP_VOLATILE, OP_LAB | MOP_VOLATILE,
+  OP_DAW | MOP_VOLATILE, OP_DAB | MOP_VOLATILE,
+  /* $28: loadv loadbv storev storebv */
+  OP_LW | MOP_VOLATILE, OP_LB | MOP_VOLATILE,
+  OP_SW | MOP_VOLATILE, OP_SB | MOP_VOLATILE,
   0, 0, 0, 0,  /* $2C: none */
   /* $30: add sub mul div */
   OP_ADD, OP_SUB, OP_MUL, OP_DIV,

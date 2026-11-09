@@ -157,14 +157,16 @@ static int invert_branch(int op)
 }
 
 /* The store that doesn't keep its value for a store that does (SLW for
- * DLW, and so on for DLB, DAW and DAB), or -1. */
+ * DLW, and so on for DLB, DAW and DAB), or -1. A volatile one opts in
+ * (it is still one store), and keeps its mark. */
 static int plain_store(int op)
 {
-  switch (op) {
-  case OP_DLW: return OP_SLW;
-  case OP_DLB: return OP_SLB;
-  case OP_DAW: return OP_SAW;
-  case OP_DAB: return OP_SAB;
+  int v = op & MOP_VOLATILE;
+  switch (MOP_PLAIN(op)) {
+  case OP_DLW: return OP_SLW | v;
+  case OP_DLB: return OP_SLB | v;
+  case OP_DAW: return OP_SAW | v;
+  case OP_DAB: return OP_SAB | v;
   }
   return -1;
 }
@@ -182,14 +184,16 @@ static int keeping_store(int store, int load)
 }
 
 /* The absolute-address form of a load or store through an address on
- * the stack (LAB for LB, and so on), or -1. */
+ * the stack (LAB for LB, and so on), or -1. A volatile one opts in (it
+ * is still one access), and keeps its mark: *SPEAKER is one LAB. */
 static int absolute_op(int op)
 {
-  switch (op) {
-  case OP_LB: return OP_LAB;
-  case OP_LW: return OP_LAW;
-  case OP_SB: return OP_SAB;
-  case OP_SW: return OP_SAW;
+  int v = op & MOP_VOLATILE;
+  switch (MOP_PLAIN(op)) {
+  case OP_LB: return OP_LAB | v;
+  case OP_LW: return OP_LAW | v;
+  case OP_SB: return OP_SAB | v;
+  case OP_SW: return OP_SAW | v;
   }
   return -1;
 }
@@ -200,17 +204,20 @@ static int absolute_op(int op)
  * $4C, and IDXLB is ADDLB + 8. */
 static int fused_op(int load, int idx)
 {
+  int v = load & MOP_VOLATILE;  /* a volatile load opts in: still one */
+  load = MOP_PLAIN(load);
   if (load < OP_LLB || load > OP_LAW)
     return -1;
-  return load + (OP_ADDLB - OP_LLB) + (idx ? OP_IDXLB - OP_ADDLB : 0);
+  return (load + (OP_ADDLB - OP_LLB) + (idx ? OP_IDXLB - OP_ADDLB : 0)) | v;
 }
 
 /* Does op take one value and give one back, adding something to it
- * (ADDI, SUBI, or ADDLB to IDXAW)? */
+ * (ADDI, SUBI, or ADDLB to IDXAW), with no other effect? Not a
+ * volatile fused load (odd), which drop_expr() mustn't delete. */
 static int is_add_op(int op)
 {
   return op == OP_ADDI || op == OP_SUBI
-         || (op >= OP_ADDLB && op <= OP_IDXAW);
+         || (op >= OP_ADDLB && op <= OP_IDXAW && !MOP_IS_VOLATILE(op));
 }
 
 /* Is op a one-operand op that can sit between DUP and SLW in the x++

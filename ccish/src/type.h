@@ -24,7 +24,8 @@ enum { TK_VOID, TK_CHAR, TK_INT, TK_PTR, TK_ARRAY, TK_STRUCT, TK_UINT,
 /* the basic types' indexes: TY_UINT is unsigned int */
 enum { TY_VOID, TY_CHAR, TY_INT, TY_UINT };
 #define Q_CONST    0x100
-#define Q_VOLATILE 0x200
+#define Q_VOLATILE 0x200   /* IR_VOLATILE << 4 (ir.h): parse.c's
+                             * acc_form() relies on it */
 #define Q_ALL      0x300
 #define TY_INDEX   0xFF     /* MAX_TYPES must be at most 256 */
 

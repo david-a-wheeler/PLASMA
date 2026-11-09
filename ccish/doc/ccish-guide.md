@@ -625,9 +625,14 @@ Both qualifiers go before or after the type (`const char`,
   `&N` still works. As in C, `N` isn't a constant expression, so it
   can't size an array or initialize a global, and a `const int`
   holding 0 isn't a null pointer.
-* `volatile` changes no code: ccish never drops or merges memory
-  reads. It is checked as part of the type. Its use is the I/O
-  registers (section 4.5).
+* A `volatile` object is read and written just as the program says:
+  no access is dropped, merged, added, or narrowed (C11 5.1.2.3,
+  6.7.3). So `x;` reads a volatile `x`; `vx >= '0' && vx <= '7'` reads
+  it twice; a counted loop whose limit is volatile reads it each pass;
+  and an assignment's value isn't read back from a volatile object. A
+  local's initializer, though, is stored as an ordinary store. It is
+  checked as part of the type. Its use is the I/O registers (section
+  4.5), where `*sp` is still one `LAB`.
 
 ### 4.11 Unions
 

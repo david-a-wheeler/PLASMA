@@ -373,6 +373,24 @@ emits `IR_LOCAL` only when the value is needed. For example:
 - `x += e` is `LOCAL x e ADD SETLOCAL x`;
 - `++x` is `LOCAL x CONST 1 ADD SETLOCAL x`.
 
+### The volatile access ops, `$20`-`$2B`
+
+Each access op (`IR_LOCAL` through `IR_STOREB`) has a volatile form,
+its number `| $20` (`IR_VOLATILE`, ir.h), which cccomp writes for an
+object whose type is volatile: a variable, a pointer's target, an
+array's element or a struct's member (which has the struct's
+qualifiers). Each does what its plain form does, and lowers to the
+same opcode, with the machine op's bit 0 set (`MOP_VOLATILE`) until
+emit.c writes it; but no optimization that would change how often it
+runs, or merge it with another, matches it, since a pattern names the
+ops it rewrites and these aren't those. A pattern that keeps the
+access exactly once may opt in: `DLW n DROP` to `SLW n`, `CW addr LB`
+to `LAB addr`, and the fused loads (`LLW n ADD` to `ADDLW n`). cccomp
+also reads a volatile pointer or index variable where it is written,
+not later from a pending element, loads a volatile `x;` that it would
+otherwise drop, and keeps an assignment's value with a `DUP` rather
+than reading a volatile object back. (approach.md issue 25.)
+
 ### `IR_DUP`
 
 Duplicate the top value.

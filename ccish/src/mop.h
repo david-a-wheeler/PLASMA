@@ -71,6 +71,13 @@ enum {
  * load or store, $20 up, as its volatile mark.) */
 #define MOP_IS_CN(op)      ((op) < 0x20 && !((op) & 1))
 #define MOP_IS_PSEUDO(op)  ((op) < 0x20 && ((op) & 1))
+/* A volatile load or store (approach.md issue 25) is its opcode |
+ * MOP_VOLATILE: an odd op from $20 up, which no pattern written for
+ * the plain one matches; emit.c writes the plain opcode. MOP_PLAIN is
+ * the plain op of any op (a pseudo-op, below $20, as it is). */
+#define MOP_VOLATILE       1
+#define MOP_IS_VOLATILE(op) ((op) >= 0x20 && ((op) & 1))
+#define MOP_PLAIN(op)      ((op) >= 0x20 ? (op) & ~MOP_VOLATILE : (op))
 #define MOP_CN(v)          (OP_CN + 2 * (v))     /* CN v, for v 0-15 */
 #define MOP_CN_VALUE(op)   ((op) / 2)            /* CN's v */
 

@@ -289,9 +289,12 @@ static const char stk_effect[IR_NOPS] = {
   0x00, 0x11, 0x11, 0x11,
   /* $1C: swap udiv umod ushr */
   0x22, 0x21, 0x21, 0x21,
-  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  /* $20: none */
-  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  /* $24: none */
-  STK_NONE, STK_NONE, STK_NONE, STK_NONE,  /* $28: none */
+  /* $20: localv localbv setlocalv setlocalbv */
+  0x01, 0x01, 0x11, 0x11,
+  /* $24: globalv globalbv setglobalv setglobalbv */
+  0x01, 0x01, 0x11, 0x11,
+  /* $28: loadv loadbv storev storebv */
+  0x11, 0x11, 0x20, 0x20,
   STK_NONE, STK_NONE, STK_NONE, STK_NONE,  /* $2C: none */
   /* $30: add sub mul div */
   0x21, 0x21, 0x21, 0x21,
