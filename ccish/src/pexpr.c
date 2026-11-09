@@ -664,14 +664,6 @@ static void deref(Operand *o)
   set_object(o, type_sub(t));
 }
 
-/* Is name a variable whose type is volatile? Such an index must be
- * read where it is written, not later from a pending K_ELEM. */
-static int var_volatile(int name)
-{
-  int v = find_var(name);
-  return v >= 0 && (var_type[v] & Q_VOLATILE);
-}
-
 /* Can o take an index (a variable one if var is set, else a constant)
  * and stay pending? It can if it is an array or pointer variable (local
  * or global), or a K_ELEM of array type (a row of a multi-dimensional
@@ -698,13 +690,25 @@ static void parse_index(Operand *o)
 
   next();                         /* '[' */
   simple = (tok == T_NUM || tok == T_ID) && pending_base(o, tok == T_ID)
-           && !(tok == T_ID && var_volatile(tok_val)) && next_is_rbracket();
+           && next_is_rbracket();
   if (!simple)
     rvalue(o);
   start = code_start(start, h);   /* o's code, for i[p] (binary()) */
   mid = ir_here();
   parse_expr(PREC_COMMA, &r);
   expect(']', 68 /* "expected ']' after an array index, not" */);
+  if (simple && r.kind == K_VAR && (r.quals & Q_VOLATILE)) {
+    /* A volatile index is read where it is written, not later (and
+     * for x op= e, twice) from a pending element: o's code now, and the
+     * index's after it, as if it weren't simple. Neither has emitted
+     * anything yet. */
+    start = ir_here();
+    h = nheld;
+    rvalue(o);
+    start = code_start(start, h);
+    mid = ir_here();
+    simple = 0;
+  }
   if (!simple) {
     if (!is_pointer(o->type) && !is_pointer(value_type(r.type)))
       error(69 /* "subscripted value is neither array nor pointer" */,

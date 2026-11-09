@@ -953,6 +953,18 @@ static void load_var(int off, int global, int form)
   }
 }
 
+/* Before a store through an address, keep a copy of the value below
+ * it: for a char, its low byte, the value C gives an assignment to one
+ * (as DLB keeps it). */
+static void keep_copy(int is_char)
+{
+  if (is_char) {
+    put(IR_CONST, 0xFF, -1);
+    put(IR_AND, 0, -1);
+  }
+  put(IR_DUP, 0, -1);
+}
+
 /* Store the top value into the variable o (a K_VAR), keeping the stored
  * value (for a char, its low byte) on the stack: through its address,
  * after a copy of the value, for a global that may move. */
@@ -960,11 +972,7 @@ void store_var(Operand *o)
 {
   int c = o->type == TY_CHAR, form = acc_form(o->type, o->quals);
   if (movable(o->global)) {
-    if (c) {
-      put(IR_CONST, 0xFF, -1);
-      put(IR_AND, 0, -1);       /* the byte a char store keeps */
-    }
-    put(IR_DUP, 0, -1);
+    keep_copy(c);
     push_var_addr(o->off, o->global);
     put(IR_FORM(IR_STORE, form), 0, -1);
   } else if (o->global) {
@@ -1321,13 +1329,8 @@ void assign_to(Operand *o)
     o->kind = K_VALUE;
     return;
   }
-  if (o->quals & Q_VOLATILE) {
-    if (o->type == TY_CHAR) {
-      put(IR_CONST, 0xFF, -1);
-      put(IR_AND, 0, -1);
-    }
-    put(IR_DUP, 0, -1);
-  }
+  if (o->quals & Q_VOLATILE)
+    keep_copy(o->type == TY_CHAR);
   push_address(o);
   put(store_op(o->type, o->quals), 0, -1);
   if (o->quals & Q_VOLATILE)

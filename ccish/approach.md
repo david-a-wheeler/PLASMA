@@ -4330,6 +4330,14 @@ issue updated as each step lands.
      for `-i`); ccpp's macro tables raised again, `MAX_MACROS` 119 and
      `MAX_MACRO_BYTES` 976 (peaks 108 and 887), about 150 bytes, most
      of them on the heap.
+   - **Two trims** (decided in discussion, both emitting the same IR,
+     checked on 177 files): `keep_copy()`, the mask and DUP that
+     `store_var()` (for a global that may move) and `assign_to()`
+     (for a volatile) both emitted; and a volatile index found after
+     it is parsed, not looked up before (`var_volatile()` is gone). I
+     estimated 55 bytes; they save 11: `keep_copy()` is 32 bytes, for 42
+     out of its callers, and the late index check, which must set up
+     `binary()`'s markers, is 34, for `var_volatile()`'s 35.
 5. Later, apart from volatile: **constants as one pseudo-op until
    emit.c** (discussed 2026-11-08), so that no peephole pattern can
    miss a constant, and one function chooses `CN`, `MINUS1`, `CB`,
