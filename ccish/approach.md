@@ -3505,6 +3505,54 @@ Raised in discussion (2026-10-27): the VM might be changed after all
    M5 step 4. It covers the stores and `i + p` with no opcode, so what
    SWAP would still add is mainly compound assignment and `++`/`--`
    on a computed address, which need the address twice.)
+
+   **SWAP revisited** (proposal, 2026-11-09, from Rod's Colors and the
+   hoisting work; not committed: asked for in discussion, "Write up the
+   SWAP proposal"). Rotation in place still handles a store whose
+   blocks are in ccgen's buffer, for free, and should stay. What SWAP
+   would add now, measured or estimated against today's code:
+   - *A read-modify-write's address computed once.* `*p = (*p & m) |
+     n` computes `p` twice today, since the first copy is under the
+     loaded byte and a store needs it on top. With SWAP: `addr DUP LB
+     ... SWAP SB`. lores.h's `LORES_PLOT` (a 4-op address, `LA IDXLW
+     LW ADDLW`, about 256 cycles) now keeps the address in a local
+     (a store and two loads, about 180); with SWAP the second address
+     costs `DUP` (44) and `SWAP` (about 45): about 90 cycles a pixel
+     less again, roughly 7% of rodsimple. For a 2-op address (`LLW p
+     ADDLW x`, rod.c's rows), about 37 cycles. Compound assignment
+     through a computed address (`a[i] += e`, `*p++ |= m`) gains the
+     same way, and loses its spill. Reversed stores (candidate 1)
+     would do it in one op fewer (`addr DUP LB ... SBR`), but only for
+     stores.
+   - *Run-time exchanges.* A swap whose blocks have left ccgen's
+     buffer is done through `FRAME_TEMP(0)` and `(1)` today: 4 ops and
+     2 frame words (`SLW SLW LLW LLW`). With SWAP it's 1 op and no
+     temporaries, which also frees those two temporaries for hoisting
+     in any loop body (doc/rod-optimizing.md; hoisting skips a body
+     with a swap today, and would otherwise need temporaries 2 and 3).
+   - *A `return` in a counted loop's body* drops the loop's two values
+     from under its result through temporaries (`replay_body()`); with
+     SWAP, a one-word result is `SWAP DROP SWAP DROP`.
+   - *Cost.* In the 6502 VMs, about 8 instructions (swap the two
+     entries' low bytes, then their high bytes, at `ESTKL,X` and
+     `ESTKH,X`) plus the dispatch: about 45 cycles, as `DUP`'s 44. In
+     the C VM, three lines. In each JIT, one more opcode to emit. Plus
+     the costs listed above for any opcode: all 7 VMs and 3 JIT
+     compilers, a free opcode (`$C6` up), modules that won't run on
+     old VMs (the `CCVM` marker module, or a target option, as above),
+     and ideally acceptance upstream.
+   - *In ccish.* ccgen alone: lower the run-time exchange to `SWAP`,
+     drop the temporaries' path, keep the address of a read-modify-
+     write (a peephole pattern on `addr ... addr SB` where the two
+     address runs are equal and pure, or a lowering of compound
+     assignment), and the counted loop's `return`. cccomp unchanged,
+     as 4(d2)'s note expected.
+   - *Recommendation.* Worth doing if the VM changes at all: it's the
+     most general of the candidates, and the read-modify-write gain
+     shows up in every program that changes bytes in place (graphics,
+     buffers, flags). Measure first: count the read-modify-writes and
+     run-time exchanges in ccish's own code and the samples, compiled
+     both ways.
 4. **For M11's `unsigned`:** `UDIV` and `UMOD` (otherwise a runtime
    routine), and a logical shift right `USHR` (otherwise `SHR` then a
    mask, which needs a computed mask for a variable count). Three
