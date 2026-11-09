@@ -24,9 +24,10 @@ enum { TY_VOID, TY_CHAR, TY_INT, TY_UINT };
 // Is the unqualified type t char, int or unsigned? (Every other type's
 // index is higher.)
 #define IS_INT_TYPE(t)  ((t) >= TY_CHAR && (t) <= TY_UINT)
-_Static_assert(TY_VOID == 0 && TY_CHAR == 1 && TY_UINT - TY_CHAR == 2,
+_Static_assert(TY_VOID == 0 && TY_CHAR == 1 && TY_UINT - TY_CHAR == 2
+               && TY_UINT == TY_INT + 1,
                "the basic types aren't void, then char, int and unsigned"
-               " (IS_INT_TYPE), from 0");
+               " (IS_INT_TYPE; parse.h's PROMOTED), from 0");
 // A handle's qualifier bits, above its index bits: a handle is only
 // those, so taking the qualifiers off is masking the index, one AND.
 #define Q_CONST    0x100

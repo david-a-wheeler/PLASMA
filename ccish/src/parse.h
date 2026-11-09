@@ -284,14 +284,20 @@ int  is_compare(int op);
 int  movable(int global);
 void push_var_addr(int off, int global);
 int  max_offset(int global);
-int  store_op(int t, int quals);
 int  holds_qual(int t, int q);      // q if t is or holds a q
 int  acc_form(int t, int quals);    // an access's IR_FORM bits
 int  is_place(Operand *o);
 int  addr_op(Operand *o, int *a, int *f);
-int  is_uns(int t);
+// Is type t (or a qualified one: const unsigned) unsigned int?
+#define IS_UNS(t)  (UNQUAL(t) == TY_UINT)
+// Integer type t promoted, as for a unary operator or a shift's left
+// operand: unsigned int stays so, the others become int; TY_UINT is
+// TY_INT + 1 (type.h), so it's TY_INT plus IS_UNS's 0 or 1.
+#define PROMOTED(t)  (TY_INT + IS_UNS(t))
+// The IR op that stores a value of type t, with qualifiers quals, at an
+// address (a char's a byte; a volatile's the volatile form).
+#define STORE_OP(t, quals)  IR_FORM(IR_STORE, acc_form(t, quals))
 int  arith_type(int a, int b);
-int  promoted(int t);
 void make_elem(Operand *o, int off, int global, int base_arr);
 void push_address(Operand *o);
 int  new_temp(void);

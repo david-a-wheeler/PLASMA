@@ -898,7 +898,7 @@ static void parse_unary(Operand *o)
         o->val = wrap16(~(unsigned)o->val);
       else if (t == '!')
         o->val = !o->val;
-      o->type = t == '!' ? TY_INT : promoted(o->type);
+      o->type = t == '!' ? TY_INT : PROMOTED(o->type);
       return;
     }
     if (t == '!' && o->kind == K_JUMP) {
@@ -915,7 +915,7 @@ static void parse_unary(Operand *o)
     }
     rvalue(o);
     // A char operand is promoted; ! gives an int.
-    o->type = t == '!' ? TY_INT : promoted(o->type);
+    o->type = t == '!' ? TY_INT : PROMOTED(o->type);
     if (t == '-')
       put(IR_NEG, 0, -1);
     else if (t == '~')
@@ -1255,8 +1255,8 @@ static int unsigned_op(Operand *o, Operand *r, int *op)
 {
   int shift = IR_IS_S_SHIFT(*op), k = r->kind, v = r->val;
   rvalue(r);
-  if (!(shift ? is_uns(o->type)
-              : is_uns(o->type) || is_uns(value_type(r->type))))
+  if (!(shift ? IS_UNS(o->type)
+              : IS_UNS(o->type) || IS_UNS(value_type(r->type))))
     return 0;
   if (is_relational(*op)) {
     *op = IR_U_COMPARE(*op);
@@ -1303,7 +1303,7 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
       return;
     }
     if (!is_compare(op))
-      result = IR_IS_SHIFT(op) ? promoted(lt) : arith_type(lt, rt);
+      result = IR_IS_SHIFT(op) ? PROMOTED(lt) : arith_type(lt, rt);
   } else if (is_pointer(lt) && !is_pointer(rt)
              && (op == IR_ADD || op == IR_SUB)) {
     push_scaled(r, lt);         // p + i, p - i
@@ -1485,7 +1485,7 @@ void copy_struct(Operand *o, Operand *r, int start)
         put(IR_DROP, 0, -1);
       } else {
         push_address(&d);
-        put(store_op(d.type, d.quals), 0, -1);
+        put(STORE_OP(d.type, d.quals), 0, -1);
       }
     }
     o->assigned = 1;
@@ -1506,7 +1506,7 @@ void copy_struct(Operand *o, Operand *r, int start)
           put(IR_DROP, 0, -1);
         } else {
           push_address(&d);
-          put(store_op(d.type, d.quals), 0, -1);
+          put(STORE_OP(d.type, d.quals), 0, -1);
         }
       }
       o->assigned = 1;
@@ -1643,10 +1643,10 @@ static int fold_held(Operand *o, Operand *rp, int ir_op, Operand *addr)
     int shift = IR_IS_S_SHIFT(ir_op);
     nheld--;
     o->val = fold(ir_op, o->val, r.val,
-                  shift ? is_uns(o->type)
-                        : is_uns(o->type) || is_uns(r.type));
+                  shift ? IS_UNS(o->type)
+                        : IS_UNS(o->type) || IS_UNS(r.type));
     o->type = is_compare(ir_op) ? TY_INT
-              : shift ? promoted(o->type) : arith_type(o->type, r.type);
+              : shift ? PROMOTED(o->type) : arith_type(o->type, r.type);
     o->nonice |= r.nonice;
     return 1;
   } else if (r.kind == K_VAR && swapped_op(ir_op) >= 0) {
@@ -1659,7 +1659,7 @@ static int fold_held(Operand *o, Operand *rp, int ir_op, Operand *addr)
     rvalue(&r);
     put(IR_CONST, o->val, -1);
     if (is_relational(op)
-        && (is_uns(o->type) || is_uns(value_type(r.type))))
+        && (IS_UNS(o->type) || IS_UNS(value_type(r.type))))
       op = IR_U_COMPARE(op);
     put(op, 0, -1);
     o->type = is_compare(ir_op) ? TY_INT : arith_type(o->type, r.type);

@@ -255,10 +255,7 @@ int find_var(int name)
 }
 
 // The block depth variable v was declared at (0 for a global).
-static int var_depth(int v)
-{
-  return var_flags[v] & V_DEPTH;
-}
+#define VAR_DEPTH(v)  (var_flags[v] & V_DEPTH)
 
 // Is variable v in the data segment (a global or a static local)? A
 // macro: one caller.
@@ -275,7 +272,7 @@ int find_id(int name)
   if (i < 0)
     return -1;
   v = find_var(name);
-  if (v >= 0 && var_depth(v) >= ID_DEPTH(i))
+  if (v >= 0 && VAR_DEPTH(v) >= ID_DEPTH(i))
     return -1;
   return i;
 }
@@ -303,7 +300,7 @@ void check_not_id(int name)
 void check_not_var(int name)
 {
   int v = find_var(name);
-  if (v >= 0 && var_depth(v) == depth)
+  if (v >= 0 && VAR_DEPTH(v) == depth)
     error(27 /* "redeclaration of" */, quote(name));
   if (depth == 0 && find_func(name) >= 0)
     error(27 /* "redeclaration of" */, quote(name));
@@ -992,13 +989,6 @@ _Static_assert(IR_ACC_BYTE == 1 && (Q_VOLATILE >> 4) == IR_VOLATILE,
                "acc_form(): IR_ACC_BYTE isn't 1, or Q_VOLATILE isn't"
                " IR_VOLATILE << 4");
 
-// The IR op that stores a value of type t, with qualifiers quals, at an
-// address (a char's a byte; a volatile's the volatile form).
-int store_op(int t, int quals)
-{
-  return IR_FORM(IR_STORE, acc_form(t, quals));
-}
-
 // Is o a place (a variable, or an object reached through an address)
 // whose value hasn't been loaded?
 int is_place(Operand *o)
@@ -1040,25 +1030,12 @@ int addr_op(Operand *o, int *a, int *f)
   return o->global == G_STR ? IR_STRADDR : IR_DATAADDR;
 }
 
-// Is type t (or a qualified one: const unsigned) unsigned int?
-int is_uns(int t)
-{
-  return UNQUAL(t) == TY_UINT;
-}
-
 // The type of an arithmetic op's result on integer types a and b, by
 // C's usual arithmetic conversions: unsigned int if either is, else
-// int (char promotes to int).
+// int (char promotes to int). As PROMOTED (parse.h), with no branches.
 int arith_type(int a, int b)
 {
-  return is_uns(a) || is_uns(b) ? TY_UINT : TY_INT;
-}
-
-// Integer type t promoted, as for a unary operator or a shift's left
-// operand: unsigned int stays so, the others become int.
-int promoted(int t)
-{
-  return is_uns(t) ? TY_UINT : TY_INT;
+  return TY_INT + (IS_UNS(a) | IS_UNS(b));
 }
 
 // Make o the K_ELEM at the address in the variable at off (base_arr 0),
@@ -1269,7 +1246,7 @@ void finish_store(Operand *o, int keep)
   if (keep)
     put(IR_DUP, 0, -1);
   swap_blocks(o->m0, o->m1, 0);
-  put(store_op(o->stype, o->quals), 0, -1);
+  put(STORE_OP(o->stype, o->quals), 0, -1);
   if (keep && o->vmask) {
     put(IR_CONST, 0xFF, -1);
     put(IR_AND, 0, -1);
@@ -1332,7 +1309,7 @@ void assign_to(Operand *o)
   if (o->quals & Q_VOLATILE)
     keep_copy(o->type == TY_CHAR);
   push_address(o);
-  put(store_op(o->type, o->quals), 0, -1);
+  put(STORE_OP(o->type, o->quals), 0, -1);
   if (o->quals & Q_VOLATILE)
     o->kind = K_VALUE;
   else
