@@ -73,16 +73,15 @@ static const char *const ir_names[] = {
  *              the result only feeds a branch, the peephole stage removes
  *              the NEG)
  *   L_OPERAND  that opcode, with the IR op's operand a (a frame offset,
- *              or a branch's label)
+ *              a branch's label, or a pseudo-op's operand)
  *   L_GLOBAL   that opcode, the absolute-address form, with a's address
  *              relocated as data (data_fix())
- *   L_PSEUDO   the pseudo-op $100 + that, with operand a
  *   L_SPECIAL  lowered by lower_special()
  * The stores keep their value (DLW, DLB, DAW, DAB): an assignment's
  * value can be used, and when it isn't, the following DROP lets the
  * peephole stage make the plain store (SLW, ...). DLB keeps the stored
  * byte, which is the value C gives an assignment to a char. */
-enum { L_SIMPLE, L_COMPARE, L_OPERAND, L_GLOBAL, L_PSEUDO, L_SPECIAL };
+enum { L_SIMPLE, L_COMPARE, L_OPERAND, L_GLOBAL, L_SPECIAL };
 
 static const char lw_kind[IR_NOPS] = {
   /* $00: local localb setlocal setlocalb */
@@ -120,11 +119,11 @@ static const char lw_kind[IR_NOPS] = {
   L_COMPARE, L_COMPARE, L_SPECIAL, L_SPECIAL,
   L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,  /* $4C: none */
   /* $50: label jump brfalse brtrue */
-  L_PSEUDO, L_OPERAND, L_OPERAND, L_OPERAND,
+  L_OPERAND, L_OPERAND, L_OPERAND, L_OPERAND,
   /* $54: sel join cases caseval */
-  L_OPERAND, L_SPECIAL, L_PSEUDO, L_PSEUDO,
+  L_OPERAND, L_SPECIAL, L_OPERAND, L_OPERAND,
   /* $58: caseto - - - */
-  L_PSEUDO, L_SPECIAL, L_SPECIAL, L_SPECIAL,
+  L_OPERAND, L_SPECIAL, L_SPECIAL, L_SPECIAL,
   /* $5C: loop loopstep loopbody loopend */
   L_SPECIAL, L_SPECIAL, L_SPECIAL, L_SPECIAL,
 };
@@ -165,11 +164,11 @@ static const unsigned char lw_op[IR_NOPS] = {
   OP_ISGT, OP_ISLE, 0, 0,
   0, 0, 0, 0,  /* $4C: none */
   /* $50: label jump brfalse brtrue */
-  OP_LABEL & 0xFF, OP_BRNCH, OP_BRFLS, OP_BRTRU,
+  OP_LABEL, OP_BRNCH, OP_BRFLS, OP_BRTRU,
   /* $54: sel join cases caseval */
-  OP_SEL, 0, OP_CASES & 0xFF, OP_CASEVAL & 0xFF,
+  OP_SEL, 0, OP_CASES, OP_CASEVAL,
   /* $58: caseto - - - */
-  OP_CASETO & 0xFF, 0, 0, 0,
+  OP_CASETO, 0, 0, 0,
   /* $5C: loop loopstep loopbody loopend */
   0, 0, 0, 0,
 };
@@ -248,7 +247,7 @@ void mop_const(Mop *m, int c)
   if (v == 0xFFFF) {
     m->op = OP_MINUS1;
   } else if (v < 16) {
-    m->op = OP_CN + 2 * v;
+    m->op = MOP_CN(v);
   } else if (v <= 0xFF) {
     m->op = OP_CB;
     m->a = v;
@@ -266,8 +265,8 @@ void mop_const(Mop *m, int c)
  * masks, not ranges. */
 int mop_const_value(Mop *m, int *v)
 {
-  if (m->op < 0x20 && !(m->op & 1)) {
-    *v = m->op / 2;
+  if (MOP_IS_CN(m->op)) {
+    *v = MOP_CN_VALUE(m->op);
     return 1;
   }
   switch (m->op) {
@@ -425,9 +424,7 @@ void lower_op(int op, int a, int f)
     lower_special(&m, op, a, f);
   } else if (kind != L_SIMPLE) {
     m.a = a;
-    if (kind == L_PSEUDO)
-      m.op += 0x100;
-    else if (kind == L_GLOBAL)
+    if (kind == L_GLOBAL)
       m.fix = data_fix(&m, f);
   }
   peep_put(&m);

@@ -902,7 +902,7 @@ void peep_put(Mop *m)
     win[nwin++] = *m;
     return;
   }
-  if (m->op >= OP_FUNC_BEGIN) {
+  if (MOP_IS_PSEUDO(m->op)) {
     /* A barrier: never optimize across it. */
     if (m->op == OP_LABEL)
       before_label(m->a);

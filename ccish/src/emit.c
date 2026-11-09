@@ -423,8 +423,8 @@ static void list_op(Mop *m, int frame)
     fputs("\n", stdout);
     return;
   }
-  if (m->op < 0x20 && !(m->op & 1)) {
-    out_num("    CN ", m->op / 2);
+  if (MOP_IS_CN(m->op)) {
+    out_num("    CN ", MOP_CN_VALUE(m->op));
     fputs("\n", stdout);
     return;
   }

@@ -4279,7 +4279,17 @@ issue updated as each step lands.
      -1 ("can't be in an expression") read as 255, and the full
      build's swap-block check (`block_ok()`) never refused such an op
      in a block. It's `STK_NONE` (`$7F`) now.
-3. **The pseudo-ops below `$20`.** Objects identical.
+3. **The pseudo-ops below `$20`.** Objects identical. **Done**
+   (2026-11-08): `OP_FUNC_BEGIN` ... `OP_JOIN` are `$01`-`$0D`, odd, so
+   every machine op is a byte. The bit tricks are macros in mop.h
+   (`MOP_IS_CN`, `MOP_IS_PSEUDO`, `MOP_CN`, `MOP_CN_VALUE`); peep.c's
+   barrier test uses `MOP_IS_PSEUDO`, and lower.c's `L_PSEUDO` (which
+   added `$100` to an op from its byte table) is gone, since a
+   pseudo-op is now just `L_OPERAND`. Every range test on machine ops
+   (peep.c, emit.c) is bounded on both sides above `$20`, so none
+   takes in a pseudo-op. The objects are the same for all 171 files,
+   and `ccgen -d`'s listings change only for the three edited files.
+   ccgen is 22 bytes smaller.
 4. **volatile**: cccomp, the tables, emit.c's clearing, the opt-ins,
    and tests (below).
 5. Later, apart from volatile: **constants as one pseudo-op until

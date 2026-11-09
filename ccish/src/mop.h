@@ -49,18 +49,30 @@ enum {
   OP_ADDAW = 0xB6, OP_IDXLB = 0xB8, OP_IDXLW = 0xBA, OP_IDXAB = 0xBC,
   OP_IDXAW = 0xBE,
   /* Pseudo-ops: markers that travel through stages 2-4 in order with
-   * the code, but emit no bytes themselves. */
-  OP_FUNC_BEGIN = 0x100,  /* fn: a function starts here */
-  OP_FUNC_END = 0x101,    /* a = frame size: the function ends here */
-  OP_LABEL = 0x102,       /* a = label number: a branch target is here */
+   * the code, but emit no bytes themselves. They are odd numbers below
+   * $20 (MOP_IS_PSEUDO), which no PLASMA opcode is, so that every
+   * machine op is a byte. */
+  OP_FUNC_BEGIN = 0x01,   /* fn: a function starts here */
+  OP_FUNC_END = 0x03,     /* a = frame size: the function ends here */
+  OP_LABEL = 0x05,        /* a = label number: a branch target is here */
   /* A SEL's case table (see ../../doc/Bytecodes.md), as data in the
    * code: */
-  OP_CASES = 0x103,       /* a = the count byte */
-  OP_CASEVAL = 0x104,     /* a = a case's value word */
-  OP_CASETO = 0x105,      /* a = the label its offset word leads to */
-  OP_JOIN = 0x106         /* the branches so far to label a go to
+  OP_CASES = 0x07,        /* a = the count byte */
+  OP_CASEVAL = 0x09,      /* a = a case's value word */
+  OP_CASETO = 0x0B,       /* a = the label its offset word leads to */
+  OP_JOIN = 0x0D          /* the branches so far to label a go to
                            * label fn instead */
 };
+
+/* The bit tricks on machine op values, each here so that a change to
+ * the numbers above shows what it touches. Every PLASMA opcode is
+ * even, and CN n is the opcode 2n ($00-$1E); the pseudo-ops are the
+ * odd values below $20. (approach.md issue 25 plans bit 0 of a real
+ * load or store, $20 up, as its volatile mark.) */
+#define MOP_IS_CN(op)      ((op) < 0x20 && !((op) & 1))
+#define MOP_IS_PSEUDO(op)  ((op) < 0x20 && ((op) & 1))
+#define MOP_CN(v)          (OP_CN + 2 * (v))     /* CN v, for v 0-15 */
+#define MOP_CN_VALUE(op)   ((op) / 2)            /* CN's v */
 
 /* For a branch op (BRNCH, BRFLS, ...), Mop.a is the label number; stage
  * 4 turns it into a relative offset. */
