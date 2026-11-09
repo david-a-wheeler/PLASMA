@@ -27,8 +27,10 @@ extern int opt_keep;        // -k: keep the stream files
 // after the number wherever it is used. A part is another message
 // number, printed after the text (0 for none).
 void error(int msg, const char *detail);
+void error0(int msg);                       // error(msg, NULL)
 void error_in(int msg, int part, const char *detail);
 void fatal(int msg, const char *detail);
+void fatal0(int msg);                       // fatal(msg, NULL)
 #ifdef CCISH_DIAG
 void warning(int msg, const char *detail);  // only cccomp's, in the
 void warning_in(int msg, int part, const char *detail); // full build

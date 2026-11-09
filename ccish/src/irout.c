@@ -115,7 +115,7 @@ int data_string(const char *s, int len)
   // Keep offsets well inside 16 bits; the final pass checks that the
   // whole module fits.
   if (nstrs > 0x7FFF - len - 2)
-    error(181 /* "too many string literals: over 32767 bytes" */, NULL);
+    error0(181 /* "too many string literals: over 32767 bytes" */);
   // In the pool it is [len][chars][NUL] (the final pass adds the length
   // byte and the NUL): the C pointer is to the first character, and the
   // byte before it makes it a PLASMA string as well.
@@ -148,7 +148,7 @@ int data_offset(void)
 void data_byte(int v)
 {
   if (ndata >= 0x7FFF)
-    error(182 /* "too much data: globals over 32767 bytes" */, NULL);
+    error0(182 /* "too much data: globals over 32767 bytes" */);
   if (ndrun == DATA_RUN)
     flush_data();
   drun[ndrun++] = (unsigned char)v;
@@ -164,7 +164,7 @@ void data_byte(int v)
 void data_addr(int kind, int target, int add)
 {
   if (ndata > 0x7FFF - 2)
-    error(182 /* "too much data: globals over 32767 bytes" */, NULL);
+    error0(182 /* "too much data: globals over 32767 bytes" */);
   flush_data();
   bputc(&out, IR_REC(REC_DREL));
   bputc(&out, kind);
@@ -184,7 +184,7 @@ int data_zero(int n)
 {
   int first = ndata;
   if (ndata > 0x7FFF - n)
-    error(182 /* "too much data: globals over 32767 bytes" */, NULL);
+    error0(182 /* "too much data: globals over 32767 bytes" */);
   if (n < 4) {
     while (n-- > 0)
       data_byte(0);             // shorter than a Z record

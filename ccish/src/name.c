@@ -27,7 +27,7 @@ static int nids_peak;               // the most at once
 int id_add(int name, int kind, int val, int depth)
 {
   if (nids >= MAX_IDS)
-    fatal(19 /* "too many enum constants and typedef names" */, NULL);
+    fatal0(19 /* "too many enum constants and typedef names" */);
   id_nm[nids] = name;
   id_v[nids] = val;
   id_k[nids] = (char)kind;

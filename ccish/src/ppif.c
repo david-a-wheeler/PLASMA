@@ -30,7 +30,7 @@ static int live;                // evaluating, not skipping
 // The expression is malformed: stop.
 static void bad(void)
 {
-  error(259 /* "bad expression in #if" */, NULL);
+  error0(259 /* "bad expression in #if" */);
 }
 
 // The 16 bits of v, read as a signed value.

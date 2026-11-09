@@ -41,7 +41,7 @@ bad=0
 # Numbers given in a diagnostic call with no comment after them.
 for f in src/*.c; do
     if tr '\n' ' ' < "$f" |
-       grep -qE '\b(error|error_in|fatal|warning|warning_in)\( *[0-9]+ *[,)]'
+       grep -qE '\b(error|error0|error_in|fatal|fatal0|warning|warning_in)\( *[0-9]+ *[,)]'
     then
         echo "$f: a message number without its /* \"text\" */ comment"
         bad=1

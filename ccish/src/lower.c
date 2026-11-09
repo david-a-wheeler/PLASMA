@@ -428,7 +428,7 @@ static void lower_special(Mop *m, int op, int a, int f)
     m->a = FRAME_TEMP(1);
     break;
   default:
-    fatal(174 /* "internal error: unknown IR op" */, NULL);
+    fatal0(174 /* "internal error: unknown IR op" */);
   }
 }
 

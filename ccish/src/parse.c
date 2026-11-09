@@ -128,7 +128,7 @@ void expect(int t, int msg)
 void enter_nest(void)
 {
   if (++nest > MAX_NEST)
-    fatal(25 /* "nesting too deep" */, NULL);
+    fatal0(25 /* "nesting too deep" */);
 }
 
 // find_func() has two versions. With CCISH_FAST (build.h), a pointer
@@ -165,7 +165,7 @@ int find_func(int name)
 int add_func(int name)
 {
   if (nfuncs >= MAX_FUNCS)
-    fatal(26 /* "too many functions" */, NULL);
+    fatal0(26 /* "too many functions" */);
   fn_name[nfuncs] = name;
   fn_type[nfuncs] = TY_INT;
   fn_ptypes[nfuncs] = -1;
@@ -319,7 +319,7 @@ int push_var(int name, int type, int off, int flags)
     check_not_id(name);
   }
   if (nvars >= MAX_VARS)
-    fatal(28 /* "too many variables" */, NULL);
+    fatal0(28 /* "too many variables" */);
   var_name[nvars] = name;
   var_type[nvars] = type;
   var_off[nvars] = off;
@@ -347,7 +347,7 @@ int add_global(int name, int type)
   // index from one declaration to the next, and blocks restore their
   // locals by count (parse_block()), so that's safe.
   if (nvars >= MAX_VARS)
-    fatal(28 /* "too many variables" */, NULL);
+    fatal0(28 /* "too many variables" */);
   for (v = nvars++; v > nglobals; v--) {
     var_name[v] = var_name[v - 1];
     var_type[v] = var_type[v - 1];
@@ -412,7 +412,7 @@ void set_param_types(int f, int n)
     return;
   }
   if (nparam_types + n > MAX_PARAM_TYPES)
-    fatal(32 /* "too many function parameters in all" */, NULL);
+    fatal0(32 /* "too many function parameters in all" */);
   fn_ptypes[f] = nparam_types;
   for (i = 0; i < n; i++)
     param_types[nparam_types++] = UNQUAL(var_type[nglobals + i]);
@@ -488,7 +488,7 @@ static int parse_int_type(int *q)
   }
   if (base == T_CHAR) {
     if (sign == T_SIGNED)
-      error(227 /* "'signed char' is not supported yet" */, NULL);
+      error0(227 /* "'signed char' is not supported yet" */);
     return TY_CHAR;
   }
   return sign == T_UNSIGNED ? TY_UINT : TY_INT;
@@ -541,7 +541,7 @@ void declare_cmdsys(int f, int c)
   const char *sig = cmdsys_sigs[c];
   int i, n = (int)strlen(sig) - 1;
   if (nparam_types + n > MAX_PARAM_TYPES)
-    fatal(32 /* "too many function parameters in all" */, NULL);
+    fatal0(32 /* "too many function parameters in all" */);
   fn_type[f] = sig_type(sig[0]);
   set_nparams(f, n);
   fn_ptypes[f] = nparam_types;
@@ -650,7 +650,7 @@ static unsigned magnitude(int v)
 void check_right_const(int op, int v)
 {
   if (IR_IS_DIVMOD(op) && v == 0)
-    error(34 /* "division by zero" */, NULL);
+    error0(34 /* "division by zero" */);
   if (IR_IS_S_SHIFT(op) && (v < 0 || v > 15))
     error(35 /* "shift count out of range (0 to 15):" */,
           v < 0 ? "negative" : "too big");
@@ -1124,7 +1124,7 @@ void place_true(Operand *o)
 void rvalue(Operand *o)
 {
   if (is_struct(o->type))
-    error(37 /* "a struct can't be used as a value here" */, NULL);
+    error0(37 /* "a struct can't be used as a value here" */);
   if (is_array(o->type) && is_place(o)) {
     if (o->kind == K_VAR)
       push_var_addr(o->off, o->global);
@@ -1142,7 +1142,7 @@ void rvalue(Operand *o)
       fn_flags[o->val] |= FN_CALLED;  // it may be called: link it
     break;
   case K_VOID:
-    error(38 /* "void value used in an expression" */, NULL);
+    error0(38 /* "void value used in an expression" */);
     break;
   case K_CONST:
     put(IR_CONST, o->val, -1);
@@ -1253,7 +1253,7 @@ void swap_blocks(int start, int mid, int fixed)
     return;
   }
   if (nheld != 0 || start > mid || mid > ir_here())
-    fatal(175 /* "internal error: bad IR rotation" */, NULL);
+    fatal0(175 /* "internal error: bad IR rotation" */);
   put(IR_SWAP, ir_here() - mid, fixed ? -1 : mid - start);
 }
 
@@ -1265,7 +1265,7 @@ void swap_blocks(int start, int mid, int fixed)
 void finish_store(Operand *o, int keep)
 {
   if (ir_here() != o->mend || nheld != 0)
-    fatal(39 /* "internal error: code after a pending store" */, NULL);
+    fatal0(39 /* "internal error: code after a pending store" */);
   if (keep)
     put(IR_DUP, 0, -1);
   swap_blocks(o->m0, o->m1, 0);

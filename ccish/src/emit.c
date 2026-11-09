@@ -319,7 +319,7 @@ static void end_function(int frame_size)
       fatal(185 /* "internal error: branch to a label never"
                    " placed in" */, func_name(fn));
   if (ncode > 0x7FFF - nfbuf)
-    fatal(186 /* "too much code" */, NULL);
+    fatal0(186 /* "too much code" */);
   if (fn >= MAX_FUNCS) {
     write_helper(fn - MAX_FUNCS);
     return;

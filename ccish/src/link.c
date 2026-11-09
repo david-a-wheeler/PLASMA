@@ -225,7 +225,7 @@ static int bgetw(Bfile *b)
 {
   int lo = bgetc(b), hi = bgetc(b);
   if (lo == EOF || hi == EOF)
-    fatal(3 /* "unexpected end of a compiler stream file" */, NULL);
+    fatal0(3 /* "unexpected end of a compiler stream file" */);
   return lo | (hi << 8);
 }
 
@@ -238,7 +238,7 @@ static void bskip(Bfile *b, int n)
     if (b->pos >= b->len) {
       bfill(b);
       if (b->len == 0)
-        fatal(3 /* "unexpected end of a compiler stream file" */, NULL);
+        fatal0(3 /* "unexpected end of a compiler stream file" */);
     }
     k = b->len - b->pos;
     if (k > n)
@@ -294,7 +294,7 @@ static void read_mods(const char *name)
       ;
     if (m == nmods) {
       if (nmods >= MAX_MODS)
-        fatal(224 /* "too many modules imported" */, NULL);
+        fatal0(224 /* "too many modules imported" */);
       strcpy(mod_name[nmods++], buf);
     }
     obj_mod[i] = (unsigned char)m;
@@ -345,9 +345,9 @@ static const char *open_syms(int k)
   nfsyms = bgetw(&in);
   ndsyms = bgetw(&in);
   if (nfsyms > MAX_FUNCS)
-    fatal(26 /* "too many functions" */, NULL);
+    fatal0(26 /* "too many functions" */);
   if (ndsyms > MAX_VARS)
-    fatal(28 /* "too many variables" */, NULL);
+    fatal0(28 /* "too many variables" */);
   read_mods(name);
   return name;
 }
@@ -467,7 +467,7 @@ static int add_gname(const char *name)
 {
   int n = (int)strlen(name) + 1, at = gnames_len;
   if (gnames_len + n > MAX_GNAMES)
-    fatal(222 /* "too many names shared between objects" */, NULL);
+    fatal0(222 /* "too many names shared between objects" */);
   memcpy(gnames + at, name, n);
   gnames_len += n;
   return at;
@@ -480,7 +480,7 @@ static int gsym_add(const char *name)
 {
   int g;
   if (ngsyms >= MAX_GSYMS)
-    fatal(222 /* "too many names shared between objects" */, NULL);
+    fatal0(222 /* "too many names shared between objects" */);
   for (g = gsym_start(name); g_name[g] >= 0; )
     if (++g == MAX_GSYMS)
       g = 0;
@@ -552,13 +552,13 @@ static int place_zero(const char *name, int size, int indata)
   if (indata) {
     zstay += size;
     if (zstay > 0x7FFF)
-      fatal(182 /* "too much data: globals over 32767 bytes" */, NULL);
+      fatal0(182 /* "too much data: globals over 32767 bytes" */);
     return zstay - size;
   }
   if (nmoved >= MAX_MOVED)
-    fatal(310 /* "too many large globals to move to the heap" */, NULL);
+    fatal0(310 /* "too many large globals to move to the heap" */);
   if ((unsigned)size > 0xFFFFu - HEAP_SPARE - mv_total)
-    fatal(311 /* "too much data to move to the heap" */, NULL);
+    fatal0(311 /* "too much data to move to the heap" */);
   mv_total += size;
   mv_size[nmoved] = size;
 #ifdef CCISH_LISTING
@@ -644,7 +644,7 @@ static void resolve(void)
       if (g_lab[g] < 0 && (fl & (G_DATA | G_PLAIN)))
         undefined(172 /* "undefined reference to" */, name);
       if (nimports >= 255)
-        fatal(190 /* "too many imported functions" */, NULL);
+        fatal0(190 /* "too many imported functions" */);
       g_flags[g] = (unsigned char)(fl | G_IMPORT);
       g_off[g] = nimports++;
       if (g_mod[g])
@@ -1464,7 +1464,7 @@ void link_module(int n, const char **bases, const char *path)
 
   // Step 1.
   if (n > MAX_OBJS)
-    fatal(223 /* "too many objects to link" */, NULL);
+    fatal0(223 /* "too many objects to link" */);
   nobjs = n;
   for (i = 0; i < MAX_GSYMS; i++)
     g_name[i] = -1;
@@ -1498,7 +1498,7 @@ void link_module(int n, const char **bases, const char *path)
   subseg = strs_base + obj_strs[n] + 1;
   total = init_off + init_size();
   if (subseg + total > 0xFFFF)
-    fatal(191 /* "module too large" */, NULL);
+    fatal0(191 /* "module too large" */);
 
   // Step 2.
   if (!bopen(&out, path, 1))

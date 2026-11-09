@@ -88,7 +88,7 @@ void check_assign(int to, Operand *o, int where,
 {
   int from = value_type(o->type);
   if (o->kind == K_VOID)
-    error(38 /* "void value used in an expression" */, NULL);
+    error0(38 /* "void value used in an expression" */);
   if (is_struct(to) || is_struct(from)) {
     if (UNQUAL(to) != UNQUAL(from))
       error_in(46 /* "incompatible types in" */, where,
@@ -165,7 +165,7 @@ static void cast(Operand *o, int type)
 {
   type = UNQUAL(type);
   if (is_struct(type))
-    error(52 /* "a cast to a struct type isn't allowed" */, NULL);
+    error0(52 /* "a cast to a struct type isn't allowed" */);
   if (type == TY_VOID) {
     discard(o);
     o->kind = K_VOID;
@@ -655,7 +655,7 @@ static void deref(Operand *o)
 {
   int t = o->type;
   if (o->kind == K_VOID)
-    error(38 /* "void value used in an expression" */, NULL);
+    error0(38 /* "void value used in an expression" */);
   if (is_func(t))
     return;                     // *f is f
   if (callable(t)) {
@@ -673,9 +673,9 @@ static void deref(Operand *o)
     return;
   }
   if (!is_pointer(t))
-    error(66 /* "unary '*' needs a pointer operand" */, NULL);
+    error0(66 /* "unary '*' needs a pointer operand" */);
   if (is_void_ptr(t))
-    error(67 /* "dereferencing a 'void *'" */, NULL);
+    error0(67 /* "dereferencing a 'void *'" */);
   if (o->kind == K_VAR && !(o->quals & Q_VOLATILE)) {
     make_elem(o, o->off, o->global, 0);     // *p: the address is in p
   } else {                      // (a volatile p is read now, once)
@@ -734,18 +734,17 @@ static void parse_index(Operand *o)
   }
   if (!simple) {
     if (!is_pointer(o->type) && !is_pointer(value_type(r.type)))
-      error(69 /* "subscripted value is neither array nor pointer" */,
-            NULL);
+      error0(69 /* "subscripted value is neither array nor pointer" */);
     if (is_pointer(o->type) && is_pointer(value_type(r.type)))
-      error(70 /* "array subscript is not an integer" */, NULL);
+      error0(70 /* "array subscript is not an integer" */);
     binary(o, &r, IR_ADD, start, mid);
     deref(o);
     return;
   }
   if (is_pointer(value_type(r.type)))
-    error(70 /* "array subscript is not an integer" */, NULL);
+    error0(70 /* "array subscript is not an integer" */);
   if (r.kind != K_CONST && r.kind != K_VAR)
-    fatal(71 /* "internal error: unexpected array index" */, NULL);
+    fatal0(71 /* "internal error: unexpected array index" */);
   size = is_pointer(t) ? elem_size(t) : type_size(type_sub(t));
   if (r.kind == K_CONST) {
     d = wrap16((unsigned)r.val * (unsigned)size);
@@ -846,9 +845,9 @@ static void parse_member(Operand *o, int arrow)
 
   next();                         // '.' or '->'
   if (arrow && !(is_pointer(t) && is_struct(type_sub(t))))
-    error(72 /* "'->' needs a pointer to a struct or union" */, NULL);
+    error0(72 /* "'->' needs a pointer to a struct or union" */);
   if (!arrow && !is_struct(t))
-    error(73 /* "'.' needs a struct or union" */, NULL);
+    error0(73 /* "'.' needs a struct or union" */);
   if (!arrow && o->kind == K_VALUE)
     materialize(o);             // f().x
   tag = STRUCT_TAG(arrow ? type_sub(t) : t);
@@ -865,7 +864,7 @@ static void parse_member(Operand *o, int arrow)
     strcat(msg, tag_desc(tag));
     error(214 /* "no member named" */, msg);
 #else
-    error(214 /* "no member named" */, NULL);
+    error0(214 /* "no member named" */);
 #endif
   }
   next();
@@ -971,8 +970,8 @@ static void parse_postfix(Operand *o)
       continue;
     case '(':
       if (!callable(o->type))
-        error(63 /* "called object is not a function or function"
-                    " pointer" */, NULL);
+        error0(63 /* "called object is not a function or function"
+                     " pointer" */);
       parse_icall(o);
       continue;
     }
@@ -1012,13 +1011,12 @@ static void parse_sizeof(Operand *o)
   nheld = saved;              // drop anything held inside it
   nest--;
   if (UNQUAL(t) == TY_VOID)
-    error(78 /* "sizeof can't be applied to type void" */, NULL);
+    error0(78 /* "sizeof can't be applied to type void" */);
   if (is_struct(t) && type_size(t) == 0)
     error(79 /* "sizeof can't be applied to the incomplete type" */,
           tag_desc(STRUCT_TAG(t)));
   if (is_array(t) && type_count(t) == 0)    // extern int a[];
-    error(79 /* "sizeof can't be applied to the incomplete type" */,
-          NULL);
+    error0(79 /* "sizeof can't be applied to the incomplete type" */);
   o->kind = K_CONST;
   o->val = type_size(t);
   o->type = TY_UINT;          // C's size_t
@@ -1127,7 +1125,7 @@ static int cond_type(Operand *b, int b_null, Operand *c, int c_null)
     return bt;
   if (is_pointer(ct) && b_null)
     return ct;
-  error(80 /* "type mismatch in conditional expression" */, NULL);
+  error0(80 /* "type mismatch in conditional expression" */);
   return TY_INT;
 }
 
@@ -1153,7 +1151,7 @@ static void parse_conditional(Operand *o)
     else
       parse_expr(PREC_COND, &c);
     if (is_void(&b) != is_void(&c))
-      error(82 /* "only one side of '?:' is void" */, NULL);
+      error0(82 /* "only one side of '?:' is void" */);
     type = cond_type(&b, is_null(&b), &c, is_null(&c));
     b_null = o->nonice;
     if (take_b)
@@ -1181,7 +1179,7 @@ static void parse_conditional(Operand *o)
   if (!is_void(&c))
     rvalue(&c);
   if (is_void(&b) != is_void(&c))
-    error(82 /* "only one side of '?:' is void" */, NULL);
+    error0(82 /* "only one side of '?:' is void" */);
   place_forward(end_l);
   o->kind = b.kind;
   o->type = type;
@@ -1236,10 +1234,10 @@ static void compare_pointers(Operand *o, Operand *r, int op)
   int lt = o->type, rt = value_type(r->type);
   if (!is_pointer(lt) || !is_pointer(rt)) {
     if (is_relational(op) || !(is_null(o) || is_null(r)))
-      error(83 /* "comparison between pointer and integer" */, NULL);
+      error0(83 /* "comparison between pointer and integer" */);
   } else if (is_relational(op) ? !same_target(lt, rt)
                                : !compatible(lt, rt)) {
-    error(84 /* "comparison of incompatible pointer types" */, NULL);
+    error0(84 /* "comparison of incompatible pointer types" */);
   }
   rvalue(r);
 }
@@ -1455,8 +1453,8 @@ static int copy_func(void)
     f = add_func(ID_MEMCPY);
     declare_cmdsys(f, find_cmdsys(ID_MEMCPY));
   } else if (nparams_of(f) != 3) {
-    error(86 /* "a struct copy calls memcpy(dst, src, n), but this "
-                "program declares memcpy differently" */, NULL);
+    error0(86 /* "a struct copy calls memcpy(dst, src, n), but this "
+                 "program declares memcpy differently" */);
   }
   if (!suppress)
     fn_flags[f] |= FN_CALLED;

@@ -57,7 +57,7 @@ static void usage(void)
 static void add_base(const char *name)
 {
   if (nbases == MAX_OBJS)
-    fatal(223 /* "too many objects to link" */, NULL);
+    fatal0(223 /* "too many objects to link" */);
   bases[nbases++] = name;
 }
 

@@ -65,7 +65,7 @@ int decl_nparams;
 static void add_step(int k, int v)
 {
   if (nsteps >= MAX_STEPS)
-    fatal(29 /* "too many parts in a declarator" */, NULL);
+    fatal0(29 /* "too many parts in a declarator" */);
   step_kind[nsteps] = (char)k;
   step_val[nsteps++] = v;
 }
@@ -91,7 +91,7 @@ static void skip_params(void)
   int open = 1;
   while (open) {
     if (tok == T_EOF)
-      error(219 /* "missing ')' at end of file" */, NULL);
+      error0(219 /* "missing ')' at end of file" */);
     if (tok == '(')
       open++;
     else if (tok == ')')
@@ -110,7 +110,7 @@ static int parse_dim(void)
     n = parse_const(88 /* "array size must be a constant" */,
                     202 /* "(an array size must be one)" */);
     if (n <= 0)
-      error(89 /* "array size must be positive" */, NULL);
+      error0(89 /* "array size must be positive" */);
   }
   expect(']', 90 /* "expected ']' after an array size, not" */);
   return n;
@@ -221,9 +221,9 @@ int parse_declarator(int base, int flags, int *name)
     need_complete(t, 209 /* "an array element can't have the incomplete"
                             " type" */);
     if (type_size(t) == 0)
-      error(91 /* "array elements can't have type void" */, NULL);
+      error0(91 /* "array elements can't have type void" */);
     if (step_val[i] == 0 && i != nsteps - 1)
-      error(87 /* "array size missing" */, NULL);
+      error0(87 /* "array size missing" */);
     t = array_of(t, step_val[i]);
   }
   nsteps = from;
@@ -238,10 +238,10 @@ int parse_type_name(void)
   int name, t = parse_declarator(parse_base_type(), D_ABSTRACT | D_NONAME,
                                  &name);
   if (is_func(t))
-    error(114 /* "a function type isn't allowed here (use a pointer"
-                 " to a function)" */, NULL);
+    error0(114 /* "a function type isn't allowed here (use a pointer"
+                  " to a function)" */);
   if (is_array(t) && type_count(t) == 0)
-    error(87 /* "array size missing" */, NULL);
+    error0(87 /* "array size missing" */);
   return t;
 }
 
@@ -251,9 +251,9 @@ int parse_type_name(void)
 int parse_var_type(int type, int may_omit)
 {
   if (UNQUAL(type) == TY_VOID)
-    error(94 /* "a variable can't have type void" */, NULL);
+    error0(94 /* "a variable can't have type void" */);
   if (!may_omit && is_array(type) && type_count(type) == 0)
-    error(87 /* "array size missing" */, NULL);
+    error0(87 /* "array size missing" */);
   need_complete(type, 207 /* "a variable can't have the incomplete type" */);
   return type;
 }
@@ -273,7 +273,7 @@ static void parse_members(int tag, int is_union)
   tg_size[tag] = -2;
   next();                         // '{'
   if (tok == '}')
-    error(95 /* "a struct or union needs at least one member" */, NULL);
+    error0(95 /* "a struct or union needs at least one member" */);
   while (tok != '}') {
     if (tok == T_KEYWORD)
       not_yet();
@@ -287,17 +287,15 @@ static void parse_members(int tag, int is_union)
         error(97 /* "a struct or union member can't be a function:" */,
               quote(name));
       if (is_array(t) && type_count(t) == 0)
-        error(87 /* "array size missing" */, NULL);
+        error0(87 /* "array size missing" */);
       if (UNQUAL(t) == TY_VOID)
-        error(98 /* "a struct or union member can't have type void" */,
-              NULL);
+        error0(98 /* "a struct or union member can't have type void" */);
       need_complete(t, 208 /* "a struct or union member can't have the"
                               " incomplete type" */);
       if (member_find(tag, name) >= 0)
         error(99 /* "duplicate struct or union member" */, quote(name));
       if (off > MAX_OBJECT - type_size(t))
-        error(100 /* "struct or union too large (over 32767 bytes)" */,
-              NULL);
+        error0(100 /* "struct or union too large (over 32767 bytes)" */);
       member_add(tag, name, t, is_union ? 0 : off);
       off = is_union
           ? (type_size(t) > off ? type_size(t) : off) : off + type_size(t);
@@ -389,7 +387,7 @@ int parse_enum(void)
     return TY_INT;
   next();
   if (tok == '}')
-    error(106 /* "an enum needs at least one constant" */, NULL);
+    error0(106 /* "an enum needs at least one constant" */);
   while (tok != '}') {
     if (tok != T_ID)
       error(107 /* "expected an enum constant, not" */, tok_desc());
@@ -404,8 +402,7 @@ int parse_enum(void)
                       203 /* "(an enum value must be one)" */);
       full = 0;
     } else if (full) {
-      error(109 /* "enum value too large for an int (over 32767)" */,
-            NULL);
+      error0(109 /* "enum value too large for an int (over 32767)" */);
     }
     id_add(name, ID_CONST, v, depth);
     full = v == 0x7FFF;
@@ -445,7 +442,7 @@ void parse_typedef(void)
                              " constant" */,
                       348 /* "(a constexpr's value must be one)" */);
     } else if (is_array(t) && type_count(t) == 0) {
-      error(87 /* "array size missing" */, NULL);
+      error0(87 /* "array size missing" */);
     }
     i = id_find(name);
     if (i >= 0 && ID_DEPTH(i) == depth) {
@@ -535,7 +532,7 @@ static void parse_declaration(int is_static)
     }
     type = parse_var_type(type, 1);
     if (is_array(type) && type_count(type) == 0 && tok != '=')
-      error(87 /* "array size missing" */, NULL);
+      error0(87 /* "array size missing" */);
     if (is_static) {
       // In C, the name is in scope in its own initializer.
       s = add_static_local(name, type);
@@ -645,7 +642,7 @@ static void parse_statement(void);
 static void loop_body(int brk, int cont)
 {
   if (nloops >= MAX_NEST)
-    fatal(121 /* "loops nested too deeply" */, NULL);
+    fatal0(121 /* "loops nested too deeply" */);
   brk_label[nloops] = brk;
   cont_label[nloops] = cont;
   nloops++;
@@ -717,8 +714,8 @@ static void parse_for(void)
   expect('(', 124 /* "expected '(' after 'for', not" */);
   depth++;
   if (T_IS_STORAGE(tok))
-    error(125 /* "a 'for' loop can't declare a static or extern"
-                 " variable" */, NULL);
+    error0(125 /* "a 'for' loop can't declare a static or extern"
+                  " variable" */);
   if (is_type_start()) {
     parse_declaration(0);       // includes the ';'
   } else {
@@ -749,9 +746,9 @@ static void parse_break_continue(void)
   int is_break = tok == T_BREAK;
   next();
   if (nloops == 0 && is_break)
-    error(129 /* "'break' is not inside a loop or switch" */, NULL);
+    error0(129 /* "'break' is not inside a loop or switch" */);
   if (!is_break && (nloops == 0 || cont_label[nloops - 1] < 0))
-    error(130 /* "'continue' is not inside a loop" */, NULL);
+    error0(130 /* "'continue' is not inside a loop" */);
   branch(IR_JUMP, is_break ? brk_label[nloops - 1]
                            : cont_label[nloops - 1]);
   expect(';', is_break ? 131 /* "expected ';' after 'break', not" */
@@ -813,7 +810,7 @@ NULL);
     if (tok == T_DEFAULT) {
       next();
       if (sw_default >= 0)
-        error(135 /* "more than one 'default' in a switch" */, NULL);
+        error0(135 /* "more than one 'default' in a switch" */);
       sw_default = l;
     } else {
       next();
@@ -826,9 +823,8 @@ NULL);
           error(137 /* "duplicate case value" */, buf);
         }
       if (ncases >= MAX_CASES)
-        fatal(138 /* "too many case labels in the switches open at "
-                     "once" */,
-              NULL);
+        fatal0(138 /* "too many case labels in the switches open at "
+                      "once" */);
       case_val[ncases] = v;
       case_label[ncases++] = l;
     }
@@ -857,7 +853,7 @@ static void sort_cases(void)
   // Written so that it can't overflow with a 16-bit int.
   if (ncases > sw_first && case_val[sw_first] < 0
       && case_val[ncases - 1] > case_val[sw_first] + 32767)
-    error(140 /* "case values too far apart (more than 32767)" */, NULL);
+    error0(140 /* "case values too far apart (more than 32767)" */);
 }
 
 // One entry of a case table: value v, leading to label l.
@@ -890,7 +886,7 @@ static void parse_switch(void)
   parse_expr(PREC_COMMA, &o);
   if (o.kind == K_VOID || is_struct(o.type)
       || is_pointer(value_type(o.type)))
-    error(142 /* "a switch needs an integer value" */, NULL);
+    error0(142 /* "a switch needs an integer value" */);
   rvalue(&o);
   branch(IR_SEL, tab);
   end_expr();
@@ -983,7 +979,7 @@ static void parse_statement(void)
     parse_goto();
     return;
   case T_ELSE:
-    error(144 /* "'else' without a matching 'if'" */, NULL);
+    error0(144 /* "'else' without a matching 'if'" */);
     return;
   case '{':
     parse_block(1);
@@ -1052,7 +1048,7 @@ void parse_block(int new_scope)
   next();                         // '{'
   while (tok != '}') {
     if (tok == T_EOF)
-      error(149 /* "missing '}' at end of file" */, NULL);
+      error0(149 /* "missing '}' at end of file" */);
     parse_statement();
   }
   next();
@@ -1088,8 +1084,7 @@ int parse_params(void)
   for (;;) {
     int name, type;
     if (tok == T_ELLIPSIS)
-      error(150 /* "variable argument lists are not supported yet" */,
-            NULL);
+      error0(150 /* "variable argument lists are not supported yet" */);
     if (tok == T_KEYWORD)
       not_yet();
     if (!is_type_start())
@@ -1101,10 +1096,10 @@ int parse_params(void)
         next();
         return 0;           // (void): no parameters
       }
-      error(152 /* "a parameter can't have type void" */, NULL);
+      error0(152 /* "a parameter can't have type void" */);
     }
     if (n >= MAX_PARAMS)
-      fatal(153 /* "too many parameters" */, NULL);
+      fatal0(153 /* "too many parameters" */);
     // An array parameter is a pointer to its first element, as in
     // C: int a[] and int a[10] are int *a, and int m[][4] is a
     // pointer to arrays of 4 ints. A function parameter is a pointer

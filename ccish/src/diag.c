@@ -31,7 +31,7 @@ const char *stream_name(const char *base, const char *suffix)
 {
   static char buf[MAX_PATH];
   if (strlen(base) + strlen(suffix) >= sizeof(buf))
-    fatal(1 /* "output name too long" */, NULL);
+    fatal0(1 /* "output name too long" */);
   strcpy(buf, base);
   strcat(buf, suffix);
   return buf;
@@ -223,6 +223,13 @@ void error(int msg, const char *detail)
   error_in(msg, 0, detail);
 }
 
+// Report error msg, with no detail: error(msg, NULL), one argument
+// shorter at each of the many calls.
+void error0(int msg)
+{
+  error_in(msg, 0, NULL);
+}
+
 #ifdef CCISH_DIAG
 // Report warning msg, followed by part and detail: a likely mistake in
 // the program being compiled that C still allows, as gcc would warn
@@ -244,4 +251,11 @@ void warning(int msg, const char *detail)
 void fatal(int msg, const char *detail)
 {
   stop("fatal", msg, 0, detail);
+}
+
+// Report problem msg, with no detail: fatal(msg, NULL), one argument
+// shorter at each call.
+void fatal0(int msg)
+{
+  stop("fatal", msg, 0, NULL);
 }

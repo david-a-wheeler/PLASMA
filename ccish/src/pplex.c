@@ -82,7 +82,7 @@ static int next_line(void)
       return 1;
     }
     if (line_len >= MAX_LINE)
-      error(233 /* "line too long (over 255 characters)" */, NULL);
+      error0(233 /* "line too long (over 255 characters)" */);
     line[line_len++] = (unsigned char)c;
   }
 }
@@ -131,7 +131,7 @@ void pp_lex_text(const char *s)
 {
   int n = (int)strlen(s);
   if (n > MAX_LINE)
-    error(233 /* "line too long (over 255 characters)" */, NULL);
+    error0(233 /* "line too long (over 255 characters)" */);
   in = NULL;
   memcpy(line, s, n);
   line_len = n;
@@ -214,7 +214,7 @@ static void skip_blank(void)
       for (;;) {
         if (ch == EOF) {
           src_line = start;
-          error(4 /* "unterminated comment" */, NULL);
+          error0(4 /* "unterminated comment" */);
         }
         if (ch == '*') {
           getch();
@@ -328,7 +328,7 @@ static int literal_char(void)
 {
   int c = ch;
   if (c == '\n' || c == EOF)
-    error(5 /* "unterminated literal" */, NULL);
+    error0(5 /* "unterminated literal" */);
   getch();
   if (c != '\\')
     return c;
@@ -346,7 +346,7 @@ static int literal_char(void)
   case 'x': {
     int v = 0;
     if (!is_hex(ch))
-      error(6 /* "\\x used with no following hex digits" */, NULL);
+      error0(6 /* "\\x used with no following hex digits" */);
     while (is_hex(ch)) {
       v = (v * 16 + hex_val(ch)) & 0xFFF;
       getch();
@@ -363,7 +363,7 @@ static int literal_char(void)
       }
       return v & 0xFF;
     }
-    error(7 /* "unknown escape sequence" */, NULL);
+    error0(7 /* "unknown escape sequence" */);
   }
   return 0;
 }
@@ -385,7 +385,7 @@ static int lex_number(void)
       getch();
       base = 16;
       if (!is_hex(ch))
-        error(8 /* "bad hexadecimal number" */, NULL);
+        error0(8 /* "bad hexadecimal number" */);
     }
   }
   for (;;) {
@@ -397,10 +397,10 @@ static int lex_number(void)
     else
       break;
     if (d >= base)
-      error(9 /* "bad digit in octal number" */, NULL);
+      error0(9 /* "bad digit in octal number" */);
     // Checked before, so that a 16-bit unsigned can't overflow.
     if (v > (0xFFFFu - (unsigned)d) / (unsigned)base)
-      error(10 /* "number does not fit in 16 bits" */, NULL);
+      error0(10 /* "number does not fit in 16 bits" */);
     v = v * (unsigned)base + (unsigned)d;
     getch();
   }
@@ -410,8 +410,8 @@ static int lex_number(void)
     uns = 1;
   }
   if (is_alpha(ch) || is_digit(ch) || ch == '.')
-    error(11 /* "number suffixes other than u, and floating point, are "
-                "not supported" */, NULL);
+    error0(11 /* "number suffixes other than u, and floating point, are "
+                 "not supported" */);
   pt_val = (int)v;
   return uns ? TC_UNUM : TC_NUM;
 }
@@ -425,7 +425,7 @@ static void lex_string(void)
   while (ch != '"') {
     int c = literal_char();
     if (pt_len >= MAX_STR)
-      error(12 /* "string literal too long" */, NULL);
+      error0(12 /* "string literal too long" */);
     pt_text[pt_len++] = (unsigned char)c;
   }
   getch();
@@ -657,11 +657,10 @@ int pp_lex(void)
   if (ch == '\'') {
     getch();
     if (ch == '\'')
-      error(14 /* "empty character constant" */, NULL);
+      error0(14 /* "empty character constant" */);
     pt_val = literal_char();
     if (ch != '\'')
-      error(15 /* "multi-character constants are not supported" */,
-            NULL);
+      error0(15 /* "multi-character constants are not supported" */);
     getch();
     return TC_NUM;
   }
@@ -717,7 +716,7 @@ static int lex_op(void)
   case '.':
     if (accept('.')) {
       if (!accept('.'))
-        error(16 /* "unexpected '..'" */, NULL);
+        error0(16 /* "unexpected '..'" */);
       return TC_ELLIPSIS;
     }
     return '.';
@@ -727,6 +726,6 @@ static int lex_op(void)
   case ',': case ';': case '?': case '~':
     return c;
   }
-  error(17 /* "unexpected character in source" */, NULL);
+  error0(17 /* "unexpected character in source" */);
   return 0;
 }

@@ -122,7 +122,7 @@ static int find_type(int k, int sub, int count)
     if (tkind[i] == k && tsub[i] == sub && tcount[i] == count)
       return i;
   if (ntypes >= MAX_TYPES)
-    fatal(20 /* "too many types" */, NULL);
+    fatal0(20 /* "too many types" */);
   tkind[ntypes] = (char)k;
   tsub[ntypes] = sub;
   tcount[ntypes] = count;
@@ -141,7 +141,7 @@ int pointer_to(int t)
 int array_of(int t, int count)
 {
   if (count > MAX_OBJECT / type_size(t))
-    error(21 /* "array too large (over 32767 bytes)" */, NULL);
+    error0(21 /* "array too large (over 32767 bytes)" */);
   return find_type(TK_ARRAY, t, count);
 }
 
@@ -229,7 +229,7 @@ int struct_type(int tag)
 int tag_new(int name, int depth, int hsum, int hmul)
 {
   if (ntags >= MAX_TAGS)
-    fatal(22 /* "too many structs" */, NULL);
+    fatal0(22 /* "too many structs" */);
   tg_name[ntags] = name;
   tg_hsum[ntags] = (unsigned)hsum;
   tg_hmul[ntags] = (unsigned)hmul;
@@ -266,7 +266,7 @@ void tag_hide(int depth)
 int member_add(int tag, int name, int type, int off)
 {
   if (nmembers >= MAX_MEMBERS)
-    fatal(23 /* "too many struct members" */, NULL);
+    fatal0(23 /* "too many struct members" */);
   mb_tag[nmembers] = (char)tag;
   mb_name[nmembers] = name;
   mb_type[nmembers] = type;

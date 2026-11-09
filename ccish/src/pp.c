@@ -61,7 +61,7 @@ static int nopts;
 void pp_include_dir(const char *dir)
 {
   if (ninc_dirs >= MAX_INC_DIRS)
-    fatal(248 /* "too many -I, -D and -U options" */, NULL);
+    fatal0(248 /* "too many -I, -D and -U options" */);
   inc_dirs[ninc_dirs++] = dir;
 }
 
@@ -69,7 +69,7 @@ void pp_include_dir(const char *dir)
 void pp_option(int kind, const char *text)
 {
   if (nopts >= MAX_PP_OPTS)
-    fatal(248 /* "too many -I, -D and -U options" */, NULL);
+    fatal0(248 /* "too many -I, -D and -U options" */);
   opt_kind[nopts] = (char)kind;
   opt_text[nopts++] = text;
 }
@@ -123,8 +123,8 @@ static void do_pragma(void)
   if (pp_lex_word(w, sizeof(w)) == 6 && !strcmp(w, "plasma")
       && pp_lex_word(w, sizeof(w)) == 6 && !strcmp(w, "import")) {
     if (pp_lex() != TC_ID)
-      error(13 /* "expected a module name after #pragma plasma"
-                  " import" */, NULL);
+      error0(13 /* "expected a module name after #pragma plasma"
+                   " import" */);
     pp_out(TC_ID, ID_PIMPORT, NULL, 0);
     pp_out(TC_ID, pt_val, NULL, 0);
     end_directive("pragma");
@@ -158,26 +158,26 @@ static void do_define(void)
     c = pp_lex();
     while (c != ')') {
       if (np >= MAX_PP_PARAMS)
-        fatal(257 /* "too many macro parameters" */, NULL);
+        fatal0(257 /* "too many macro parameters" */);
       if (c == TC_ELLIPSIS) {
         params[np++] = pp_intern("__VA_ARGS__", 11);
         va = 1;
         c = pp_lex();
         if (c != ')')
-          error(255 /* "bad macro parameter list" */, NULL);
+          error0(255 /* "bad macro parameter list" */);
         break;
       }
       if (c != TC_ID && c != TC_KEYWORD)
-        error(255 /* "bad macro parameter list" */, NULL);
+        error0(255 /* "bad macro parameter list" */);
       for (i = 0; i < np; i++)
         if (params[i] == pt_val)
-          error(255 /* "bad macro parameter list" */, NULL);
+          error0(255 /* "bad macro parameter list" */);
       params[np++] = pt_val;
       c = pp_lex();
       if (c == ',')
         c = pp_lex();
       else if (c != ')')
-        error(255 /* "bad macro parameter list" */, NULL);
+        error0(255 /* "bad macro parameter list" */);
     }
   }
   pp_def_begin(np, params, va);
@@ -226,7 +226,7 @@ static void do_include(void)
   const char *slash;
   int angle, i, found = 0;
   if (pp_lex_header(name, MAX_PATH, &angle) < 0)
-    error(235 /* "expected \"file\" or <file> after #include" */, NULL);
+    error0(235 /* "expected \"file\" or <file> after #include" */);
   end_directive("#include");
   if (depth >= MAX_INCLUDE)
     error(237 /* "#include nested too deeply:" */, name);
@@ -259,7 +259,7 @@ static void do_include(void)
 static void open_group(int is_true)
 {
   if (nconds >= MAX_IF_NEST)
-    fatal(243 /* "#if nested too deeply" */, NULL);
+    fatal0(243 /* "#if nested too deeply" */);
   if (!taking())
     cond[nconds++] = C_DEAD;
   else
@@ -297,7 +297,7 @@ static void do_elif(void)
   if (nconds == 0)
     error(240 /* "no #if before" */, "#elif");
   if (cond[nconds - 1] & C_ELSE)
-    error(260 /* "#elif after #else" */, NULL);
+    error0(260 /* "#elif after #else" */);
   if ((cond[nconds - 1] & C_STATE) == C_TAKING)
     cond[nconds - 1] = C_DONE;
   else if ((cond[nconds - 1] & C_STATE) == C_WAIT) {
@@ -319,18 +319,18 @@ static void do_line(void)
 {
   int c = pp_next(), n = pt_val;
   if ((c != TC_NUM && c != TC_UNUM) || n == 0)
-    error(261 /* "bad #line" */, NULL);
+    error0(261 /* "bad #line" */);
   c = pp_next();
   if (c == TC_STR) {
     if (pt_len >= MAX_PATH)
-      fatal(1 /* "output name too long" */, NULL);
+      fatal0(1 /* "output name too long" */);
     memcpy(cur_path, pt_text, pt_len);
     cur_path[pt_len] = 0;
     file_no[depth] = pp_cur_file = pp_add_file(cur_path);
     c = pp_next();
   }
   if (c != TC_NL)
-    error(261 /* "bad #line" */, NULL);
+    error0(261 /* "bad #line" */);
   pp_lex_set_line(n);
 }
 
@@ -341,7 +341,7 @@ static void do_else(void)
   if (nconds == 0)
     error(240 /* "no #if before" */, "#else");
   if (cond[nconds - 1] & C_ELSE)
-    error(241 /* "#else after #else" */, NULL);
+    error0(241 /* "#else after #else" */);
   if ((cond[nconds - 1] & C_STATE) == C_WAIT)
     cond[nconds - 1] = C_TAKING | C_ELSE;
   else if ((cond[nconds - 1] & C_STATE) == C_TAKING)
@@ -371,7 +371,7 @@ static void directive(void)
   n = pp_lex_word(name, sizeof(hashed) - 1);
   if (n == 0) {
     if (taking() && pp_lex() != TC_NL)
-      error(234 /* "unknown preprocessor directive:" */, NULL);
+      error0(234 /* "unknown preprocessor directive:" */);
   } else if (!strcmp(name, "ifdef")) {
     do_ifdef(1, "#ifdef");
   } else if (!strcmp(name, "ifndef")) {
@@ -457,7 +457,7 @@ static void apply_options(void)
 static int end_file(void)
 {
   if (nconds != file_conds[depth])
-    error(242 /* "missing #endif at the end of the file" */, NULL);
+    error0(242 /* "missing #endif at the end of the file" */);
   bclose(&files[depth]);
   if (depth == 0)
     return 0;
@@ -505,7 +505,7 @@ void pp_file(const char *src, const char *base)
   src_line = 0;
   apply_options();
   if (strlen(src) >= MAX_PATH)
-    fatal(1 /* "output name too long" */, NULL);
+    fatal0(1 /* "output name too long" */);
   strcpy(cur_path, src);
   if (!bopen(&files[0], src, 0))
     fatal(171 /* "cannot open" */, src);
@@ -528,7 +528,7 @@ void pp_file(const char *src, const char *base)
       break;
     }
     if (c == '#' || c == TC_PASTE)
-      error(17 /* "unexpected character in source" */, NULL);
+      error0(17 /* "unexpected character in source" */);
     pp_out(c, pt_val, pt_text, pt_len);
   }
   pp_out_finish();
@@ -554,9 +554,9 @@ const char *base_of(const char *src)
   static char buf[MAX_PATH];
   size_t n = strlen(src);
   if (n < 3 || strcmp(src + n - 2, ".c"))
-    fatal(2 /* "input name must end in .c, or use -o" */, NULL);
+    fatal0(2 /* "input name must end in .c, or use -o" */);
   if (n - 2 >= sizeof(buf))
-    fatal(1 /* "output name too long" */, NULL);
+    fatal0(1 /* "output name too long" */);
   memcpy(buf, src, n - 2);
   buf[n - 2] = 0;
   return buf;

@@ -152,7 +152,7 @@ int pp_add_file(const char *path)
 {
   int n = (int)strlen(path), at, k;
   if (n > FILE_LEN)
-    fatal(1 /* "output name too long" */, NULL);
+    fatal0(1 /* "output name too long" */);
   k = find(path, n, ENT_FILE, &at);
   if (k)
     return k;

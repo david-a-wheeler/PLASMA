@@ -171,7 +171,7 @@ void pp_out(int code, int val, const unsigned char *s, int n)
       str_len = 0;
     }
     if (str_len + n > MAX_STR)
-      error(12 /* "string literal too long" */, NULL);
+      error0(12 /* "string literal too long" */);
     for (i = 0; i < n; i++)
       str[str_len++] = s[i];
     return;

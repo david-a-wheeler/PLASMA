@@ -123,7 +123,7 @@ static void parse_scalar_init(int type)
   if (is_pointer(type))
     addr_const(&o);
   if (o.kind != K_CONST && o.kind != K_ADDR && o.kind != K_FUNC)
-    error(206 /* "initializer is not a constant ccish supports" */, NULL);
+    error0(206 /* "initializer is not a constant ccish supports" */);
   if (o.nonice && o.kind == K_CONST)
     error_in(201 /* "a const variable's value isn't a constant"
                   " expression in C" */,
@@ -149,7 +149,7 @@ static void parse_scalar_init(int type)
   // end is allowed, as in C), or within its string.
   if ((o.global == 1 && (o.off < 0 || o.off > data_offset()))
       || (o.global == G_STR && (o.off < o.disp || o.off > o.val)))
-    error(155 /* "initializer address is out of range" */, NULL);
+    error0(155 /* "initializer address is out of range" */);
   if (o.global == G_STR) {
     data_addr(REL_STR, o.off, 0);
   } else if (o.global == 1) {
@@ -571,8 +571,8 @@ static void parse_pimport(void)
   int i, d = -1;
   next();                         // __plasma_import
   if (tok != T_ID)
-    error(13 /* "expected a module name after #pragma plasma"
-                " import" */, NULL);
+    error0(13 /* "expected a module name after #pragma plasma"
+                 " import" */);
   for (i = 0; i < ndeps; i++) {
     if (dep_file[i] == tok_file)
       dep_file[i] = 0;
@@ -581,7 +581,7 @@ static void parse_pimport(void)
   }
   if (d < 0) {
     if (ndeps >= MAX_DEPS)
-      fatal(224 /* "too many modules imported" */, NULL);
+      fatal0(224 /* "too many modules imported" */);
     d = ndeps++;
     dep_id[d] = tok_val;
   }
@@ -624,8 +624,8 @@ void note_import(int key, int label)
     ;
   if (i == nimports) {
     if (nimports >= MAX_IMPORTS)
-      fatal(189 /* "too many imports (with an asm label, or after a"
-                   " #pragma plasma import)" */, NULL);
+      fatal0(189 /* "too many imports (with an asm label, or after a"
+                    " #pragma plasma import)" */);
     nimports++;
     imp_sym[i] = key;
     imp_label[i] = 0;
@@ -674,22 +674,20 @@ static void define_global(int name, int type, int storage)
   type = var_type[s];
   if (tok == '=') {
     if (storage == T_EXTERN)
-      error(216 /* "'extern' with an initializer is not supported" */,
-            NULL);
+      error0(216 /* "'extern' with an initializer is not supported" */);
     next();
     var_type[s] = parse_global_init(type, name);
     if (init_known)
       set_known(s, init_val);
   } else if (storage != T_EXTERN) {
     if (is_array(type) && type_count(type) == 0)
-      error(87 /* "array size missing" */, NULL);
+      error0(87 /* "array size missing" */);
     if ((is_array(type) || is_struct(type))
         && type_size(type) >= BSS_MIN) {
       // In the zero-filled space, with no data bytes: ccrel places
       // it, maybe on the heap.
       if (bss_next > 0x7FFF - type_size(type))
-        error(182 /* "too much data: globals over 32767 bytes" */,
-              NULL);
+        error0(182 /* "too much data: globals over 32767 bytes" */);
       var_link[s] |= VL_BSS;
       var_off[s] = bss_next;
       bss_next += type_size(type);
@@ -764,8 +762,7 @@ void parse_block_extern(void)
         error(163 /* "'extern' in a block can't hide a local:" */,
               quote(name));
       if (tok == '=')
-        error(216 /* "'extern' with an initializer is not supported" */,
-              NULL);
+        error0(216 /* "'extern' with an initializer is not supported" */);
       s = declare_global(name, parse_var_type(type, 1), T_EXTERN);
       note_import(IMP_DATA + s, label);
     }
@@ -920,7 +917,7 @@ static void parse_toplevel(void)
     error(169 /* "parameter count differs from earlier use of" */,
           quote(fn_name[f]));
   if (fn_name[f] == ID_MAIN && nparams != 0 && nparams != 2)
-    error(170 /* "main takes no parameters, or two" */, NULL);
+    error0(170 /* "main takes no parameters, or two" */);
   set_param_types(f, nparams);
   fn_type[f] = type;
   set_nparams(f, nparams);

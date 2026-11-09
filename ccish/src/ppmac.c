@@ -145,7 +145,7 @@ int pp_mac_find(int id)
 // Expansion's buffers are full: stop.
 static void too_long(void)
 {
-  fatal(256 /* "macro expansion too long" */, NULL);
+  fatal0(256 /* "macro expansion too long" */);
 }
 
 // The length of the encoded token at p.
@@ -215,7 +215,7 @@ void pp_def_begin(int np, const int *params, int va)
 static void def_byte(int c)
 {
   if (body_used >= MAX_MACRO_BYTES)
-    fatal(244 /* "too many macros, or macros too long" */, NULL);
+    fatal0(244 /* "too many macros, or macros too long" */);
   body[body_used++] = (unsigned char)c;
 }
 
@@ -240,7 +240,7 @@ void pp_def_token(int code, int val, const unsigned char *s, int n)
   int i, len, p = code == TC_ID || code == TC_KEYWORD ? param_of(val) : -1;
   if (def_hash) {
     if (p < 0)
-      error(252 /* "'#' must be followed by a macro parameter" */, NULL);
+      error0(252 /* "'#' must be followed by a macro parameter" */);
     def_byte(TC_HASH_PARAM);
     def_byte(p);
     def_hash = 0;
@@ -269,11 +269,11 @@ void pp_def_end(int id)
   int m = pp_mac_find(id), n = body_used - def_start, i;
   unsigned char *p, *last = body, *end = body + body_used;
   if (def_hash)
-    error(252 /* "'#' must be followed by a macro parameter" */, NULL);
+    error0(252 /* "'#' must be followed by a macro parameter" */);
   for (p = body + def_start; p != end; p += token_len(p)) {
     if (*p == TC_PASTE) {
       if (p == body + def_start || p + 1 == end)
-        error(253 /* "'##' can't be at either end of a macro" */, NULL);
+        error0(253 /* "'##' can't be at either end of a macro" */);
       if (*last == TC_PARAM)
         *last = TC_PARAM_RAW;
       if (p[1] == TC_PARAM)
@@ -291,7 +291,7 @@ void pp_def_end(int id)
     return;
   }
   if (nmacs >= MAX_MACROS)
-    fatal(244 /* "too many macros, or macros too long" */, NULL);
+    fatal0(244 /* "too many macros, or macros too long" */);
   mac_id[nmacs] = id;
   mac_at[nmacs] = def_start;
   mac_len[nmacs] = n;
@@ -343,7 +343,7 @@ static void push_text(const unsigned char *p, int n, int m, int bar)
 {
   int low = sbuf_low();
   if (nin >= MAX_EXPAND)
-    fatal(245 /* "macro expansion nested too deeply" */, NULL);
+    fatal0(245 /* "macro expansion nested too deeply" */);
   if (low + n > MAX_EXP_BYTES)
     too_long();
   memmove(sbuf + low, p, n);
@@ -430,7 +430,7 @@ static int collect(int m)
       error(249 /* "unterminated call of macro" */,
             pp_id_spelling(mac_id[m]));
     if (c == '#' && pp_from_lexer && pt_first)
-      error(250 /* "a directive inside a macro's arguments" */, NULL);
+      error0(250 /* "a directive inside a macro's arguments" */);
     if (depth == 0
         && (c == ')' || (c == ',' && !(mac_va[m] && n == np - 1)))) {
       a_end[base + n] = stop;
@@ -505,7 +505,7 @@ static void put_string(int k)
   for (p = sbuf + a_at[k]; p != end; p += token_len(p)) {
     if (*p == TC_SPACE) {
       if (n >= MAX_STR)
-        error(12 /* "string literal too long" */, NULL);
+        error0(12 /* "string literal too long" */);
       str[n++] = ' ';
       continue;
     }
@@ -513,7 +513,7 @@ static void put_string(int k)
     len = pp_spell_token(*p, pt_val, pt_text, pt_len,
                          (char *)str + n, MAX_STR + 1 - n);
     if (len < 0)
-      error(12 /* "string literal too long" */, NULL);
+      error0(12 /* "string literal too long" */);
     n += len;
   }
   pt_len = n;
@@ -545,7 +545,7 @@ static void paste(int lhs, int rhs)
   k = n < 0 ? -1 : pp_spell_token(sbuf[rhs], pt_val, pt_text, pt_len,
                                   text + n, sizeof(text) - n);
   if (k < 0)
-    error(254 /* "pasting doesn't give a valid token:" */, NULL);
+    error0(254 /* "pasting doesn't give a valid token:" */);
   n += k;
   if (is_word_char(text[0]) && !(text[0] >= '0' && text[0] <= '9')) {
     for (k = 0; k < n; k++)
@@ -558,7 +558,7 @@ static void paste(int lhs, int rhs)
   } else if (text[0] >= '0' && text[0] <= '9') {
     for (k = 0; k < n && text[k] >= '0' && text[k] <= '9'; k++) {
       if (v > (0xFFFFu - (unsigned)(text[k] - '0')) / 10u)
-        error(10 /* "number does not fit in 16 bits" */, NULL);
+        error0(10 /* "number does not fit in 16 bits" */);
       v = v * 10u + (unsigned)(text[k] - '0');
     }
     if (k < n && (text[k] == 'u' || text[k] == 'U')) {
