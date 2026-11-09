@@ -180,6 +180,14 @@ files of the sessions so far, before a move to a new computer.)
   strings, each program's totals and module file, table peaks, stack
   depth. It writes `tools/out/PROGRAM.lst`, ccrel's listings, and
   `tools/out/PROGRAM.objs`, the objects tools/cclink linked.
+- `python3 tools/listings.py` (or `make listings`; after `make`)
+  writes tools/out/lst/NAME.lst for every source file of the programs
+  and the library: each function's comment and C, then the machine ops
+  ccgen writes for it (`ccgen -d`, the small build's code, before
+  linking). `python3 tools/opstats.py [-p cccomp] [-o]` counts the ops
+  in them: each op's share, and the most frequent runs of 2 to 4 ops,
+  never across a label: where a peephole pattern or better code
+  generation would pay most.
 - `python3 tools/loops.py` (after measure.py): accesses to globals moved
   to the heap, in loops, by global and function.
 - **Compare against the previous commit** with a git worktree at a

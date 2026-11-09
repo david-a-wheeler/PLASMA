@@ -285,6 +285,11 @@ tests/xrun/%.ref: tests/xrun/%.c tests/xrun/%.flags inc/ptest.h
 measure: all
 	python3 tools/measure.py
 
+# Each source file's functions, C then machine ops, in tools/out/lst/
+# (tools/listings.py); tools/opstats.py counts the ops in them.
+listings: all
+	python3 tools/listings.py
+
 # The sources, for tools/measure.py: a line for each Apple II program,
 # its name and its sources in link order, and a line "lib" and the
 # library's. measure.py asks for these, so they're kept only here.
@@ -300,5 +305,5 @@ clean:
 	rm -f ccpp-small cccomp-small ccgen-small ccrel-small
 	rm -rf $(OUT) tools/out bootstrap
 
-.PHONY: all small test testbuild xref measure print-sources bootstrap full-test \
-        clean
+.PHONY: all small test testbuild xref measure listings print-sources bootstrap \
+        full-test clean
