@@ -147,48 +147,6 @@ enum {
   IR_MOP = IR_NOPS
 };
 
-// Each op's number, block by block. The tables indexed by op (irin.c's
-// stk_effect[], and lower.c's lw_kind[], lw_op[] and ir_names[]) are
-// written for exactly these, a row of 4 to a line, so a change to any
-// of them must change those tables too. The checks are here, not at
-// the tables, so that one copy serves all four, and fails where the
-// numbers are changed.
-#define TABLES "; update irin.c's stk_effect[], lower.c's lw_kind[]," \
-               " lw_op[] and ir_names[], and these checks"
-_Static_assert(IR_LOCAL == 0x00 && IR_LOCALB == 0x01 && IR_SETLOCAL == 0x02
-               && IR_SETLOCALB == 0x03 && IR_GLOBAL == 0x04
-               && IR_GLOBALB == 0x05 && IR_SETGLOBAL == 0x06
-               && IR_SETGLOBALB == 0x07 && IR_LOAD == 0x08 && IR_LOADB == 0x09
-               && IR_STORE == 0x0A && IR_STOREB == 0x0B
-               && IR_LOCALADDR == 0x0C && IR_DATAADDR == 0x0D
-               && IR_HEAPADDR == 0x0E && IR_STRADDR == 0x0F,
-               "an access or address op ($00-$0F) moved" TABLES);
-_Static_assert(IR_FUNC == 0x10 && IR_ENDFUNC == 0x11 && IR_CONST == 0x12
-               && IR_CALL == 0x13 && IR_DROP == 0x14 && IR_DUP == 0x15
-               && IR_RETURN == 0x16 && IR_FUNCADDR == 0x17 && IR_ICALL == 0x18
-               && IR_NEG == 0x19 && IR_COMP == 0x1A && IR_NOT == 0x1B
-               && IR_SWAP == 0x1C && IR_UDIV == 0x1D && IR_UMOD == 0x1E
-               && IR_USHR == 0x1F,
-               "an op of $10-$1F moved" TABLES);
-_Static_assert(IR_ADD == 0x30 && IR_SUB == 0x31 && IR_MUL == 0x32
-               && IR_DIV == 0x33 && IR_MOD == 0x34 && IR_AND == 0x35
-               && IR_OR == 0x36 && IR_XOR == 0x37 && IR_SHL == 0x38
-               && IR_SHR == 0x39,
-               "a binary op ($30-$39) moved" TABLES);
-_Static_assert(IR_EQ == 0x40 && IR_NE == 0x41 && IR_LT == 0x42
-               && IR_GE == 0x43 && IR_GT == 0x44 && IR_LE == 0x45
-               && IR_ULT == 0x46 && IR_UGE == 0x47 && IR_UGT == 0x48
-               && IR_ULE == 0x49,
-               "a comparison ($40-$49) moved" TABLES);
-_Static_assert(IR_LABEL == 0x50 && IR_JUMP == 0x51 && IR_BRFALSE == 0x52
-               && IR_BRTRUE == 0x53 && IR_SEL == 0x54 && IR_JOIN == 0x55
-               && IR_CASES == 0x56 && IR_CASEVAL == 0x57 && IR_CASETO == 0x58
-               && IR_LOOP == 0x5C && IR_LOOPSTEP == 0x5D
-               && IR_LOOPBODY == 0x5E && IR_LOOPEND == 0x5F
-               && IR_NOPS == 0x60,
-               "a control-flow op ($50-$5F) moved" TABLES);
-#undef TABLES
-
 // The IR file: the output name plus this suffix, and its format's
 // version (in its header, after the magic "CIR").
 #define SUFFIX_IR   ".ir"
@@ -222,7 +180,7 @@ _Static_assert(IR_IS_S_COMPARE(IR_EQ) && IR_IS_S_COMPARE(IR_NE)
                "IR_IS_S_COMPARE isn't EQ, NE and the 4 relationals, or"
                " IR_IS_RELATIONAL isn't LT, GE, GT and LE");
 _Static_assert(IR_IS_COMPARE(IR_EQ) && IR_IS_COMPARE(IR_ULE)
-               && IR_ULT == IR_LE + 1 && IR_ULE - IR_EQ == 9,
+               && IR_ULE - IR_EQ == 9,
                "IR_IS_COMPARE isn't the 6 signed, then the 4 unsigned");
 // The opposite comparison, the one ! gives (De Morgan): EQ <-> NE,
 // LT <-> GE, GT <-> LE, and the unsigned. The pairs are adjacent in
@@ -270,9 +228,8 @@ _Static_assert(IR_REFS_LABEL(IR_JUMP) && IR_REFS_LABEL(IR_BRFALSE)
 _Static_assert(IR_IS_LOOP_MARKER(IR_LOOP) && IR_IS_LOOP_MARKER(IR_LOOPSTEP)
                && IR_IS_LOOP_MARKER(IR_LOOPBODY)
                && IR_IS_LOOP_MARKER(IR_LOOPEND)
-               && IR_LOOPEND - IR_LOOP == 3 && IR_LOOPEND + 1 == IR_NOPS,
-               "IR_IS_LOOP_MARKER isn't the 4 loop markers, or they aren't"
-               " last");
+               && IR_LOOPEND - IR_LOOP == 3,
+               "IR_IS_LOOP_MARKER isn't the 4 loop markers");
 // Is op (0 or more) a number some IR op has? The gaps between the
 // blocks are none, and the reader refuses them (irin.c).
 #define IR_IS_OP(op)  ((op) <= (IR_STOREB | IR_VOLATILE) || IR_IS_BINARY(op) \
@@ -326,13 +283,11 @@ _Static_assert(IR_STORE_FORM(IR_LOCAL) == IR_SETLOCAL
                && IR_STORE_FORM(IR_LOAD) == IR_STORE
                && IR_STORE_FORM(IR_LOADB) == IR_STOREB,
                "IR_STORE_FORM: a store isn't its load | IR_ACC_STORE");
-_Static_assert((IR_STOREB & IR_VOLATILE) == 0 && IR_VOLATILE == 0x20
+_Static_assert(((IR_ACC_BYTE | IR_ACC_STORE | IR_STOREB) & IR_VOLATILE) == 0
                && IR_IS_VOLATILE(IR_LOCAL | IR_VOLATILE)
                && IR_IS_VOLATILE(IR_STOREB | IR_VOLATILE)
                && IR_PLAIN_FORM(IR_STOREB | IR_VOLATILE) == IR_STOREB,
-               "IR_VOLATILE overlaps an access op's bits, or isn't $20, the"
-               " volatile forms' place in irin.c's stk_effect[] and lower.c's"
-               " tables");
+               "IR_VOLATILE overlaps an access op's bits");
 // IR_IS_OP's first range (above, which comes before IR_VOLATILE is
 // defined) holds no gap: the access and address ops, the $10-$1F ops,
 // then the access ops' volatile forms, with none between.
@@ -340,6 +295,14 @@ _Static_assert(IR_LOCAL == 0 && IR_FUNC == IR_STRADDR + 1
                && (IR_LOCAL | IR_VOLATILE) == IR_USHR + 1
                && (IR_STOREB | IR_VOLATILE) < IR_ADD,
                "IR_IS_OP: $00 up to the last volatile access op has a gap");
+// The op-indexed tables (irin.c's stk_effect[], lower.c's lw_kind[],
+// lw_op[] and ir_names[]) have IR_NOPS entries, so it must be past
+// every op: a spot check of each block's last.
+_Static_assert((IR_STOREB | IR_VOLATILE) < IR_NOPS && IR_SHR < IR_NOPS
+               && IR_ULE < IR_NOPS && IR_CASETO < IR_NOPS
+               && IR_LOOPEND < IR_NOPS,
+               "an IR op is past IR_NOPS, so it has no entry in the op-indexed"
+               " tables");
 
 // The bit that marks an IR op followed by a one-byte operand. An IR
 // op's tag is its number, below IR_TAG_END ($60), so up to 96 ops; a

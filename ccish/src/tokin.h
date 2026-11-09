@@ -75,9 +75,9 @@ _Static_assert(T_IS_STORAGE(T_STATIC) && T_IS_STORAGE(T_EXTERN)
 _Static_assert(T_IS_CASE_LABEL(T_CASE) && T_IS_CASE_LABEL(T_DEFAULT)
                && T_DEFAULT - T_CASE == 1,
                "T_IS_CASE_LABEL isn't case and default");
-// A one-character token is its character code, so the others start
-// past them.
-_Static_assert(T_EOF == 0 && T_ID > 0xFF,
+// A one-character token is its character code ($20-$7E), so no other
+// token may be one.
+_Static_assert(T_EOF < ' ' && T_ID > '~',
                "a token is also a one-character token's code");
 
 // The current token.

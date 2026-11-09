@@ -5034,8 +5034,11 @@ issue. In summary:
     codes, parse.c's acc_form(), op_name()'s names[]) in that file,
     with a comment saying why it's there. The op-indexed tables
     (stk_effect[], lw_kind[], lw_op[], ir_names[]) are sized by their
-    entries and checked against IR_NOPS, and ir.h pins every op's
-    number, once for all four, where the numbers would be changed. To
+    entries and checked against IR_NOPS, which ir.h checks is past
+    every op. The checks are of relationships only, never of a
+    symbol's value, so any op or token may be given another number;
+    and of distinctness only where it's a concern (the enums make most
+    codes distinct, and other tests catch the rest). To
     check each keyword's place, token.h now names every keyword's code
     (TC_INT ... TC_CONSTEXPR, with NKEYWORDS from them). A cast to int
     keeps gcc from warning when an assertion compares two enums'

@@ -309,8 +309,8 @@ static const char stk_effect[] = {
   // $5C: loop loopstep loopbody loopend
   STK_NONE, STK_NONE, STK_NONE, STK_NONE,
 };
-// One entry per op number, laid out as ir.h's checks of the numbers
-// say; sized by its entries, so a missing or extra row is caught here.
+// One entry per op number; sized by its entries, so a missing or
+// extra row is caught here.
 _Static_assert(sizeof(stk_effect) == IR_NOPS,
                "stk_effect[] doesn't have one entry per IR op number");
 

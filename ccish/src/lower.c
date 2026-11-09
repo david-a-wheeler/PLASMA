@@ -65,8 +65,8 @@ static const char *const ir_names[] = {
   // $5C: loop loopstep loopbody loopend
   "LOOP", "LOOPSTEP", "LOOPBODY", "LOOPEND",
 };
-// One name per op number, as ir.h's checks of the numbers say;
-// sized by its entries, so a missing or extra row is caught here.
+// One name per op number; sized by its entries, so a missing or extra
+// row is caught here.
 _Static_assert(sizeof(ir_names) / sizeof(ir_names[0]) == IR_NOPS,
                "ir_names[] doesn't have one name per IR op number");
 

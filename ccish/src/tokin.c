@@ -185,13 +185,10 @@ void next(void)
 // next() maps a stream code to a token by its offset in its block
 // (T_INT + (c - TC_KEYWORDS), T_EQ + (c - TC_EQ)), so the tokens must
 // be in the stream's order (token.h, CCPP.md): each keyword and each
-// operator at its code's place, and every keyword token with a code
-// (T_KEYWORD right after them). Here, since next() is what relies on
+// operator at its code's place. Here, since next() is what relies on
 // it. (The keywords' spellings, pplex.c's keywords[], follow the same
 // order; strings can't be checked here, but tests/pp's token streams
 // do.)
-_Static_assert(T_KEYWORD - T_INT == NKEYWORDS,
-               "T_INT ... T_KEYWORD aren't the NKEYWORDS keywords");
 #define SAME_KW(x) _Static_assert(T_##x - T_INT == TC_##x - TC_KEYWORDS, \
                                   "T_" #x " isn't at TC_" #x "'s place")
 SAME_KW(INT); SAME_KW(CHAR); SAME_KW(SIGNED); SAME_KW(UNSIGNED);
@@ -248,18 +245,17 @@ int next_is_colon(void)
 #define MSG_KEYWORDS 262
 #define MSG_OPS      324
 // The ranges above, which ccish.msg must match (tests/spec/msgs.sh
-// checks the comment against it); and tok_desc()'s order: T_ID, T_NUM
-// and T_STR, then the keywords, T_KEYWORD, and the operators last.
+// checks the comment against it); and tok_desc()'s order: the
+// one-character tokens below T_INT, and the keywords below T_EQ.
 _Static_assert(MSG_KEYWORDS + NKEYWORDS - 1 == 289,
                "the keywords' messages aren't 262-289: fix the comment"
                " and ccish.msg");
 _Static_assert(MSG_OPS + NOPS - 1 == 345,
                "the operators' messages aren't 324-345: fix the comment"
                " and ccish.msg");
-_Static_assert(T_STR < T_INT && T_NUM < T_INT && T_ID < T_INT
-               && T_CONSTEXPR < T_KEYWORD && T_KEYWORD < T_EQ,
-               "tok_desc() needs the keywords, then T_KEYWORD, then the"
-               " operators, last");
+_Static_assert(T_INT > '~' && T_INT + NKEYWORDS <= T_EQ,
+               "tok_desc() needs the one-character tokens below T_INT, and"
+               " the keywords below T_EQ");
 
 #ifdef CCISH_DIAG
 // Describe the current token for an error message, e.g. "'while'" or

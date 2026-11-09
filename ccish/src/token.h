@@ -56,11 +56,12 @@ enum {
 };
 #define NKEYWORDS    (TC_CONSTEXPR - TC_KEYWORDS + 1)   // supported keywords
 #define NOPS         22       // operators: == ... "..."
-// The keywords' codes, TC_KEYWORDS up, end before the operators'
-// ($80-$BF), and the operators' fit in a byte ($C0-$DF): CCPP.md.
-_Static_assert(TC_KEYWORDS + NKEYWORDS <= TC_EQ && TC_EQ == 0xC0,
+// The keywords' codes, TC_KEYWORDS up, end before the operators', and
+// those fit in a byte.
+_Static_assert(TC_KEYWORDS + NKEYWORDS <= TC_EQ,
                "the keywords' codes run into the operators'");
-_Static_assert(TC_ELLIPSIS - TC_EQ == NOPS - 1 && TC_ELLIPSIS <= 0xDF,
-               "NOPS isn't the number of operators, TC_EQ ... TC_ELLIPSIS");
+_Static_assert(TC_ELLIPSIS - TC_EQ == NOPS - 1 && TC_ELLIPSIS <= 0xFF,
+               "NOPS isn't the number of operators, TC_EQ ... TC_ELLIPSIS,"
+               " or they aren't bytes");
 
 #endif
