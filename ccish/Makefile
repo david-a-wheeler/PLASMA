@@ -16,7 +16,7 @@
 # under tests/spec/.
 
 CC ?= cc
-CFLAGS ?= -std=c99 -pedantic -Wall -Wextra -O2
+CFLAGS ?= -Wall -Wextra -O2
 # The host C compiler that writes the cross tests' references (make xref).
 XCC ?= $(shell command -v gcc 2>/dev/null || command -v clang 2>/dev/null)
 XREF_FLAGS = -Wall -Wextra -Werror -funsigned-char -fwrapv -O2
