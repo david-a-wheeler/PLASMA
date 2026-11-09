@@ -72,6 +72,7 @@
 #include "ir.h"
 #include "name.h"
 #include "type.h"
+#include "type.tag.h"
 #include "parse.h"
 #include "pstmt.h"
 #include "irout.h"
@@ -404,7 +405,7 @@ void set_param_types(int f, int n)
   if (fn_ptypes[f] >= 0) {
     for (i = 0; i < n; i++)
       if (param_types[fn_ptypes[f] + i]
-          != unqual(var_type[nglobals + i]))
+          != UNQUAL(var_type[nglobals + i]))
         error(31 /* "conflicting parameter types for" */,
               quote(fn_name[f]));
     return;
@@ -413,7 +414,7 @@ void set_param_types(int f, int n)
     fatal(32 /* "too many function parameters in all" */, NULL);
   fn_ptypes[f] = nparam_types;
   for (i = 0; i < n; i++)
-    param_types[nparam_types++] = unqual(var_type[nglobals + i]);
+    param_types[nparam_types++] = UNQUAL(var_type[nglobals + i]);
 }
 
 // Does the current token start a type name: a type keyword, a
@@ -430,10 +431,10 @@ int is_type_start(void)
 const char *tag_desc(int tag)
 {
   static char buf[MAX_NAME + 10];
-  if (tag_name(tag) < 0)
-    return tag_is_union(tag) ? "an unnamed union" : "an unnamed struct";
-  strcpy(buf, tag_is_union(tag) ? "'union " : "'struct ");
-  strcat(buf, nam_name(tag_name(tag)));
+  if (tg_name[tag] < 0)
+    return tg_union[tag] ? "an unnamed union" : "an unnamed struct";
+  strcpy(buf, tg_union[tag] ? "'union " : "'struct ");
+  strcat(buf, nam_name(tg_name[tag]));
   strcat(buf, "'");
   return buf;
 }
@@ -444,7 +445,7 @@ const char *tag_desc(int tag)
 void need_complete(int t, int msg)
 {
   if (is_struct(t) && type_size(t) == 0)
-    error(msg, tag_desc(struct_tag(t)));
+    error(msg, tag_desc(STRUCT_TAG(t)));
 }
 
 // Parse any qualifiers (const, volatile), and return them as Q_ bits.
@@ -1041,7 +1042,7 @@ int addr_op(Operand *o, int *a, int *f)
 // Is type t (or a qualified one: const unsigned) unsigned int?
 int is_uns(int t)
 {
-  return unqual(t) == TY_UINT;
+  return UNQUAL(t) == TY_UINT;
 }
 
 // The type of an arithmetic op's result on integer types a and b, by
@@ -1290,9 +1291,9 @@ int holds_qual(int t, int q)
     return holds_qual(type_sub(t), q);
   if (!is_struct(t))
     return 0;
-  tag = struct_tag(t);
+  tag = STRUCT_TAG(t);
   for (m = member_next(tag, -1); m >= 0; m = member_next(tag, m))
-    if (holds_qual(member_type(m), q))
+    if (holds_qual(mb_type[m], q))
       return q;
   return 0;
 }

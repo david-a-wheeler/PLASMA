@@ -18,6 +18,7 @@
 #include "ir.h"
 #include "name.h"
 #include "type.h"
+#include "type.tag.h"
 #include "parse.h"
 #include "irout.h"
 #include "pstmt.h"
@@ -33,13 +34,13 @@ static void struct_word(Operand *w, Operand *o, int k);
 // type's own qualifiers (const char * and char *)?
 static int same_target(int a, int b)
 {
-  return unqual(type_sub(a)) == unqual(type_sub(b));
+  return UNQUAL(type_sub(a)) == UNQUAL(type_sub(b));
 }
 
 // Is pointer type t a pointer to void (with any qualifiers)?
 static int is_void_ptr(int t)
 {
-  return unqual(type_sub(t)) == TY_VOID;
+  return UNQUAL(type_sub(t)) == TY_VOID;
 }
 
 // Can pointer types a and b be mixed (in ==, != or ?:)? They can if
@@ -88,7 +89,7 @@ void check_assign(int to, Operand *o, int where,
   if (o->kind == K_VOID)
     error(38 /* "void value used in an expression" */, NULL);
   if (is_struct(to) || is_struct(from)) {
-    if (unqual(to) != unqual(from))
+    if (UNQUAL(to) != UNQUAL(from))
       error_in(46 /* "incompatible types in" */, where,
                assign_detail(where, detail));
     return;
@@ -161,7 +162,7 @@ void to_char(Operand *o)
 // value is unchanged (both are 16 bits).
 static void cast(Operand *o, int type)
 {
-  type = unqual(type);
+  type = UNQUAL(type);
   if (is_struct(type))
     error(52 /* "a cast to a struct type isn't allowed" */, NULL);
   if (type == TY_VOID) {
@@ -433,7 +434,7 @@ static void parse_icall(Operand *o)
     put(IR_LOCAL, tmp, -1);
   else
     rvalue(o);
-  r = unqual(type_sub(t));
+  r = UNQUAL(type_sub(t));
   put(IR_ICALL, nargs, result_words(r));
   o->kind = r != TY_VOID ? K_VALUE : K_VOID;
   o->type = r;                // a struct: its words are on the stack
@@ -570,14 +571,14 @@ static void parse_primary(Operand *o)
     if (v >= 0 && (var_flags[v] & V_KNOWN) && !place) {
       o->kind = K_CONST;      // a const variable's known value
       o->quals = Q_CONST;     // so N = 2 is an error 42
-      o->type = unqual(var_type[v]);
+      o->type = UNQUAL(var_type[v]);
       o->val = var_val[v];
       o->nonice = 1;
       return;
     }
     if (v >= 0) {
       o->kind = K_VAR;        // load it later, if needed
-      o->type = unqual(var_type[v]);
+      o->type = UNQUAL(var_type[v]);
       o->quals = var_type[v] & Q_ALL;
       // A zero-filled global is reached through its symbol.
       o->off = var_link[v] & VL_BSS ? 0 : var_off[v];
@@ -644,7 +645,7 @@ static void post_incdec(Operand *o, int ir_op)
 // char *).
 static void set_object(Operand *o, int t)
 {
-  o->type = unqual(t);
+  o->type = UNQUAL(t);
   o->quals = t & Q_ALL;
 }
 
@@ -849,10 +850,10 @@ static void parse_member(Operand *o, int arrow)
     error(73 /* "'.' needs a struct or union" */, NULL);
   if (!arrow && o->kind == K_VALUE)
     materialize(o);             // f().x
-  tag = struct_tag(arrow ? type_sub(t) : t);
+  tag = STRUCT_TAG(arrow ? type_sub(t) : t);
   if (tok != T_ID)
     error(74 /* "expected a member name, not" */, tok_desc());
-  if (tag_size(tag) < 0)
+  if (tg_size[tag] < 0)
     error(75 /* "member access into the incomplete type" */,
           tag_desc(tag));
   m = member_find(tag, tok_val);
@@ -867,7 +868,7 @@ static void parse_member(Operand *o, int arrow)
 #endif
   }
   next();
-  off = member_off(m);
+  off = mb_off[m];
   if (arrow && o->kind == K_CONST) {
     o->val = wrap16((unsigned)o->val + (unsigned)off);
     off = 0;
@@ -875,7 +876,7 @@ static void parse_member(Operand *o, int arrow)
   if (arrow)
     deref(o);
   offset_place(o, off);
-  set_object(o, qualify(member_type(m), o->quals));
+  set_object(o, qualify(mb_type[m], o->quals));
 }
 
 // Parse a unary expression: prefix operators, then a primary
@@ -1009,11 +1010,11 @@ static void parse_sizeof(Operand *o)
   in_sizeof--;
   nheld = saved;              // drop anything held inside it
   nest--;
-  if (unqual(t) == TY_VOID)
+  if (UNQUAL(t) == TY_VOID)
     error(78 /* "sizeof can't be applied to type void" */, NULL);
   if (is_struct(t) && type_size(t) == 0)
     error(79 /* "sizeof can't be applied to the incomplete type" */,
-          tag_desc(struct_tag(t)));
+          tag_desc(STRUCT_TAG(t)));
   if (is_array(t) && type_count(t) == 0)    // extern int a[];
     error(79 /* "sizeof can't be applied to the incomplete type" */,
           NULL);
@@ -1119,7 +1120,7 @@ static int cond_type(Operand *b, int b_null, Operand *c, int c_null)
     q = (type_sub(bt) | type_sub(ct)) & Q_ALL;
     if (is_void_ptr(bt) || is_void_ptr(ct))
       return pointer_to(TY_VOID | q);
-    return pointer_to(unqual(type_sub(bt)) | q);
+    return pointer_to(UNQUAL(type_sub(bt)) | q);
   }
   if (is_pointer(bt) && c_null)
     return bt;

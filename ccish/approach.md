@@ -5068,6 +5068,25 @@ issue. In summary:
     ccpp 13,686 to 13,670 (its spelling tables grew 46 bytes of
     data), with the group macros of decision 39's follow-up and the
     global betweenness rewrite included.
+41. **type.c's small functions** (decided in discussion, 2026-11-09).
+    One enum of basic types: a basic type's kind is its own index
+    (TY_VOID ... TY_UINT), and the other kinds (TK_PTR ...) are
+    private to type.c, so they cost no other file MAX_IDS entries.
+    Accessors became macros or direct access where that's smaller:
+    UNQUAL(t) is one AND with TY_INDEX, since a handle is only an
+    index and the qualifier bits above it (1 byte smaller than the
+    call, at 29 calls); IS_CONST(t) is one AND (is_const() had no
+    callers left after holds_qual()); STRUCT_TAG is type_sub; the tag
+    and member arrays are read directly, declared in a split header,
+    type.tag.h, for the four parser files that use them; and
+    is_pointer() and its kin read tkind[] themselves (TYPE_KIND, a
+    macro in type.c), one call where there were two. Macros' names
+    are uppercase. cccomp is 105 bytes smaller; ptop.c sees 77 of
+    MAX_VARS 79 now, and ccpp's MAX_MACROS is 142 (129 used). Left as
+    they are: func_of() and struct_type() (3 calls), which as macros
+    would need the kinds in type.h; and is_pointer() and its kin as
+    macros, which would save time but cost about 100 bytes (a
+    prefer-speed option).
 
 
 ## Milestones

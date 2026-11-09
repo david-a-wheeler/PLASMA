@@ -78,6 +78,7 @@
 #include "ir.h"
 #include "name.h"
 #include "type.h"
+#include "type.tag.h"
 #include "parse.h"
 #include "irout.h"
 #include "ptop.h"
@@ -388,7 +389,7 @@ static void init_sub(int t, int off)
 static void init_flat(int t, int off)
 {
   int n, i, m, tag;
-  if (is_array(t) && unqual(type_sub(t)) == TY_CHAR && tok == T_STR) {
+  if (is_array(t) && UNQUAL(type_sub(t)) == TY_CHAR && tok == T_STR) {
     n = type_count(t);
     i = init_string(n, off);
     init_zero(n - i, off + i);
@@ -399,17 +400,17 @@ static void init_flat(int t, int off)
     for (i = 0; (n == 0 || i < n) && !init_done; i++)
       init_sub(type_sub(t), off + i * type_size(type_sub(t)));
   } else if (is_struct(t)) {
-    tag = struct_tag(t);
+    tag = STRUCT_TAG(t);
     for (m = member_next(tag, -1); m >= 0 && !init_done;
          m = member_next(tag, m)) {
-      init_sub(member_type(m), off + member_off(m));
-      if (tag_is_union(tag))
+      init_sub(mb_type[m], off + mb_off[m]);
+      if (tg_union[tag])
         break;   // as in C, a union is initialized by its first
                  // member only; a further initializer hits the
                  // "too many" error below
     }
   } else {
-    init_elem(unqual(t), off);
+    init_elem(UNQUAL(t), off);
     init_end = off + type_size(t);
     after_leaf();
   }
@@ -426,7 +427,7 @@ static int parse_aggr_init(int type, int name)
 
   init_name = name;
   init_end = 0;
-  if (is_array(type) && unqual(type_sub(type)) == TY_CHAR
+  if (is_array(type) && UNQUAL(type_sub(type)) == TY_CHAR
       && tok == T_STR) {
     init_end = init_string(type_count(type), 0);
   } else {
@@ -727,7 +728,7 @@ static void parse_globals(int base, int type, int name, int storage)
 int declare_function(int name, int type, int is_static)
 {
   int f;
-  type = unqual(type_sub(type));
+  type = UNQUAL(type_sub(type));
   check_byval(type, 0);
   if (find_var(name) >= 0)
     error(27 /* "redeclaration of" */, quote(name));
@@ -871,7 +872,7 @@ static void parse_toplevel(void)
   // type loses its qualifiers: const int f(void) returns an int.
   f = new_func;
   nparams = decl_nparams;
-  type = unqual(type_sub(type));
+  type = UNQUAL(type_sub(type));
   check_byval(type, 0);
   if (storage == T_STATIC) {
     if ((fn_flags[f] & FN_DECLARED) && !(fn_flags[f] & FN_STATIC))

@@ -31,38 +31,46 @@
 #include "build.h"
 #include "diag.h"
 #include "type.h"
+#include "type.tag.h"
 
 #define MAX_TYPES    54     // distinct types (49, link.c); at most 128,
                             // since char tables (fn_type[], param_types[])
                             // hold unqualified types, and a host's char
                             // may be signed
-#define MAX_TAGS     6      // struct tags, including hidden ones (3)
-#define MAX_MEMBERS  32     // struct members, in all structs (25)
+// (128 is a portability limit for a signed char; measure.py's big
+// build uses 256 on a host whose char isn't. The index bits are a
+// hard one.)
+_Static_assert(MAX_TYPES <= TY_INDEX + 1,
+               "MAX_TYPES: a type's index must fit in a handle's index bits");
 
-static char tkind[MAX_TYPES] = {TK_VOID, TK_CHAR, TK_INT, TK_UINT};
+// The kinds of type, tkind[]'s values: a basic type's kind is its own
+// index (TY_VOID ... TY_UINT, type.h), and the other kinds follow. Only
+// type.c needs them, so they cost the other files no MAX_IDS entries.
+enum { TK_PTR = TY_UINT + 1, TK_FUNC, TK_ARRAY, TK_STRUCT };
+_Static_assert((int)TK_PTR > (int)TY_UINT && TK_STRUCT < 128,
+               "a kind is also a basic type's, or doesn't fit in tkind[]");
+
+static char tkind[MAX_TYPES] = {TY_VOID, TY_CHAR, TY_INT, TY_UINT};
 static int tsub[MAX_TYPES];     // a handle, with qualifier bits
 static int tcount[MAX_TYPES];
-static int ntypes = 4;
+static int ntypes = TY_UINT + 1;    // the basic types, first
 
-static int tg_name[MAX_TAGS];
-static int tg_size[MAX_TAGS];
+int tg_name[MAX_TAGS];          // (type.tag.h)
+int tg_size[MAX_TAGS];
 static char tg_depth[MAX_TAGS];
-char tg_union[MAX_TAGS];        // (type.h)
+char tg_union[MAX_TAGS];
 static unsigned tg_hsum[MAX_TAGS];
 static unsigned tg_hmul[MAX_TAGS];
 static int ntags;
 
 static char mb_tag[MAX_MEMBERS];
 static int mb_name[MAX_MEMBERS];
-static int mb_type[MAX_MEMBERS];     // a handle, with qualifier bits
-static int mb_off[MAX_MEMBERS];
+int mb_type[MAX_MEMBERS];       // (type.tag.h) a handle, with qualifiers
+int mb_off[MAX_MEMBERS];
 static int nmembers;
 
-// The kind of type t (TK_*).
-int type_kind(int t)
-{
-  return tkind[t & TY_INDEX];
-}
+// The kind of type t (TK_*, or a basic type's TY_*).
+#define TYPE_KIND(t)  tkind[(t) & TY_INDEX]
 
 // The type a pointer type t points to, or an array type t's element
 // type, with its qualifiers.
@@ -81,10 +89,10 @@ int type_count(int t)
 // unknown size, or an incomplete struct).
 int type_size(int t)
 {
-  switch (type_kind(t)) {
-  case TK_CHAR:  return 1;
-  case TK_INT:   return 2;
-  case TK_UINT:  return 2;
+  switch (TYPE_KIND(t)) {
+  case TY_CHAR:  return 1;
+  case TY_INT:   return 2;
+  case TY_UINT:  return 2;
   case TK_PTR:   return 2;
   case TK_ARRAY: return type_count(t) * type_size(type_sub(t));
   case TK_STRUCT:
@@ -96,13 +104,13 @@ int type_size(int t)
 // Is t a pointer type?
 int is_pointer(int t)
 {
-  return type_kind(t) == TK_PTR;
+  return TYPE_KIND(t) == TK_PTR;
 }
 
 // Is t an array type?
 int is_array(int t)
 {
-  return type_kind(t) == TK_ARRAY;
+  return TYPE_KIND(t) == TK_ARRAY;
 }
 
 // The type of kind k with sub-type sub and count count, added to the
@@ -140,13 +148,13 @@ int array_of(int t, int count)
 // The type "function returning t", t unqualified.
 int func_of(int t)
 {
-  return find_type(TK_FUNC, unqual(t), 0);
+  return find_type(TK_FUNC, UNQUAL(t), 0);
 }
 
 // Is t a function type?
 int is_func(int t)
 {
-  return type_kind(t) == TK_FUNC;
+  return TYPE_KIND(t) == TK_FUNC;
 }
 
 // Type t with qualifiers q (Q_CONST, Q_VOLATILE) added. An array's
@@ -156,19 +164,6 @@ int qualify(int t, int q)
   if (is_array(t))
     return array_of(qualify(type_sub(t), q), type_count(t));
   return t | q;
-}
-
-// Type t without its own qualifiers (those of what it points to stay:
-// unqual of const char * is still const char *).
-int unqual(int t)
-{
-  return t & ~Q_ALL;
-}
-
-// Is type t const?
-int is_const(int t)
-{
-  return (t & Q_CONST) != 0;
 }
 
 // Type hash h with byte c added (approach.md issue 11, "Object format
@@ -191,11 +186,11 @@ int type_hash(int t, int h)
     h = hash_byte(h, 'k');
   if (t & Q_VOLATILE)
     h = hash_byte(h, 'V');
-  switch (type_kind(t)) {
-  case TK_VOID: return hash_byte(h, 'v');
-  case TK_CHAR: return hash_byte(h, 'c');
-  case TK_INT:  return hash_byte(h, 'i');
-  case TK_UINT: return hash_byte(h, 'u');
+  switch (TYPE_KIND(t)) {
+  case TY_VOID: return hash_byte(h, 'v');
+  case TY_CHAR: return hash_byte(h, 'c');
+  case TY_INT:  return hash_byte(h, 'i');
+  case TY_UINT: return hash_byte(h, 'u');
   case TK_PTR:  return type_hash(type_sub(t), hash_byte(h, '*'));
   case TK_FUNC: return type_hash(type_sub(t), hash_byte(h, '('));
   case TK_ARRAY:
@@ -209,8 +204,8 @@ int type_hash(int t, int h)
   // the standard C allows to coexist, and ccish's shared tag
   // namespace doesn't) hash different in another module's function
   // signatures.
-  h = hash_byte(h, tag_is_union(struct_tag(t)) ? 'U' : 's');
-  tag = struct_tag(t);
+  tag = STRUCT_TAG(t);
+  h = hash_byte(h, tg_union[tag] ? 'U' : 's');
   if (tg_name[tag] >= 0)
     h = (int)(((unsigned)h * tg_hmul[tag] + tg_hsum[tag]) & 0xFFFFu);
   return hash_byte(h, ';');
@@ -219,7 +214,7 @@ int type_hash(int t, int h)
 // Is t a struct type?
 int is_struct(int t)
 {
-  return type_kind(t) == TK_STRUCT;
+  return TYPE_KIND(t) == TK_STRUCT;
 }
 
 // The struct type of tag. Each tag has its own entry, so two structs
@@ -227,12 +222,6 @@ int is_struct(int t)
 int struct_type(int tag)
 {
   return find_type(TK_STRUCT, tag, 0);
-}
-
-// The tag of struct type t.
-int struct_tag(int t)
-{
-  return type_sub(t);
 }
 
 // A new, incomplete tag named name (-1 for none), visible at depth;
@@ -272,32 +261,6 @@ void tag_hide(int depth)
       tg_depth[i] = 0;
 }
 
-#ifdef CCISH_DIAG
-// The name of tag (an id), or -1 if anonymous (for messages).
-int tag_name(int tag)
-{
-  return tg_name[tag];
-}
-#endif
-
-// The size of tag's struct, or -1 if it is incomplete.
-int tag_size(int tag)
-{
-  return tg_size[tag];
-}
-
-// Complete tag's struct, with size bytes.
-void tag_set_size(int tag, int size)
-{
-  tg_size[tag] = size;
-}
-
-// Is tag a union's, not a struct's?
-int tag_is_union(int tag)
-{
-  return tg_union[tag];
-}
-
 // Add a member to tag's struct, at byte offset off, and return it. The
 // caller checks that its name is new in the struct.
 int member_add(int tag, int name, int type, int off)
@@ -329,18 +292,6 @@ int member_next(int tag, int m)
     if (mb_tag[m] == tag)
       return m;
   return -1;
-}
-
-// The type of member m, with its qualifiers.
-int member_type(int m)
-{
-  return mb_type[m];
-}
-
-// The byte offset of member m in its struct.
-int member_off(int m)
-{
-  return mb_off[m];
 }
 
 #ifdef CCISH_STATS

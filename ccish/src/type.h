@@ -14,24 +14,38 @@
 // type is only its return type: a call needs that to know what it
 // returns, and its arguments' own types say what they push, so ccish
 // keeps no parameter list (approach.md, "Function pointer design").
-// The table is private to type.c; use the functions below.
+// The table is private to type.c; use the functions and macros below.
+// (The struct tags' and members' arrays are in type.tag.h, for the
+// files that use them.)
 
-enum { TK_VOID, TK_CHAR, TK_INT, TK_PTR, TK_ARRAY, TK_STRUCT, TK_UINT,
-       TK_FUNC };
-// the basic types' indexes: TY_UINT is unsigned int
+// The basic types' indexes, the table's first entries: TY_UINT is
+// unsigned int. Each is its own kind, too (type.c's TK_* follow them).
 enum { TY_VOID, TY_CHAR, TY_INT, TY_UINT };
 // Is the unqualified type t char, int or unsigned? (Every other type's
 // index is higher.)
 #define IS_INT_TYPE(t)  ((t) >= TY_CHAR && (t) <= TY_UINT)
+_Static_assert(TY_VOID == 0 && TY_CHAR == 1 && TY_UINT - TY_CHAR == 2,
+               "the basic types aren't void, then char, int and unsigned"
+               " (IS_INT_TYPE), from 0");
+// A handle's qualifier bits, above its index bits: a handle is only
+// those, so taking the qualifiers off is masking the index, one AND.
 #define Q_CONST    0x100
 #define Q_VOLATILE 0x200   // IR_VOLATILE << 4 (ir.h): parse.c's
                            // acc_form() relies on it
 #define Q_ALL      0x300
 #define TY_INDEX   0xFF     // MAX_TYPES must be at most 256
+#define IS_CONST(t)  ((t) & Q_CONST)      // is type t const?
+// Type t without its own qualifiers (those of what it points to stay:
+// UNQUAL of const char * is still const char *).
+#define UNQUAL(t)    ((t) & TY_INDEX)
+_Static_assert(Q_ALL == (Q_CONST | Q_VOLATILE) && (Q_ALL & TY_INDEX) == 0
+               && (Q_CONST & Q_VOLATILE) == 0 && TY_INDEX == 0xFF
+               && (Q_ALL >> 8) == 3,
+               "a handle isn't an index in its low byte with the qualifier"
+               " bits above it, so UNQUAL isn't masking the index");
 
 #define MAX_OBJECT 32767    // bytes in one array
 
-int type_kind(int t);       // TK_*
 int type_sub(int t);        // pointer: the type pointed to; array: the
                             // element type (handles, with qualifiers);
                             // function: the return type
@@ -45,8 +59,6 @@ int array_of(int t, int count);
 int func_of(int t);         // a function returning t
 int is_func(int t);
 int qualify(int t, int q);
-int unqual(int t);
-int is_const(int t);
 int hash_byte(int h, int c);    // a type hash with byte c added
 int type_hash(int t, int h);    // a type hash with type t added
 
@@ -56,27 +68,17 @@ int type_hash(int t, int h);    // a type hash with type t added
 // member list is complete.
 int is_struct(int t);
 int struct_type(int tag);   // the struct type of tag
-int struct_tag(int t);      // the tag of struct type t
-int tag_new(int name, int depth, int hsum, int hmul);  // its spelling's
-                                                       // hash (the token's tok_hsum and
-                                                       // tok_hmul)
+#define STRUCT_TAG(t)  type_sub(t)  // the tag of struct type t
+// A new tag; hsum and hmul are its spelling's hash (the token's
+// tok_hsum and tok_hmul).
+int tag_new(int name, int depth, int hsum, int hmul);
 int tag_find(int name, int depth);  // innermost visible tag named
                                     // name, at depth or any depth if
                                     // depth < 0; -1 if none
 void tag_hide(int depth);   // hide the tags declared deeper
-#ifdef CCISH_DIAG
-int tag_name(int tag);           // for messages
-#endif
-int tag_size(int tag);
-void tag_set_size(int tag, int size);
-extern char tg_union[];         // 1 if the tag is a union's (set by
-                                // pstmt.c, when it's made)
-int tag_is_union(int tag);
 int member_add(int tag, int name, int type, int off);
 int member_find(int tag, int name);     // a member, or -1
 int member_next(int tag, int m);        // the next member, in order
-int member_type(int m);
-int member_off(int m);
 #ifdef CCISH_STATS
 void type_stats(int *types, int *tags, int *members);
 #endif

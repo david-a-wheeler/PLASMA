@@ -16,6 +16,7 @@
 #include "ir.h"
 #include "name.h"
 #include "type.h"
+#include "type.tag.h"
 #include "parse.h"
 #include "irout.h"
 #include "ptop.h"
@@ -248,7 +249,7 @@ int parse_type_name(void)
 // size can't be left out.
 int parse_var_type(int type, int may_omit)
 {
-  if (unqual(type) == TY_VOID)
+  if (UNQUAL(type) == TY_VOID)
     error(94 /* "a variable can't have type void" */, NULL);
   if (!may_omit && is_array(type) && type_count(type) == 0)
     error(87 /* "array size missing" */, NULL);
@@ -268,7 +269,7 @@ static void parse_members(int tag, int is_union)
   int name, off = 0, base, t;
 
   enter_nest();
-  tag_set_size(tag, -2);
+  tg_size[tag] = -2;
   next();                         // '{'
   if (tok == '}')
     error(95 /* "a struct or union needs at least one member" */, NULL);
@@ -286,7 +287,7 @@ static void parse_members(int tag, int is_union)
               quote(name));
       if (is_array(t) && type_count(t) == 0)
         error(87 /* "array size missing" */, NULL);
-      if (unqual(t) == TY_VOID)
+      if (UNQUAL(t) == TY_VOID)
         error(98 /* "a struct or union member can't have type void" */,
               NULL);
       need_complete(t, 208 /* "a struct or union member can't have the"
@@ -307,7 +308,7 @@ static void parse_members(int tag, int is_union)
                        "not" */);
   }
   next();
-  tag_set_size(tag, off);
+  tg_size[tag] = off;
   nest--;
 }
 
@@ -341,7 +342,7 @@ int parse_struct(int is_union)
     hmul = tok_hmul;
     next();
     tag = tag_find(name, tok == '{' || tok == ';' ? depth : -1);
-    if (tag >= 0 && tag_is_union(tag) != is_union)
+    if (tag >= 0 && tg_union[tag] != is_union)
       error(104 /* "redefinition of" */, tag_desc(tag));
   } else if (tok != '{') {
     error(is_union
@@ -359,7 +360,7 @@ int parse_struct(int is_union)
   }
   tg_union[tag] = (char)is_union; // members all at 0; the largest's size
   if (tok == '{') {
-    if (tag_size(tag) != -1)
+    if (tg_size[tag] != -1)
       error(104 /* "redefinition of" */, tag_desc(tag));
     parse_members(tag, is_union);
   }
@@ -435,7 +436,7 @@ void parse_typedef(void)
   for (;;) {
     t = parse_declarator(base, 0, &name);
     if (kw == T_CONSTEXPR) {
-      kind = unqual(t);
+      kind = UNQUAL(t);
       if (!IS_INT_TYPE(kind))
         not_yet();
       expect('=', 346 /* "expected '=' after a constexpr's name, not" */);
@@ -469,7 +470,7 @@ static void init_struct_copy(int s)
   int mark, h;
   begin_expr();
   v.kind = K_VAR;
-  v.type = unqual(var_type[s]);
+  v.type = UNQUAL(var_type[s]);
   v.quals = 0;
   v.off = var_off[s];
   v.global = 0;
@@ -493,7 +494,7 @@ void set_known(int s, int v)
       || is_struct(var_type[s]))
     return;
   var_flags[s] |= V_KNOWN;
-  var_val[s] = unqual(var_type[s]) == TY_CHAR ? v & 0xFF : v;
+  var_val[s] = UNQUAL(var_type[s]) == TY_CHAR ? v & 0xFF : v;
 }
 
 // Add a static local (parse.c's push_var()): in block scope, like any
@@ -578,7 +579,7 @@ static void parse_declaration(int is_static)
         set_known(s, e.val);
       rvalue(&e);
       v.kind = K_VAR;
-      v.type = unqual(type);
+      v.type = UNQUAL(type);
       v.quals = type & Q_ALL;     // a volatile x = e; stores volatile
       v.off = var_off[s];
       v.global = 0;
@@ -1094,7 +1095,7 @@ int parse_params(void)
       error(151 /* "expected a parameter type, not" */, tok_desc());
     // A prototype may leave the name out (name -1).
     type = parse_declarator(parse_base_type(), D_ABSTRACT, &name);
-    if (unqual(type) == TY_VOID) {
+    if (UNQUAL(type) == TY_VOID) {
       if (type == TY_VOID && n == 0 && name < 0 && tok == ')') {
         next();
         return 0;           // (void): no parameters
