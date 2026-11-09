@@ -1,0 +1,33 @@
+#!/bin/sh
+# a2screen: boot a ProDOS disk image on an emulated 64K Apple IIe in
+# MAME, and print its 40-column text screen after some seconds of
+# emulated time. For measuring PLASMA on a 64K machine (approach.md,
+# "Free memory, measured"), and later for running ccish's programs.
+#
+# Usage: tools/a2screen ROMDIR DISK.po [SECONDS]
+#
+# ROMDIR holds apple2ee/ with the enhanced IIe's ROMs, named as
+# "mame -listroms apple2ee" lists them. The machine is an enhanced IIe
+# with no 80-column card (so 64K, and a 40-column screen in main
+# memory), no card in slot 4, and the Disk II IWM controller in slot 6,
+# which doesn't need the Disk II's state-machine PROM (341-0028-a).
+#
+# It never touches the desktop: SDL's dummy drivers and no input
+# providers, so MAME opens no window and takes no keyboard or mouse.
+# It always ends: MAME's own -seconds_to_run, the Lua script's exit,
+# and a timeout behind both.
+set -eu
+[ $# -ge 2 ] || { echo "usage: $0 ROMDIR DISK.po [SECONDS]" >&2; exit 2; }
+romdir=$1
+disk=$2
+after=${3:-20}
+here=$(dirname "$0")
+
+A2SCREEN_AFTER=$after SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+  timeout $((after + 40)) mame apple2ee -rompath "$romdir" \
+  -aux "" -sl4 "" -sl6 diskiiiwm -flop1 "$disk" \
+  -video none -sound none -keyboardprovider none -mouseprovider none \
+  -joystickprovider none -lightgunprovider none \
+  -nothrottle -skip_gameinfo -seconds_to_run $((after + 5)) \
+  -autoboot_script "$here/a2screen.lua" 2>&1 \
+  | grep -v 'CHECKSUMS\|EXPECTED:\|FOUND:\|might not run correctly'

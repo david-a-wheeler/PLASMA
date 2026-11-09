@@ -75,9 +75,10 @@ loader's def table, kept (1,465: 5 bytes for each of 293 functions),
 the zero-filled tables it puts on the heap at start (2,388), a frame
 stack of at least about 1,560 (more for deeply nested expressions),
 and one 1K ProDOS I/O buffer for its second open file (the first uses
-ProDOS's buffer at $0800): about 38.2K in all, against "under about
-40K". So streaming is necessary, and likely enough, but the margin is
-under 2K, against a figure no one has measured. The next step after
+ProDOS's buffer at $0800): about 38.2K in all, plus FILEIO's 2,011
+resident bytes, which CMD doesn't load until a module needs it. Free
+memory at the PLASMA 2.20 prompt measures 41,171 bytes (item 15), so
+streaming is necessary, and likely enough, but the margin is about 1K. The next step after
 streaming is to measure free memory on an emulator or a real 64K
 machine; items 13 to 15 below would add margin if it's needed. (ccish
 has shrunk cccomp's code from 28,321 to 25,854 bytes in 2026-11-08 and
@@ -377,10 +378,16 @@ like item 3's (every VM and JIT), with the same marker-module caution.
 
 ## 15. Documentation: a map of a 64K Apple II's free memory
 
-**What's there.** No one has measured what a 64K Apple II has free
+**What's there.** No one had measured what a 64K Apple II has free
 for a module once ProDOS, the VM, CMD, the zero page, the stacks and
-the text screen are in; "under about 40K" is an estimate
-(approach.md 18.6, E1).
+the text screen are in; "under about 40K" was an estimate
+(approach.md 18.6, E1). *Measured 2026-11-09:* 41,171 bytes
+(`MEM FREE:$A0D3`, which CMD prints at its prompt when there's no
+AUTORUN), booting PLASMA 2.20's own disk (`PLEIADES 64K VM v2.20`) on
+MAME's enhanced IIe with 64K and no 80-column card (approach.md,
+"Free memory, measured"; ccish's tools/a2screen). That's the heap
+available at the prompt, before any module or FILEIO is loaded. A map
+of what lies where (and in the language card) is still to do.
 
 **Why it's a problem.** cccomp's fit (item 1) turns on it. A map
 would also show any holes the loader could use for small fixed things,
