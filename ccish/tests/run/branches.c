@@ -2,10 +2,11 @@
  * and 0 is the condition's truth, so it compiles to the condition's
  * value, with no branch or label at all. The while keeps its test
  * branch. The init function adds an ANDI and a NEG, for main's exit
- * status. */
-// listing-count: 1 ISEQ
+ * status. is_zero's n == 0 is NOT (CN 0 ISEQ, peep.c), as is_neg's !
+ * is the other. */
+// listing-lacks: ISEQ
 // listing-count: 1 ISNE
-// listing-count: 1 NOT
+// listing-count: 2 NOT
 // listing-count: 2 ANDI
 // listing-count: 3 NEG
 // listing-count: 1 ISLT

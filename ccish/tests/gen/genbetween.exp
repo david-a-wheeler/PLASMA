@@ -135,8 +135,7 @@
     CW 32768
     SUB
     ANDI 0
-    CN 0
-    ISEQ
+    NOT
     NEG
     LEAVE 2
 

@@ -1,0 +1,95 @@
+    ; negneg
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LEAVE 2
+
+    ; iszero
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    NOT
+    NEG
+    LEAVE 2
+
+    ; tzero
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    BRTRU 0
+    CN 1
+    SAW data +0
+    ; label 0
+    LAW data +0
+    LEAVE 2
+
+    ; shl1
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    DUP
+    ADD
+    LEAVE 2
+
+    ; at
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LB
+    LEAVE 2
+
+    ; addr
+    ENTER 4 0
+    ; label 103
+    CN 1
+    SLB 0
+    CN 2
+    SLB 1
+    CN 3
+    SLB 2
+    CN 4
+    SLB 3
+    LLA 2
+    CALL at
+    LEAVE 4
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CN 0
+    SAW data +0
+    CN 5
+    CALL negneg
+    CN 5
+    BRNE 1
+    CN 0
+    CALL iszero
+    CN 1
+    BRNE 3
+    ; join 1 to 3
+    ; label 2
+    CN 3
+    CALL iszero
+    BRTRU 5
+    ; join 3 to 5
+    ; label 4
+    CN 0
+    CALL tzero
+    CN 1
+    BRNE 7
+    ; join 5 to 7
+    ; label 6
+    CN 7
+    CALL shl1
+    CN 14
+    BREQ 8
+    ; join 8 to 0
+    ; label 7
+    CN 1
+    LEAVE 0
+    ; label 0
+    CALL addr
+    CN 3
+    ISNE
+    NEG
+    LEAVE 0

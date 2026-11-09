@@ -66,11 +66,21 @@
  *                                          ADDLB, IDXLB, ADDAW, ...)
  *   NEG  BRFLS / BRTRU       -> BRFLS / BRTRU    comparison used as a test
  *   NOT ANDI 1  BRFLS/BRTRU  -> BRTRU / BRFLS    branch on !x
+ *   NOT  BRFLS / BRTRU       -> BRTRU / BRFLS    the same, without the
+ *                                          ANDI (from x == 0, below)
  *   ISEQ / ISNE  BRFLS/BRTRU -> BREQ / BRNE
  *   CN 0  BREQ / BRNE        -> BRFLS / BRTRU    x == 0 is a test of x
  *   CN 2  MUL                -> DUP ADD    (faster than CN 1 SHL; see rewrite)
  *   CN 3  MUL                -> DUP IDXW
  *   CN 0  MUL                -> DROP CN 0
+ *   CN 1  SHL                -> DUP ADD    x << 1, as for x * 2
+ *   CN 0  ISEQ               -> NOT        x == 0: PLASMA's NOT gives
+ *                                          ISEQ's true ($FFFF) and false
+ *   NEG  NEG                 -> (nothing)  -(-x) is x, -32768 too
+ *   LLA n / LA a  add c      -> LLA n+c / LA a+c   an address plus a
+ *                                          constant (INCR ... SUBI c) is
+ *                                          one address, on the terms of
+ *                                          a[i + c] below
  *   CN 1  MUL                -> (nothing)
  *   DROP  CN 0               -> ANDI 0     one op pops it and pushes 0
  *   const MUL, const = 2^n   -> CN n SHL   for n from 2 to 15
@@ -347,6 +357,8 @@ static int drop_dup(void)
   return 1;
 }
 
+static int fold_addr(Mop *base, Mop *m);
+
 /* The patterns on loads and stores, with a and b the last two ops in
  * the window. Returns 1 if one changed anything. */
 static int rewrite_load_store(Mop *a, Mop *b)
@@ -357,6 +369,12 @@ static int rewrite_load_store(Mop *a, Mop *b)
    * value is unused just stores, without keeping a copy to throw away. */
   if (plain_store(a->op) >= 0 && b->op == OP_DROP) {
     a->op = plain_store(a->op);
+    nwin--;
+    return 1;
+  }
+  /* LLA n add c -> LLA n+c, and LA a add c -> LA a+c: one address, on
+   * rewrite_index()'s terms. */
+  if (fold_addr(a, b)) {
     nwin--;
     return 1;
   }
@@ -401,6 +419,25 @@ static int rewrite_load_store(Mop *a, Mop *b)
 
 static int add_value(Mop *m, int *v);
 
+/* If base is an address that can take an addend d (LA of data or a
+ * string, which ccrel wraps; LLA while it stays a frame offset; not an
+ * extern's, which ccrel may move to the heap), add it and return 1. */
+static int add_to_addr(Mop *base, int d)
+{
+  if (base->op == OP_LA ? base->fix != FIX_DATA && base->fix != FIX_STR
+      : base->op != OP_LLA || base->a + d < 0 || base->a + d > 255)
+    return 0;
+  base->a += d;
+  return 1;
+}
+
+/* LLA n or LA a (base), then a constant add (m): fold it, and return 1. */
+static int fold_addr(Mop *base, Mop *m)
+{
+  int v;
+  return add_value(m, &v) && add_to_addr(base, v);
+}
+
 /* With b an ADD or IDXW and a a constant add, the a[i + c] pattern
  * (the list at the top): fold c into the array's address. Returns 1 if
  * it did. */
@@ -413,10 +450,8 @@ static int rewrite_index(Mop *a, Mop *b)
     return 0;
   base = &win[nwin - 3 - n];
   d = b->op == OP_IDXW ? 2 * v : v;
-  if (base->op == OP_LA ? base->fix != FIX_DATA && base->fix != FIX_STR
-      : base->op != OP_LLA || base->a + d < 0 || base->a + d > 255)
+  if (!add_to_addr(base, d))
     return 0;
-  base->a += d;
   *a = *b;                      /* the add goes */
   nwin--;
   return 1;
@@ -436,6 +471,18 @@ static int rewrite_const(Mop *a, Mop *b)
     a->op = MOP_BYTE_FORM(b->op);
     a->a = v;
     nwin--;
+    return 1;
+  }
+  /* CN 0 ISEQ -> NOT: x == 0 is !x, with ISEQ's own true ($FFFF). */
+  if (b->op == OP_ISEQ && mop_const_value(a, &v) && v == 0) {
+    a->op = OP_NOT;
+    nwin--;
+    return 1;
+  }
+  /* CN 1 SHL -> DUP ADD: x << 1, as rewrite_mul() does x * 2. */
+  if (b->op == OP_SHL && mop_const_value(a, &v) && v == 1) {
+    a->op = OP_DUP;
+    b->op = OP_ADD;
     return 1;
   }
   /* const NEG / COMP -> const: negate or complement the constant at
@@ -544,7 +591,7 @@ static int rewrite_noop(Mop *a, Mop *b)
     nwin -= 2;
     return 1;
   }
-  if (a->op == OP_COMP && b->op == OP_COMP) {
+  if ((a->op == OP_COMP || a->op == OP_NEG) && b->op == a->op) {
     nwin -= 2;
     return 1;
   }
@@ -685,6 +732,13 @@ static int rewrite_branch(Mop *a, Mop *b)
     win[nwin - 3] = *b;
     win[nwin - 3].op = invert_branch(b->op);
     nwin -= 2;
+    return 1;
+  }
+  /* NOT BRFLS / BRTRU -> BRTRU / BRFLS: branch on !x by testing x. */
+  if (a->op == OP_NOT && is_test_branch(b->op)) {
+    *a = *b;
+    a->op = invert_branch(b->op);
+    nwin--;
     return 1;
   }
   /* ISEQ / ISNE then BRFLS / BRTRU -> BREQ / BRNE: compare and branch

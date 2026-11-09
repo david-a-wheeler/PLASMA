@@ -20,8 +20,7 @@
     ENTER 2 1
     ; label 103
     LLW 0
-    CN 0
-    ISEQ
+    NOT
     NEG
     LEAVE 2
 
@@ -83,8 +82,7 @@
     ENTER 2 1
     ; label 103
     LLW 0
-    CN 0
-    ISEQ
+    NOT
     NEG
     LEAVE 2
 
