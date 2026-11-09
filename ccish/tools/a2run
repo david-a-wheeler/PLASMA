@@ -23,4 +23,4 @@ flop2=
 [ $# -ge 3 ] && flop2="-flop2 $3"
 # shellcheck disable=SC2086
 exec mame apple2ee -rompath "$romdir" -aux "" -flop1 "$2" $flop2 \
-  -window -nomaximize -skip_gameinfo -uimodekey F12 -mouseprovider none
+  -window -nomaximize -skip_gameinfo -uimodekey F12 -mouseprovider none -nomouse
