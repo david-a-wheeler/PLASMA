@@ -692,7 +692,9 @@ static void not_cmp(void)
 // The held tail is a betweenness: the same local loaded twice, each time
 // compared against a constant, x >= c1 (or >) and x <= c2 (or <), the two
 // fails both branching to the same label, nothing between that could change
-// the local (only the compare and its branch). A char local (0 to 255 when
+// the local (only the compare and its branch). A global not volatile, the
+// same one twice (a and f), matches as a local does: nothing between can
+// change it either, and a volatile one has other ops. A char local (0 to 255 when
 // loaded) matches with the range a power-of-two block of bytes, within 0
 // to 255; an int local matches with the range a power-of-two block of
 // words (low <= high signed, so the range is not empty, and the width a
@@ -728,11 +730,13 @@ static void between_rewrite(void)
   // cmp BRFALSE, repeated, twelve ops. In both the same local is tested
   // twice, each fail to the same label; k is the cast's four extra ops,
   // so the plain's first fail is at n - 5, the cast's at n - 7.
-  if (buf_op[n - 8] == IR_LOCALB || buf_op[n - 8] == IR_LOCAL) {
+  if (IR_WORD_FORM(buf_op[n - 8]) == IR_LOCAL
+      || IR_WORD_FORM(buf_op[n - 8]) == IR_GLOBAL) {
     load = buf_op[n - 8];
     p = n - 8;
     k = 0;
     if (buf_op[n - 4] != load || buf_a[n - 8] != buf_a[n - 4]
+        || buf_f[n - 8] != buf_f[n - 4]
         || buf_op[n - 7] != IR_CONST || buf_op[n - 3] != IR_CONST
         || buf_op[n - 5] != IR_BRFALSE || buf_op[n - 1] != IR_BRFALSE)
       return;               // the same local, loaded twice
@@ -771,7 +775,7 @@ static void between_rewrite(void)
   if (low > high)
     return;  // signed empty, e.g. x > 32767 && x <= 32767, which the mod
              // arithmetic would read as the whole word, always true
-  if (load == IR_LOCALB || k) {
+  if (load != IR_WORD_FORM(load) || k) {     // a char, or the cast
     if (low < 0 || high > 255)
       return;               // the byte block must be whole bytes
     mod = 256;
@@ -785,11 +789,12 @@ static void between_rewrite(void)
   // mask, AND, CONST the aligned base, EQ, BRFALSE lab. For the plain
   // shape that is the eight ops in place; for the cast, four of its
   // twelve, the rest dropped. All the ops take no f, and the scan above
-  // left no pre bits, so only the op and the a need setting.
+  // left no pre bits, so only the op and the a need setting, and the f
+  // where the second load was (a global's symbol).
   buf_op[p + 1] = IR_CONST;  buf_a[p + 1] = r;
   buf_op[p + 2] = IR_SUB;    buf_a[p + 2] = 0;
   buf_op[p + 3] = IR_CONST;  buf_a[p + 3] = (mod - w) & 0xFFFF;
-  buf_op[p + 4] = IR_AND;    buf_a[p + 4] = 0;
+  buf_op[p + 4] = IR_AND;    buf_a[p + 4] = 0;  buf_f[p + 4] = -1;
   buf_op[p + 5] = IR_CONST;  buf_a[p + 5] = (low - r) & 0xFFFF;
   buf_op[p + 6] = IR_EQ;     buf_a[p + 6] = 0;
   buf_op[p + 7] = IR_BRFALSE; buf_a[p + 7] = lab;

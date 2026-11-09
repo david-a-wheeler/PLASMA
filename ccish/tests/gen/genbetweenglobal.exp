@@ -1,0 +1,154 @@
+    ; in4
+    ENTER 0 0
+    ; label 103
+    LAW data +0
+    CFFB 252
+    AND
+    CW 300
+    ISEQ
+    NEG
+    LEAVE 0
+
+    ; in64
+    ENTER 0 0
+    ; label 103
+    LAB data +2
+    ANDI 192
+    CB 64
+    ISEQ
+    NEG
+    LEAVE 0
+
+    ; in2odd
+    ENTER 0 0
+    ; label 103
+    LAW data +0
+    DECR
+    CFFB 254
+    AND
+    CW 300
+    ISEQ
+    NEG
+    LEAVE 0
+
+    ; vin4
+    ENTER 0 0
+    ; label 103
+    LAW.v data +3
+    CW 300
+    ISGE
+    BRFLS 0
+    LAW.v data +3
+    CW 303
+    ISLE
+    BRFLS 0
+    CN 1
+    LEAVE 0
+    ; label 0
+    CN 0
+    ; label 1
+    LEAVE 0
+
+    ; main
+    ENTER 2 0
+    ; label 103
+    CN 0
+    SLW 0
+    CW 299
+    SAW data +0
+    LLW 0
+    CALL in4
+    ADD
+    SLW 0
+    CW 300
+    SAW data +0
+    LLW 0
+    CALL in4
+    NOT
+    ANDI 1
+    ADD
+    SLW 0
+    CW 303
+    SAW data +0
+    LLW 0
+    CALL in4
+    NOT
+    ANDI 1
+    ADD
+    SLW 0
+    CW 304
+    SAW data +0
+    LLW 0
+    CALL in4
+    ADD
+    SLW 0
+    CB 63
+    SAB data +2
+    LLW 0
+    CALL in64
+    ADD
+    SLW 0
+    CB 64
+    SAB data +2
+    LLW 0
+    CALL in64
+    NOT
+    ANDI 1
+    ADD
+    SLW 0
+    CB 127
+    SAB data +2
+    LLW 0
+    CALL in64
+    NOT
+    ANDI 1
+    ADD
+    SLW 0
+    CB 128
+    SAB data +2
+    LLW 0
+    CALL in64
+    ADD
+    SLW 0
+    CW 300
+    SAW data +0
+    LLW 0
+    CALL in2odd
+    ADD
+    SLW 0
+    CW 301
+    SAW data +0
+    LLW 0
+    CALL in2odd
+    NOT
+    ANDI 1
+    ADD
+    SLW 0
+    CW 302
+    SAW data +0
+    LLW 0
+    CALL in2odd
+    NOT
+    ANDI 1
+    ADD
+    SLW 0
+    CW 303
+    SAW data +0
+    LLW 0
+    CALL in2odd
+    ADD
+    SLW 0
+    CW 301
+    SAW.v data +3
+    LLW 0
+    CALL vin4
+    NOT
+    ANDI 1
+    ADD
+    SLW 0
+    CW 304
+    SAW.v data +3
+    LLW 0
+    CALL vin4
+    ADD
+    LEAVE 2
