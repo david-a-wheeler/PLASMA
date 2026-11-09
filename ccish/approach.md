@@ -8713,3 +8713,32 @@ cccomp is large"). Do it once cccomp fits, or if a tight loop needs it.
   `LLB`/`LLW` cost the same at any offset), or keep a register loop
   variable only on the eval stack (a counted loop's count is there
   already; the body's `DLW` refresh is what it would save).
+
+**Loops after a goto label; `!=` tests for loops that can't be counted
+(2026-11-09, asked for in discussion: "Fix the goto hole, then
+implement item 2 under option 1's conditions").**
+- *The goto hole* (fixed): a counted loop in no other loop could store
+  through a pointer, on the grounds that no code after it could take
+  its variable's address before it ran again. A `goto` back to a label
+  before the loop breaks that: `again: for (i ...) *p = 5; p = &i; goto
+  again;` ignored the second run's `*p` (test `goto_loop.c` printed `10
+  10 8`; C gives `10 5 8`). A loop after a goto label in its function
+  (`goto_seen`) now counts as nested. ccgen +44 bytes.
+- *`!=` tests* (irloop.c, `ne_candidate()`): a loop that has a counted
+  loop's shape but can't be counted (a call in its body, mostly), with
+  a step of 1 or -1 and a constant limit, ends at `!=` its stop (`v <=
+  9` is `v != 10`: `CN 10 BRNE`, where `CB 9 ISLE BRTRU` is a compare
+  and a branch, about 47 cycles a pass more). Sound only where nothing
+  but the step can change v: an outermost loop (no code after it can
+  run before it again), no goto label before it or in it, v's address
+  not taken (`counted_shape()`) nor stored in the body (watched in
+  `loop_take()`), and v starting, by a constant init (`init_fold()`),
+  no further than the stop, which must fit (`v <= 32767` has none).
+  Test `genne.c` pins each condition, with outputs that differ if one
+  is broken; the cross test `xshort` caught a first version that let a
+  counted loop's candidacy leak into the next loop. ccgen +245 bytes;
+  ccpp -2, cccomp -1, ccrel -5. Op counts: 20 of 84 run tests change,
+  none in its output; 19,212 to 19,007 ops (-1.1%). It applies to
+  neither rodconio's nor rodsimple's inner loops, which are nested; the
+  narrow hoisting of expensive invariant expressions (doc/
+  rod-optimizing.md) waits for `register` for the same reason.

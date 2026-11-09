@@ -103,6 +103,20 @@ static unsigned char addr_taken[32];    // frame offsets: a bit each
 // variable's address before the goto runs it again).
 static char goto_seen;
 
+// A loop that can't be counted (a call in its body, say) can still end
+// at != when it has a counted loop's shape, steps by 1, and has a
+// constant limit: v <= 19 is v != 20 (BRNE, one op) once v starts at a
+// constant no further than 20 and nothing else changes v. Only for an
+// outermost loop with no goto label before it or in it (goto_seen),
+// whose variable's address isn't taken (counted_shape()): then nothing
+// but the step can change v, since a pointer can't reach it, and code
+// after the loop can't run before it. ne_ok says the outermost open
+// loop is such a candidate, so far: ne_var its variable, ne_stop where
+// it stops, and ne_ci and ne_cmp the held test's constant and
+// comparison, to make CONST ne_stop and NE at LOOPEND.
+static int ne_var, ne_stop, ne_ci, ne_cmp;
+static char ne_ok;
+
 // Hold a jump to label n.
 static void jump(int n)
 {
@@ -193,15 +207,21 @@ static int taken(int off)
   return (addr_taken[off >> 3] >> (off & 7)) & 1;
 }
 
+// Does offset a reach the word at offset b (the same, or a byte of it)?
+static int near(int a, int b)
+{
+  return a - b <= 1 && b - a <= 1;
+}
+
 // Is frame offset off the loop variable's, or a local limit's (a word
 // each, so a byte of either)?
 static int counted_var(int off)
 {
   int i;
-  if (off - cl_var <= 1 && cl_var - off <= 1)
+  if (near(off, cl_var))
     return 1;
   for (i = 0; i < cl_nloc; i++)
-    if (off - cl_loc[i] <= 1 && cl_loc[i] - off <= 1)
+    if (near(off, cl_loc[i]))
       return 1;
   return 0;
 }
@@ -216,7 +236,7 @@ static int limit_global(int a, int f)
   if (cl_load)
     return 1;
   for (i = 0; i < cl_ngl; i++)
-    if (cl_gf[i] == f && a - cl_ga[i] <= 1 && cl_ga[i] - a <= 1)
+    if (cl_gf[i] == f && near(a, cl_ga[i]))
       return 1;
   return 0;
 }
@@ -239,7 +259,7 @@ static int limit_ok(int from, int to)
       depth++;
       break;
     case IR_LOCAL: case IR_LOCALB:
-      if ((a - cl_var <= 1 && cl_var - a <= 1) || taken(a))
+      if (near(a, cl_var) || taken(a))
         return 0;               // the variable, or reachable
       if (!counted_var(a)) {
         if (cl_nloc == LIM_NAMES)
@@ -452,6 +472,33 @@ static int init_fold(void)
   return n;
 }
 
+// Is open loop d, which counted_shape() has just accepted, a candidate
+// to end at != (ne_ok)? Its init, the swap buffer's tail
+// (init_fold()), must store a constant into v that isn't past where v
+// stops, and the stop must fit: v <= 32767 has none.
+static void ne_candidate(int d)
+{
+  int stop = cl_lim, c;
+  if (d)
+    return;                     // an inner loop: the outer's stays
+  if (goto_seen || !cl_const || (cl_step != 1 && cl_step != -1)
+      || init_fold() != 1 || fo_op[0] != IR_CONST)
+    return;
+  if (cl_cmp == IR_LE || cl_cmp == IR_GE) {
+    if (stop == (cl_step > 0 ? 0x7FFF : -0x8000))
+      return;
+    stop += cl_step;            // v <= n is v != n + 1
+  }
+  c = fo_a[0];
+  if (cl_step > 0 ? c > stop : c < stop)
+    return;
+  ne_var = cl_var;
+  ne_stop = stop;
+  ne_ci = cl_ls;
+  ne_cmp = lp_step[d] - 2;
+  ne_ok = 1;
+}
+
 // Lower a counted loop's held body, from from up to (not including) to:
 // before each RETURN, its result's words (its a) are stored in
 // temporaries, the loop's limit and count dropped from under them, and
@@ -581,6 +628,8 @@ static void loop_op(int op, int a, int f)
   if (op == IR_LOOP) {
     if (lp_fill)
       ir_damaged();             // a loop in a header
+    if (!lp_depth)
+      ne_ok = 0;                // only its own ne_candidate() sets it
     d = lp_depth++;
     if (d < LOOP_NEST) {
       lp_held[d] = 1;
@@ -615,6 +664,7 @@ static void loop_op(int op, int a, int f)
       lp_lbody[d] = a;
       dlw_fix(d);
       if (counted_shape(d, a)) {
+        ne_candidate(d);
         lp_fill = 2;            // hold the body too
         cl_body = nlp;
         return;
@@ -638,6 +688,10 @@ static void loop_op(int op, int a, int f)
     }
     if (lp_fill == 2)
       body_plain();
+    if (d == 0 && ne_ok && !goto_seen) {
+      lp_a[ne_ci] = ne_stop;    // v != stop: one BRNE
+      lp_op[ne_cmp] = IR_NE;
+    }
     if (held && lp_fvar[d] >= 0) {
       // The DLW fix: the step keeps v, which the test needn't push.
       label(a);
@@ -677,11 +731,18 @@ int loop_take(int op, int a, int f)
     for (i = 0; i < 32; i++)
       addr_taken[i] = 0;
     goto_seen = 0;
+    ne_ok = 0;
   } else if (op == IR_ENDFUNC && lp_depth) {
     ir_damaged();               // a loop not ended
   }
   if (op == IR_LABEL && IS_GOTO_LABEL(a))
     goto_seen = 1;
+  // Anything in the body that may change v, a store or its address,
+  // ends its candidacy. (v isn't volatile: counted_shape() takes only
+  // a plain LOCAL, so its stores are plain too.)
+  if ((op == IR_SETLOCAL || op == IR_SETLOCALB || op == IR_LOCALADDR)
+      && near(a, ne_var))
+    ne_ok = 0;
   if (IR_REFS_LABEL(op))
     lab_ref[a] = 1;
   else if (op == IR_JOIN)

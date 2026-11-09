@@ -1,0 +1,280 @@
+    ; tick
+    ENTER 2 1
+    ; label 103
+    LAW data +0
+    ADDLW 0
+    SAW data +0
+    LEAVE 2
+
+    ; up_le
+    ENTER 2 0
+    ; label 103
+    CN 0
+    DLW 0
+    BRNCH 1
+    ; label 0
+    LLW 0
+    CALL tick
+    LLW 0
+    INCR
+    DLW 0
+    ; label 1
+    CN 5
+    BRNE 0
+    LEAVE 2
+
+    ; up_lt
+    ENTER 2 0
+    ; label 103
+    CN 2
+    DLW 0
+    BRNCH 1
+    ; label 0
+    LLW 0
+    CALL tick
+    LLW 0
+    INCR
+    DLW 0
+    ; label 1
+    CN 5
+    BRNE 0
+    LEAVE 2
+
+    ; down_ge
+    ENTER 2 0
+    ; label 103
+    CN 4
+    DLW 0
+    BRNCH 1
+    ; label 0
+    LLW 0
+    CALL tick
+    LLW 0
+    DECR
+    DLW 0
+    ; label 1
+    MINUS1 65535
+    BRNE 0
+    LEAVE 2
+
+    ; down_gt
+    ENTER 2 0
+    ; label 103
+    CN 4
+    DLW 0
+    BRNCH 1
+    ; label 0
+    LLW 0
+    CALL tick
+    LLW 0
+    DECR
+    DLW 0
+    ; label 1
+    CN 1
+    BRNE 0
+    LEAVE 2
+
+    ; past
+    ENTER 2 0
+    ; label 103
+    CN 7
+    DLW 0
+    BRNCH 1
+    ; label 0
+    LLW 0
+    CALL tick
+    LLW 0
+    INCR
+    DLW 0
+    ; label 1
+    CN 4
+    ISLE
+    BRTRU 0
+    LEAVE 2
+
+    ; changes
+    ENTER 2 0
+    ; label 103
+    CN 0
+    DLW 0
+    BRNCH 1
+    ; label 0
+    LLW 0
+    CALL tick
+    LLW 0
+    CN 2
+    ISGT
+    BRFLS 4
+    CB 20
+    SLW 0
+    ; label 4
+    LLW 0
+    INCR
+    DLW 0
+    ; label 1
+    CN 9
+    ISLE
+    BRTRU 0
+    LEAVE 2
+
+    ; taken
+    ENTER 4 0
+    ; label 103
+    LLA 0
+    SLW 2
+    CN 0
+    DLW 0
+    BRNCH 1
+    ; label 0
+    LLW 2
+    LW
+    CALL tick
+    LLW 0
+    INCR
+    DLW 0
+    ; label 1
+    CN 4
+    ISLE
+    BRTRU 0
+    LEAVE 4
+
+    ; nested
+    ENTER 4 0
+    ; label 103
+    CN 0
+    DLW 2
+    BRNCH 1
+    ; label 0
+    CN 0
+    DLW 0
+    BRNCH 5
+    ; label 4
+    LLW 0
+    CALL tick
+    LLW 0
+    INCR
+    DLW 0
+    ; label 5
+    CN 4
+    ISLE
+    BRTRU 4
+    LLW 2
+    INCR
+    DLW 2
+    ; label 1
+    CN 2
+    BRNE 0
+    LEAVE 4
+
+    ; last
+    ENTER 2 0
+    ; label 103
+    CW 32765
+    DLW 0
+    BRNCH 1
+    ; label 0
+    CN 1
+    CALL tick
+    LLW 0
+    CW 32766
+    ISGT
+    BRFLS 4
+    LEAVE 2
+    ; label 4
+    LLW 0
+    INCR
+    DLW 0
+    ; label 1
+    CW 32767
+    ISLE
+    BRTRU 0
+    ; label 3
+    LEAVE 2
+
+    ; after_goto
+    ENTER 4 1
+    ; label 103
+    ; label 104
+    CN 0
+    DLW 2
+    BRNCH 1
+    ; label 0
+    LLW 2
+    CALL tick
+    LLW 2
+    INCR
+    DLW 2
+    ; label 1
+    CN 4
+    ISLE
+    BRTRU 0
+    LLW 0
+    DUP
+    DECR
+    SLW 0
+    CN 0
+    ISGT
+    BRTRU 104
+    ; label 4
+    LEAVE 4
+
+    ; stale
+    ENTER 12 0
+    ; label 103
+    LLA 8
+    SLW 10
+    CN 1
+    CN 0
+    ; label 0
+    DLW 6
+    DUP
+    LLA 0
+    IDXLW 6
+    SW
+    INCBRLE 0
+    SLW 6
+    DROP
+    CN 2
+    SLW 4
+    CN 0
+    DLW 8
+    BRNCH 5
+    ; label 4
+    LLA 0
+    IDXLW 8
+    LW
+    LLW 10
+    LW
+    ADD
+    LLW 8
+    SUB
+    CALL tick
+    LLW 8
+    INCR
+    DLW 8
+    ; label 5
+    CN 2
+    ISLE
+    BRTRU 4
+    LEAVE 12
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CALL up_le
+    CALL up_lt
+    CALL down_ge
+    CALL down_gt
+    CALL past
+    CALL changes
+    CALL taken
+    CALL nested
+    CALL last
+    CN 1
+    CALL after_goto
+    CALL stale
+    LAW data +0
+    CB 100
+    ISEQ
+    NEG
+    LEAVE 0

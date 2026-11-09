@@ -2094,6 +2094,19 @@ differ for `unsigned` and pointers), and for a loop that can't be
 counted, `!=` is the cheaper test, since it is one op, `BRNE`, while
 `<` is a compare and a branch.
 
+ccgen does that last rewrite for you where it can prove it's the same:
+a loop that can't be counted (say, it calls something), with the
+counted shape, a step of 1 or -1, a constant limit, and an init of a
+constant that isn't past the stop, gets `!=` at its stop:
+`for (i = 0; i <= 9; i++) f(i);` ends `CN 10 BRNE`. Only for an
+outermost loop, with no `goto` label before it or in it, whose body
+doesn't store `i`, and whose `i` has never had its address taken: then
+nothing else can change `i`. In a nested loop, code after it in the
+outer loop could take `i`'s address before it runs again, so a loop in
+another loop, or after a `goto` label (a `goto` back makes a loop too),
+keeps its `<`; and for the same reason such a loop isn't counted if
+its body stores through a pointer.
+
 ### 12.3 Writing small code
 
 * **Constants do the work at compile time.** Integer operations on
