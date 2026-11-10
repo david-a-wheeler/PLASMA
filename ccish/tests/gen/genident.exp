@@ -143,6 +143,38 @@
     SUB
     LEAVE 0
 
+    ; zshl
+    ENTER 2 1
+    ; label 103
+    CN 0
+    LEAVE 2
+
+    ; zshr
+    ENTER 2 1
+    ; label 103
+    CN 0
+    LEAVE 2
+
+    ; zdiv
+    ENTER 2 1
+    ; label 103
+    CN 0
+    LEAVE 2
+
+    ; zmod
+    ENTER 2 1
+    ; label 103
+    CN 0
+    LEAVE 2
+
+    ; zdivvol
+    ENTER 0 0
+    ; label 103
+    CN 0
+    LAW.v data +0
+    DIV
+    LEAVE 0
+
     ; main
     ENTER 0 0
     ; label 103
@@ -201,5 +233,19 @@
     CALL zsub2
     DROP
     CALL zsubcall
+    DROP
+    CN 1
+    CALL zshl
+    DROP
+    CN 1
+    CALL zshr
+    DROP
+    CN 1
+    CALL zdiv
+    DROP
+    CN 1
+    CALL zmod
+    DROP
+    CALL zdivvol
     ANDI 0
     LEAVE 0

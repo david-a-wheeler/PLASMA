@@ -16,7 +16,7 @@ lower       1370     384      681          0
 nam          521     138       12          0
 name         184     408        0        812
 parse       4846    1892      113       1320
-peep        5281      84        0          0
+peep        5330      84        0          0
 pexpr       8054       4        0          0
 pp          2289     990      143        552
 ppif        1242       8        0          0
@@ -123,9 +123,9 @@ cccomp: 12 files, and 18 library objects:
     leaf region 8 bytes (largest leaf frame); compiled stack region 322 bytes
 
 ccgen: 10 files, and 18 library objects:
-  its own code 21708, data 3439, strings 966: 26113 in all
+  its own code 21757, data 3439, strings 966: 26162 in all
   the library's code 865, data 183, strings 7: 1055 in all (fopen fputs fread fwrite getc memcpy memmove memset path plvmexit remove start strcat strcmp strcpy strlen strncpy strrchr)
-  module file 36588 bytes, all read into memory to load it; 9054 of them RLD and ESD, freed after
+  module file 36641 bytes, all read into memory to load it; 9058 of them RLD and ESD, freed after
   208 functions: 1040 bytes of the loader's def table, kept
   shared names: 106 of 307 slots, 917 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
@@ -134,7 +134,7 @@ ccgen: 10 files, and 18 library objects:
     largest frames: stop 136, report 106, run_do 36, dead_stores 32, counted_loop 30
   static locals (bytes saved; per call, about 45 cycles saved with new opcodes):
     leaf functions: 57 of 193 framed functions, 533 frame accesses; saves 181 bytes with new opcodes, -534 with LAW/SAW
-    compiled stack (all non-recursive): 179 of 193 framed functions, 2678 frame accesses; saves 648 bytes with new opcodes, -2539 with LAW/SAW
+    compiled stack (all non-recursive): 179 of 193 framed functions, 2684 frame accesses; saves 648 bytes with new opcodes, -2545 with LAW/SAW
     leaf region 14 bytes (largest leaf frame); compiled stack region 258 bytes
 
 ccrel: 4 files, and 19 library objects:

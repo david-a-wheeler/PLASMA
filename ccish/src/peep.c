@@ -96,6 +96,8 @@
 //   DUP  AND / IOR           -> (nothing)  x & x, x | x
 //   CN 0  expr  SUB          -> expr NEG   0 - x, for an expression with
 //                                          no effect
+//   CN 0  expr  SHL/SHR/DIV/MOD -> CN 0  the same: 0 << x, 0 >> x,
+//                                          0 / x and 0 % x
 //   CN 1  SHL                -> DUP ADD    x << 1, as for x * 2
 //   CN 0  ISEQ               -> NOT        x == 0: PLASMA's NOT gives
 //                                          ISEQ's true ($FFFF) and false
@@ -1028,15 +1030,21 @@ static int rewrite(void)
     nwin--;
     return 1;
   }
-  // CN 0 expr SUB -> expr NEG: 0 - x is -x, for an expression with no
-  // effect (expr_len(): plain loads and arithmetic), which then stays
-  // just as it was.
-  if (b->op == OP_SUB) {
+  // 0 op x, for an expression x with no effect (expr_len(): plain
+  // loads and arithmetic): CN 0 expr SUB -> expr NEG, as 0 - x is -x;
+  // and CN 0 expr SHL / SHR / DIV / MOD -> CN 0, as 0 << x, 0 >> x,
+  // 0 / x and 0 % x are 0 (dividing by 0 is undefined in C).
+  if (b->op == OP_SUB || b->op == OP_SHL || b->op == OP_SHR
+      || b->op == OP_DIV || b->op == OP_MOD) {
     int n = expr_len(nwin - 1), i = nwin - 2 - n, v;
     if (n > 0 && i >= 0 && win[i].fix == FIX_NONE
         && mop_const_value(&win[i], &v) && v == 0) {
-      remove_op(i);
-      win[nwin - 1].op = OP_NEG;
+      if (b->op == OP_SUB) {
+        remove_op(i);
+        win[nwin - 1].op = OP_NEG;
+      } else {
+        nwin = i + 1;
+      }
       return 1;
     }
   }

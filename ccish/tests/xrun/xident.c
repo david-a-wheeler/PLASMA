@@ -17,6 +17,10 @@ int xorself(int x)   { return x ^ x; }
 int andself(int x)   { return x & x; }
 int orself(int x)    { return x | x; }
 int zsub(int x)      { return 0 - x; }
+int zshl(int x)      { return 0 << (x & 15); }
+int zshr(int x)      { return 0 >> (x & 15); }
+int zdiv(int x)      { return x ? 0 / x : 0; }
+int zmod(int x)      { return x ? 0 % x : 0; }
 // x / -1, but not for -32768, whose quotient overflows (undefined).
 int divm1(int x)     { return x == -32768 ? 0 : x / -1; }
 
@@ -42,6 +46,10 @@ int main(void)
     puti(w16(andself(xs[i]))); putc(' ');
     puti(w16(orself(xs[i]))); putc(' ');
     puti(w16(zsub(xs[i]))); putc(' ');
+    puti(w16(zshl(xs[i]))); putc(' ');
+    puti(w16(zshr(xs[i]))); putc(' ');
+    puti(w16(zdiv(xs[i]))); putc(' ');
+    puti(w16(zmod(xs[i]))); putc(' ');
     putln();
   }
   return 0;

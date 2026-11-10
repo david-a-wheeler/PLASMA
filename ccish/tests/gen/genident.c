@@ -33,6 +33,13 @@ int subvol(void)     { return vg - vg; }
 int zsub(int x)      { return 0 - x; }
 int zsub2(int x, int y) { return 0 - (x + y); }
 int zsubcall(void)   { return 0 - (int)u7(); }
+// 0 << x, 0 >> x, 0 / x and 0 % x are 0, for an x with no effect; a
+// volatile divisor is still read.
+int zshl(int x)      { return 0 << x; }
+int zshr(int x)      { return 0 >> x; }
+int zdiv(int x)      { return 0 / x; }
+int zmod(int x)      { return 0 % x; }
+int zdivvol(void)    { return 0 / vg; }
 
 int main(void)
 {
@@ -56,5 +63,10 @@ int main(void)
   zsub(1);
   zsub2(1, 2);
   zsubcall();
+  zshl(1);
+  zshr(1);
+  zdiv(1);
+  zmod(1);
+  zdivvol();
   return 0;
 }
