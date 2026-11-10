@@ -361,6 +361,45 @@ static void end_function(int frame_size)
   fn = -1;
 }
 
+// What follows each real opcode from MINUS1 ($20) to IDXAW ($BE),
+// indexed by (op - OP_MINUS1) / 2: no operand, a frame byte (a local's
+// offset), a word (relocated if need be), a branch's offset word, a
+// byte, or ENTER's or LEAVE's frame-size byte(s). CN ($00 to $1E) has
+// none. A table, not a switch: a switch's case table takes 4 bytes a
+// case, and finds an op only after checking the cases before it.
+// The kinds are #defines, not an enum: emit.c is near cccomp's
+// MAX_IDS, and has room among ccpp's macros.
+#define K_NONE   0
+#define K_FRAME  1
+#define K_WORD   2
+#define K_BRANCH 3
+#define K_BYTE   4
+#define K_ENTER  5
+#define K_LEAVE  6
+static const char op_kind[(OP_IDXAW - OP_MINUS1) / 2 + 1] = {
+  // $20: MINUS1 BREQ BRNE LA LLA CB CW -
+  K_NONE, K_BRANCH, K_BRANCH, K_WORD, K_FRAME, K_BYTE, K_WORD, K_NONE,
+  // $30: DROP DROP2 DUP - ADDI SUBI ANDI ORI
+  K_NONE, K_NONE, K_NONE, K_NONE, K_BYTE, K_BYTE, K_BYTE, K_BYTE,
+  // $40: ISEQ ISNE ISGT ISLT ISGE ISLE BRFLS BRTRU
+  K_NONE, K_NONE, K_NONE, K_NONE, K_NONE, K_NONE, K_BRANCH, K_BRANCH,
+  // $50: BRNCH SEL CALL ICAL ENTER LEAVE RET CFFB
+  K_BRANCH, K_BRANCH, K_WORD, K_NONE, K_ENTER, K_LEAVE, K_NONE, K_BYTE,
+  // $60: LB LW LLB LLW LAB LAW DLB DLW
+  K_NONE, K_NONE, K_FRAME, K_FRAME, K_WORD, K_WORD, K_FRAME, K_FRAME,
+  // $70: SB SW SLB SLW SAB SAW DAB DAW
+  K_NONE, K_NONE, K_FRAME, K_FRAME, K_WORD, K_WORD, K_WORD, K_WORD,
+  // $80: NOT ADD SUB MUL DIV MOD INCR DECR
+  K_NONE, K_NONE, K_NONE, K_NONE, K_NONE, K_NONE, K_NONE, K_NONE,
+  // $90: NEG COMP AND IOR XOR SHL SHR IDXW
+  K_NONE, K_NONE, K_NONE, K_NONE, K_NONE, K_NONE, K_NONE, K_NONE,
+  // $A0: BRGT BRLT INCBRLE ADDBRLE DECBRGE SUBBRGE - -
+  K_BRANCH, K_BRANCH, K_BRANCH, K_BRANCH, K_BRANCH, K_BRANCH, K_NONE,
+  K_NONE,
+  // $B0: ADDLB ADDLW ADDAB ADDAW IDXLB IDXLW IDXAB IDXAW
+  K_FRAME, K_FRAME, K_WORD, K_WORD, K_FRAME, K_FRAME, K_WORD, K_WORD
+};
+
 #ifdef CCISH_LISTING
 // The listing (-d, in the full build only): the machine ops as the back
 // end's final stream,
@@ -416,7 +455,7 @@ static void list_word(Mop *m)
 static void list_op(Mop *m, int frame)
 {
   Mop p = *m;                   // its plain op, and a mark if volatile
-  int v, vol = MOP_IS_VOLATILE(m->op);
+  int k, v, vol = MOP_IS_VOLATILE(m->op);
   p.op = MOP_PLAIN(m->op);
   m = &p;
   switch (m->op) {
@@ -447,47 +486,20 @@ static void list_op(Mop *m, int frame)
     return;
   }
   fputs("    ", stdout);
-  fputs(mnems[(m->op - OP_MINUS1) / 2], stdout);
+  fputs(mnems[(m->op - OP_MINUS1) >> 1], stdout);
   if (vol)
     fputs(".v", stdout);        // volatile (tools/opstats.py reads LW)
-  switch (m->op) {
-  case OP_ENTER:
-    out_num(" ", m->a == FRAME_LATER ? frame : m->a);
-    out_num(" ", m->fn);
-    fputs("\n", stdout);
-    return;
-  case OP_LEAVE:
-    out_num(" ", m->a == FRAME_LATER ? frame : m->a);
-    fputs("\n", stdout);
-    return;
-  case OP_CB: case OP_CFFB: case OP_ANDI: case OP_ORI: case OP_ADDI:
-  case OP_SUBI:
-    out_num(" ", m->a);
-    fputs("\n", stdout);
-    return;
-  case OP_LLA: case OP_LLB: case OP_LLW: case OP_DLB: case OP_DLW:
-  case OP_SLB: case OP_SLW:
-    out_num(" ", m->a);
-    fputs("\n", stdout);
-    return;
-  case OP_CW: case OP_LA: case OP_CALL: case OP_LAB: case OP_LAW:
-  case OP_SAB: case OP_SAW: case OP_DAB: case OP_DAW:
+  k = op_kind[(m->op - OP_MINUS1) >> 1];
+  if (k == K_WORD)
     list_word(m);
-    break;
-  case OP_BRNCH: case OP_BRFLS: case OP_BRTRU: case OP_BREQ:
-  case OP_BRNE: case OP_SEL: case OP_BRGT: case OP_BRLT:
-  case OP_INCBRLE: case OP_ADDBRLE: case OP_DECBRGE: case OP_SUBBRGE:
+  else if (k >= K_ENTER) {      // ENTER or LEAVE
+    out_num(" ", m->a == FRAME_LATER ? frame : m->a);
+    if (k == K_ENTER)
+      out_num(" ", m->fn);
+  } else if (k != K_NONE)       // a frame byte, a branch or a byte
     out_num(" ", m->a);
-    break;
-  default:
-    if (m->op >= OP_ADDLB && m->op <= OP_IDXAW) {
-      if (m->op & 4)      // the absolute-address form
-        list_word(m);
-      else
-        out_num(" ", m->a);
-    } else if (m->fix == FIX_NONE && mop_const_value(m, &v))
-      out_num(" ", v);
-  }
+  else if (m->fix == FIX_NONE && mop_const_value(m, &v))
+    out_num(" ", v);
   fputs("\n", stdout);
 }
 
@@ -511,65 +523,60 @@ static void list_fn(int frame)
 // pseudo-ops start a function, or end it and write it out.
 void emit_put(Mop *m)
 {
-  int i, op;
+  int i, k, op;
 #ifdef CCISH_LISTING
   if (opt_dump && m->op != OP_FUNC_BEGIN && m->op != OP_FUNC_END
       && nlbuf < NLBUF)
     lbuf[nlbuf++] = *m;
 #endif
   m->op = MOP_PLAIN(m->op);     // a volatile op's opcode is the plain one
-  switch (m->op) {
-  case OP_FUNC_BEGIN:
+  op = m->op;
+  if (op & 1) {                 // a pseudo-op: the real ops are even
+    switch (op) {
+    case OP_FUNC_BEGIN:
     fn = m->fn;
     nfbuf = nrelocs = nframe = ntemp = temp_words = 0;
 #ifdef CCISH_LISTING
     nlbuf = 0;
 #endif
-    for (i = 0; i < MAX_LABELS; i++) {
-      label_word[i] = NO_LINK;
-      label_placed[i] = 0;
-    }
-    return;
-  case OP_FUNC_END:
+      for (i = 0; i < MAX_LABELS; i++) {
+        label_word[i] = NO_LINK;
+        label_placed[i] = 0;
+      }
+      return;
+    case OP_FUNC_END:
 #ifdef CCISH_LISTING
-    if (opt_dump)
-      list_fn(m->a);
+      if (opt_dump)
+        list_fn(m->a);
 #endif
-    end_function(m->a);
-    return;
-  case OP_LABEL:
-    patch_label(m->a);
-    return;
-  case OP_JOIN:
-    join_labels(m->a, m->fn);
-    return;
-  case OP_CASES:                  // a case table: no opcode byte
-    code_byte(m->a);
-    return;
-  case OP_CASEVAL:
-    code_word(m->a);
-    return;
-  case OP_CASETO:                 // like a branch's offset word
-    branch_word(m->a);
-    return;
+      end_function(m->a);
+      return;
+    case OP_LABEL:
+      patch_label(m->a);
+      return;
+    case OP_JOIN:
+      join_labels(m->a, m->fn);
+      return;
+    case OP_CASES:              // a case table: no opcode byte
+      code_byte(m->a);
+      return;
+    case OP_CASEVAL:
+      code_word(m->a);
+      return;
+    case OP_CASETO:             // like a branch's offset word
+      branch_word(m->a);
+      return;
+    }
   }
-  code_byte(m->op);
-  op = m->op;
-  // ADDLB to IDXAW: those with 4 set (ADDAB, ADDAW, IDXAB, IDXAW) take
-  // an address word, as LAW does; the others a local's byte, as LLW.
-  if (op >= OP_ADDLB && op <= OP_IDXAW)
-    op = op & 4 ? OP_LAW : OP_LLW;
-  switch (op) {
-  case OP_CB: case OP_CFFB: case OP_ANDI: case OP_ORI: case OP_ADDI:
-  case OP_SUBI:
-    code_byte(m->a);
-    break;
-  case OP_LLA: case OP_LLB: case OP_LLW: case OP_DLB: case OP_DLW:
-  case OP_SLB: case OP_SLW:
+  code_byte(op);
+  if (op < OP_MINUS1)
+    return;                     // CN: no operand
+  k = op_kind[(op - OP_MINUS1) >> 1];
+  if (k == K_NONE)
+    return;
+  if (k == K_FRAME)
     frame_operand(m->a);
-    break;
-  case OP_CW: case OP_LA: case OP_CALL: case OP_LAB: case OP_LAW:
-  case OP_SAB: case OP_SAW: case OP_DAB: case OP_DAW:
+  else if (k == K_WORD) {
     // A relocated word is written as 0, or for an extern global as
     // its addend; the final pass fills it in.
     if (m->fix == FIX_DATA)
@@ -583,19 +590,14 @@ void emit_put(Mop *m)
     else if (m->fix == FIX_HELPER)
       add_reloc(REL_HELPER, m->fn);
     code_word(m->fix == FIX_NONE || m->fix == FIX_DSYM ? m->a : 0);
-    break;
-  case OP_BRNCH: case OP_BRFLS: case OP_BRTRU: case OP_BREQ:
-  case OP_BRNE: case OP_SEL: case OP_BRGT: case OP_BRLT: case OP_INCBRLE:
-  case OP_ADDBRLE: case OP_DECBRGE: case OP_SUBBRGE:
+  } else if (k == K_BRANCH)
     branch_word(m->a);
-    break;
-  case OP_ENTER:
+  else if (k == K_BYTE)
+    code_byte(m->a);
+  else {                        // ENTER or LEAVE
     frame_byte(m->a);
-    code_byte(m->fn);
-    break;
-  case OP_LEAVE:
-    frame_byte(m->a);
-    break;
+    if (k == K_ENTER)
+      code_byte(m->fn);
   }
 }
 

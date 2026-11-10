@@ -56,7 +56,7 @@ blank for a limit that isn't measured.
 | `MAX_FUNC_RELOCS` | 128 | 111 (link.c) | calls and data references in one function | [src/obj.h](../src/obj.h) |
 | `MAX_NEST` | 32 | 16 (pexpr.c) | nesting of parentheses, blocks and loops | [src/parse.h](../src/parse.h) |
 | `MAX_PARAMS` | 16 |  | parameters of one function | [src/pstmt.c](../src/pstmt.c) |
-| `MAX_CASES` | 36 | 36 (emit.c) | case labels in all the switches open at once; at most 255, a SEL table's limit | [src/pstmt.c](../src/pstmt.c) |
+| `MAX_CASES` | 36 | 36 (lower.c) | case labels in all the switches open at once; at most 255, a SEL table's limit | [src/pstmt.c](../src/pstmt.c) |
 
 ## One link (ccrel)
 

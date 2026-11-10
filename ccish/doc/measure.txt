@@ -6,7 +6,7 @@ ccgen        159       2       51          0
 ccpp         213       2       93          0
 ccrel        372      70       51        512
 diag         822     279       93          0
-emit        1891     646       26       2532
+emit        1757     726       26       2532
 helper       136     344       57          0
 irin        5757     814       38       1764
 irloop      5497     668        0        512
@@ -74,7 +74,7 @@ cccomp's tables: the most one source needed, and the limit:
   struct members                 27 of     32  (irout)
   ordinary labels                81 of    103  (link)
   nesting                        16 of     32  (pexpr)
-  case labels open               36 of     36  (emit)
+  case labels open               36 of     36  (lower)
 
 ccgen's tables: the most one function needed, and the limit:
   code bytes                    872 of   1280  (link)
@@ -123,18 +123,18 @@ cccomp: 12 files, and 18 library objects:
     leaf region 8 bytes (largest leaf frame); compiled stack region 322 bytes
 
 ccgen: 10 files, and 18 library objects:
-  its own code 21381, data 3359, strings 975: 25715 in all
+  its own code 21247, data 3439, strings 975: 25661 in all
   the library's code 865, data 183, strings 7: 1055 in all (fopen fputs fread fwrite getc memcpy memmove memset path plvmexit remove start strcat strcmp strcpy strlen strncpy strrchr)
-  module file 36062 bytes, all read into memory to load it; 8926 of them RLD and ESD, freed after
+  module file 36008 bytes, all read into memory to load it; 8926 of them RLD and ESD, freed after
   205 functions: 1025 bytes of the loader's def table, kept
   shared names: 106 of 307 slots, 917 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
-    frame stack at least 516 bytes; 6502 stack at least 42 calls x 4 = 168 bytes
+    frame stack at least 518 bytes; 6502 stack at least 42 calls x 4 = 168 bytes
     unbounded recursion (no nest count; counted once above): clean_up, fatal0, remove_stream, remove_streams, stop, stream_name
     largest frames: stop 136, report 106, run_do 36, dead_stores 32, counted_loop 30
   static locals (bytes saved; per call, about 45 cycles saved with new opcodes):
     leaf functions: 57 of 190 framed functions, 526 frame accesses; saves 180 bytes with new opcodes, -525 with LAW/SAW
-    compiled stack (all non-recursive): 176 of 190 framed functions, 2607 frame accesses; saves 628 bytes with new opcodes, -2476 with LAW/SAW
+    compiled stack (all non-recursive): 176 of 190 framed functions, 2610 frame accesses; saves 631 bytes with new opcodes, -2476 with LAW/SAW
     leaf region 14 bytes (largest leaf frame); compiled stack region 258 bytes
 
 ccrel: 4 files, and 19 library objects:
@@ -154,7 +154,7 @@ ccrel: 4 files, and 19 library objects:
 Peaks: each limit, the most ccish's own source uses, and where:
   ENTRY_LABEL 81 link.c
   MAX_ARG_SLOTS 4 pexpr.c
-  MAX_CASES 36 emit.c
+  MAX_CASES 36 lower.c
   MAX_EXPAND 4 pexpr.c
   MAX_EXP_BYTES 96 irin.c
   MAX_FUNCS 195 pexpr.c
