@@ -473,6 +473,26 @@ int parse_quals(void)
 // declaration may declare with no declarators (struct pt { ... };).
 int base_tagged;
 
+// Is v one of C's truth values, 0 or 1, as C's comparisons and ! give?
+// (Not the VM's: its comparisons give $FFFF for true.)
+#define IS_C_TRUTH_VALUE(v) (((v) & ~1) == 0)
+_Static_assert(IS_C_TRUTH_VALUE(0) && IS_C_TRUTH_VALUE(1),
+               "IS_C_TRUTH_VALUE misses a member");
+_Static_assert(!IS_C_TRUTH_VALUE(2) && !IS_C_TRUTH_VALUE(3)
+               && !IS_C_TRUTH_VALUE(-1) && !IS_C_TRUTH_VALUE(0xFFFF)
+               && !IS_C_TRUTH_VALUE(-2)
+               && !IS_C_TRUTH_VALUE(0x100) && !IS_C_TRUTH_VALUE(0x101),
+               "IS_C_TRUTH_VALUE holds a non-member");
+
+// Is token t int or char? They differ only in bit 0.
+#define T_INT_OR_CHAR(t) (((t) & ~1) == T_INT)
+_Static_assert(T_INT_OR_CHAR(T_INT) && T_INT_OR_CHAR(T_CHAR),
+               "T_INT_OR_CHAR misses a member");
+_Static_assert(!T_INT_OR_CHAR(T_SIGNED) && !T_INT_OR_CHAR(T_UNSIGNED)
+               && !T_INT_OR_CHAR(T_INT - 1) && !T_INT_OR_CHAR(T_VOID)
+               && !T_INT_OR_CHAR(T_ID) && !T_INT_OR_CHAR(T_INT & 0xFF),
+               "T_INT_OR_CHAR holds a non-member");
+
 // Parse a basic type name (int, char, void, unsigned, a struct or enum
 // type, or a typedef name), with any qualifiers before or after it
 // (const char, char const), and return its type.
@@ -495,11 +515,11 @@ int parse_base_type(void)
         continue;
       }
 #ifdef CCISH_LINT
-      if (tok == T_INT || tok == T_CHAR ? base != 0 : sign != 0)
+      if (T_INT_OR_CHAR(tok) ? base != 0 : sign != 0)
         error(226 /* "conflicting or repeated type specifier:" */,
               tok_desc());
 #endif
-      if (tok == T_INT || tok == T_CHAR)
+      if (T_INT_OR_CHAR(tok))
         base = tok;
       else
         sign = tok;
@@ -1138,7 +1158,7 @@ void rvalue(Operand *o)
     break;
   case K_CONST:
     put(IR_CONST, o->val, -1);
-    o->is_bool = o->val == 0 || o->val == 1;
+    o->is_bool = IS_C_TRUTH_VALUE(o->val);
     break;
   case K_ADDR:
     if (o->global == G_STR)

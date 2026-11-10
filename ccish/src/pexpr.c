@@ -412,6 +412,50 @@ static void parse_call(int f, Operand *o)
   o->type = fn_type[f];       // a struct: its words are on the stack
 }
 
+// Is IR op op ADD or SUB? They differ only in bit 0.
+#define IR_ADD_OR_SUB(op) (((op) & ~1) == IR_ADD)
+_Static_assert(IR_ADD_OR_SUB(IR_ADD) && IR_ADD_OR_SUB(IR_SUB),
+               "IR_ADD_OR_SUB misses a member");
+_Static_assert(!IR_ADD_OR_SUB(IR_MUL) && !IR_ADD_OR_SUB(IR_AND)
+               && !IR_ADD_OR_SUB(IR_OR) && !IR_ADD_OR_SUB(IR_DIV)
+               && !IR_ADD_OR_SUB(IR_USHR) && !IR_ADD_OR_SUB(IR_UDIV)
+               && !IR_ADD_OR_SUB(IR_LT) && !IR_ADD_OR_SUB(IR_NEG)
+               && !IR_ADD_OR_SUB(IR_JUMP), "IR_ADD_OR_SUB holds a non-member");
+
+// Is an operand of kind k still unpushed, so that its value can be
+// pushed after a call's arguments, and is the same then: a variable,
+// an element, a constant or an address constant? (Any other kind is
+// on the stack, or has code emitted.)
+#define K_PUSHED_LATER(k) K_IN(k, 1 << K_VAR | 1 << K_ELEM | 1 << K_CONST \
+                                  | 1 << K_ADDR)
+_Static_assert(K_PUSHED_LATER(K_VAR) && K_PUSHED_LATER(K_ELEM)
+               && K_PUSHED_LATER(K_CONST) && K_PUSHED_LATER(K_ADDR),
+               "K_PUSHED_LATER misses a member");
+_Static_assert(!K_PUSHED_LATER(K_VALUE) && !K_PUSHED_LATER(K_VOID)
+               && !K_PUSHED_LATER(K_DEREF) && !K_PUSHED_LATER(K_STORE)
+               && !K_PUSHED_LATER(K_JUMP) && !K_PUSHED_LATER(K_FUNC),
+               "K_PUSHED_LATER holds a non-member");
+
+// Is an operand of kind k a constant or a variable, not yet loaded, as
+// parse_index() leaves an index?
+#define K_CONST_OR_VAR(k) K_IN(k, 1 << K_CONST | 1 << K_VAR)
+_Static_assert(K_CONST_OR_VAR(K_CONST) && K_CONST_OR_VAR(K_VAR),
+               "K_CONST_OR_VAR misses a member");
+_Static_assert(!K_CONST_OR_VAR(K_VALUE) && !K_CONST_OR_VAR(K_VOID)
+               && !K_CONST_OR_VAR(K_DEREF) && !K_CONST_OR_VAR(K_ELEM)
+               && !K_CONST_OR_VAR(K_STORE) && !K_CONST_OR_VAR(K_JUMP)
+               && !K_CONST_OR_VAR(K_ADDR) && !K_CONST_OR_VAR(K_FUNC),
+               "K_CONST_OR_VAR holds a non-member");
+
+// Is token t a number or a name? T_ID and T_NUM differ only in bit 0.
+#define T_NUM_OR_ID(t) (((t) & ~1) == T_ID)
+_Static_assert(T_NUM_OR_ID(T_NUM) && T_NUM_OR_ID(T_ID),
+               "T_NUM_OR_ID misses a member");
+_Static_assert(!T_NUM_OR_ID(T_STR) && !T_NUM_OR_ID(T_ID - 1)
+               && !T_NUM_OR_ID(T_INT) && !T_NUM_OR_ID(T_KEYWORD)
+               && !T_NUM_OR_ID(0) && !T_NUM_OR_ID(1),
+               "T_NUM_OR_ID holds a non-member");
+
 // Can a value of type t be called: is it a function, or a pointer to
 // one?
 static int callable(int t)
@@ -435,8 +479,7 @@ static void parse_icall(Operand *o)
   }
   if (is_pointer(t))
     t = type_sub(t);
-  if (o->kind != K_VAR && o->kind != K_ELEM && o->kind != K_CONST
-      && o->kind != K_ADDR) {
+  if (!K_PUSHED_LATER(o->kind)) {
     rvalue(o);
     tmp = new_temp();
     put(IR_SETLOCAL, tmp, -1);
@@ -734,7 +777,7 @@ static void parse_index(Operand *o)
   int t = o->type, simple, size, d, start = ir_here(), h = nheld, mid;
 
   next();                         // '['
-  simple = (tok == T_NUM || tok == T_ID) && pending_base(o, tok == T_ID)
+  simple = T_NUM_OR_ID(tok) && pending_base(o, tok == T_ID)
            && next_is_rbracket();
   if (!simple)
     rvalue(o);
@@ -765,7 +808,7 @@ static void parse_index(Operand *o)
   }
   if (is_pointer_value(r.type))
     error0(70 /* "array subscript is not an integer" */);
-  if (r.kind != K_CONST && r.kind != K_VAR)
+  if (!K_CONST_OR_VAR(r.kind))
     fatal0(71 /* "internal error: unexpected array index" */);
   size = is_pointer(t) ? elem_size(t) : type_size(type_sub(t));
   if (r.kind == K_CONST) {
@@ -1344,7 +1387,7 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
     if (!is_compare(op))
       result = IR_IS_SHIFT(op) ? PROMOTED(lt) : arith_type(lt, rt);
   } else if (is_pointer(lt) && !is_pointer(rt)
-             && (op == IR_ADD || op == IR_SUB)) {
+             && IR_ADD_OR_SUB(op)) {
     push_scaled(r, lt);         // p + i, p - i
     result = lt;
   } else if (!is_pointer(lt) && op == IR_ADD) {
@@ -1445,7 +1488,7 @@ static void compound_elem(Operand *x, Operand *r, int op)
   }
   rvalue(r);
   if (is_pointer_value(r->type)
-      || (is_pointer(x->type) && op != IR_ADD && op != IR_SUB)) {
+      || (is_pointer(x->type) && !IR_ADD_OR_SUB(op))) {
     // An error (int op= pointer, pointer *= ...): binary() says so.
     rvalue(x);
     binary(x, r, op, -1, -1);
@@ -1766,11 +1809,11 @@ void parse_expr(int min_prec, Operand *o)
       continue;
     }
     if (o->kind == K_CONST && nheld < MAX_HELD
-        && (!is_pointer(o->type) || ir_op == IR_ADD || ir_op == IR_SUB)) {
+        && (!is_pointer(o->type) || IR_ADD_OR_SUB(ir_op))) {
       // Hold it back: it may fold with the right operand (a pointer
       // only with + or -, fold_held()).
       mark = hold(IR_CONST, o->val, -1);
-    } else if ((ir_op == IR_ADD || ir_op == IR_SUB) && nheld < MAX_HELD
+    } else if (IR_ADD_OR_SUB(ir_op) && nheld < MAX_HELD
                && addr_const(o)
                && (o->off == 0 || o->global == G_STR
                    || !movable(o->global))) {

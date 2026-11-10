@@ -97,6 +97,20 @@ enum {
                   // the function's (a function designator), or a
                   // pointer type (&f, or a cast)
 };
+// A building block for named sets of kinds, never for use at a test
+// itself: is kind k in set, a mask of (1 << K_...) bits? One shift and
+// an AND, where an == for each kind is a load, a constant and a branch.
+// Each set built on it is a #define with a name that says what its
+// kinds have in common, and _Static_asserts of its members and of the
+// kinds it must leave out.
+#define K_IN(k, set) (((1 << (k)) & (set)) != 0)
+_Static_assert(K_VALUE >= 0 && K_VOID >= 0 && K_CONST >= 0 && K_VAR >= 0
+               && K_DEREF >= 0 && K_ELEM >= 0 && K_STORE >= 0
+               && K_JUMP >= 0 && K_ADDR >= 0 && K_FUNC >= 0
+               && K_VALUE < 16 && K_VOID < 16 && K_CONST < 16
+               && K_VAR < 16 && K_DEREF < 16 && K_ELEM < 16
+               && K_STORE < 16 && K_JUMP < 16 && K_ADDR < 16
+               && K_FUNC < 16, "K_IN: each kind's bit must fit an int");
 
 #define G_STR (-1)      // K_ADDR's global field: the string pool
 

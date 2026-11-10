@@ -109,6 +109,26 @@ int init_known, init_val;
 // is evaluated twice. A macro, not a function: this is its one user.
 #define data_word(v) do { data_byte(v); data_byte((v) >> 8); } while (0)
 
+// Is n a parameter count main may have: 0, or 2 (argc and argv)?
+#define MAIN_NPARAMS_OK(n) (((n) & ~2) == 0)
+_Static_assert(MAIN_NPARAMS_OK(0) && MAIN_NPARAMS_OK(2),
+               "MAIN_NPARAMS_OK misses a member");
+_Static_assert(!MAIN_NPARAMS_OK(1) && !MAIN_NPARAMS_OK(3)
+               && !MAIN_NPARAMS_OK(4) && !MAIN_NPARAMS_OK(6)
+               && !MAIN_NPARAMS_OK(-1) && !MAIN_NPARAMS_OK(255),
+               "MAIN_NPARAMS_OK holds a non-member");
+
+// Is an operand of kind k a constant a static initializer may hold: a
+// number, an address constant or a function's address?
+#define K_IS_INIT_CONST(k) K_IN(k, 1 << K_CONST | 1 << K_ADDR | 1 << K_FUNC)
+_Static_assert(K_IS_INIT_CONST(K_CONST) && K_IS_INIT_CONST(K_ADDR)
+               && K_IS_INIT_CONST(K_FUNC), "K_IS_INIT_CONST misses a member");
+_Static_assert(!K_IS_INIT_CONST(K_VALUE) && !K_IS_INIT_CONST(K_VOID)
+               && !K_IS_INIT_CONST(K_VAR) && !K_IS_INIT_CONST(K_DEREF)
+               && !K_IS_INIT_CONST(K_ELEM) && !K_IS_INIT_CONST(K_STORE)
+               && !K_IS_INIT_CONST(K_JUMP),
+               "K_IS_INIT_CONST holds a non-member");
+
 // Parse the initializer of one scalar of type type (an int, char or
 // pointer), check it as an assignment, and write it to the data stream.
 // It is an ordinary expression, parsed with code off (and its string
@@ -123,7 +143,7 @@ static void parse_scalar_init(int type)
   want_addr--;
   if (is_pointer(type))
     addr_const(&o);
-  if (o.kind != K_CONST && o.kind != K_ADDR && o.kind != K_FUNC)
+  if (!K_IS_INIT_CONST(o.kind))
     error0(206 /* "initializer is not a constant ccish supports" */);
 #ifdef CCISH_LINT
   if (o.nonice && o.kind == K_CONST)
@@ -959,7 +979,7 @@ static void parse_toplevel(void)
   if (nparams_of(f) >= 0 && nparams_of(f) != nparams)
     error(169 /* "parameter count differs from earlier use of" */,
           quote(fn_name[f]));
-  if (fn_name[f] == ID_MAIN && nparams != 0 && nparams != 2)
+  if (fn_name[f] == ID_MAIN && !MAIN_NPARAMS_OK(nparams))
     error0(170 /* "main takes no parameters, or two" */);
 #endif
   set_param_types(f, nparams);

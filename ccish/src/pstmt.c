@@ -149,6 +149,40 @@ static void parse_suffixes(int open, int own_name)
   reverse_steps(from, nsteps);
 }
 
+// Does token t start a nested declarator after '(': '*' or '('? They
+// differ only in bit 1. (A name does too, unless it's a type's.)
+#define T_STARTS_NESTED(t) (((t) & ~2) == '(')
+_Static_assert(T_STARTS_NESTED('*') && T_STARTS_NESTED('('),
+               "T_STARTS_NESTED misses a member");
+_Static_assert(!T_STARTS_NESTED(')') && !T_STARTS_NESTED('+')
+               && !T_STARTS_NESTED('&') && !T_STARTS_NESTED(',')
+               && !T_STARTS_NESTED('[') && !T_STARTS_NESTED(T_ID)
+               && !T_STARTS_NESTED('(' + 0x100),
+               "T_STARTS_NESTED holds a non-member");
+
+// Does token t end a struct tag's use with a definition or a
+// declaration of the tag alone: '{' or ';'? They differ only in bit 6.
+#define T_DEFINES_TAG(t) (((t) & ~0x40) == ';')
+_Static_assert(T_DEFINES_TAG('{') && T_DEFINES_TAG(';'),
+               "T_DEFINES_TAG misses a member");
+_Static_assert(!T_DEFINES_TAG('}') && !T_DEFINES_TAG(':')
+               && !T_DEFINES_TAG('[') && !T_DEFINES_TAG('=')
+               && !T_DEFINES_TAG(',') && !T_DEFINES_TAG('*')
+               && !T_DEFINES_TAG(T_ID) && !T_DEFINES_TAG(';' + 0x100),
+               "T_DEFINES_TAG holds a non-member");
+
+// Is token t static or extern, a storage class a for loop can't
+// declare? They differ only in bit 0.
+#define T_STATIC_OR_EXTERN(t) (((t) & ~1) == T_STATIC)
+_Static_assert(T_STATIC_OR_EXTERN(T_STATIC) && T_STATIC_OR_EXTERN(T_EXTERN),
+               "T_STATIC_OR_EXTERN misses a member");
+_Static_assert(!T_STATIC_OR_EXTERN(T_REGISTER)
+               && !T_STATIC_OR_EXTERN(T_STATIC - 1)
+               && !T_STATIC_OR_EXTERN(T_TYPEDEF)
+               && !T_STATIC_OR_EXTERN(T_CONSTEXPR)
+               && !T_STATIC_OR_EXTERN(T_INT) && !T_STATIC_OR_EXTERN(T_ID),
+               "T_STATIC_OR_EXTERN holds a non-member");
+
 // Parse a declarator, pushing its derivations, and store its name's id
 // in *name (-1 if it has none, which flags must allow: D_ABSTRACT).
 static void parse_steps(int flags, int *name)
@@ -160,7 +194,7 @@ static void parse_steps(int flags, int *name)
   }
   if (tok == '(') {
     next();
-    if (tok == '*' || tok == '(' || (tok == T_ID && !is_type_start())) {
+    if (T_STARTS_NESTED(tok) || (tok == T_ID && !is_type_start())) {
       // A nested declarator, (*p): its derivations apply after the
       // suffixes that follow it.
       enter_nest();
@@ -354,7 +388,7 @@ int parse_struct(int is_union)
     hsum = tok_hsum;
     hmul = tok_hmul;
     next();
-    tag = tag_find(name, tok == '{' || tok == ';' ? depth : -1);
+    tag = tag_find(name, T_DEFINES_TAG(tok) ? depth : -1);
     if (tag >= 0 && tg_union[tag] != is_union)
       error(104 /* "redefinition of" */, tag_desc(tag));
   } else if (tok != '{') {
@@ -741,7 +775,7 @@ static void parse_for(void)
   next();                         /* "for" */
   expect('(', 124 /* "expected '(' after 'for', not" */);
   depth++;
-  if (tok == T_STATIC || tok == T_EXTERN)
+  if (T_STATIC_OR_EXTERN(tok))
     error0(125 /* "a 'for' loop can't declare a static or extern"
                   " variable" */);
   if (tok == T_REGISTER || is_type_start()) {
