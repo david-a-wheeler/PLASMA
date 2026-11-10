@@ -565,7 +565,7 @@ static int declare_global(int name, int type, int storage)
 // the file each one's pragma now covers (0 for none: files count
 // from 1).
 #define MAX_IMPORTS  16     // limit file: declarations with an asm label, or
-                            // after #pragma plasma import (2)
+                            // after #pragma plasma import
 static int imp_sym[MAX_IMPORTS];
 static int imp_label[MAX_IMPORTS];
 static unsigned char imp_dep[MAX_IMPORTS];
@@ -984,16 +984,20 @@ static void parse_toplevel(void)
 // Report how full the tables got, on one line of stderr, for
 // tools/measure.py: functions, variables visible at once, parameter
 // types, enum constants and typedef names at once, types, struct tags
-// and struct members.
+// and struct members; then the most any function used: ordinary
+// labels, nesting, and case labels in the switches open at once.
 static void report_stats(void)
 {
-  int v[7], i;
+  int v[10], i;
   v[0] = nfuncs;
   parse_stats(&v[1], &v[2]);
   v[3] = id_peak();
   type_stats(&v[4], &v[5], &v[6]);
+  v[7] = stat_labels;
+  v[8] = stat_nest;
+  v[9] = stat_cases;
   fputs("cccomp-stats", stderr);
-  for (i = 0; i < 7; i++) {
+  for (i = 0; i < 10; i++) {
     fputs(" ", stderr);
     fputs(num_text(v[i]), stderr);
   }

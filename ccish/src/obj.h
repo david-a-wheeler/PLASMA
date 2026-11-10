@@ -8,13 +8,13 @@
 #define OBJ_H
 
 #define MAX_FUNCS    242    // limit file: functions declared, defined or
-                            // called (220, pexpr.c)
+                            // called
 #define MAX_VARS     79     // limit file: globals, plus the parameters and
-                            // locals visible at once (74, link.c)
+                            // locals visible at once
 #define MAX_FUNC_CODE 1280  // limit function: bytes of bytecode in one
-                            // function (1,053)
+                            // function
 #define MAX_FUNC_RELOCS 128 // limit function: calls and data references in
-                            // one function (112)
+                            // one function
 
 // Stream file names: the output name plus these suffixes. The back end
 // writes one stream of tagged records, then the symbol summary.

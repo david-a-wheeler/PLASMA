@@ -129,6 +129,10 @@ void enter_nest(void)
 {
   if (++nest > MAX_NEST)
     fatal0(25 /* "nesting too deep" */);
+#ifdef CCISH_STATS
+  if (nest > stat_nest)
+    stat_nest = nest;
+#endif
 }
 
 // find_func() has two versions. With CCISH_FAST (build.h), a pointer
@@ -238,6 +242,7 @@ int var_val[MAX_VARS];
 int nvars, nglobals;
 #ifdef CCISH_STATS
 static int nvars_peak;              // the most visible at once
+int stat_labels, stat_nest, stat_cases;     // (parse.h)
 #endif
 
 char var_link[MAX_VARS];     // its linkage: the VL_* bits (parse.h)
@@ -769,6 +774,10 @@ int new_label(void)
   if (nlabels >= ENTRY_LABEL)
     error(36 /* "too many branches in" */, quote(fn_name[cur_fn]));
   label_used[nlabels] = 0;
+#ifdef CCISH_STATS
+  if (nlabels >= stat_labels)
+    stat_labels = nlabels + 1;
+#endif
   return nlabels++;
 }
 

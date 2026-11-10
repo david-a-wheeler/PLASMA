@@ -28,7 +28,7 @@
 #endif
 
 #define MAX_IF_NEST  8      // limit pp: #if, #ifdef and #ifndef groups open
-                            // at once (3)
+                            // at once
 #define MAX_INC_DIRS 8      // limit pp: -I directories
 #define MAX_PP_OPTS  16     // limit pp: -D and -U options
 

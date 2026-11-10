@@ -174,7 +174,7 @@ enum { VL_STATIC = 1, VL_USED = 2, VL_EXTERN = 4, VL_BSS = 8,
 
 // Parameter types of declared functions, in parse.c.
 #define MAX_PARAM_TYPES 352 // limit file: parameter types of all declared
-                            // functions (320, pexpr.c)
+                            // functions
 extern char param_types[MAX_PARAM_TYPES];   // unqualified types
 
 // The parser's state, in parse.c, shared by the parser's files.
@@ -324,5 +324,8 @@ int  is_null(Operand *o);
 int  elem_size(int t);
 #ifdef CCISH_STATS
 void parse_stats(int *vars_peak, int *ptypes);
+// The most any function used (CCISH_STATS): ordinary labels, nesting
+// (enter_nest()), and case labels in the switches open at once.
+extern int stat_labels, stat_nest, stat_cases;
 #endif
 #endif

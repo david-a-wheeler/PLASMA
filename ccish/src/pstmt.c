@@ -26,8 +26,7 @@
 #define MAX_PARAMS   16     // limit function: parameters of one function
 
 #define MAX_CASES    36     // limit function: case labels in all the switches
-                            // open at once (29); at most 255, a SEL table's
-                            // limit
+                            // open at once; at most 255, a SEL table's limit
 
 // ---------- Statements ----------
 
@@ -862,6 +861,10 @@ NULL);
                       "once" */);
       case_val[ncases] = v;
       case_label[ncases++] = l;
+#ifdef CCISH_STATS
+      if (ncases > stat_cases)
+        stat_cases = ncases;
+#endif
     }
     expect(':', 139 /* "expected ':' after a case label, not" */);
     place_label(l);

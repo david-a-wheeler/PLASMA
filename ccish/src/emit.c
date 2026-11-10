@@ -37,7 +37,7 @@
 
 #define MAX_RETURNS  64     // limit function: frame-size bytes in one
                             // function: one for its ENTER, and one for each
-                            // return's LEAVE (23)
+                            // return's LEAVE
 #define MAX_TEMP_USES 32    // limit function: operands on ccgen's own
                             // temporaries in one function: 4 to 6 for each
                             // IR_SWAP done when the code runs
@@ -91,6 +91,11 @@ static int temp_at[MAX_TEMP_USES];
 static char temp_k[MAX_TEMP_USES];
 static int ntemp;
 static int temp_words;          // how many temporaries are used
+#ifdef CCISH_STATS
+// The most any function used of each table (CCISH_STATS): code bytes,
+// relocations, frame-size bytes and temporaries' operands.
+static int stat_code, stat_relocs, stat_frame, stat_temps;
+#endif
 
 // Labels of the current function, resolved with fixup chains
 // (approach.md 18.2). Until label n is placed, label_word[n] is the
@@ -146,6 +151,10 @@ static void code_byte(int v)
   if (nfbuf >= MAX_FUNC_CODE)
     error_d(177 /* "function too large:" */, func_name(fn));
   fbuf[nfbuf++] = (unsigned char)v;
+#ifdef CCISH_STATS
+  if (nfbuf > stat_code)
+    stat_code = nfbuf;
+#endif
 }
 
 // Append a 16-bit word, low byte first, to the function buffer.
@@ -165,6 +174,10 @@ static void add_reloc(int kind, int target)
   rel_at[nrelocs] = nfbuf;
   rel_target[nrelocs] = target;
   nrelocs++;
+#ifdef CCISH_STATS
+  if (nrelocs > stat_relocs)
+    stat_relocs = nrelocs;
+#endif
 }
 
 // Append an ENTER or LEAVE frame-size byte. If it's FRAME_LATER, note
@@ -175,6 +188,10 @@ static void frame_byte(int v)
     if (nframe >= MAX_RETURNS)
       error_d(179 /* "too many returns in" */, func_name(fn));
     frame_at[nframe++] = nfbuf;
+#ifdef CCISH_STATS
+    if (nframe > stat_frame)
+      stat_frame = nframe;
+#endif
     v = 0;
   }
   code_byte(v);
@@ -193,6 +210,10 @@ static void frame_operand(int a)
     if (temp_k[ntemp] >= temp_words)
       temp_words = temp_k[ntemp] + 1;
     ntemp++;
+#ifdef CCISH_STATS
+    if (ntemp > stat_temps)
+      stat_temps = ntemp;
+#endif
     a = 0;
   }
   code_byte(a);
@@ -611,3 +632,14 @@ void emit_finish(void)
 {
   close_out(SUFFIX_SYMS);
 }
+
+#ifdef CCISH_STATS
+// Report how full the per-function tables got, on one line of stderr,
+// for tools/measure.py: code bytes, relocations, frame-size bytes and
+// temporaries' operands, the most any one function used.
+void emit_stats(void)
+{
+  fprintf(stderr, "ccgen-stats %d %d %d %d\n", stat_code, stat_relocs,
+          stat_frame, stat_temps);
+}
+#endif

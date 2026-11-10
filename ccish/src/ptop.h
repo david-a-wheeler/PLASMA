@@ -7,7 +7,7 @@
 // (its VL_BSS globals), and the modules #pragma plasma import named,
 // each one's name an id. Only ptop.c changes them.
 #define MAX_DEPS     4      // limit file: modules named by #pragma plasma
-                            // import (1)
+                            // import
 extern int bss_next;
 extern int dep_id[MAX_DEPS];
 

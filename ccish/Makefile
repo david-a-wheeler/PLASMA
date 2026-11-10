@@ -6,6 +6,8 @@
 #   make small  build the small passes (-DCCISH_SMALL), for the host
 #   make xref   write the cross tests' references with a host C compiler
 #   make limits regenerate doc/limits.md, the table of ccish's limits
+#   make measure regenerate doc/measure.txt, ccish's sizes and peaks
+#               measured on its own source, if stale, and print it
 #
 # The tests are driven entirely by this Makefile. Each test kind is a
 # directory of inputs; a wildcard finds the inputs, a % rule runs one of
@@ -255,8 +257,9 @@ full-test: test $(OUT)/spec/bootstrap.stamp
 
 # Everything the tests need, built but not run: the passes, the small
 # passes, the VM, and the cross references. The test stamps hang off this,
-# so nothing runs against a stale pass.
-testbuild: all small $(PLVM) $(CCSTAT) $(LIBOBJS) xref
+# so nothing runs against a stale pass. It also refreshes doc/measure.txt
+# (and so doc/limits.md), which takes a few seconds, only after a change.
+testbuild: all small $(PLVM) $(CCSTAT) $(LIBOBJS) xref doc/measure.txt
 
 # The whole suite: a stamp for every test, then one that depends on all
 # of them and reports the count (only when something actually ran).
@@ -286,18 +289,35 @@ tests/xrun/%.ref: tests/xrun/%.c tests/xrun/%.flags inc/ptest.h
 	@"$(XCC)" $(XREF_FLAGS) $(shell cat tests/xrun/$*.flags) -Iinc -o $@.bin $< \
 	 && timeout 10 $@.bin > $@ && rm -f $@.bin
 
-measure: all
-	python3 tools/measure.py
-
 # doc/limits.md, the table of ccish's limits, from the "limit GROUP:"
-# comments in the sources (tools/limits.sh). It's checked in, so that
-# people can read it without building, and make all keeps it current.
+# comments in the sources (tools/limits.sh), with each one's peak from
+# doc/measure.txt. Both are checked in, so that people can read them
+# without building. make all regenerates doc/limits.md from the
+# measure.txt there is; it doesn't depend on measure.txt, so that make
+# all doesn't run the measurement. Instead, the rule that writes
+# measure.txt (which make test runs) regenerates limits.md too.
 LIMIT_SRC = $(sort $(wildcard src/*.c src/*.h lib/*.c))
+LIMITS_CMD = sh tools/limits.sh -m doc/measure.txt $(LIMIT_SRC) \
+             > doc/limits.md.tmp && mv doc/limits.md.tmp doc/limits.md
 doc/limits.md: tools/limits.sh $(LIMIT_SRC)
 	@echo "tools/limits.sh > $@"
-	@sh tools/limits.sh $(LIMIT_SRC) > $@.tmp && mv $@.tmp $@
+	@$(LIMITS_CMD)
 
 limits: doc/limits.md
+
+# doc/measure.txt: tools/measure.py's report, compiling ccish's own
+# source with ccish (about 4 seconds; needs python3).
+doc/measure.txt: ccpp cccomp ccgen ccrel ccish.msg tools/measure.py \
+                 tools/cclink tools/plvmexit.c $(LIMIT_SRC) \
+                 $(wildcard lib/include/*.h)
+	@echo "tools/measure.py > $@"
+	@python3 tools/measure.py > $@.tmp && mv $@.tmp $@ \
+	 || { rm -f $@.tmp; exit 1; }
+	@echo "tools/limits.sh > doc/limits.md"
+	@$(LIMITS_CMD)
+
+measure: doc/measure.txt
+	@cat doc/measure.txt
 
 # Put each source file's functions, C then machine ops, in tools/out/lst/
 # (tools/listings.py); tools/opstats.py counts the ops in them.
@@ -326,6 +346,7 @@ clean:
 	rm -f ccish ccpp cccomp ccgen ccrel
 	rm -f ccpp-small cccomp-small ccgen-small ccrel-small
 	rm -rf $(OUT) tools/out bootstrap
+	rm -f doc/measure.txt doc/limits.md
 
 .PHONY: all small test testbuild xref measure listings print-sources bootstrap \
         full-test limits clean

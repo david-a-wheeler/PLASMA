@@ -294,7 +294,8 @@ Compilation stops at the first error.
 make            # same as make test
 make test       # builds both builds and ../src/plvm (the C VM),
                 # then runs every test that's stale
-make all        # builds ./ccish, ./ccpp, ./cccomp, ./ccgen and ./ccrel
+make all        # builds ./ccish, ./ccpp, ./cccomp, ./ccgen and ./ccrel,
+                # and doc/limits.md
 make small      # the small build: ./ccpp-small, ./cccomp-small,
                 # ./ccgen-small and ./ccrel-small
 make bootstrap  # ccish compiles itself twice under plvm, and the
@@ -302,12 +303,16 @@ make bootstrap  # ccish compiles itself twice under plvm, and the
 make full-test  # make test and make bootstrap
 make measure    # compiles ccish's own source with ccish (small build),
                 # links the Apple II programs, and reports their sizes
-                # and how full their tables got (needs python3)
+                # and how full their tables got, in doc/measure.txt
+                # (about 4 seconds, if stale; needs python3)
+make limits     # doc/limits.md, the table of ccish's limits
 make listings   # each source file's functions, C then machine ops,
                 # in tools/out/lst/ (needs python3)
 ```
 
-`make test` runs the whole suite: programs that must run and print
+`make test` also refreshes doc/measure.txt and doc/limits.md when a
+source changes, so the checked-in copies stay current. `make test`
+runs the whole suite: programs that must run and print
 their expected output (`tests/run/`), programs whose generated code is
 checked (`tests/gen/`), programs that must fail with their message
 (`tests/errors/`), token-stream checks (`tests/pp/`), link checks
@@ -1707,13 +1712,14 @@ their values. Here are some examples of the limits that matter most:
 * Also: the characters in a string literal and in a file name, and the
   significant characters in an identifier.
 
-The current list, with each limit's value, meaning and source file,
-is in [limits.md](limits.md). It's generated from the sources: each
-limit is a `#define` beside its table, with a comment that starts
-`limit GROUP:` and usually gives the most ccish's own source uses.
-`make limits` (or `make all`) regenerates limits.md when a source
-changes, and `grep -n 'limit [a-z]*:' src/*.[ch] lib/*.c` finds them
-all.
+The current list is in [limits.md](limits.md): each limit's value,
+meaning and source file, and, where `make measure` measures it, the
+most that ccish's own source uses. It's generated: each limit is a
+`#define` beside its table, with a comment that starts `limit GROUP:`,
+and the measured peaks come from doc/measure.txt. `make limits` (or
+`make all`) regenerates limits.md when a source changes, `make test`
+also refreshes the measurements, and `grep -n 'limit [a-z]*:'
+src/*.[ch] lib/*.c` finds the limits in the sources.
 
 A few other limits: a local array must fit in the 255-byte frame
 with the other locals; globals are limited to 32767 bytes in the

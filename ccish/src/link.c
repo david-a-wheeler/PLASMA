@@ -49,10 +49,10 @@
 #include "link.h"
 
 #define MAX_GSYMS   307     // limit link: names shared between objects: the
-                            // first prime 10% above linking cccomp's, with
-                            // the library (271)
+                            // first prime about 10% above what linking
+                            // cccomp, with the library, needs
 #define MAX_GNAMES  3000    // limit link: bytes of those names, with their
-                            // NULs: 10% above linking cccomp's (2,716)
+                            // NULs: about 10% above what linking cccomp needs
 #define MAX_SEL_TABLES 32   // SEL case tables the listing of one
                             // function waits for at once
 #define MAX_MOVED   32      // limit link: large globals moved to the heap in

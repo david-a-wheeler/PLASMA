@@ -4,12 +4,22 @@
 # #define whose comment starts "limit GROUP:", plus that comment's
 # continuation lines (indented, starting with //), or a one-line
 # /* limit GROUP: ... */ comment, as the library's sources use. The
-# groups, in the order printed: pp, file, function, link, other.
+# groups, in the order printed: pp, file, function, link, other. With
+# -m REPORT, it takes each limit's peak, the most ccish's own source
+# uses, from the "Peaks:" section of REPORT, tools/measure.py's report
+# (doc/measure.txt), if REPORT exists.
 #
-# Usage: tools/limits.sh src/*.c src/*.h lib/*.c
+# Usage: tools/limits.sh [-m REPORT] FILE...
+#   e.g. tools/limits.sh -m doc/measure.txt src/*.c src/*.h lib/*.c
 set -eu
-[ $# -ge 1 ] || { echo "usage: $0 FILE..." >&2; exit 2; }
-awk '
+report=
+if [ "${1:-}" = -m ] && [ $# -ge 2 ]; then
+  report=$2
+  shift 2
+fi
+[ $# -ge 1 ] || { echo "usage: $0 [-m REPORT] FILE..." >&2; exit 2; }
+[ -n "$report" ] && [ -r "$report" ] || report=/dev/null
+awk -v report="$report" '
 function flush() {
   if (name == "") return
   gsub(/\|/, "\\|", text); gsub(/</, "\\&lt;", text); gsub(/>/, "\\&gt;", text)
@@ -17,8 +27,8 @@ function flush() {
     printf "%s:%d: unknown limit group %s\n", file, line, group > "/dev/stderr"
     bad = 1
   }
-  rows[group] = rows[group] sprintf("| `%s` | %s | %s | [%s](../%s) |\n",
-                                    name, value, text, file, file)
+  rows[group] = rows[group] sprintf("| `%s` | %s | %s | %s | [%s](../%s) |\n",
+                                    name, value, peak[name], text, file, file)
   name = ""
 }
 BEGIN {
@@ -28,6 +38,15 @@ BEGIN {
   title["function"] = "One function"
   title["link"] = "One link (ccrel)"
   title["other"] = "Other limits"
+  # The report'"'"'s peaks: "  NAME VALUE WHERE", after its "Peaks:" line.
+  while ((getline l < report) > 0) {
+    if (l ~ /^Peaks:/) in_peaks = 1
+    else if (in_peaks && l ~ /^  [A-Za-z_0-9]+ [0-9]+ /) {
+      split(l, f, " "); where = l
+      sub(/^  [A-Za-z_0-9]+ [0-9]+ /, "", where)
+      peak[f[1]] = f[2] " (" where ")"
+    }
+  }
 }
 FNR == 1 { flush() }
 name != "" && /^[ \t]+\/\// {
@@ -52,19 +71,19 @@ END {
   print "source needs, since every byte counts on a 64K machine. Going past"
   print "one is usually a clear error."
   print ""
-  print "Each row gives a limit'"'"'s macro name, its value, a description, and"
-  print "the file that defines it. Many descriptions include a parenthesis"
-  print "such as \"(220, pexpr.c)\" or \"(3)\": the number is the most that"
-  print "ccish'"'"'s own source uses, and the file, if given, is the one that"
-  print "uses that most. (Other parentheses are just notes.)"
+  print "Each row gives a limit'"'"'s macro name, its value, how much of it"
+  print "ccish'"'"'s own source uses, a description, and the file that defines"
+  print "it. \"Used\" is the most that any of ccish'"'"'s own sources needs, and"
+  print "which one, as `make measure` measured it (doc/measure.txt); it'"'"'s"
+  print "blank for a limit that isn'"'"'t measured."
   for (i = 1; i <= ngroups; i++) {
     g = order[i]
     if (!(g in rows)) continue
     print ""
     print "## " title[g]
     print ""
-    print "| Limit | Value | Description | Defined in |"
-    print "|---|---|---|---|"
+    print "| Limit | Value | Used | Description | Defined in |"
+    print "|---|---|---|---|---|"
     printf "%s", rows[g]
   }
   exit bad

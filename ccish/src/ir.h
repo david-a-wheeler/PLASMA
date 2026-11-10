@@ -5,7 +5,7 @@
 #define IR_H
 
 #define MAX_LABELS   128    // limit function: labels in one function,
-                            // ordinary and goto (90); at most 128, since
+                            // ordinary and goto; at most 128, since
                             // case_label[] is char. Each if, loop, &&, || and
                             // ?: uses one to four
 // The function's entry label, after its ENTER: ccgen's target for a

@@ -1123,6 +1123,9 @@ static void read_summary(void)
       emit_byte(*s++);
   }
   emit_finish();
+#ifdef CCISH_STATS
+  emit_stats();
+#endif
 }
 
 // The back end: read the IR file of output name base, and write its

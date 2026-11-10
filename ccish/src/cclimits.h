@@ -7,7 +7,7 @@
                             // identifier; the rest are ignored
 #define MAX_STR      255    // limit other: bytes in one string literal, after
                             // adjacent ones are joined, so that it is a
-                            // PLASMA string too (85)
+                            // PLASMA string too
 #define MAX_PATH     128    // limit other: a file name's characters, with its
                             // NUL: a ProDOS path has at most 64, or 128 with
                             // a prefix (diag.c's buffers)

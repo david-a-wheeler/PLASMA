@@ -16,5 +16,8 @@ int  emit_code_size(void);          // code bytes written so far
 void emit_summary(void);            // close .obj, start .syms
 void emit_finish(void);             // close .syms
 void emit_abort(void);              // after an error
+#ifdef CCISH_STATS
+void emit_stats(void);              // for tools/measure.py
+#endif
 
 #endif

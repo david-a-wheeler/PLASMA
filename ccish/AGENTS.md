@@ -174,16 +174,21 @@ files of the sessions so far, before a move to a new computer.)
   and every loop now takes 4: split a test with many loops into
   functions.
 - **Limits:** mark each user-facing limit's `#define` with a comment
-  starting `limit GROUP:` (pp, file, function, link or other).
-  `make all` (or `make limits`) regenerates doc/limits.md, which is
-  checked in: commit it with the change to a limit.
+  starting `limit GROUP:` (pp, file, function, link or other), with
+  no hand-written peak: doc/limits.md shows the measured ones, from
+  doc/measure.txt (to measure a new one, have tools/measure.py report
+  it in its "Peaks:" section). `make all` (or `make limits`)
+  regenerates doc/limits.md, which is checked in: commit it with the
+  change to a limit.
 
 ## Measuring
 
-- `python3 tools/measure.py` (8 seconds) compiles ccish's own sources
-  with ccish (small build) and reports each file's code, data and
-  strings, each program's totals and module file, table peaks, stack
-  depth. It writes `tools/out/PROGRAM.lst`, ccrel's listings, and
+- `make measure` (`tools/measure.py`, about 4 seconds) compiles
+  ccish's own sources with ccish (small build) and reports each file's
+  code, data and strings, each program's totals and module file, table
+  peaks, stack depth. The report is doc/measure.txt, checked in; `make
+  test` refreshes it (and doc/limits.md) after a change, so commit it
+  with the change. It writes `tools/out/PROGRAM.lst`, ccrel's listings, and
   `tools/out/PROGRAM.objs`, the objects tools/cclink linked.
 - `python3 tools/listings.py` (or `make listings`; after `make`)
   writes tools/out/lst/NAME.lst for every source file of the programs

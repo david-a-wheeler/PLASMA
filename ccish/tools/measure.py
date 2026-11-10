@@ -18,7 +18,10 @@ objects linked. The report gives each
 file's code, data and string sizes (from its .syms header) and each
 program's totals and link workload (from ccrel's listing), and how full
 ccpp's tables got (from a ccpp built with CCISH_STATS). See approach.md
-18.5 and 18.6 E2.
+18.5 and 18.6 E2. It ends with each measured limit's peak, the most
+ccish's own source uses, which tools/limits.sh puts in doc/limits.md.
+`make measure` writes the report to doc/measure.txt (checked in), and
+`make test` keeps it current.
 
 The workaround: in the full build, the printf family becomes 0 (a
 #define at the top of each file: the library has no printf, and only
@@ -78,7 +81,16 @@ BIG_LIMITS = {"MAX_FUNCS": 1024, "MAX_VARS": 512, "MAX_LABELS": 512,
 CC_TABLES = [("functions", "MAX_FUNCS"), ("variables visible", "MAX_VARS"),
              ("parameter types", "MAX_PARAM_TYPES"),
              ("enum constants, typedefs", "MAX_IDS"), ("types", "MAX_TYPES"),
-             ("struct tags", "MAX_TAGS"), ("struct members", "MAX_MEMBERS")]
+             ("struct tags", "MAX_TAGS"), ("struct members", "MAX_MEMBERS"),
+             ("ordinary labels", "ENTRY_LABEL"), ("nesting", "MAX_NEST"),
+             ("case labels open", "MAX_CASES")]
+
+# ccgen's per-function tables, in the order a CCISH_STATS ccgen reports
+# them: the most any one function used.
+GEN_TABLES = [("code bytes", "MAX_FUNC_CODE"),
+              ("relocations", "MAX_FUNC_RELOCS"),
+              ("frame-size bytes", "MAX_RETURNS"),
+              ("temporaries' operands", "MAX_TEMP_USES")]
 
 # ccpp's tables, in the order a CCISH_STATS ccpp reports them.
 PP_TABLES = [("name pool bytes", "MAX_PP_POOL"), ("macros", "MAX_MACROS"),
@@ -179,13 +191,17 @@ def build_big():
     subprocess.run(["cc", "-O2", "-DCCISH_STATS", "-o",
                     os.path.join(big, "cccomp-stats")]
                    + src("cccomp"), check=True)
+    subprocess.run(["cc", "-O2", "-DCCISH_STATS", "-o",
+                    os.path.join(big, "ccgen-stats")]
+                   + src("ccgen"), check=True)
     return big
 
 
 def pp_stats(big, name):
-    """How full ccpp's and cccomp's tables got for OUT/src/NAME.c
-    (PP_TABLES' and CC_TABLES' order), from BIG's CCISH_STATS ccpp and
-    cccomp: two lists, each None if that program failed."""
+    """How full ccpp's, cccomp's and ccgen's tables got for
+    OUT/src/NAME.c (PP_TABLES', CC_TABLES' and GEN_TABLES' order), from
+    BIG's CCISH_STATS ccpp, cccomp and ccgen: three lists, each None if
+    that program failed."""
     out = os.path.join(OUT, "stats_" + name)
     ok, msg = run([os.path.join(big, "ccpp-stats"), "-o", out] + pp_args()
                   + [os.path.join(OUT, "src", name + ".c")])
@@ -196,10 +212,28 @@ def pp_stats(big, name):
         ok, msg = run([os.path.join(big, "cccomp-stats"), "-k", out])
         m = re.search(r"cccomp-stats((?: \d+)+)", msg)
         cc = [int(v) for v in m.group(1).split()] if ok and m else None
-    for suffix in (".i", ".nam", ".ir"):
+    gen = None
+    if ok:
+        ok, msg = run([os.path.join(big, "ccgen-stats"), out])
+        m = re.search(r"ccgen-stats((?: \d+)+)", msg)
+        gen = [int(v) for v in m.group(1).split()] if ok and m else None
+    for suffix in (".i", ".nam", ".ir", ".obj", ".syms"):
         if os.path.exists(out + suffix):
             os.remove(out + suffix)
-    return pp, cc
+    return pp, cc, gen
+
+
+def longest_line(paths):
+    """The longest line in the files at paths, after joining the lines
+    that end in a backslash, as ccpp's lexer does: (length, file)."""
+    best = (0, "")
+    for path in paths:
+        with open(path) as f:
+            text = f.read().replace("\\\n", "")
+        for line in text.split("\n"):
+            if len(line) > best[0]:
+                best = (len(line), os.path.basename(path))
+    return best
 
 
 def limit(name):
@@ -457,6 +491,12 @@ def module_rld(path):
     return len(data) - rld_start, defs
 
 
+def note_peak(peaks, lim, value, where):
+    """Keep value as limit LIM's peak, from where, if it's the most."""
+    if value > peaks.get(lim, (-1, ""))[0]:
+        peaks[lim] = (value, where)
+
+
 def summary(name):
     """The sizes in OUT/NAME.syms: data, strings, code, zero-filled
     (the data symbols ccrel may move to the heap)."""
@@ -474,6 +514,7 @@ def main():
     tok_sizes = None
     peaks, peak_of = [0] * len(PP_TABLES), [""] * len(PP_TABLES)
     cpeaks, cpeak_of = [0] * len(CC_TABLES), [""] * len(CC_TABLES)
+    gpeaks, gpeak_of = [0] * len(GEN_TABLES), [""] * len(GEN_TABLES)
     prepare_all()
     big = build_big()
 
@@ -493,13 +534,16 @@ def main():
             print("%-10s %5d   %5d    %5d      %5d"
                   % (name, code, data, strs, zero))
             continue
-        stats, cstats = pp_stats(big, name)
+        stats, cstats, gstats = pp_stats(big, name)
         for i, v in enumerate(stats or []):
             if v > peaks[i]:
                 peaks[i], peak_of[i] = v, name
         for i, v in enumerate(cstats or []):
             if v > cpeaks[i]:
                 cpeaks[i], cpeak_of[i] = v, name
+        for i, v in enumerate(gstats or []):
+            if v > gpeaks[i]:
+                gpeaks[i], gpeak_of[i] = v, name
         keep = name == "parse"
         ok, msg = compile_obj(CCOMP, name, keep)
         if not ok and any(m in msg for m in LIMIT_MSGS):
@@ -527,12 +571,28 @@ def main():
     if tok_sizes:
         print("\nparse.c: %d bytes of source; ccpp's token stream %d,"
               " name file %d" % tok_sizes)
+    limit_peaks = {}
     print("\nccpp's tables: the most one source needed, and the limit:")
     for (what, lim), v, who in zip(PP_TABLES, peaks, peak_of):
         print("  %-26s %6d of %6d  (%s)" % (what, v, limit(lim), who))
+        note_peak(limit_peaks, lim, v, who + ".c")
     print("\ncccomp's tables: the most one source needed, and the limit:")
     for (what, lim), v, who in zip(CC_TABLES, cpeaks, cpeak_of):
         print("  %-26s %6d of %6d  (%s)" % (what, v, limit(lim), who))
+        note_peak(limit_peaks, lim, v, who + ".c")
+    print("\nccgen's tables: the most one function needed, and the limit:")
+    for (what, lim), v, who in zip(GEN_TABLES, gpeaks, gpeak_of):
+        print("  %-26s %6d of %6d  (%s)" % (what, v, limit(lim), who))
+        note_peak(limit_peaks, lim, v, who + ".c")
+    sources = [os.path.join(OUT, "src", n) for n in
+               sorted(os.listdir(os.path.join(OUT, "src")))]
+    sources += [os.path.join(CCOMP, "lib", "include", n) for n in
+                sorted(os.listdir(os.path.join(CCOMP, "lib", "include")))]
+    sources += [libsrc[n] for n in sorted(libsrc)]
+    v, who = longest_line(p for p in sources if p.endswith((".c", ".h")))
+    print("\nThe longest source line: %d of %d characters  (%s)"
+          % (v, limit("MAX_LINE"), who))
+    note_peak(limit_peaks, "MAX_LINE", v, who)
     for prog, files in PROGRAMS:
         print()
         if any(n not in sizes for n in files):
@@ -574,6 +634,12 @@ def main():
         lstrs = sum(sizes[n][1] for n in libs)
         rld, defs = module_rld(module)
         last = msg.strip().splitlines()[-1]
+        m = re.search(r"shared names: (\d+) of \d+ slots, (\d+) of", last)
+        if m:
+            note_peak(limit_peaks, "MAX_GSYMS", int(m.group(1)),
+                      "linking " + prog)
+            note_peak(limit_peaks, "MAX_GNAMES", int(m.group(2)),
+                      "linking " + prog)
         print("%s: %d files, and %d library objects:"
               % (prog, len(files), len(libs)))
         print("  its own code %d, data %d, strings %d: %d in all"
@@ -602,6 +668,11 @@ def main():
             funcs = parse_listing(msg)
             comps, edges = stack_report(funcs)
             static_report(funcs, comps, edges)
+    # Read by tools/limits.sh: keep this heading and the lines' form.
+    print("\nPeaks: each limit, the most ccish's own source uses, and"
+          " where:")
+    for lim in sorted(limit_peaks):
+        print("  %s %d %s" % (lim, limit_peaks[lim][0], limit_peaks[lim][1]))
     return 1 if failed else 0
 
 

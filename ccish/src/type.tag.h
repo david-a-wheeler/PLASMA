@@ -6,9 +6,9 @@
 #define TYPE_TAG_H
 
 #define MAX_TAGS     6      // limit file: struct and union tags, counting
-                            // those in blocks that have ended (3)
+                            // those in blocks that have ended
 #define MAX_MEMBERS  32     // limit file: struct and union members, in all of
-                            // them (25)
+                            // them
 
 // Tag i's name (an id, or -1 if anonymous), its size (-1 until its
 // member list is complete: tag_new() sets that, pstmt.c the size), and

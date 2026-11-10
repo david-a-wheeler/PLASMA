@@ -7,75 +7,75 @@ Each limit is a fixed table size, set just above what ccish's own
 source needs, since every byte counts on a 64K machine. Going past
 one is usually a clear error.
 
-Each row gives a limit's macro name, its value, a description, and
-the file that defines it. Many descriptions include a parenthesis
-such as "(220, pexpr.c)" or "(3)": the number is the most that
-ccish's own source uses, and the file, if given, is the one that
-uses that most. (Other parentheses are just notes.)
+Each row gives a limit's macro name, its value, how much of it
+ccish's own source uses, a description, and the file that defines
+it. "Used" is the most that any of ccish's own sources needs, and
+which one, as `make measure` measured it (doc/measure.txt); it's
+blank for a limit that isn't measured.
 
 ## The preprocessor (ccpp)
 
-| Limit | Value | Description | Defined in |
-|---|---|---|---|
-| `MAX_IF_NEST` | 8 | #if, #ifdef and #ifndef groups open at once (3) | [src/pp.c](../src/pp.c) |
-| `MAX_INC_DIRS` | 8 | -I directories | [src/pp.c](../src/pp.c) |
-| `MAX_PP_OPTS` | 16 | -D and -U options | [src/pp.c](../src/pp.c) |
-| `MAX_LINE` | 255 | characters in one source line, after joining the lines that end in a backslash: ccpp's buffer (99) | [src/pplex.h](../src/pplex.h) |
-| `MAX_INCLUDE` | 3 | #include files open at once, beside the source: PLASMA's Apple II file library allows 4 open files, and ccpp has the source and NAME.i open (2, ccish's own: a header, and &lt;stdio.h&gt;'s &lt;stddef.h&gt;) | [src/pplex.h](../src/pplex.h) |
-| `MAX_MACROS` | 142 | macros defined at once (129, ptop.c, about 20 of them include guards) | [src/ppmac.c](../src/ppmac.c) |
-| `MAX_MACRO_BYTES` | 1284 | bytes of their bodies, as tokens, where an identifier or number is 3 bytes (1166, pexpr.c) | [src/ppmac.c](../src/ppmac.c) |
-| `MAX_EXPAND` | 16 | macro expansions inside one another (2) | [src/ppmac.c](../src/ppmac.c) |
-| `MAX_EXP_BYTES` | 256 | bytes of the expansions and arguments being read, and of the arguments' own expansions (two buffers; 15 and 3): room for macros longer than ccish's | [src/ppmac.c](../src/ppmac.c) |
-| `MAX_ARG_SLOTS` | 32 | arguments of the calls being expanded (1) | [src/ppmac.c](../src/ppmac.c) |
-| `MAX_PP_PARAMS` | 16 | parameters of one macro | [src/ppmac.h](../src/ppmac.h) |
-| `MAX_PP_POOL` | 8432 | bytes of ccpp's names and file names, with a length byte each (7,665: parse.c with its headers, macros' names too) | [src/ppname.c](../src/ppname.c) |
+| Limit | Value | Used | Description | Defined in |
+|---|---|---|---|---|
+| `MAX_IF_NEST` | 8 | 2 (bio.c) | #if, #ifdef and #ifndef groups open at once | [src/pp.c](../src/pp.c) |
+| `MAX_INC_DIRS` | 8 |  | -I directories | [src/pp.c](../src/pp.c) |
+| `MAX_PP_OPTS` | 16 |  | -D and -U options | [src/pp.c](../src/pp.c) |
+| `MAX_LINE` | 255 | 177 (pstmt.c) | characters in one source line, after joining the lines that end in a backslash: ccpp's buffer | [src/pplex.h](../src/pplex.h) |
+| `MAX_INCLUDE` | 3 | 2 (bio.c) | #include files open at once, beside the source: PLASMA's Apple II file library allows 4 open files, and ccpp has the source and NAME.i open | [src/pplex.h](../src/pplex.h) |
+| `MAX_MACROS` | 142 | 140 (ptop.c) | macros defined at once, include guards too | [src/ppmac.c](../src/ppmac.c) |
+| `MAX_MACRO_BYTES` | 1284 | 1126 (pexpr.c) | bytes of their bodies, as tokens, where an identifier or number is 3 bytes | [src/ppmac.c](../src/ppmac.c) |
+| `MAX_EXPAND` | 16 | 4 (pexpr.c) | macro expansions inside one another | [src/ppmac.c](../src/ppmac.c) |
+| `MAX_EXP_BYTES` | 256 | 96 (irin.c) | bytes of the expansions and arguments being read, and of the arguments' own expansions (two buffers): room for macros longer than ccish's | [src/ppmac.c](../src/ppmac.c) |
+| `MAX_ARG_SLOTS` | 32 | 4 (pexpr.c) | arguments of the calls being expanded | [src/ppmac.c](../src/ppmac.c) |
+| `MAX_PP_PARAMS` | 16 |  | parameters of one macro | [src/ppmac.h](../src/ppmac.h) |
+| `MAX_PP_POOL` | 8432 | 7674 (ptop.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each | [src/ppname.c](../src/ppname.c) |
 
 ## One source file (cccomp)
 
-| Limit | Value | Description | Defined in |
-|---|---|---|---|
-| `MAX_IDS` | 203 | enum constants and typedef names visible at once (198, in irin.c) | [src/name.tab.h](../src/name.tab.h) |
-| `MAX_FUNCS` | 242 | functions declared, defined or called (220, pexpr.c) | [src/obj.h](../src/obj.h) |
-| `MAX_VARS` | 79 | globals, plus the parameters and locals visible at once (74, link.c) | [src/obj.h](../src/obj.h) |
-| `MAX_PARAM_TYPES` | 352 | parameter types of all declared functions (320, pexpr.c) | [src/parse.h](../src/parse.h) |
-| `MAX_IMPORTS` | 16 | declarations with an asm label, or after #pragma plasma import (2) | [src/ptop.c](../src/ptop.c) |
-| `MAX_DEPS` | 4 | modules named by #pragma plasma import (1) | [src/ptop.h](../src/ptop.h) |
-| `MAX_TYPES` | 54 | distinct types (49, link.c); at most 128, since char tables (fn_type[], param_types[]) hold unqualified types, and a host's char may be signed | [src/type.c](../src/type.c) |
-| `MAX_TAGS` | 6 | struct and union tags, counting those in blocks that have ended (3) | [src/type.tag.h](../src/type.tag.h) |
-| `MAX_MEMBERS` | 32 | struct and union members, in all of them (25) | [src/type.tag.h](../src/type.tag.h) |
+| Limit | Value | Used | Description | Defined in |
+|---|---|---|---|---|
+| `MAX_IDS` | 203 | 199 (irin.c) | enum constants and typedef names visible at once | [src/name.tab.h](../src/name.tab.h) |
+| `MAX_FUNCS` | 242 | 195 (pexpr.c) | functions declared, defined or called | [src/obj.h](../src/obj.h) |
+| `MAX_VARS` | 79 | 77 (ptop.c) | globals, plus the parameters and locals visible at once | [src/obj.h](../src/obj.h) |
+| `MAX_PARAM_TYPES` | 352 | 305 (pexpr.c) | parameter types of all declared functions | [src/parse.h](../src/parse.h) |
+| `MAX_IMPORTS` | 16 |  | declarations with an asm label, or after #pragma plasma import | [src/ptop.c](../src/ptop.c) |
+| `MAX_DEPS` | 4 |  | modules named by #pragma plasma import | [src/ptop.h](../src/ptop.h) |
+| `MAX_TYPES` | 54 | 51 (link.c) | distinct types; at most 128, since char tables (fn_type[], param_types[]) hold unqualified types, and a host's char may be signed | [src/type.c](../src/type.c) |
+| `MAX_TAGS` | 6 | 4 (link.c) | struct and union tags, counting those in blocks that have ended | [src/type.tag.h](../src/type.tag.h) |
+| `MAX_MEMBERS` | 32 | 27 (irout.c) | struct and union members, in all of them | [src/type.tag.h](../src/type.tag.h) |
 
 ## One function
 
-| Limit | Value | Description | Defined in |
-|---|---|---|---|
-| `MAX_RETURNS` | 64 | frame-size bytes in one function: one for its ENTER, and one for each return's LEAVE (23) | [src/emit.c](../src/emit.c) |
-| `MAX_TEMP_USES` | 32 | operands on ccgen's own temporaries in one function: 4 to 6 for each IR_SWAP done when the code runs | [src/emit.c](../src/emit.c) |
-| `MAX_LABELS` | 128 | labels in one function, ordinary and goto (90); at most 128, since case_label[] is char. Each if, loop, &&, \|\| and ?: uses one to four | [src/ir.h](../src/ir.h) |
-| `ENTRY_LABEL` | 103 | ordinary labels in one function: the goto labels are the rest of MAX_LABELS, above this one | [src/ir.h](../src/ir.h) |
-| `MAX_FUNC_CODE` | 1280 | bytes of bytecode in one function (1,053) | [src/obj.h](../src/obj.h) |
-| `MAX_FUNC_RELOCS` | 128 | calls and data references in one function (112) | [src/obj.h](../src/obj.h) |
-| `MAX_NEST` | 32 | nesting of parentheses, blocks and loops | [src/parse.h](../src/parse.h) |
-| `MAX_PARAMS` | 16 | parameters of one function | [src/pstmt.c](../src/pstmt.c) |
-| `MAX_CASES` | 36 | case labels in all the switches open at once (29); at most 255, a SEL table's limit | [src/pstmt.c](../src/pstmt.c) |
+| Limit | Value | Used | Description | Defined in |
+|---|---|---|---|---|
+| `MAX_RETURNS` | 64 | 47 (pplex.c) | frame-size bytes in one function: one for its ENTER, and one for each return's LEAVE | [src/emit.c](../src/emit.c) |
+| `MAX_TEMP_USES` | 32 | 4 (pp.c) | operands on ccgen's own temporaries in one function: 4 to 6 for each IR_SWAP done when the code runs | [src/emit.c](../src/emit.c) |
+| `MAX_LABELS` | 128 |  | labels in one function, ordinary and goto; at most 128, since case_label[] is char. Each if, loop, &&, \|\| and ?: uses one to four | [src/ir.h](../src/ir.h) |
+| `ENTRY_LABEL` | 103 | 81 (link.c) | ordinary labels in one function: the goto labels are the rest of MAX_LABELS, above this one | [src/ir.h](../src/ir.h) |
+| `MAX_FUNC_CODE` | 1280 | 872 (link.c) | bytes of bytecode in one function | [src/obj.h](../src/obj.h) |
+| `MAX_FUNC_RELOCS` | 128 | 111 (link.c) | calls and data references in one function | [src/obj.h](../src/obj.h) |
+| `MAX_NEST` | 32 | 16 (pexpr.c) | nesting of parentheses, blocks and loops | [src/parse.h](../src/parse.h) |
+| `MAX_PARAMS` | 16 |  | parameters of one function | [src/pstmt.c](../src/pstmt.c) |
+| `MAX_CASES` | 36 | 36 (emit.c) | case labels in all the switches open at once; at most 255, a SEL table's limit | [src/pstmt.c](../src/pstmt.c) |
 
 ## One link (ccrel)
 
-| Limit | Value | Description | Defined in |
-|---|---|---|---|
-| `MAX_GSYMS` | 307 | names shared between objects: the first prime 10% above linking cccomp's, with the library (271) | [src/link.c](../src/link.c) |
-| `MAX_GNAMES` | 3000 | bytes of those names, with their NULs: 10% above linking cccomp's (2,716) | [src/link.c](../src/link.c) |
-| `MAX_MOVED` | 32 | large globals moved to the heap in one module (OBJECT.md, "Zero-filled globals") | [src/link.c](../src/link.c) |
-| `MAX_MODS` | 8 | modules one link imports from | [src/link.c](../src/link.c) |
-| `MAX_OBJS` | 32 | objects in one link (ccish's own is MAX_LINK, main.c) | [src/link.h](../src/link.h) |
+| Limit | Value | Used | Description | Defined in |
+|---|---|---|---|---|
+| `MAX_GSYMS` | 307 | 257 (linking cccomp) | names shared between objects: the first prime about 10% above what linking cccomp, with the library, needs | [src/link.c](../src/link.c) |
+| `MAX_GNAMES` | 3000 | 2496 (linking cccomp) | bytes of those names, with their NULs: about 10% above what linking cccomp needs | [src/link.c](../src/link.c) |
+| `MAX_MOVED` | 32 |  | large globals moved to the heap in one module (OBJECT.md, "Zero-filled globals") | [src/link.c](../src/link.c) |
+| `MAX_MODS` | 8 |  | modules one link imports from | [src/link.c](../src/link.c) |
+| `MAX_OBJS` | 32 |  | objects in one link (ccish's own is MAX_LINK, main.c) | [src/link.h](../src/link.h) |
 
 ## Other limits
 
-| Limit | Value | Description | Defined in |
-|---|---|---|---|
-| `MAX_ARGS` | 24 | argv words; more are dropped | [lib/start.c](../lib/start.c) |
-| `MAX_NAME` | 31 | significant characters in an identifier; the rest are ignored | [src/cclimits.h](../src/cclimits.h) |
-| `MAX_STR` | 255 | bytes in one string literal, after adjacent ones are joined, so that it is a PLASMA string too (85) | [src/cclimits.h](../src/cclimits.h) |
-| `MAX_PATH` | 128 | a file name's characters, with its NUL: a ProDOS path has at most 64, or 128 with a prefix (diag.c's buffers) | [src/cclimits.h](../src/cclimits.h) |
-| `MAX_BYVAL` | 8 | bytes in a struct passed or returned by value, so IR_RETURN's a (the result's words) is at most MAX_BYVAL / 2 | [src/ir.h](../src/ir.h) |
-| `MAX_STEPS` | 16 | pointers, arrays and functions in the declarators being read | [src/pstmt.c](../src/pstmt.c) |
-| `MAX_OBJECT` | 32767 | bytes in one array or struct | [src/type.h](../src/type.h) |
+| Limit | Value | Used | Description | Defined in |
+|---|---|---|---|---|
+| `MAX_ARGS` | 24 |  | argv words; more are dropped | [lib/start.c](../lib/start.c) |
+| `MAX_NAME` | 31 |  | significant characters in an identifier; the rest are ignored | [src/cclimits.h](../src/cclimits.h) |
+| `MAX_STR` | 255 |  | bytes in one string literal, after adjacent ones are joined, so that it is a PLASMA string too | [src/cclimits.h](../src/cclimits.h) |
+| `MAX_PATH` | 128 |  | a file name's characters, with its NUL: a ProDOS path has at most 64, or 128 with a prefix (diag.c's buffers) | [src/cclimits.h](../src/cclimits.h) |
+| `MAX_BYVAL` | 8 |  | bytes in a struct passed or returned by value, so IR_RETURN's a (the result's words) is at most MAX_BYVAL / 2 | [src/ir.h](../src/ir.h) |
+| `MAX_STEPS` | 16 |  | pointers, arrays and functions in the declarators being read | [src/pstmt.c](../src/pstmt.c) |
+| `MAX_OBJECT` | 32767 |  | bytes in one array or struct | [src/type.h](../src/type.h) |
