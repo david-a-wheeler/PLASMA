@@ -120,6 +120,29 @@
     SUB
     LEAVE 0
 
+    ; zsub
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    NEG
+    LEAVE 2
+
+    ; zsub2
+    ENTER 4 2
+    ; label 103
+    LLW 0
+    ADDLW 2
+    NEG
+    LEAVE 4
+
+    ; zsubcall
+    ENTER 0 0
+    ; label 103
+    CN 0
+    CALL u7
+    SUB
+    LEAVE 0
+
     ; main
     ENTER 0 0
     ; label 103
@@ -169,5 +192,14 @@
     CALL orself
     DROP
     CALL subvol
+    DROP
+    CN 1
+    CALL zsub
+    DROP
+    CN 1
+    CN 2
+    CALL zsub2
+    DROP
+    CALL zsubcall
     ANDI 0
     LEAVE 0

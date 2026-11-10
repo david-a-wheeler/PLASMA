@@ -28,6 +28,11 @@ int xorself(int x)   { return x ^ x; }
 int andself(int x)   { return x & x; }
 int orself(int x)    { return x | x; }
 int subvol(void)     { return vg - vg; }
+// 0 - x is -x: NEG, for an operand with no effect (a sum of two locals
+// too); 0 - a call stays a SUB.
+int zsub(int x)      { return 0 - x; }
+int zsub2(int x, int y) { return 0 - (x + y); }
+int zsubcall(void)   { return 0 - (int)u7(); }
 
 int main(void)
 {
@@ -48,5 +53,8 @@ int main(void)
   andself(1);
   orself(1);
   subvol();
+  zsub(1);
+  zsub2(1, 2);
+  zsubcall();
   return 0;
 }

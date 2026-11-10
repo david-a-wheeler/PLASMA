@@ -94,6 +94,8 @@
 //                                          has no effect); never two
 //                                          volatile loads, only a DUP
 //   DUP  AND / IOR           -> (nothing)  x & x, x | x
+//   CN 0  expr  SUB          -> expr NEG   0 - x, for an expression with
+//                                          no effect
 //   CN 1  SHL                -> DUP ADD    x << 1, as for x * 2
 //   CN 0  ISEQ               -> NOT        x == 0: PLASMA's NOT gives
 //                                          ISEQ's true ($FFFF) and false
@@ -1025,6 +1027,18 @@ static int rewrite(void)
     *a = *b;
     nwin--;
     return 1;
+  }
+  // CN 0 expr SUB -> expr NEG: 0 - x is -x, for an expression with no
+  // effect (expr_len(): plain loads and arithmetic), which then stays
+  // just as it was.
+  if (b->op == OP_SUB) {
+    int n = expr_len(nwin - 1), i = nwin - 2 - n, v;
+    if (n > 0 && i >= 0 && win[i].fix == FIX_NONE
+        && mop_const_value(&win[i], &v) && v == 0) {
+      remove_op(i);
+      win[nwin - 1].op = OP_NEG;
+      return 1;
+    }
   }
   // DUP ADD ADD -> IDXW: adding twice x is PLASMA's word index op
   // (p + i for a pointer to 2-byte elements).
