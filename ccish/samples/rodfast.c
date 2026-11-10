@@ -1,7 +1,20 @@
 // rodfast.c: Rod's Colors, the lores demo from the Apple II DOS System
 // Master disk, in C for ccish, where speed is all that matters, at the
-// cost of much more code. Press any key to exit. rod.c is the same
-// program written plainly, calling CONIO to plot.
+// cost of writing *much* more code. Press any key to exit.
+// rod.c is the same program written plainly, calling CONIO to plot.
+//
+// It's 4.29 times as fast as rod.pla (0.521 s a frame against
+// rod.pla's 2.236, on an emulated //e), and 3.6 times as fast as
+// rod.c. The speed comes from drawing only the pixels whose colors
+// change, each once, and from writing the screen directly instead of
+// calling CONIO: rows two bytes at a time, columns a whole byte (two
+// pixels) at a time. It also draws each frame's pixels in a different
+// order.
+//
+// I think you could say this program solves a slightly different
+// problem, and that's the point. Compiler optimizations help, but the
+// bigger gain often comes from a better algorithm, and *then*
+// combining it with compiler optimizations.
 //
 // The original (src/samplesrc/rod.bas and rod.pla) does, for each w
 // from 3 to 50, forever:
@@ -35,7 +48,8 @@
 //
 // The drawing has no multiply or divide (each is a 16-step loop in
 // the VM). Within a frame, the screen differs from the original's
-// only in the order its pixels change.
+// only in the order its pixels change, assuming what matters is the
+// screen at the end of each frame.
 #include "lores.h"
 #include "conio.h"
 

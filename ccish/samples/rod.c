@@ -3,8 +3,18 @@
 // the original's loops, plot by plot, through CONIO's grcolor, grplot
 // and keypressed. On the Apple II those are the same 6502 routines
 // rod.pla calls, so this compares ccish with PLASMA's compiler on the
-// same work. Press any key to exit. rodfast.c is the version where
-// speed is all that matters.
+// same work. Press any key to exit.
+//
+// This is the plainly written version. It reads like rod.pla, and
+// uses char where values fit, as rod.pla uses byte. ccish's version
+// is 1.19 times as fast (1.876 s a frame against rod.pla's 2.236),
+// almost all from one C feature: "register".
+//
+// Declare a variable "register" when its address is never taken and
+// its speed matters. C forbids taking a register variable's address,
+// so no pointer, and no function called, can reach it, which lets
+// ccish optimize more, mostly in loops. rodfast.c is the version
+// where speed is all that matters.
 
 #include "conio.h"
 
@@ -29,9 +39,11 @@ constexpr int MSG_Y = 1;
 int main(void)
 {
   // Bytes, as rod.pla's: all fit, and a byte loads faster than a word.
-  // register, which rod.pla can't say: no pointer can reach them, so
-  // ccgen computes i * w / W_DIV once for each i, not on every pass
-  // over j, though the loop calls CONIO (irloop.c, hoist()).
+  // We use "register" variables, which rod.pla can't say: no pointer
+  // can reach register variables, so the CONIO calls can't change them
+  // either. This permits ccish to compute i * w / W_DIV once for each i
+  // instead of on every pass over j, and to end the j loop with a
+  // cheaper != test (irloop.c: hoist() and ne_candidate()).
   register char w, i, j, k, fi, fk;
 
   conio.grmode(MIXED);
