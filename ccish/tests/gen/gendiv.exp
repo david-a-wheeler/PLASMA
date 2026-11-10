@@ -4,6 +4,13 @@
     LLW 0
     LEAVE 2
 
+    ; m1
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    ANDI 0
+    LEAVE 2
+
     ; u1
     ENTER 2 1
     ; label 103
@@ -35,6 +42,9 @@
     ; label 103
     CN 1
     CALL d1
+    DROP
+    CN 1
+    CALL m1
     DROP
     CN 1
     CALL u1

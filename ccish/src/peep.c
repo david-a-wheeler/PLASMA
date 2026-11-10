@@ -81,6 +81,7 @@
 //   CN 2  MUL                -> DUP ADD    (faster than CN 1 SHL; see rewrite)
 //   CN 3  MUL                -> DUP IDXW
 //   CN 0  MUL                -> DROP CN 0
+//   CN 1  MOD                -> DROP CN 0    x % 1 is 0 for any int
 //   CN 1  SHL                -> DUP ADD    x << 1, as for x * 2
 //   CN 0  ISEQ               -> NOT        x == 0: PLASMA's NOT gives
 //                                          ISEQ's true ($FFFF) and false
@@ -793,6 +794,13 @@ static int rewrite_mul(Mop *a, Mop *b)
 {
   int v;
 
+  // x % 1 -> DROP CN 0, as x * 0 below: C's x % 1 is 0 for every int
+  // (unlike x / -1, it can't overflow).
+  if (b->op == OP_MOD && mop_const_value(a, &v) && v == 1) {
+    a->op = OP_DROP;
+    mop_const(b, 0);
+    return 1;
+  }
   if (b->op == OP_MUL && mop_const_value(a, &v)) {
     // x * 2 -> DUP ADD, not CN 1 SHL. Both are 2 bytes, but on the
     // 6502 VM DUP ADD takes about 52 cycles and CN 1 SHL about 59:
