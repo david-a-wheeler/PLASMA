@@ -1,6 +1,7 @@
-/* rod.c: Rod's Colors, the lores demo from the Apple II DOS System
- * Master disk, in C for ccish, optimized for speed. Press any key to
- * exit. rodsimple.c is the same program written plainly.
+/* rodfast.c: Rod's Colors, the lores demo from the Apple II DOS System
+ * Master disk, in C for ccish, where speed is all that matters, at the
+ * cost of much more code. Press any key to exit. rodconio.c is the same
+ * program written plainly, calling CONIO to plot.
  *
  * The original (src/samplesrc/rod.bas and rod.pla) does, for each w
  * from 3 to 50, forever:
@@ -34,23 +35,9 @@
  *
  * The drawing has no multiply or divide (each is a 16-step loop in
  * the VM). Within a frame, the screen differs from the original's
- * only in the order its pixels change.
- *
- * Testing (ROD_TEST): normally this builds the demo for the Apple II,
- * which draws on the real screen until a key is pressed. Defined, as
- * -DROD_TEST=N, it builds a test version instead, which "make check"
- * runs on the host under plvm: it draws N rounds of w from 3 to 50 on
- * an array (lores.c built with -DLORES_TEST), since plvm's memory at
- * $400 is its heap, not a screen; never reads the keyboard; and ends.
- * With -DROD_SUMS as well, after each frame (each w) it prints a
- * checksum of that array, which "make check" compares with rodref.c's,
- * the original algorithm compiled with gcc. The code under ROD_TEST is
- * for that test only. */
+ * only in the order its pixels change. */
 #include "lores.h"
-
-#ifndef ROD_TEST                /* not in the test build (see the top) */
 #include "conio.h"
-#endif
 
 /* The original's constants: the figure is SIZE by SIZE (0 to 40), and
  * i runs from 1 to RINGS, j from 0 to J_MAX, and w from W_FIRST to
@@ -293,26 +280,17 @@ static void draw(char i, char b)
 }
 
 
-/* Run Rod's Colors until a key is pressed (or, for the test, for
- * ROD_TEST rounds of w). */
+/* Run Rod's Colors until a key is pressed. */
 int main(void)
 {
   int w, i, acc;
   char b;
-#ifdef ROD_TEST
-  int round;
-#endif
 
-#ifdef ROD_TEST
-  make_tables();
-  for (round = 0; round < ROD_TEST; round++) {
-#else
   conio.grmode(MIXED);
   conio.gotoxy(MSG_X, MSG_Y);
   __puts(pstr("Press any key to exit."));
   make_tables();
   for (;;) {
-#endif
     for (w = W_FIRST; w <= W_LAST; w++) {
       acc = 0;
       for (i = 1; i <= RINGS; i++) {
@@ -322,22 +300,15 @@ int main(void)
           lastb[i] = b;
           draw(i, b);
         }
-#ifndef ROD_TEST
         if (KBD & KBD_READY)
           goto done;
-#endif
       }
-#ifdef ROD_SUMS
-      lores_checksum(SIZE / 2);
-#endif
     }
   }
-#ifndef ROD_TEST
 done:
   KBDSTRB;
   conio.textmode(0);
   __puts(pstr("That's all, folks!"));
   __putln();
-#endif
   return 0;
 }

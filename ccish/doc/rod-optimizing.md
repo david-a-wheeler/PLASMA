@@ -1,11 +1,12 @@
 # What Rod's Colors shows about ccish's optimizers
 
-`samples/rod.c` and `samples/rodsimple.c` are the same demo, Rod's
-Colors, written two ways: rodsimple plainly (the original's loops, plot
-by plot), and rod hand-optimized for speed. Both draw exactly the
-original's screens (`make -C samples check` compares a checksum after
-every frame with `samples/rodref.c`, the original compiled with gcc).
-The gap between them, and the code ccish makes for each, show where
+`samples/rodfast.c` (once `rod.c`) is Rod's Colors hand-optimized for
+speed. When I measured, it had a plain twin, rodsimple.c (the
+original's loops, plotting in C, plot by plot), and a test that
+compared both, frame by frame, with the original compiled with gcc
+(rodref.c). I've since removed those: what they showed is recorded
+here, and they're in git history. The gap between the two, and the
+code ccish made for each, show where
 the optimizers could do more. This lists those places, with my
 estimate of what each is worth, roughly in order of payoff.
 
@@ -18,7 +19,7 @@ their larger count). A frame is one pass over i, for one w. Measured
 | Version | VM ops a frame | Seconds a frame at 1.023 MHz |
 |---|---|---|
 | rodsimple.c | 61,900 | 4.09 |
-| rod.c | 10,200 | 0.57 (and 1.25 once, at the start, for its tables) |
+| rodfast.c | 10,200 | 0.57 (and 1.25 once, at the start, for its tables) |
 | rod.pla (PLASMA) | | about 2.6, estimated from `xplasm -AMOS`'s inner loop (73 ops, about 5,830 cycles) and the native code it calls (about 1,140): plvm doesn't run `conio:grplot`'s 6502 code |
 | rodconio.c | | about 2.1 (2.07), estimated the same way: ccish's inner loop (69 ops, about 4,440 cycles) and the same native code; 2.61 without `register` |
 
@@ -36,7 +37,7 @@ rodsimple.c is slower than both only because it plots in bytecode,
 about 1,000 cycles a pixel, where CONIO's `grplot` is 6502 code, about
 360 with its call.
 
-Most of rod's gain is algorithmic: it draws only the 1,520 pixels a
+Most of rodfast's gain is algorithmic: it draws only the 1,520 pixels a
 frame that show at the frame's end, not 3,040 plots, and only those
 whose colors changed (986 a frame); no compiler would find that. The
 rest is code a compiler could make from plain C, and that's what's
@@ -51,7 +52,7 @@ listed here.
    `i * w / W_DIV` (a MUL and a DIV, about 1,430 cycles) and
    `SIZE - i` in its inner loop over j, which changes neither; hoisted
    out of that loop, they'd cost once per i. That's about 13% of
-   rodsimple's time. The same gap made rod's table builder recompute
+   rodsimple's time. The same gap made rodfast's table builder recompute
    `SIZE - J_MAX - i`, a loop limit, on every pass, which also kept the
    loop from being counted, and index `qlo[i][t]` with a MUL by 41
    on every access (`qlo[i]` is invariant). approach.md's "Hoisting
@@ -73,7 +74,7 @@ listed here.
    I first estimated 10% of rodsimple's time, assuming a `DLW` and
    one `LLW`; measured, it's 5% (4.33 s a frame to 4.11).
    `LORES_PLOT` now does this itself, in a block-local pointer. For a
-   2-op address (`LLW p ADDLW x`, as in rod's loops) it doesn't pay.
+   2-op address (`LLW p ADDLW x`, as in rodfast's loops) it doesn't pay.
    Also in rodsimple: `c << LORES_HI_SHIFT` is computed for each of the
    up to 8 odd-row plots of an (i, j), about 4%. In the compiler, this
    belongs in ccgen, which would need to recognize the same pure
@@ -87,10 +88,10 @@ listed here.
    pointers.** Every inner loop in both programs stores through a
    pointer or into an array, so none nested in another loop is
    counted (approach.md, "Possible improvements to the loop forms",
-   item 4). rod had to move each such loop into a function (`draw`,
+   item 4). rodfast had to move each such loop into a function (`draw`,
    `make_ring`) to make it outermost: about 4 ops less a pass, which
-   was 5% of rod's time when I did it (12,100 ops a frame to 11,500). Item 4 proposes allowing
-   stores into arrays; rod's loops store through pointer variables,
+   was 5% of rodfast's time when I did it (12,100 ops a frame to 11,500). Item 4 proposes allowing
+   stores into arrays; rodfast's loops store through pointer variables,
    which that wouldn't cover. A rule that would: a store through any
    pointer can't change a local whose address is never taken in the
    function (C11 6.5.6, 6.5.3.2: a pointer can reach an object only
@@ -124,13 +125,13 @@ listed here.
    the usual `a = c ? x : y;` already compiles to one load per side and
    one store after the join, with nothing to drop.
 
-5. **A store, then a load of the same local, apart.** rod's row loop
+5. **A store, then a load of the same local, apart.** rodfast's row loop
    computes the color word `s2`, stores it (`SLW`), loads the screen
    word and masks it, then loads `s2` back to OR it in. If the masked
    screen word came first, `IOR`'s other operand, and `s2` were
    computed second, the store and its first load would be one `DLW`.
    IOR, AND, XOR, ADD and MUL commute, so ccgen could put the operand
-   that ends in a store to a temporary last. About 3% of rod's row
+   that ends in a store to a temporary last. About 3% of rodfast's row
    loop.
 
 6. **A load of a local twice in a row.** `LLB 15 LLB 15` (from
@@ -139,7 +140,7 @@ listed here.
    LAB (61) more. peep.c makes a DUP only for two equal `CW`
    constants, though the guide (10.3) says "a duplicate load is a
    DUP": either the guide or peep.c should change. Safe for a local
-   that isn't volatile. Small for rod (once a ring), but cheap to add.
+   that isn't volatile. Small for rodfast (once a ring), but cheap to add.
 
    *Status (2026-11-09):* done (peep.c, `repeats_load()`): two equal
    loads of a local or global (`LLB`, `LLW`, `LAB`, `LAW`), or a keeping
@@ -153,7 +154,7 @@ listed here.
 
 7. **Multiplying a byte by 257.** `b * 0x0101` (a byte in both bytes
    of a word) is a MUL, about 580 cycles; for a `char` b,
-   `b | (b << 8)` is about 230. rod writes the shift itself. Possible
+   `b | (b << 8)` is about 230. rodfast writes the shift itself. Possible
    as a peephole on a byte load followed by `CW 257 MUL`, but rare.
 
 8. **Address constants from cast integers.** In a global initializer
@@ -174,7 +175,7 @@ listed here.
 9. **ccpp's 255-character limits.** A macro's continuation lines,
    joined, must fit ccpp's 255-character line, padding included, and
    its expansion has a limit too ("macro expansion too long"). Macros
-   are how ccish code inlines a hot loop's body (guide 12.3), so rod
+   are how ccish code inlines a hot loop's body (guide 12.3), so rodfast
    splits its drawing macros into six small ones. Raising the limits
    costs ccpp memory; dropping the padding before a `\` when joining
    would ease the first at no cost.

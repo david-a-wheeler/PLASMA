@@ -8965,3 +8965,17 @@ init, calling bytecode directly) would add margin.
   programs: that needs a way to write ProDOS images (the build scripts
   use AppleCommander, a Java jar, not here), and RLD streaming in the
   loader before cccomp can load at all.
+
+**The samples, simplified** (2026-11-09; asked for in discussion:
+"these samples are confusing because of all the test stuff"). Now
+that the modules run on an emulated IIe (tools/a2run, `make -C samples
+disk`), the plvm test machinery wasn't worth its clutter. Removed:
+rodsimple.c (nobody would write it: you'd either call CONIO, as
+rodconio.c does, or optimize hard), rodref.c and `make check`, and the
+test builds' code (`ROD_TEST`, `ROD_SUMS`, `LORES_TEST`,
+`lores_checksum`, and rodconio's own CONIO table). rod.c is now
+rodfast.c, where speed is all that matters; rodconio.c is the plain
+version, which saves development time but still uses cheap wins such
+as `register`. rodfast's module is byte-for-byte what rod's was;
+rodconio's no longer links lores.obj. doc/rod-optimizing.md keeps the
+findings, and the removed files are in git history.

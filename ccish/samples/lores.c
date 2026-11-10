@@ -1,9 +1,7 @@
 /* lores.c: the Apple II lores screen's row addresses (lores.h).
  *
  * The 24 text rows are in three groups of eight: text row r starts at
- * $400 + 128 * (r % 8) + 40 * (r / 8), the constants below. With LORES_TEST defined, the
- * screen is an array instead, so a test can draw under plvm, whose heap
- * starts at $0300 and so covers $400. */
+ * $400 + 128 * (r % 8) + 40 * (r / 8), the constants below. */
 #include "lores.h"
 
 constexpr int PAGE1 = 0x400;         /* text and lores page 1 */
@@ -12,7 +10,6 @@ constexpr int GROUP_SHIFT = 3;
 constexpr int GROUP_ROWS = 1 << GROUP_SHIFT;          /* rows in a group */
 constexpr int GROUPS = LORES_TEXT_ROWS / GROUP_ROWS;
 constexpr int GROUP_STRIDE = LORES_WIDTH;     /* from a group to the next */
-constexpr int PAGE_SIZE = GROUP_ROWS * ROW_STRIDE;
 
 /* The groups' rows fit side by side in a row stride (with 8 bytes
  * unused), which makes the rows' addresses distinct. */
@@ -23,12 +20,7 @@ _Static_assert(GROUPS * GROUP_STRIDE <= ROW_STRIDE, "groups fit");
                 + ((r) >> GROUP_SHIFT) * GROUP_STRIDE)
 
 /* Text row r's address. */
-#ifdef LORES_TEST
-char lores_screen[PAGE_SIZE];
-#define R(r) (lores_screen + OFF(r))
-#else
 #define R(r) ((char *)PAGE1 + OFF(r))
-#endif
 
 /* Two entries, for text row r's two lores rows. */
 #define R2(r) R(r), R(r)
@@ -39,24 +31,3 @@ char *const lores_row[LORES_HEIGHT] = {
   R2(16), R2(17), R2(18), R2(19), R2(20), R2(21), R2(22), R2(23)
 };
 
-#ifdef LORES_TEST
-constexpr int HASH_MUL = 3;     /* as rodref.c's */
-
-/* Print a checksum of the test screen's text rows 0 to ROWS - 1, each
- * LORES_WIDTH bytes: h = h * 3 + each byte, as rodref.c computes it. */
-void lores_checksum(int rows)
-{
-  int r, x;
-  unsigned h;
-  char *p;
-
-  h = 0;
-  for (r = 0; r < rows; r++) {
-    p = lores_row[2 * r];
-    for (x = 0; x < LORES_WIDTH; x++)
-      h = h * HASH_MUL + p[x];
-  }
-  __puti((int)h);
-  __putln();
-}
-#endif

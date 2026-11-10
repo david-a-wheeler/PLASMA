@@ -3,23 +3,8 @@
  * the original's loops, plot by plot, through CONIO's grcolor, grplot
  * and keypressed. On the Apple II those are the same 6502 routines
  * rod.pla calls, so this compares ccish with PLASMA's compiler on the
- * same work. Press any key to exit. rodsimple.c plots in C instead;
- * rod.c is the optimized version.
- *
- * Testing (ROD_TEST): normally this builds the demo for the Apple II,
- * which draws on the real screen until a key is pressed. Defined, as
- * -DROD_TEST=N, it builds a test version instead, which "make check"
- * runs on the host under plvm: it draws N rounds of w from 3 to 50 on
- * an array (lores.c built with -DLORES_TEST), since plvm's memory at
- * $400 is its heap, not a screen; never reads the keyboard; and ends.
- * With -DROD_SUMS as well, after each frame (each w) it prints a
- * checksum of that array, which "make check" compares with rodref.c's,
- * the original algorithm compiled with gcc. The code under ROD_TEST is
- * for that test only. Here it also defines a CONIO table of its own
- * (below), whose grcolor and grplot draw on the test array, since
- * plvm's CONIO is C that prints terminal escapes; the program's calls
- * go through that table as they do on the Apple II. */
-#include "lores.h"
+ * same work. Press any key to exit. rodfast.c is the version where
+ * speed is all that matters. */
 #include "conio.h"
 
 /* The original's constants: the figure is SIZE by SIZE, i runs from 1
@@ -39,44 +24,7 @@ constexpr int MIXED = 1;
 constexpr int MSG_X = 11;
 constexpr int MSG_Y = 1;
 
-#ifdef ROD_TEST
-/* For testing only (ROD_TEST, at the top): a CONIO of the test's own,
- * which replaces the import (a CONIO defined in the program is used
- * instead of the module's). grcolor and grplot do what the Apple's do,
- * on the test array; keypressed says no key. The rest aren't called.
- * Each returns a value, though only keypressed's means anything: a
- * PLASMA function always returns one word, so CONIO's do, and the
- * program's calls drop it (ICAL, then DROP); a function that returned
- * none would leave nothing there to drop. */
-static int test_color;
-
-/* Set the color for test_grplot, as CONIO's grcolor: its low nibble. */
-static int test_grcolor(int c)
-{
-  test_color = c & (LORES_COLORS - 1);
-  return 0;
-}
-
-/* Plot (x, y) in the color set, as CONIO's grplot. */
-static int test_grplot(int x, int y)
-{
-  LORES_PLOT(x, y, test_color);
-  return 0;
-}
-
-/* No key is ever pressed. */
-static int test_keypressed(void)
-{
-  return 0;
-}
-
-struct t_conio conio = {
-  test_keypressed, 0, 0, 0, 0, 0, 0, 0, 0, test_grcolor, test_grplot, 0, 0
-};
-#endif
-
-/* Run Rod's Colors until a key is pressed (or, for the test, for
- * ROD_TEST rounds of w). */
+/* Run Rod's Colors until a key is pressed. */
 int main(void)
 {
   /* Bytes, as rod.pla's: all fit, and a byte loads faster than a word.
@@ -84,16 +32,11 @@ int main(void)
    * ccgen computes i * w / W_DIV once for each i, not on every pass
    * over j, though the loop calls CONIO (irloop.c, hoist()). */
   register char w, i, j, k, fi, fk;
-#ifdef ROD_TEST
-  int round;
 
-  for (round = 0; round < ROD_TEST; round++) {
-#else
   conio.grmode(MIXED);
   conio.gotoxy(MSG_X, MSG_Y);
   __puts(pstr("Press any key to exit."));
   for (;;) {
-#endif
     for (w = W_FIRST; w <= W_LAST; w++) {
       for (i = 1; i <= RINGS; i++) {
         for (j = 0; j <= J_MAX; j++) {
@@ -115,16 +58,11 @@ int main(void)
           }
         }
       }
-#ifdef ROD_SUMS
-      lores_checksum(MID);
-#endif
     }
   }
 done:
-#ifndef ROD_TEST
   conio.textmode(0);
   __puts(pstr("That's all, folks!"));
   __putln();
-#endif
   return 0;
 }
