@@ -2276,7 +2276,7 @@ same.
 * **Optimizations are per-function.** There's no iterprocedural analysis.
   Each function is optimized, but nothing between functions, so
   tight loops should be inside a single function and not call out.
-  Use `#define` if you want to inline code.
+  Use `#define` if you want to inline code (section 12.7).
 
 ### 12.4 Writing fast code
 
@@ -2309,7 +2309,9 @@ approach.md section 20 (each measured against the VM's code):
   and for random access.
 * **Multiplying by a constant** is cheap for 0, 1, 2, 3 and powers
   of two (shifts and a doubled add); other constants use the VM's
-  `MUL`, a 16-step loop. Dividing by a constant uses `DIV`.
+  `MUL`, a 16-step loop. Dividing a signed value by a constant uses
+  `DIV`, even by a power of 2; section 12.6 says why, and what to
+  write instead.
 * **Declare hot loops' variables `register`** (section 5.2). ccgen
   then knows no pointer reaches them, so a loop in another loop can be
   counted, and an expensive expression of them that doesn't change in
@@ -2359,3 +2361,108 @@ Here is a short list of some of the optimizations you can count on:
   (The analysis is in `doc/betweenness.md`; `tests/gen/genbetween.c` pins
   the forms and the non-forms, and `tests/xrun/xbetween.c` cross-checks
   every case against the host compiler over the whole 16-bit space.)
+
+### 12.6 Division, and bit operations instead
+
+Division is the slowest common operation on the 6502 VM: `DIV` and
+`MOD` take about 700 cycles each, where `SHR` by 1 takes about 60 and
+`AND` 48 ([../doc/Bytecodes-cycles.md](../../doc/Bytecodes-cycles.md)).
+Here's what ccish does with `/` and `%`:
+
+* **Both operands constant:** computed at compile time (section 6.6).
+* **`unsigned` by a power of 2:** done inline. `x / 8u` is a shift
+  with a mask (`CN 3 SHR CW $1FFF AND`), since `SHR` shifts in copies
+  of the sign bit, and `x % 8u` is `ANDI 7`.
+* **`unsigned` by anything else:** a call to a helper function
+  (section 4.3).
+* **Signed (`int`) by any constant:** `DIV` or `MOD`, even by a power
+  of 2. C's `/` truncates toward zero, but `SHR` rounds down, so the
+  two differ when `x` is negative and not a multiple: `-3 / 2` is -1,
+  but `-3 >> 1` is -2. ccish doesn't know whether a variable can be
+  negative, so it can't use the shift.
+* **In a loop:** a divide by a constant whose operands don't change in
+  the loop is computed once, before it (section 12.4).
+
+So when you know an `int` can't be negative, **write the bit
+operation yourself**: `x >> 3` for `x / 8`, and `x & 7` for `x % 8`.
+For a non-negative value C defines both to give the same result as
+`/` and `%`, so it's still correct C. Each is the same size as the
+`DIV` or `MOD` it replaces, and several times faster (about 10 times,
+for a shift by 1 or a mask). Casting to `unsigned` (`(unsigned)x / 8`)
+is correct for any value, but adds the mask: 4 more bytes.
+
+The same goes for other arithmetic: **prefer bit operations where
+they say what you mean.** `&`, `|`, `^` and `<<` are single ops, and
+a mask under 256 fits the one-byte forms (`ANDI 15`, `ORI $80`). Test
+a bit with `x & MASK`, keep a set of flags in one `char`, and keep a
+power-of-2 table size so that wrapping an index is `i & (SIZE - 1)`,
+not `i % SIZE`.
+
+A shift in place of `/` is only right while its value can't be
+negative, so **state that with `assert()`** (section 12.7) where the
+reason isn't the line just above:
+
+```c
+#include <assert.h>
+
+int words(int bytes)
+{
+  assert(bytes >= 0);
+  return (bytes + 1) >> 1;        /* (bytes + 1) / 2 */
+}
+```
+
+### 12.7 #define, constexpr, _Static_assert and assert()
+
+These four cost nothing at run time, so use them freely: the first
+two to make code small and fast, and the last two to state what the
+code relies on, so a compiler checks it instead of a reader.
+
+* **`#define` to inline code.** ccish doesn't inline functions
+  (section 12.3), and a call costs a `CALL`, an `ENTER` and a `LEAVE`
+  (about 150 cycles before the body does anything). A function-like
+  macro puts the code at each use instead:
+
+  ```c
+  #define LOW_NIBBLE(x)   ((x) & 0x0F)
+  #define IS_POW2(n)      (((n) & ((n) - 1)) == 0)
+  ```
+
+  Put each parameter, and the whole body, in parentheses. A macro's
+  argument is evaluated each time the body names it, so don't pass one
+  with a side effect (`LOW_NIBBLE(*p++)` is fine; section 8.2's
+  `MAX(i++, j)` isn't).
+  Inlining a big body in many places makes the code bigger, so keep
+  macros for short, hot code. Each macro a source file can see takes a
+  slot in ccpp's macro table while it's compiled (`MAX_MACROS`,
+  [limits.md](limits.md)).
+* **`constexpr` for named constants** (section 5.8). A `constexpr` is a
+  constant expression with a type and a scope, so it works in array
+  sizes, case labels and `_Static_assert`s, and it takes no storage:
+  using it compiles exactly as using its value does. Prefer it to a
+  `const` variable, which isn't a constant expression in C (section
+  4.10), and to a `#define` constant, which has no type and no scope.
+* **`_Static_assert` for facts about constants** (section 5.7). It's
+  checked when the program is compiled, by ccish and by any other C
+  compiler, every time, and it emits nothing. Use it next to what
+  relies on it: a mask, a table's size, a constant chosen so that a
+  bit trick works.
+
+  ```c
+  constexpr int SIZE = 64;
+  _Static_assert(IS_POW2(SIZE), "i & (SIZE - 1) wraps an index");
+  ```
+* **`assert()` for facts about run-time values.** `assert(e)` from
+  `<assert.h>` states that `e` is true whenever that line runs, such
+  as an argument being non-negative before you shift it (section
+  12.6). ccish compiles every `assert` to nothing, as the standard's
+  `<assert.h>` does when `NDEBUG` is defined, and **doesn't evaluate
+  its argument**, so never put a side effect in one. Compile the same
+  source with gcc or clang (without `NDEBUG`) and run your tests: each
+  `assert` is then checked, and one that's false stops the program
+  with its file and line.
+
+In short: `_Static_assert` for what's known when compiling, `assert()`
+for what's only known when running, and a comment only for what
+neither can say.
+
