@@ -10,6 +10,17 @@ int ult0(unsigned x) { return x < 0u; }
 int uge0(unsigned x) { return x >= 0u; }
 unsigned u7(void)    { return 7; }
 int ucall(void)      { return u7() >= 0u; }
+// x op -1: * and / are NEG, ^ is COMP, & is x, % is 0 and | is -1
+// (with x gone, since a plain load has no effect; a call stays).
+int mulm1(int x)     { return x * -1; }
+int divm1(int x)     { return x / -1; }
+int xorm1(int x)     { return x ^ -1; }
+int andm1(int x)     { return x & -1; }
+int modm1(int x)     { return x % -1; }
+int orm1(int x)      { return x | -1; }
+int orcall(void)     { return (int)u7() | -1; }
+volatile int vg;
+int orvol(void)      { return vg | -1; }    // vg is still read
 
 int main(void)
 {
@@ -17,5 +28,13 @@ int main(void)
   ult0(1);
   uge0(1);
   ucall();
+  mulm1(1);
+  divm1(1);
+  xorm1(1);
+  andm1(1);
+  modm1(1);
+  orm1(1);
+  orcall();
+  orvol();
   return 0;
 }

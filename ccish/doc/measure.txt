@@ -6,28 +6,28 @@ ccgen        159       2       51          0
 ccpp         213       2       93          0
 ccrel        372      70       51        512
 diag         822     279       93          0
-emit        1757     726       26       2532
+emit        1755     726       26       2532
 helper       136     344       57          0
-irin        5803     814       38       1764
-irloop      5497     668        0        512
+irin        5795     814       38       1764
+irloop      5493     668        0        512
 irout       1034     276       20          0
-link        6993    1397      209       9318
-lower       1374     384      681          0
-nam          523     138       12          0
+link        6987    1397      209       9318
+lower       1370     384      681          0
+nam          521     138       12          0
 name         184     408        0        812
-parse       4855    1892      113       1320
-peep        4909      84        0          0
-pexpr       8058       4        0          0
+parse       4849    1892      113       1320
+peep        5109      84        0          0
+pexpr       8056       4        0          0
 pp          2289     990      143        552
-ppif        1268       8        0          0
-pplex       3545     234      362        512
+ppif        1242       8        0          0
+pplex       3543     234      362        512
 ppmac       3541    1479        0       2726
-ppname       924     104      328       8432
+ppname       918     104      328       8432
 ppout        629     545       35          0
 pstmt       4365     296        0          0
 ptop        3814     122        0          0
 tokin        677     309        8        256
-type        1046     560        0          0
+type        1042     560        0          0
 The library:
 fopen        133       4        0          0
 fputs         74       0        0          0
@@ -85,9 +85,9 @@ ccgen's tables: the most one function needed, and the limit:
 The longest source line: 177 of 255 characters  (pstmt.c)
 
 ccpp: 9 files, and 19 library objects:
-  its own code 13607, data 3641, strings 1062: 18310 in all
+  its own code 13573, data 3641, strings 1062: 18276 in all
   the library's code 899, data 183, strings 7: 1089 in all (fopen fputs fread fwrite getc memcpy memmove memset path plvmexit remove start strcat strchr strcmp strcpy strlen strncpy strrchr)
-  module file 27532 bytes, all read into memory to load it; 7794 of them RLD and ESD, freed after
+  module file 27498 bytes, all read into memory to load it; 7794 of them RLD and ESD, freed after
   166 functions: 830 bytes of the loader's def table, kept
   shared names: 115 of 307 slots, 1075 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
@@ -102,9 +102,9 @@ ccpp: 9 files, and 19 library objects:
     leaf region 12 bytes (largest leaf frame); compiled stack region 119 bytes
 
 cccomp: 12 files, and 18 library objects:
-  its own code 25940, data 4286, strings 310: 30536 in all
+  its own code 25926, data 4286, strings 310: 30522 in all
   the library's code 807, data 183, strings 7: 997 in all (fopen fputs fread fwrite getc memcpy memset path plvmexit remove start strcat strchr strcmp strcpy strlen strncpy strrchr)
-  module file 44130 bytes, all read into memory to load it; 12294 of them RLD and ESD, freed after
+  module file 44116 bytes, all read into memory to load it; 12294 of them RLD and ESD, freed after
   293 functions: 1465 bytes of the loader's def table, kept
   shared names: 257 of 307 slots, 2496 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
@@ -123,24 +123,24 @@ cccomp: 12 files, and 18 library objects:
     leaf region 8 bytes (largest leaf frame); compiled stack region 322 bytes
 
 ccgen: 10 files, and 18 library objects:
-  its own code 21356, data 3439, strings 966: 25761 in all
+  its own code 21536, data 3439, strings 966: 25941 in all
   the library's code 865, data 183, strings 7: 1055 in all (fopen fputs fread fwrite getc memcpy memmove memset path plvmexit remove start strcat strcmp strcpy strlen strncpy strrchr)
-  module file 36116 bytes, all read into memory to load it; 8934 of them RLD and ESD, freed after
-  205 functions: 1025 bytes of the loader's def table, kept
+  module file 36360 bytes, all read into memory to load it; 8998 of them RLD and ESD, freed after
+  207 functions: 1035 bytes of the loader's def table, kept
   shared names: 106 of 307 slots, 917 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
     frame stack at least 518 bytes; 6502 stack at least 42 calls x 4 = 168 bytes
     unbounded recursion (no nest count; counted once above): clean_up, fatal0, remove_stream, remove_streams, stop, stream_name
     largest frames: stop 136, report 106, run_do 36, dead_stores 32, counted_loop 30
   static locals (bytes saved; per call, about 45 cycles saved with new opcodes):
-    leaf functions: 57 of 190 framed functions, 533 frame accesses; saves 181 bytes with new opcodes, -534 with LAW/SAW
-    compiled stack (all non-recursive): 176 of 190 framed functions, 2640 frame accesses; saves 634 bytes with new opcodes, -2506 with LAW/SAW
+    leaf functions: 57 of 192 framed functions, 533 frame accesses; saves 181 bytes with new opcodes, -534 with LAW/SAW
+    compiled stack (all non-recursive): 178 of 192 framed functions, 2660 frame accesses; saves 642 bytes with new opcodes, -2523 with LAW/SAW
     leaf region 14 bytes (largest leaf frame); compiled stack region 258 bytes
 
 ccrel: 4 files, and 19 library objects:
-  its own code 8563, data 1746, strings 361: 10670 in all
+  its own code 8557, data 1746, strings 361: 10664 in all
   the library's code 869, data 183, strings 7: 1059 in all (fopen fputs fread fwrite getc memcpy memset path plvmexit remove start strcat strchr strcmp strcpy strlen strncat strncpy strrchr)
-  module file 16590 bytes, all read into memory to load it; 4582 of them RLD and ESD, freed after
+  module file 16584 bytes, all read into memory to load it; 4582 of them RLD and ESD, freed after
   91 functions: 455 bytes of the loader's def table, kept
   shared names: 64 of 307 slots, 510 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):

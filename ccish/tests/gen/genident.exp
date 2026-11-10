@@ -33,6 +33,61 @@
     CN 1
     LEAVE 0
 
+    ; mulm1
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    NEG
+    LEAVE 2
+
+    ; divm1
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    NEG
+    LEAVE 2
+
+    ; xorm1
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    COMP
+    LEAVE 2
+
+    ; andm1
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LEAVE 2
+
+    ; modm1
+    ENTER 2 1
+    ; label 103
+    CN 0
+    LEAVE 2
+
+    ; orm1
+    ENTER 2 1
+    ; label 103
+    MINUS1 65535
+    LEAVE 2
+
+    ; orcall
+    ENTER 0 0
+    ; label 103
+    CALL u7
+    DROP
+    MINUS1 65535
+    LEAVE 0
+
+    ; orvol
+    ENTER 0 0
+    ; label 103
+    LAW.v data +0
+    DROP
+    MINUS1 65535
+    LEAVE 0
+
     ; main
     ENTER 0 0
     ; label 103
@@ -46,5 +101,27 @@
     CALL uge0
     DROP
     CALL ucall
+    DROP
+    CN 1
+    CALL mulm1
+    DROP
+    CN 1
+    CALL divm1
+    DROP
+    CN 1
+    CALL xorm1
+    DROP
+    CN 1
+    CALL andm1
+    DROP
+    CN 1
+    CALL modm1
+    DROP
+    CN 1
+    CALL orm1
+    DROP
+    CALL orcall
+    DROP
+    CALL orvol
     ANDI 0
     LEAVE 0

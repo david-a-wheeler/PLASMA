@@ -84,6 +84,12 @@
 //   CN 3  MUL                -> DUP IDXW
 //   CN 0  MUL                -> DROP CN 0
 //   CN 1  MOD                -> DROP CN 0    x % 1 is 0 for any int
+//   MINUS1  MUL / DIV / XOR  -> NEG / NEG / COMP   x * -1, x / -1, x ^ -1
+//   MINUS1  AND              -> (nothing)  x & -1 is x
+//   MINUS1  MOD / IOR        -> DROP CN 0 / DROP MINUS1
+//                                          x % -1 is 0, x | -1 is -1;
+//                                          and x goes too if it has no
+//                                          effect
 //   CN 1  SHL                -> DUP ADD    x << 1, as for x * 2
 //   CN 0  ISEQ               -> NOT        x == 0: PLASMA's NOT gives
 //                                          ISEQ's true ($FFFF) and false
@@ -853,6 +859,48 @@ static int rewrite_mul(Mop *a, Mop *b)
 }
 
 static void remove_op(int i);
+static int drop_expr(int i);
+
+// The window ends in a constant and a binary op whose result is the
+// constant v whatever x, the value under them, is: make them DROP v,
+// so x is still computed for its side effects, and then, if x has no
+// effect (drop_expr()), remove it and the DROP too.
+static void drop_for_const(int v)
+{
+  Mop *a = &win[nwin - 2];
+  a->op = OP_DROP;
+  a->a = 0;
+  mop_const(&win[nwin - 1], v);
+  drop_expr(nwin - 2);
+}
+
+// The constant -1 ($FFFF) under a binary op, x op -1: x * -1 and
+// x / -1 are -x (NEG; -32768 / -1 overflows, which is undefined in C);
+// x % -1 is 0 (the same); x & -1 is x; x | -1 is -1; and x ^ -1 is ~x
+// (COMP). Pure stack arithmetic, safe even for a volatile x, which is
+// still read.
+static int rewrite_minus1(Mop *a, Mop *b)
+{
+  int v;
+  if (a->fix != FIX_NONE || !mop_const_value(a, &v)
+      || (v & 0xFFFF) != 0xFFFF)
+    return 0;
+  if (b->op == OP_MUL || b->op == OP_DIV || b->op == OP_XOR) {
+    a->op = b->op == OP_XOR ? OP_COMP : OP_NEG;
+    a->a = 0;
+    nwin--;
+    return 1;
+  }
+  if (b->op == OP_AND) {
+    nwin -= 2;
+    return 1;
+  }
+  if (b->op == OP_MOD || b->op == OP_IOR) {
+    drop_for_const(b->op == OP_MOD ? 0 : -1);
+    return 1;
+  }
+  return 0;
+}
 
 // Does window op m read a local: LLW, LLB, or an add of one?
 static int reads_local(Mop *m)
@@ -939,7 +987,7 @@ static int rewrite(void)
     }
   }
   if (rewrite_load_store(a, b) || rewrite_const(a, b)
-      || rewrite_branch(a, b) || rewrite_mul(a, b)
+      || rewrite_branch(a, b) || rewrite_mul(a, b) || rewrite_minus1(a, b)
       || rewrite_andi(a, b) || rewrite_addsub(a, b)
       || rewrite_noop(a, b) || rewrite_load_andi(a, b)
       || rewrite_drop_zero(a, b) || rewrite_dup_const(a, b)
