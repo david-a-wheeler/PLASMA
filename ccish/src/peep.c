@@ -172,60 +172,119 @@ static int dead;            // code is unreachable until the next barrier
 // PLASMA's opcodes are even, and related ones sit together, so a set
 // is one or two tests. ((op - B) & ~6) == 0 is the 4 even ops from B;
 // (op & ~2) == B is B and B + 2 (bit 1 of B clear). An odd op, a
-// volatile form or a pseudo-op, is in none, as with ==. Each
-// _Static_assert checks the opcodes are where its test needs them.
-// A two-test macro names op twice, so pass it a local, not b->op: C
-// has no way to bind a value inside an expression, and these sets
-// have no one test that picks out just their ops.
+// volatile form or a pseudo-op, is in none, as with ==. After each,
+// one _Static_assert shows it holds every member, and another that it
+// holds none of the ops it's likeliest to catch by mistake: the ops
+// just outside it, the ones its mask would let through if it were
+// wrong, its members' volatile forms, and close relatives that don't
+// belong. A two-test macro names op twice, so pass it a local, not
+// b->op: C has no way to bind a value inside an expression, and these
+// sets have no one test that picks out just their ops.
 
 // Does op always transfer control (BRNCH, SEL, LEAVE, RET), so that
 // what follows can't run until the next label?
 #define IS_EXIT(op) (((op) & ~2) == OP_BRNCH \
                      || (((op) - OP_LEAVE) & ~2) == 0)
-_Static_assert(OP_SEL == OP_BRNCH + 2 && (OP_BRNCH & 2) == 0
-               && OP_RET == OP_LEAVE + 2, "IS_EXIT's two pairs");
+_Static_assert(IS_EXIT(OP_BRNCH) && IS_EXIT(OP_SEL) && IS_EXIT(OP_LEAVE)
+               && IS_EXIT(OP_RET), "IS_EXIT misses a member");
+_Static_assert(!IS_EXIT(OP_BRTRU) && !IS_EXIT(OP_BRFLS)
+               && !IS_EXIT(OP_CALL) && !IS_EXIT(OP_ICAL)
+               && !IS_EXIT(OP_ENTER) && !IS_EXIT(OP_CFFB)
+               && !IS_EXIT(OP_BREQ) && !IS_EXIT(OP_BRNE)
+               && !IS_EXIT(OP_BRGT) && !IS_EXIT(OP_BRLT)
+               && !IS_EXIT(OP_BRNCH | MOP_VOLATILE)
+               && !IS_EXIT(OP_LEAVE | MOP_VOLATILE),
+               "IS_EXIT holds a non-member");
 
 // Is op a one-operand update that can sit between DUP and a store in
 // x++ (INCR, DECR, NEG, COMP, ADDI, SUBI)?
 #define IS_UPDATE(op) ((((op) - OP_INCR) & ~6) == 0 \
                        || ((op) & ~2) == OP_ADDI)
-_Static_assert(OP_DECR == OP_INCR + 2 && OP_NEG == OP_INCR + 4
-               && OP_COMP == OP_INCR + 6 && OP_SUBI == OP_ADDI + 2
-               && (OP_ADDI & 2) == 0, "IS_UPDATE's ops");
+_Static_assert(IS_UPDATE(OP_INCR) && IS_UPDATE(OP_DECR)
+               && IS_UPDATE(OP_NEG) && IS_UPDATE(OP_COMP)
+               && IS_UPDATE(OP_ADDI) && IS_UPDATE(OP_SUBI),
+               "IS_UPDATE misses a member");
+_Static_assert(!IS_UPDATE(OP_MOD) && !IS_UPDATE(OP_AND)
+               && !IS_UPDATE(OP_DUP) && !IS_UPDATE(OP_ANDI)
+               && !IS_UPDATE(OP_ORI) && !IS_UPDATE(OP_NOT)
+               && !IS_UPDATE(OP_ADD) && !IS_UPDATE(OP_SUB)
+               && !IS_UPDATE(OP_INCR | MOP_VOLATILE)
+               && !IS_UPDATE(OP_ADDI | MOP_VOLATILE),
+               "IS_UPDATE holds a non-member");
 
 // Is op a store that takes its address as an operand (SLB, SLW, SAB,
 // SAW)?
 #define IS_OPERAND_STORE(op) ((((op) - OP_SLB) & ~6) == 0)
-_Static_assert(OP_SLW == OP_SLB + 2 && OP_SAB == OP_SLB + 4
-               && OP_SAW == OP_SLB + 6, "IS_OPERAND_STORE's ops");
+_Static_assert(IS_OPERAND_STORE(OP_SLB) && IS_OPERAND_STORE(OP_SLW)
+               && IS_OPERAND_STORE(OP_SAB) && IS_OPERAND_STORE(OP_SAW),
+               "IS_OPERAND_STORE misses a member");
+_Static_assert(!IS_OPERAND_STORE(OP_SB) && !IS_OPERAND_STORE(OP_SW)
+               && !IS_OPERAND_STORE(OP_DAB) && !IS_OPERAND_STORE(OP_DAW)
+               && !IS_OPERAND_STORE(OP_DLB) && !IS_OPERAND_STORE(OP_DLW)
+               && !IS_OPERAND_STORE(OP_LLW) && !IS_OPERAND_STORE(OP_LAW)
+               && !IS_OPERAND_STORE(OP_SLB | MOP_VOLATILE),
+               "IS_OPERAND_STORE holds a non-member");
 
 // Does op read a local: LLB, LLW, or an add of one (ADDLB, ADDLW,
 // IDXLB, IDXLW)?
 #define READS_LOCAL(op) (((op) & ~2) == OP_LLB \
                          || ((op) & ~0x0A) == OP_ADDLB)
-_Static_assert(OP_LLW == OP_LLB + 2 && (OP_LLB & 2) == 0
-               && OP_ADDLW == OP_ADDLB + 2 && OP_IDXLB == OP_ADDLB + 8
-               && OP_IDXLW == OP_ADDLB + 10 && (OP_ADDLB & 0x0A) == 0,
-               "READS_LOCAL's ops");
+_Static_assert(READS_LOCAL(OP_LLB) && READS_LOCAL(OP_LLW)
+               && READS_LOCAL(OP_ADDLB) && READS_LOCAL(OP_ADDLW)
+               && READS_LOCAL(OP_IDXLB) && READS_LOCAL(OP_IDXLW),
+               "READS_LOCAL misses a member");
+_Static_assert(!READS_LOCAL(OP_LB) && !READS_LOCAL(OP_LW)
+               && !READS_LOCAL(OP_LAB) && !READS_LOCAL(OP_LAW)
+               && !READS_LOCAL(OP_LLA) && !READS_LOCAL(OP_DLB)
+               && !READS_LOCAL(OP_ADDAB) && !READS_LOCAL(OP_ADDAW)
+               && !READS_LOCAL(OP_IDXAB) && !READS_LOCAL(OP_IDXAW)
+               && !READS_LOCAL(OP_SUBBRGE) && !READS_LOCAL(OP_IDXW)
+               && !READS_LOCAL(OP_LLW | MOP_VOLATILE)
+               && !READS_LOCAL(OP_ADDLW | MOP_VOLATILE),
+               "READS_LOCAL holds a non-member");
 
 // Is op a store to a local (DLB, DLW, SLB, SLW)? From DLB, they're 0,
 // 2, 8 and 10: the values with only bits 1 and 3 set.
 #define STORES_LOCAL(op) ((((op) - OP_DLB) & ~0x0A) == 0)
-_Static_assert(OP_DLW == OP_DLB + 2 && OP_SLB == OP_DLB + 8
-               && OP_SLW == OP_DLB + 10, "STORES_LOCAL's ops");
+_Static_assert(STORES_LOCAL(OP_DLB) && STORES_LOCAL(OP_DLW)
+               && STORES_LOCAL(OP_SLB) && STORES_LOCAL(OP_SLW),
+               "STORES_LOCAL misses a member");
+_Static_assert(!STORES_LOCAL(OP_SB) && !STORES_LOCAL(OP_SW)
+               && !STORES_LOCAL(OP_LAW) && !STORES_LOCAL(OP_LLW)
+               && !STORES_LOCAL(OP_SAB) && !STORES_LOCAL(OP_SAW)
+               && !STORES_LOCAL(OP_DAB) && !STORES_LOCAL(OP_DAW)
+               && !STORES_LOCAL(OP_DLB | MOP_VOLATILE)
+               && !STORES_LOCAL(OP_SLW | MOP_VOLATILE),
+               "STORES_LOCAL holds a non-member");
 
 // Is op one whose 0 on the right leaves the value as it was (IOR, XOR,
 // SHL, SHR)?
 #define IS_ZERO_IDENTITY(op) ((((op) - OP_IOR) & ~6) == 0)
-_Static_assert(OP_XOR == OP_IOR + 2 && OP_SHL == OP_IOR + 4
-               && OP_SHR == OP_IOR + 6, "IS_ZERO_IDENTITY's ops");
+_Static_assert(IS_ZERO_IDENTITY(OP_IOR) && IS_ZERO_IDENTITY(OP_XOR)
+               && IS_ZERO_IDENTITY(OP_SHL) && IS_ZERO_IDENTITY(OP_SHR),
+               "IS_ZERO_IDENTITY misses a member");
+_Static_assert(!IS_ZERO_IDENTITY(OP_AND) && !IS_ZERO_IDENTITY(OP_IDXW)
+               && !IS_ZERO_IDENTITY(OP_ADD) && !IS_ZERO_IDENTITY(OP_SUB)
+               && !IS_ZERO_IDENTITY(OP_MUL) && !IS_ZERO_IDENTITY(OP_DIV)
+               && !IS_ZERO_IDENTITY(OP_COMP)
+               && !IS_ZERO_IDENTITY(OP_IOR | MOP_VOLATILE),
+               "IS_ZERO_IDENTITY holds a non-member");
 
 // Is op one whose 0 on the left gives 0, or -x for SUB (SUB, DIV, MOD,
 // SHL, SHR)?
 #define IS_ZERO_LEFT(op) ((op) == OP_SUB || ((op) & ~2) == OP_DIV \
                           || (((op) - OP_SHL) & ~2) == 0)
-_Static_assert(OP_MOD == OP_DIV + 2 && (OP_DIV & 2) == 0
-               && OP_SHR == OP_SHL + 2, "IS_ZERO_LEFT's ops");
+_Static_assert(IS_ZERO_LEFT(OP_SUB) && IS_ZERO_LEFT(OP_DIV)
+               && IS_ZERO_LEFT(OP_MOD) && IS_ZERO_LEFT(OP_SHL)
+               && IS_ZERO_LEFT(OP_SHR), "IS_ZERO_LEFT misses a member");
+_Static_assert(!IS_ZERO_LEFT(OP_ADD) && !IS_ZERO_LEFT(OP_MUL)
+               && !IS_ZERO_LEFT(OP_INCR) && !IS_ZERO_LEFT(OP_XOR)
+               && !IS_ZERO_LEFT(OP_IDXW) && !IS_ZERO_LEFT(OP_AND)
+               && !IS_ZERO_LEFT(OP_IOR) && !IS_ZERO_LEFT(OP_NOT)
+               && !IS_ZERO_LEFT(OP_SUB | MOP_VOLATILE)
+               && !IS_ZERO_LEFT(OP_DIV | MOP_VOLATILE)
+               && !IS_ZERO_LEFT(OP_SHL | MOP_VOLATILE),
+               "IS_ZERO_LEFT holds a non-member");
 
 // Send the oldest op in the window on to stage 4; or, if it's a DROP
 // and so is the next, make that a DROP2 (one op, a byte less).

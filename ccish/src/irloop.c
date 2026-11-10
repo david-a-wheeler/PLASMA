@@ -15,8 +15,15 @@
 // SETLOCALB, LOCALADDR)? SETLOCAL and SETLOCALB differ only in bit 0,
 // so they're one test; their volatile forms ($20 up) are in neither.
 #define WRITES_LOCAL(op) (((op) & ~1) == IR_SETLOCAL || (op) == IR_LOCALADDR)
-_Static_assert(IR_SETLOCALB == IR_SETLOCAL + 1 && (IR_SETLOCAL & 1) == 0,
-               "WRITES_LOCAL's SETLOCAL pair");
+_Static_assert(WRITES_LOCAL(IR_SETLOCAL) && WRITES_LOCAL(IR_SETLOCALB)
+               && WRITES_LOCAL(IR_LOCALADDR), "WRITES_LOCAL misses a member");
+_Static_assert(!WRITES_LOCAL(IR_LOCAL) && !WRITES_LOCAL(IR_LOCALB)
+               && !WRITES_LOCAL(IR_GLOBAL) && !WRITES_LOCAL(IR_SETGLOBAL)
+               && !WRITES_LOCAL(IR_SETGLOBALB) && !WRITES_LOCAL(IR_STORE)
+               && !WRITES_LOCAL(IR_DATAADDR) && !WRITES_LOCAL(IR_HEAPADDR)
+               && !WRITES_LOCAL(IR_SETLOCAL | IR_VOLATILE)
+               && !WRITES_LOCAL(IR_SETLOCALB | IR_VOLATILE),
+               "WRITES_LOCAL holds a non-member");
 
 // Loops (approach.md, "Loop design"). The parser writes a loop in
 // source order, between markers that name its labels:
