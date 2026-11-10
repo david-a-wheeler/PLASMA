@@ -1,0 +1,37 @@
+#!/bin/sh
+# a2time: time a program on an emulated 64K Apple IIe in MAME, by the
+# changes of one screen byte. It boots BOOT.po (a PLASMA boot disk)
+# with DISK2.po in the second drive, types COMMAND at PLASMA's prompt,
+# and for SECONDS of emulated time (300 if not given) records each
+# change of the screen byte at A2TIME_ADDR's high nibble ($4BC if
+# unset, which Rod's Colors changes once a frame). It prints the
+# changes' times and the mean time between them (tools/a2time.lua).
+#
+# Usage: tools/a2time ROMDIR BOOT.po DISK2.po COMMAND [SECONDS]
+# e.g.:  tools/a2time ROMDIR PLASMA.po samples/rods.po +/RODS/ROD
+#
+# BOOT.po must reach PLASMA's prompt by itself, showing its "MEM FREE:"
+# line: a PLASMA 2.20 install disk with its AUTORUN renamed, say.
+#
+# The machine and ROMDIR are tools/a2screen's, as are the guards: it
+# never touches the desktop (SDL's dummy drivers, no input providers)
+# and always ends (-seconds_to_run, the script's exit, and a timeout).
+# Times are emulated, so they're the IIe's own whatever the host's
+# speed (MAME runs unthrottled).
+set -eu
+[ $# -ge 4 ] || {
+  echo "usage: $0 ROMDIR BOOT.po DISK2.po COMMAND [SECONDS]" >&2; exit 2; }
+romdir=$1
+run_for=${5:-300}
+here=$(dirname "$0")
+boot=60          # emulated seconds allowed for booting to the prompt
+
+A2TIME_CMD=$4 A2TIME_FOR=$run_for A2TIME_BOOT=$boot SDL_VIDEODRIVER=dummy \
+  SDL_AUDIODRIVER=dummy \
+  timeout $((run_for + 2 * boot + 60)) mame apple2ee -rompath "$romdir" \
+  -aux "" -flop1 "$2" -flop2 "$3" \
+  -video none -sound none -keyboardprovider none -mouseprovider none \
+  -joystickprovider none -lightgunprovider none \
+  -nothrottle -skip_gameinfo -seconds_to_run $((run_for + 2 * boot)) \
+  -autoboot_script "$here/a2time.lua" 2>&1 \
+  | grep -v '^ *$'

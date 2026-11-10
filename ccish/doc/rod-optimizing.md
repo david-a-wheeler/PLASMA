@@ -23,6 +23,22 @@ their larger count). A frame is one pass over i, for one w. Measured
 | rod.pla (PLASMA) | | about 2.6, estimated from `xplasm -AMOS`'s inner loop (73 ops, about 5,830 cycles) and the native code it calls (about 1,140): plvm doesn't run `conio:grplot`'s 6502 code |
 | rod.c (was rodconio.c) | | about 2.1 (2.07), estimated the same way: ccish's inner loop (69 ops, about 4,440 cycles) and the same native code; 2.61 without `register` |
 
+Measured on an emulated IIe (MAME's apple2ee, 2026-11-09), with
+`tools/a2time`, which times the frames by when lores pixel (20, 19),
+which only ring 19 plots, changes color:
+
+| Version | Seconds a frame | Against rod.pla |
+|---|---|---|
+| rod.pla (PLASMA 2.20's RODPLA) | 2.236 | 1 |
+| rod.c | 1.876 | 1.19 times as fast |
+| rodfast.c | 0.534 (0.37 to 0.79, by w) | 4.19 times as fast |
+
+Each is the mean over whole cycles of w (96 frames of rod.pla's, 144
+of rod.c's, 528 of rodfast's), and rodfast's frame times repeat
+exactly every 48 frames, as they should. The estimates above are 7%
+to 16% high, and so overstate ccish's lead a little (1.25 and 4.5
+times as fast).
+
 rod.c is rod.pla's program in C: the same loops, calling the same
 CONIO routines, with `char` variables where rod.pla has `byte` ones.
 Without `register`, ccish's code is within 1% of PLASMA's compiler's,

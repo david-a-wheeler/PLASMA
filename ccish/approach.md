@@ -8981,3 +8981,12 @@ rodconio's no longer links lores.obj. doc/rod-optimizing.md keeps the
 findings, and the removed files are in git history. Then rodconio.c
 became rod.c, so people look at the easy version first, and lores.h
 lost `LORES_PLOT`, which only rodsimple and the test used.
+
+**Rod's Colors, timed** (2026-11-09; asked for: "I want to time them
+in MAME"). `tools/a2time ROMDIR BOOT.po DISK2.po COMMAND [SECONDS]`
+boots PLASMA, types COMMAND at its prompt, and records when one
+screen byte's high nibble changes (a write tap, so exact): for Rod's
+Colors, lores pixel (20, 19), which only ring 19 plots and which
+changes once a frame in each version. Seconds a frame: rod.pla 2.236,
+rod.c 1.876 (1.19 times as fast), rodfast.c 0.534 (4.19 times).
+Details in doc/rod-optimizing.md.
