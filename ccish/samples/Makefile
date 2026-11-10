@@ -4,6 +4,7 @@
 #   make         the Apple II modules: rod, rodsimple and rodconio
 #   make check   run test builds under plvm and compare their screens
 #                with rodref, the original algorithm compiled with gcc
+#   make disk    rods.po, a ProDOS disk of them and PLASMA's own ROD
 #
 # A module runs on an Apple II under PLASMA (copy it to a disk as a
 # REL file); these draw on the real screen, so not under plvm, whose
@@ -66,7 +67,29 @@ check: $(T)/rod $(T)/rodsimple $(T)/rodconio $(T)/rodref
 	$(T)/rodref $(SIMPLE_ROUNDS) | cmp - $(T)/rodconio.out
 	@echo "rod, rodsimple and rodconio match rodref"
 
-clean:
-	rm -rf $(T) rod rodsimple rodconio lores.obj lores.syms
+# A 140K ProDOS disk, rods.po (volume RODS), of Rod's Colors four
+# ways, to run on an Apple II (or tools/a2run) beside a PLASMA boot
+# disk, whose SYS/CONIO they all use: RODPLA, PLASMA's own (rod.pla, as
+# built for PLASMA 2.20's demo disk), and ccish's ROD, RODSIMPLE and
+# RODCONIO. Run one at PLASMA's prompt with +/RODS/ROD (and so on). AC
+# is AppleCommander's command-line tool; PLASMA_DEMOS, the disk ROD is
+# taken from.
+AC = ../../bin/ac-linux-aarch64-15.2
+PLASMA_DEMOS = ../../images/apple/PLEIADES-2.20-DEMOS.po
+DISK = rods.po
 
-.PHONY: all check clean
+disk: $(DISK)
+
+$(DISK): rod rodsimple rodconio $(PLASMA_DEMOS)
+	rm -f $@
+	$(AC) -pro140 $@ RODS
+	$(AC) -g $(PLASMA_DEMOS) DEMOS/ROD | $(AC) -p $@ RODPLA REL
+	$(AC) -p $@ ROD REL < rod
+	$(AC) -p $@ RODSIMPLE REL < rodsimple
+	$(AC) -p $@ RODCONIO REL < rodconio
+	$(AC) -l $@
+
+clean:
+	rm -rf $(T) rod rodsimple rodconio lores.obj lores.syms $(DISK)
+
+.PHONY: all check clean disk
