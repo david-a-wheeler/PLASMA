@@ -8990,3 +8990,14 @@ Colors, lores pixel (20, 19), which only ring 19 plots and which
 changes once a frame in each version. Seconds a frame: rod.pla 2.236,
 rod.c 1.876 (1.19 times as fast), rodfast.c 0.534 (4.19 times).
 Details in doc/rod-optimizing.md.
+
+**rodfast with `register`** (2026-11-09; asked for: "Use register in
+rodfast.c and keep the loops inline"). make_ring is back inside
+make_tables, and draw inside main, with every local `register`, so
+all six drawing loops are counted at depth 3. Also, i * w / W_DIV is
+now a quotient and remainder stepped along i and w (no divide per
+ring), and the single-byte ends look up their byte row once, not
+twice for each read and write. 0.534 to 0.521 s a frame (2.5%); the
+module is 2,249 bytes (was 2,337). `tools/a2time` gained
+`A2TIME_SUMS`, a checksum of page 1 at each change: the old and new
+versions' screens match over 540 frames.

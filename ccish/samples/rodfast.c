@@ -55,7 +55,7 @@ constexpr int Q_ADD = 3;
 // The figure's pixels, 0 to SIZE - 1 (no i plots 0 or SIZE), fit.
 _Static_assert(SIZE <= LORES_WIDTH && SIZE <= LORES_HEIGHT, "fits");
 
-// q(j) steps by at most 1 as j goes up (make_ring), since the
+// q(j) steps by at most 1 as j goes up (make_tables), since the
 // smallest divisor, 1 + Q_ADD, is more than Q_MUL.
 _Static_assert(1 + Q_ADD > Q_MUL, "q steps by at most 1");
 
@@ -86,85 +86,81 @@ static char *qlo_of[RINGS + 1], *qhi_of[RINGS + 1];
 // Each i's lo and m (fact 2), and the b it was last drawn with.
 static char lo[RINGS + 1], hi_d[RINGS + 1], lastb[RINGS + 1];
 
-// Compute qlo[I] and qhi[I]: for each position t along a side of i's
-// ring, the q that its color is q + b. A function of its own, so that
-// its loops are outermost, which ccish needs to count them.
-static void make_ring(int i)
-{
-  char qj[J_MAX + 1], qjh[J_MAX + 1];
-  char *ql, *qh;
-  int j, t, d, q, qhv, r, l, e;
-
-  // First, q for each j: the original's Q_MUL * j / (i + Q_ADD), in
-  // qj[j], and the same in the high nibble, in qjh[j]. As j goes up by
-  // 1, Q_MUL * j goes up by Q_MUL; keeping the quotient q and the
-  // remainder r, the quotient goes up by 1 whenever the remainder
-  // reaches the divisor d, and never by more, since d > Q_MUL. So
-  // there is no divide (a 16-step loop in the VM), and qhv steps the
-  // high-nibble copy along with q, so there is no shift either.
-  d = i + Q_ADD;
-  q = 0;
-  qhv = 0;
-  r = 0;
-  for (j = 0; j <= J_MAX; j++) {
-    qj[j] = q;
-    qjh[j] = qhv;
-    r += Q_MUL;
-    if (r >= d) {
-      r -= d;
-      q++;
-      qhv += 1 << LORES_HI_SHIFT;
-    }
-  }
-
-  // Then q for each position t, from lo to SIZE - lo. The original
-  // plots position t at j = t - i (as k = i + j) and at j = SIZE - i - t
-  // (as SIZE - k), whichever of the two are in 0 to J_MAX, and the
-  // later j is the one left on the screen. The two j's sum to
-  // SIZE - 2i, so for t up to MID, SIZE - i - t is the larger: it wins
-  // from e = SIZE - J_MAX - i up, where it comes into range; below e,
-  // t - i is the only one. Past MID it's the same in mirror image (t
-  // and SIZE - t have the same two j's), so those positions are copies.
-  // Each loop steps j along with t, instead of computing it from t on
-  // each pass. qlo_of[] and qhi_of[] keep the tables' addresses, since
-  // draw() would otherwise multiply to find qlo[i] each time.
-  ql = qlo[i];
-  qh = qhi[i];
-  qlo_of[i] = ql;
-  qhi_of[i] = qh;
-  l = lo[i];
-  e = SIZE - J_MAX - i;
-  j = l - i;                    // below e: j = t - i, going up; none
-  for (t = l; t < e; t++) {     // for i >= 11, whose lo is e itself
-    ql[t] = qj[j];
-    qh[t] = qjh[j];
-    j++;
-  }
-  j = SIZE - i - e;             // e to MID: j = SIZE - i - t, going down
-  for (t = e; t <= MID; t++) {
-    ql[t] = qj[j];
-    qh[t] = qjh[j];
-    j--;
-  }
-  e = SIZE - l;
-  j = MID - 1;                  // past MID: t's mirror, SIZE - t
-  for (t = MID + 1; t <= e; t++) {
-    ql[t] = ql[j];
-    qh[t] = qh[j];
-    j--;
-  }
-}
-
-// Compute the tables: each i's lo, its qlo and qhi, and its m, where
-// i's d stops, at the first column d of a later i reaching row i.
+// Compute the tables: each i's lo; its qlo and qhi, for each position t
+// along a side of i's ring, the q that its color is q + b; and its m,
+// where i's d stops, at the first column d of a later i reaching row i.
+// The loop variables and limits are register, so no pointer can reach
+// them and ccish can count the loops though they're nested and store
+// through pointers (guide 12.2).
 static void make_tables(void)
 {
-  int i, d;
+  char qj[J_MAX + 1], qjh[J_MAX + 1];
+  register char *ql, *qh;
+  register int i, j, t, d, q, qhv, r, l, e;
 
   for (i = 1; i <= RINGS; i++)
     lo[i] = i < SIZE - J_MAX - i ? i : SIZE - J_MAX - i;
   for (i = 1; i <= RINGS; i++) {
-    make_ring(i);
+    // First, q for each j: the original's Q_MUL * j / (i + Q_ADD), in
+    // qj[j], and the same in the high nibble, in qjh[j]. As j goes up
+    // by 1, Q_MUL * j goes up by Q_MUL; keeping the quotient q and the
+    // remainder r, the quotient goes up by 1 whenever the remainder
+    // reaches the divisor d, and never by more, since d > Q_MUL. So
+    // there is no divide (a 16-step loop in the VM), and qhv steps the
+    // high-nibble copy along with q, so there is no shift either.
+    d = i + Q_ADD;
+    q = 0;
+    qhv = 0;
+    r = 0;
+    for (j = 0; j <= J_MAX; j++) {
+      qj[j] = q;
+      qjh[j] = qhv;
+      r += Q_MUL;
+      if (r >= d) {
+        r -= d;
+        q++;
+        qhv += 1 << LORES_HI_SHIFT;
+      }
+    }
+
+    // Then q for each position t, from lo to SIZE - lo. The original
+    // plots position t at j = t - i (as k = i + j) and at j = SIZE - i - t
+    // (as SIZE - k), whichever of the two are in 0 to J_MAX, and the
+    // later j is the one left on the screen. The two j's sum to
+    // SIZE - 2i, so for t up to MID, SIZE - i - t is the larger: it wins
+    // from e = SIZE - J_MAX - i up, where it comes into range; below e,
+    // t - i is the only one. Past MID it's the same in mirror image (t
+    // and SIZE - t have the same two j's), so those positions are
+    // copies. Each loop steps j along with t, instead of computing it
+    // from t on each pass. qlo_of[] and qhi_of[] keep the tables'
+    // addresses, since main() would otherwise multiply to find qlo[i].
+    ql = qlo[i];
+    qh = qhi[i];
+    qlo_of[i] = ql;
+    qhi_of[i] = qh;
+    l = lo[i];
+    e = SIZE - J_MAX - i;
+    j = l - i;                  // below e: j = t - i, going up; none
+    for (t = l; t < e; t++) {   // for i >= 11, whose lo is e itself
+      ql[t] = qj[j];
+      qh[t] = qjh[j];
+      j++;
+    }
+    j = SIZE - i - e;           // e to MID: j = SIZE - i - t, going down
+    for (t = e; t <= MID; t++) {
+      ql[t] = qj[j];
+      qh[t] = qjh[j];
+      j--;
+    }
+    e = SIZE - l;
+    j = MID - 1;                // past MID: t's mirror, SIZE - t
+    for (t = MID + 1; t <= e; t++) {
+      ql[t] = ql[j];
+      qh[t] = qh[j];
+      j--;
+    }
+
+    // Last, m: d goes up from lo until a later i's column reaches row i.
     d = lo[i];
     while (d + 1 < MID && !(d + 1 > i && lo[d + 1] <= i))
       d++;
@@ -173,11 +169,12 @@ static void make_tables(void)
   }
 }
 
-// The drawing macros use draw()'s locals: i and f = SIZE - i, the
+// The drawing macros use main()'s locals: i and f = SIZE - i, the
 // color offset b, b16 = b in the high nibble, b2 = the rows' b in both
 // bytes of a word, i's tables ql, qh and qh1 = qh + 1, its rows' byte
-// rows pi and pf, and the positions to draw, l to h. (Several small
-// macros, since ccpp limits a macro's expansion to 256 bytes.)
+// rows pi and pf, a byte row p, and the positions to draw, l to h.
+// (Several small macros, since ccpp limits a macro's expansion to 256
+// bytes.)
 
 // Draw rows i and f from l to h, in nibble NIB (LO or HI), with the
 // colors Q[x] + B: two bytes at a time, then the odd one out.
@@ -198,12 +195,14 @@ static void make_tables(void)
   }
 
 // Draw the columns' ends: a row at an end whose byte it shares with a
-// row outside [l, h] reads, masks and writes.
+// row outside [l, h] reads, masks and writes. p holds the byte row,
+// so it's looked up once, not for each read and write.
 #define DRAW_COL_ENDS() \
   if (l & 1) { \
     s = (qh[l] + b16) & LORES_HI; \
-    LORES_SET_HI(lores_row[l] + i, s); \
-    LORES_SET_HI(lores_row[l] + f, s); \
+    p = lores_row[l]; \
+    LORES_SET_HI(p + i, s); \
+    LORES_SET_HI(p + f, s); \
   } \
   DRAW_COL_END()
 
@@ -211,8 +210,9 @@ static void make_tables(void)
 #define DRAW_COL_END() \
   if (!(h & 1)) { \
     s = (ql[h] + b) & LORES_LO; \
-    LORES_SET_LO(lores_row[h] + i, s); \
-    LORES_SET_LO(lores_row[h] + f, s); \
+    p = lores_row[h]; \
+    LORES_SET_LO(p + i, s); \
+    LORES_SET_LO(p + f, s); \
   }
 
 // Draw the rest of the columns, whole bytes, rows y and y + 1 from
@@ -225,83 +225,99 @@ static void make_tables(void)
     p[f] = v; \
   }
 
-// Draw the pixels I owns with the color offset B (0 to 15): d from lo
-// to m at both ends of each side, and the middle's four pixels, d =
-// MID. Each loop is outermost, which ccish needs to count it.
-static void draw(char i, char b)
-{
-  int x, y, l, h, m;
-  char f, s, v, b16;
-  lores_word s2, b2;
-  char *ql, *qh, *qh1, *pi, *pf, *p;
+// i * w / W_DIV, from W_FIRST's quotient and remainder by W_DIV.
+constexpr int WQ_FIRST = W_FIRST / W_DIV;
+constexpr int WR_FIRST = W_FIRST % W_DIV;
 
-  f = SIZE - i;
-  b16 = b << LORES_HI_SHIFT;
-  ql = qlo_of[i];
-  qh = qhi_of[i];
-  qh1 = qh + 1;
-  pi = lores_row[i];
-  pf = lores_row[f];
-  // i and f have the same parity, so their rows the same nibble.
-  if (i & 1)
-    b2 = b16 | (b16 << LORES_BYTE_SHIFT);
-  else
-    b2 = b | (b << LORES_BYTE_SHIFT);
-  m = hi_d[i];
-  l = lo[i];
-  h = m;
-  if (i & 1) {
-    DRAW_ROWS(HI, qh, b16)
-  } else {
-    DRAW_ROWS(LO, ql, b)
-  }
-  DRAW_COL_ENDS()
-  DRAW_COLS()
-  l = SIZE - m;
-  h = SIZE - lo[i];
-  if (i & 1) {
-    DRAW_ROWS(HI, qh, b16)
-  } else {
-    DRAW_ROWS(LO, ql, b)
-  }
-  DRAW_COL_ENDS()
-  DRAW_COLS()
-  s = (ql[MID] + b) & LORES_LO;
-  LORES_SET_LO(lores_row[MID] + i, s);    // MID is even
-  LORES_SET_LO(lores_row[MID] + f, s);
-  if (i & 1) {
-    s = s << LORES_HI_SHIFT;
-    LORES_SET_HI(pi + MID, s);
-    LORES_SET_HI(pf + MID, s);
-  } else {
-    LORES_SET_LO(pi + MID, s);
-    LORES_SET_LO(pf + MID, s);
-  }
-}
-
-
-// Run Rod's Colors until a key is pressed.
+// Run Rod's Colors until a key is pressed. For each i that has a new
+// b, draw the pixels it owns with the color offset b (0 to 15): d from
+// lo to m at both ends of each side, and the middle's four pixels, d =
+// MID. Everything is register (no pointer reaches any of it), so ccish
+// counts the drawing loops though they're nested and store through
+// pointers.
 int main(void)
 {
-  int w, i, acc;
-  char b;
+  // i * w / W_DIV is q, with the remainder r: each i adds w, as wq and
+  // wr (w's own quotient and remainder by W_DIV, stepped along with w),
+  // so there's no divide. r stays under W_DIV, so one subtract is
+  // enough after each add.
+  register int w, wq, wr, i, q, r;
+  register int x, y, l, h, m;
+  register char b, f, s, v, b16;
+  register lores_word s2, b2;
+  register char *ql, *qh, *qh1, *pi, *pf, *p;
 
   conio.grmode(MIXED);
   conio.gotoxy(MSG_X, MSG_Y);
   __puts(pstr("Press any key to exit."));
   make_tables();
   for (;;) {
+    wq = WQ_FIRST;
+    wr = WR_FIRST;
     for (w = W_FIRST; w <= W_LAST; w++) {
-      acc = 0;
+      q = 0;
+      r = 0;
       for (i = 1; i <= RINGS; i++) {
-        acc += w;               // i * w
-        b = (acc / W_DIV) & (LORES_COLORS - 1);
+        q += wq;
+        r += wr;
+        if (r >= W_DIV) {
+          r -= W_DIV;
+          q++;
+        }
+        b = q & (LORES_COLORS - 1);
         if (b != lastb[i]) {
           lastb[i] = b;
-          draw(i, b);
+          f = SIZE - i;
+          b16 = b << LORES_HI_SHIFT;
+          ql = qlo_of[i];
+          qh = qhi_of[i];
+          qh1 = qh + 1;
+          pi = lores_row[i];
+          pf = lores_row[f];
+          // i and f have the same parity, so their rows the same nibble.
+          if (i & 1)
+            b2 = b16 | (b16 << LORES_BYTE_SHIFT);
+          else
+            b2 = b | (b << LORES_BYTE_SHIFT);
+          m = hi_d[i];
+          l = lo[i];
+          h = m;
+          if (i & 1) {
+            DRAW_ROWS(HI, qh, b16)
+          } else {
+            DRAW_ROWS(LO, ql, b)
+          }
+          DRAW_COL_ENDS()
+          DRAW_COLS()
+          l = SIZE - m;
+          h = SIZE - lo[i];
+          if (i & 1) {
+            DRAW_ROWS(HI, qh, b16)
+          } else {
+            DRAW_ROWS(LO, ql, b)
+          }
+          DRAW_COL_ENDS()
+          DRAW_COLS()
+          s = (ql[MID] + b) & LORES_LO;
+          p = lores_row[MID];
+          LORES_SET_LO(p + i, s);       // MID is even
+          LORES_SET_LO(p + f, s);
+          if (i & 1) {
+            s = s << LORES_HI_SHIFT;
+            LORES_SET_HI(pi + MID, s);
+            LORES_SET_HI(pf + MID, s);
+          } else {
+            LORES_SET_LO(pi + MID, s);
+            LORES_SET_LO(pf + MID, s);
+          }
         }
         if (KBD & KBD_READY)
           goto done;
+      }
+      wr++;                     // the next w's quotient and remainder
+      if (wr == W_DIV) {
+        wr = 0;
+        wq++;
       }
     }
   }

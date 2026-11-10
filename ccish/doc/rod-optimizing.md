@@ -31,11 +31,16 @@ which only ring 19 plots, changes color:
 |---|---|---|
 | rod.pla (PLASMA 2.20's RODPLA) | 2.236 | 1 |
 | rod.c | 1.876 | 1.19 times as fast |
-| rodfast.c | 0.534 (0.37 to 0.79, by w) | 4.19 times as fast |
+| rodfast.c, before `register` | 0.534 (0.37 to 0.79, by w) | 4.19 times as fast |
+| rodfast.c | 0.521 (0.36 to 0.77, by w) | 4.29 times as fast |
 
 Each is the mean over whole cycles of w (96 frames of rod.pla's, 144
 of rod.c's, 528 of rodfast's), and rodfast's frame times repeat
-exactly every 48 frames, as they should. The estimates above are 7%
+exactly every 48 frames, as they should. The second rodfast row is
+after its loops went back inline with `register` locals (no call per
+ring) and its i * w / W_DIV became a stepped quotient and remainder
+(no divide per ring); `A2TIME_SUMS` showed its screens are the same
+as before, frame for frame. The estimates above are 7%
 to 16% high, and so overstate ccish's lead a little (1.25 and 4.5
 times as fast).
 
@@ -105,8 +110,10 @@ listed here.
    pointers.** Every inner loop in both programs stores through a
    pointer or into an array, so none nested in another loop is
    counted (approach.md, "Possible improvements to the loop forms",
-   item 4). rodfast had to move each such loop into a function (`draw`,
-   `make_ring`) to make it outermost: about 4 ops less a pass, which
+   item 4). *(Done for register locals: approach.md, "`register` is
+   built". rodfast's loops are now inline again, with `register`
+   locals, and counted at any depth.)* rodfast had to move each such
+   loop into a function (`draw`, `make_ring`) to make it outermost: about 4 ops less a pass, which
    was 5% of rodfast's time when I did it (12,100 ops a frame to 11,500). Item 4 proposes allowing
    stores into arrays; rodfast's loops store through pointer variables,
    which that wouldn't cover. A rule that would: a store through any

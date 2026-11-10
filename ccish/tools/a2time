@@ -6,6 +6,8 @@
 # change of the screen byte at A2TIME_ADDR's high nibble ($4BC if
 # unset, which Rod's Colors changes once a frame). It prints the
 # changes' times and the mean time between them (tools/a2time.lua).
+# With A2TIME_SUMS set (to anything), each change also shows a checksum
+# of the screen's page 1, to compare two versions frame by frame.
 #
 # Usage: tools/a2time ROMDIR BOOT.po DISK2.po COMMAND [SECONDS]
 # e.g.:  tools/a2time ROMDIR PLASMA.po samples/rods.po +/RODS/ROD

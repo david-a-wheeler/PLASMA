@@ -18,6 +18,7 @@ local boot = tonumber(os.getenv("A2TIME_BOOT") or "60") -- prompt's limit
 local SKIP = 3        -- changes while starting up (mode switch, first frames)
 local CYCLE = 48      -- frames in a cycle of Rod's Colors (w = 3 to 50)
 local SETTLE = 1      -- seconds from seeing the prompt to typing
+local sums_on = os.getenv("A2TIME_SUMS") ~= nil
 
 local machine = manager.machine
 local mem = machine.devices[":maincpu"].spaces["program"]
@@ -46,6 +47,16 @@ local prompt_at = nil  -- when the prompt was seen
 local typed_at = nil   -- when the command was typed
 local last = nil       -- the byte's high nibble at the last change
 local changes = {}     -- times of the changes after typing
+local sums = {}        -- page 1's checksums at the changes (sums_on)
+
+-- A checksum of page 1, $400 to $7FF: h = h * 31 + each byte, mod 2^24.
+local function page_sum()
+  local h = 0
+  for a = 0x400, 0x7ff do
+    h = (h * 31 + mem:read_u8(a)) % 0x1000000
+  end
+  return h
+end
 
 a2time_tap = mem:install_write_tap(addr, addr, "a2time",
   function(offset, data, mask)
@@ -56,6 +67,9 @@ a2time_tap = mem:install_write_tap(addr, addr, "a2time",
     if hi ~= last then
       last = hi
       changes[#changes + 1] = now()
+      if sums_on then
+        sums[#changes] = page_sum()
+      end
     end
   end)
 
@@ -65,7 +79,8 @@ a2time_tap = mem:install_write_tap(addr, addr, "a2time",
 local function report()
   print(string.format("command: %s, typed at %.3f s", cmd, typed_at))
   for i, t in ipairs(changes) do
-    print(string.format("change %d: %.4f s", i, t - typed_at))
+    print(string.format("change %d: %.4f s%s", i, t - typed_at,
+                        sums_on and string.format(" sum %06x", sums[i]) or ""))
   end
   local n = #changes - SKIP - 1     -- intervals after the start-up ones
   if n < 1 then
