@@ -1,6 +1,13 @@
 # ccish: a C-ish compiler for the PLASMA VM
 
-`ccish` compiles a growing subset of C into PLASMA REL modules. It has
+`ccish` compiles a subset/superset of C into PLASMA to run on 6502-based systems.
+It heavily optimizes its results and is self-hosting.
+
+CCish is dedicated to the memory of Bob Pew.
+It was developed with the assistance of AI, so if that bothers you, don't use it.
+Everyone else, enjoy.
+
+`ccish` compiles a subset/superset of C into PLASMA REL modules. It has
 finished milestones 1 to 7 (integers, `char`, pointers, arrays,
 globals, control flow, initializers, `static`, `const`, `volatile`,
 `struct` and `switch`), and `enum` and `typedef` from milestone 11. The design and the plan for growing it are in

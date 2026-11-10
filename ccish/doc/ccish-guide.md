@@ -1,6 +1,7 @@
 # The ccish guide
 
-A user guide to ccish, the C compiler for the PLASMA virtual machine.
+This ia a user guide to ccish, a C compiler for the PLASMA virtual machine
+running on 6502 computers sich as the Apple II.
 
 1. [What ccish is](#1-what-ccish-is)
 2. [Using the compiler](#2-using-the-compiler)
@@ -14,6 +15,10 @@ A user guide to ccish, the C compiler for the PLASMA virtual machine.
 10. [How the compiler works](#10-how-the-compiler-works)
 11. [Calling built-in CMD library](#11-calling-built-in-cmd-library)
 12. [Writing small and fast code](#12-writing-small-and-fast-code)
+
+CCish is dedicated to the memory of Bob Pew.
+It was developed with the assistance of AI, so if that bothers you, don't use it.
+Everyone else, enjoy.
 
 ## 1. What ccish is
 
