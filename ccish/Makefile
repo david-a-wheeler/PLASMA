@@ -8,6 +8,11 @@
 #   make limits regenerate doc/limits.md, the table of ccish's limits
 #   make measure regenerate doc/measure.txt, ccish's sizes and peaks
 #               measured on its own source, if stale, and print it
+#   make demo-disk  samples/rods.po, a ProDOS disk of Rod's Colors three
+#               ways: PLASMA's rod.pla, and ccish's rod.c and rodfast.c
+#   make demo-run   boot PLASMA in an emulated 64K Apple IIe with that
+#               disk in the second drive (samples/Makefile has the
+#               variables for another disk tool or emulator)
 #
 # The tests are driven entirely by this Makefile. Each test kind is a
 # directory of inputs; a wildcard finds the inputs, a % rule runs one of
@@ -319,6 +324,16 @@ doc/measure.txt: ccpp cccomp ccgen ccrel ccish.msg tools/measure.py \
 measure: doc/measure.txt
 	@cat doc/measure.txt
 
+# The demo disk and the emulator: samples/Makefile's disk and run, after
+# building the compiler. Variables set on the command line (RUN_VM,
+# BOOT_DISK, DISK_PUT, ...) pass on to it.
+demo-disk: all
+	$(MAKE) -C samples disk
+
+# Run demo disk.
+demo-run: all
+	$(MAKE) -C samples run
+
 # Put each source file's functions, C then machine ops, in tools/out/lst/
 # (tools/listings.py); tools/opstats.py counts the ops in them.
 listings: all
@@ -349,4 +364,4 @@ clean:
 	rm -f doc/measure.txt doc/limits.md
 
 .PHONY: all small test testbuild xref measure listings print-sources bootstrap \
-        full-test limits clean
+        full-test limits demo-disk demo-run clean
