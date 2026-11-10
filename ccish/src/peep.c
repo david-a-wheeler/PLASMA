@@ -76,6 +76,8 @@
 //   NOT ANDI 1  BRFLS/BRTRU  -> BRTRU / BRFLS    branch on !x
 //   NOT  BRFLS / BRTRU       -> BRTRU / BRFLS    the same, without the
 //                                          ANDI (from x == 0, below)
+//   NOT  ANDI n  NOT         -> NOT NOT    !!x: NOT tests only zero
+//                                          against non-zero
 //   ISEQ / ISNE  BRFLS/BRTRU -> BREQ / BRNE
 //   CN 0  BREQ / BRNE        -> BRFLS / BRTRU    x == 0 is a test of x
 //   CN 2  MUL                -> DUP ADD    (faster than CN 1 SHL; see rewrite)
@@ -943,6 +945,15 @@ static int rewrite(void)
       || rewrite_drop_zero(a, b) || rewrite_dup_const(a, b)
       || rewrite_index(a, b))
     return 1;
+  // NOT ANDI n NOT -> NOT NOT: !!x. The ANDI n (n non-zero) only makes
+  // the first NOT's true ($FFFF) into 1, and NOT tests only zero
+  // against non-zero, so the second NOT gives the same without it.
+  if (nwin >= 3 && win[nwin - 3].op == OP_NOT && a->op == OP_ANDI
+      && a->a != 0 && b->op == OP_NOT) {
+    *a = *b;
+    nwin--;
+    return 1;
+  }
   // DUP ADD ADD -> IDXW: adding twice x is PLASMA's word index op
   // (p + i for a pointer to 2-byte elements).
   if (nwin >= 3 && win[nwin - 3].op == OP_DUP && a->op == OP_ADD

@@ -76,7 +76,6 @@
     ; label 103
     LAW.v data +0
     NOT
-    ANDI 1
     NOT
     ANDI 1
     LEAVE 0

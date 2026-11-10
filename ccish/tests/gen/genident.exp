@@ -1,0 +1,16 @@
+    ; notnot
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    NOT
+    NOT
+    ANDI 1
+    LEAVE 2
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CN 1
+    CALL notnot
+    ANDI 0
+    LEAVE 0
