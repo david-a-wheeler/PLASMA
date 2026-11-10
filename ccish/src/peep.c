@@ -168,6 +168,65 @@ static Mop win[WINDOW];
 static int nwin;
 static int dead;            // code is unreachable until the next barrier
 
+// Sets of opcodes, as bit tests rather than an == for each member:
+// PLASMA's opcodes are even, and related ones sit together, so a set
+// is one or two tests. ((op - B) & ~6) == 0 is the 4 even ops from B;
+// (op & ~2) == B is B and B + 2 (bit 1 of B clear). An odd op, a
+// volatile form or a pseudo-op, is in none, as with ==. Each
+// _Static_assert checks the opcodes are where its test needs them.
+// A two-test macro names op twice, so pass it a local, not b->op: C
+// has no way to bind a value inside an expression, and these sets
+// have no one test that picks out just their ops.
+
+// Does op always transfer control (BRNCH, SEL, LEAVE, RET), so that
+// what follows can't run until the next label?
+#define IS_EXIT(op) (((op) & ~2) == OP_BRNCH \
+                     || (((op) - OP_LEAVE) & ~2) == 0)
+_Static_assert(OP_SEL == OP_BRNCH + 2 && (OP_BRNCH & 2) == 0
+               && OP_RET == OP_LEAVE + 2, "IS_EXIT's two pairs");
+
+// Is op a one-operand update that can sit between DUP and a store in
+// x++ (INCR, DECR, NEG, COMP, ADDI, SUBI)?
+#define IS_UPDATE(op) ((((op) - OP_INCR) & ~6) == 0 \
+                       || ((op) & ~2) == OP_ADDI)
+_Static_assert(OP_DECR == OP_INCR + 2 && OP_NEG == OP_INCR + 4
+               && OP_COMP == OP_INCR + 6 && OP_SUBI == OP_ADDI + 2
+               && (OP_ADDI & 2) == 0, "IS_UPDATE's ops");
+
+// Is op a store that takes its address as an operand (SLB, SLW, SAB,
+// SAW)?
+#define IS_OPERAND_STORE(op) ((((op) - OP_SLB) & ~6) == 0)
+_Static_assert(OP_SLW == OP_SLB + 2 && OP_SAB == OP_SLB + 4
+               && OP_SAW == OP_SLB + 6, "IS_OPERAND_STORE's ops");
+
+// Does op read a local: LLB, LLW, or an add of one (ADDLB, ADDLW,
+// IDXLB, IDXLW)?
+#define READS_LOCAL(op) (((op) & ~2) == OP_LLB \
+                         || ((op) & ~0x0A) == OP_ADDLB)
+_Static_assert(OP_LLW == OP_LLB + 2 && (OP_LLB & 2) == 0
+               && OP_ADDLW == OP_ADDLB + 2 && OP_IDXLB == OP_ADDLB + 8
+               && OP_IDXLW == OP_ADDLB + 10 && (OP_ADDLB & 0x0A) == 0,
+               "READS_LOCAL's ops");
+
+// Is op a store to a local (DLB, DLW, SLB, SLW)? From DLB, they're 0,
+// 2, 8 and 10: the values with only bits 1 and 3 set.
+#define STORES_LOCAL(op) ((((op) - OP_DLB) & ~0x0A) == 0)
+_Static_assert(OP_DLW == OP_DLB + 2 && OP_SLB == OP_DLB + 8
+               && OP_SLW == OP_DLB + 10, "STORES_LOCAL's ops");
+
+// Is op one whose 0 on the right leaves the value as it was (IOR, XOR,
+// SHL, SHR)?
+#define IS_ZERO_IDENTITY(op) ((((op) - OP_IOR) & ~6) == 0)
+_Static_assert(OP_XOR == OP_IOR + 2 && OP_SHL == OP_IOR + 4
+               && OP_SHR == OP_IOR + 6, "IS_ZERO_IDENTITY's ops");
+
+// Is op one whose 0 on the left gives 0, or -x for SUB (SUB, DIV, MOD,
+// SHL, SHR)?
+#define IS_ZERO_LEFT(op) ((op) == OP_SUB || ((op) & ~2) == OP_DIV \
+                          || (((op) - OP_SHL) & ~2) == 0)
+_Static_assert(OP_MOD == OP_DIV + 2 && (OP_DIV & 2) == 0
+               && OP_SHR == OP_SHL + 2, "IS_ZERO_LEFT's ops");
+
 // Send the oldest op in the window on to stage 4; or, if it's a DROP
 // and so is the next, make that a DROP2 (one op, a byte less).
 static void pass_oldest(void)
@@ -187,13 +246,6 @@ void peep_flush(void)
 {
   while (nwin > 0)
     pass_oldest();
-}
-
-// Does op always transfer control (a return or a jump), so that what
-// follows can't run until the next label?
-static int is_unconditional_exit(int op)
-{
-  return op == OP_LEAVE || op == OP_RET || op == OP_BRNCH || op == OP_SEL;
 }
 
 // Is op a branch that pops a value and tests it for zero?
@@ -279,14 +331,6 @@ static int is_add_op(int op)
          || (op >= OP_ADDLB && op <= OP_IDXAW && !MOP_IS_VOLATILE(op));
 }
 
-// Is op a one-operand op that can sit between DUP and SLW in the x++
-// pattern below?
-static int is_unary(int op)
-{
-  return op == OP_INCR || op == OP_DECR || op == OP_NEG || op == OP_COMP
-         || op == OP_ADDI || op == OP_SUBI;
-}
-
 // If m is an op that only works on the stack (no branch, call, store,
 // or volatile access; a plain load is one), set how many values it pops
 // and pushes and return 1. Such an op can go when its value does: a
@@ -346,7 +390,7 @@ static int store_len(int end)
 {
   int op = end >= 1 ? win[end - 1].op : -1, n;
   op = MOP_PLAIN(op);
-  if (op == OP_SLW || op == OP_SLB || op == OP_SAW || op == OP_SAB)
+  if (IS_OPERAND_STORE(op))
     return 1;
   if (op == OP_SW || op == OP_SB) {
     n = expr_len(end - 1);
@@ -359,10 +403,10 @@ static int store_len(int end)
 // index end: a unary op, or a constant then ADD / SUB. 0 if none.
 static int update_len(int end)
 {
-  int v;
-  if (end >= 1 && is_unary(win[end - 1].op))
+  int v, op = end >= 1 ? win[end - 1].op : -1;
+  if (IS_UPDATE(op))
     return 1;
-  if (end >= 2 && (win[end - 1].op == OP_ADD || win[end - 1].op == OP_SUB)
+  if (end >= 2 && (op == OP_ADD || op == OP_SUB)
       && mop_const_value(&win[end - 2], &v))
     return 2;
   return 0;
@@ -617,8 +661,7 @@ static int rewrite_noop(Mop *a, Mop *b)
 {
   int v;
   if (mop_const_value(a, &v)
-      && ((v == 0 && (b->op == OP_IOR || b->op == OP_XOR
-                      || b->op == OP_SHL || b->op == OP_SHR))
+      && ((v == 0 && IS_ZERO_IDENTITY(b->op))
           || (v == 1 && b->op == OP_DIV))) {
     nwin -= 2;
     return 1;
@@ -935,13 +978,6 @@ static int rewrite_self(Mop *a, Mop *b)
   return 0;
 }
 
-// Does window op m read a local: LLW, LLB, or an add of one?
-static int reads_local(Mop *m)
-{
-  return m->op == OP_LLW || m->op == OP_LLB || m->op == OP_ADDLB
-         || m->op == OP_ADDLW || m->op == OP_IDXLB || m->op == OP_IDXLW;
-}
-
 // Remove the DROP at window index i and, if the expression before it
 // has no effect (expr_len(): plain loads and arithmetic), that too.
 // Returns how many ops before i went.
@@ -963,20 +999,20 @@ static int drop_expr(int i)
 // DROPs, loads of locals, and the stores, and stops at anything else.
 static void dead_stores(void)
 {
-  int i, j, pops, pushes, nread = 0, read[WINDOW];
+  int i, j, pops, pushes, nread = 0, read[WINDOW], op;
   Mop *m;
   for (i = nwin - 2; i >= 0; i--) {
     m = &win[i];
-    if (m->op == OP_SLW || m->op == OP_SLB || m->op == OP_DLW
-        || m->op == OP_DLB) {
+    op = m->op;
+    if (STORES_LOCAL(op)) {
       for (j = 0; j < nread; j++)
         if (m->a - read[j] <= 1 && read[j] - m->a <= 1)
           break;
       if (j < nread)
         continue;               // loaded back: not dead
-      if (m->op == OP_DLW) {
+      if (op == OP_DLW) {
         remove_op(i);
-      } else if (m->op == OP_DLB) {
+      } else if (op == OP_DLB) {
         m->op = OP_ANDI;
         m->a = 0xFF;
       } else {
@@ -984,11 +1020,11 @@ static void dead_stores(void)
         m->a = 0;
         i -= drop_expr(i);      // and the value, if it has no effect
       }
-    } else if (reads_local(m)) {
+    } else if (READS_LOCAL(op)) {
       read[nread++] = m->a;
-    } else if (m->op != OP_DROP && m->op != OP_DROP2
-               && (!stack_effect(m, &pops, &pushes) || m->op == OP_LW
-                   || m->op == OP_LB)) {
+    } else if (op != OP_DROP && op != OP_DROP2
+               && (!stack_effect(m, &pops, &pushes) || op == OP_LW
+                   || op == OP_LB)) {
       break;
     }
   }
@@ -999,11 +1035,13 @@ static void dead_stores(void)
 static int rewrite(void)
 {
   Mop *a, *b;
+  int op;
 
   if (nwin < 2)
     return 0;
   a = &win[nwin - 2];
   b = &win[nwin - 1];
+  op = b->op;
   // const OP const -> const (fold_pair()): both sides constant is a
   // backstop for the parser's own folding. It comes first, so that
   // the one-constant rewrites below don't spend one constant into an
@@ -1011,7 +1049,7 @@ static int rewrite(void)
   if (nwin >= 3) {
     int v1, v2, v;
     if (mop_const_value(&win[nwin - 3], &v1)
-        && mop_const_value(a, &v2) && fold_pair(b->op, v1, v2, &v)) {
+        && mop_const_value(a, &v2) && fold_pair(op, v1, v2, &v)) {
       Mop r;
       mop_const(&r, v);
       win[nwin - 3] = r;
@@ -1031,7 +1069,7 @@ static int rewrite(void)
   // the first NOT's true ($FFFF) into 1, and NOT tests only zero
   // against non-zero, so the second NOT gives the same without it.
   if (nwin >= 3 && win[nwin - 3].op == OP_NOT && a->op == OP_ANDI
-      && a->a != 0 && b->op == OP_NOT) {
+      && a->a != 0 && op == OP_NOT) {
     *a = *b;
     nwin--;
     return 1;
@@ -1039,7 +1077,7 @@ static int rewrite(void)
   // expr ANDI 0 -> CN 0: x & 0 is 0, and so are x * 0 and x % 1, which
   // become DROP CN 0, then ANDI 0. When x has no effect (expr_len()),
   // it goes; a call or a volatile read keeps its ANDI 0.
-  if (b->op == OP_ANDI && b->a == 0) {
+  if (op == OP_ANDI && b->a == 0) {
     int n = expr_len(nwin - 1);
     if (n > 0) {
       nwin -= n;
@@ -1051,12 +1089,11 @@ static int rewrite(void)
   // loads and arithmetic): CN 0 expr SUB -> expr NEG, as 0 - x is -x;
   // and CN 0 expr SHL / SHR / DIV / MOD -> CN 0, as 0 << x, 0 >> x,
   // 0 / x and 0 % x are 0 (dividing by 0 is undefined in C).
-  if (b->op == OP_SUB || b->op == OP_SHL || b->op == OP_SHR
-      || b->op == OP_DIV || b->op == OP_MOD) {
+  if (IS_ZERO_LEFT(op)) {
     int n = expr_len(nwin - 1), i = nwin - 2 - n, v;
     if (n > 0 && i >= 0 && win[i].fix == FIX_NONE
         && mop_const_value(&win[i], &v) && v == 0) {
-      if (b->op == OP_SUB) {
+      if (op == OP_SUB) {
         remove_op(i);
         win[nwin - 1].op = OP_NEG;
       } else {
@@ -1069,14 +1106,14 @@ static int rewrite(void)
   // x << (m + n), and 0 when that's 16 or more; the same for SHR, whose
   // count stops at 15, since an arithmetic shift by 15 already fills
   // the value with its sign. Pure stack arithmetic.
-  if (nwin >= 4 && (b->op == OP_SHL || b->op == OP_SHR)
-      && win[nwin - 3].op == b->op && win[nwin - 4].fix == FIX_NONE
+  if (nwin >= 4 && (op == OP_SHL || op == OP_SHR)
+      && win[nwin - 3].op == op && win[nwin - 4].fix == FIX_NONE
       && a->fix == FIX_NONE) {
     int m, n;
     if (mop_const_value(&win[nwin - 4], &m) && mop_const_value(a, &n)
         && m >= 0 && m <= 15 && n >= 0 && n <= 15) {
       nwin -= 2;
-      if (m + n <= 15 || b->op == OP_SHR)
+      if (m + n <= 15 || op == OP_SHR)
         mop_const(&win[nwin - 2], m + n <= 15 ? m + n : 15);
       else
         drop_for_const(0);
@@ -1086,7 +1123,7 @@ static int rewrite(void)
   // DUP ADD ADD -> IDXW: adding twice x is PLASMA's word index op
   // (p + i for a pointer to 2-byte elements).
   if (nwin >= 3 && win[nwin - 3].op == OP_DUP && a->op == OP_ADD
-      && b->op == OP_ADD) {
+      && op == OP_ADD) {
     win[nwin - 3].op = OP_IDXW;
     nwin -= 2;
     return 1;
@@ -1103,11 +1140,11 @@ static int rewrite(void)
   }
   // DUP update store DROP -> update store: x++ (or a similar update)
   // whose old value is unused needs no copy of it; nor does a store.
-  if (b->op == OP_DROP && drop_dup())
+  if (op == OP_DROP && drop_dup())
     return 1;
   // expr DROP -> nothing, for an expression that reads no memory but
   // the frame.
-  if (b->op == OP_DROP && drop_expr(nwin - 1))
+  if (op == OP_DROP && drop_expr(nwin - 1))
     return 1;
   return 0;
 }
@@ -1160,15 +1197,16 @@ static void before_label(int n)
 // in dead code (the branches it moves are live).
 void peep_put(Mop *m)
 {
-  if (m->op == OP_JOIN) {
+  int op = m->op;
+  if (op == OP_JOIN) {
     if (nwin == WINDOW)
       pass_oldest();
     win[nwin++] = *m;
     return;
   }
-  if (MOP_IS_PSEUDO(m->op)) {
+  if (MOP_IS_PSEUDO(op)) {
     // A barrier: never optimize across it.
-    if (m->op == OP_LABEL)
+    if (op == OP_LABEL)
       before_label(m->a);
     peep_flush();
     dead = 0;
@@ -1180,9 +1218,9 @@ void peep_put(Mop *m)
   if (nwin == WINDOW)
     pass_oldest();
   win[nwin++] = *m;
-  if (is_unconditional_exit(m->op))
+  if (IS_EXIT(op))
     dead = 1;
-  if (m->op == OP_LEAVE || m->op == OP_RET)
+  if (op == OP_LEAVE || op == OP_RET)
     dead_stores();
   while (rewrite())
     ;

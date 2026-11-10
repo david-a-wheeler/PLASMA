@@ -54,7 +54,7 @@ blank for a limit that isn't measured.
 | `ENTRY_LABEL` | 103 | 81 (link.c) | ordinary labels in one function: the goto labels are the rest of MAX_LABELS, above this one | [src/ir.h](../src/ir.h) |
 | `MAX_FUNC_CODE` | 1280 | 872 (link.c) | bytes of bytecode in one function | [src/obj.h](../src/obj.h) |
 | `MAX_FUNC_RELOCS` | 128 | 111 (link.c) | calls and data references in one function | [src/obj.h](../src/obj.h) |
-| `MAX_NEST` | 32 | 16 (pexpr.c) | nesting of parentheses, blocks and loops | [src/parse.body.h](../src/parse.body.h) |
+| `MAX_NEST` | 32 | 16 (peep.c) | nesting of parentheses, blocks and loops | [src/parse.body.h](../src/parse.body.h) |
 | `MAX_PARAMS` | 16 |  | parameters of one function | [src/pstmt.c](../src/pstmt.c) |
 | `MAX_CASES` | 36 | 25 (pplex.c) | case labels in all the switches open at once; at most 255, a SEL table's limit | [src/pstmt.c](../src/pstmt.c) |
 

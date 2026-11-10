@@ -11,6 +11,13 @@
 #include "mop.h"
 #include "irloop.h"
 
+// Does IR op op store to a local, or take its address (SETLOCAL,
+// SETLOCALB, LOCALADDR)? SETLOCAL and SETLOCALB differ only in bit 0,
+// so they're one test; their volatile forms ($20 up) are in neither.
+#define WRITES_LOCAL(op) (((op) & ~1) == IR_SETLOCAL || (op) == IR_LOCALADDR)
+_Static_assert(IR_SETLOCALB == IR_SETLOCAL + 1 && (IR_SETLOCAL & 1) == 0,
+               "WRITES_LOCAL's SETLOCAL pair");
+
 // Loops (approach.md, "Loop design"). The parser writes a loop in
 // source order, between markers that name its labels:
 //   LOOP Ltest Lbrk  test  LOOPSTEP Lcont Lbrk  step
@@ -609,7 +616,7 @@ static int invariant(int d, int op, int a)
   for (i = lp_test[d]; i < nlp; i++) {
     op = lp_op[i];
     s = lp_a[i];
-    if ((op == IR_SETLOCAL || op == IR_SETLOCALB || op == IR_LOCALADDR)
+    if (WRITES_LOCAL(op)
         && overlap(s, 1 + (op == IR_SETLOCAL), a, end - a))
       return 0;
   }
@@ -970,7 +977,7 @@ int loop_take(int op, int a, int f)
   // Anything in the body that may change v, a store or its address,
   // ends its candidacy. (v isn't volatile: counted_shape() takes only
   // a plain LOCAL, so its stores are plain too.)
-  if ((op == IR_SETLOCAL || op == IR_SETLOCALB || op == IR_LOCALADDR)
+  if (WRITES_LOCAL(op)
       && overlap(a, 1 + (op == IR_SETLOCAL), ne_var, ne_w))
     ne_ok = 0;
   if (IR_REFS_LABEL(op))
