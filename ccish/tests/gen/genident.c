@@ -21,6 +21,13 @@ int orm1(int x)      { return x | -1; }
 int orcall(void)     { return (int)u7() | -1; }
 volatile int vg;
 int orvol(void)      { return vg | -1; }    // vg is still read
+// x with itself, once x's second load is a DUP: x - x and x ^ x are 0,
+// x & x and x | x are x. A volatile's two loads are two reads, and stay.
+int subself(int x)   { return x - x; }
+int xorself(int x)   { return x ^ x; }
+int andself(int x)   { return x & x; }
+int orself(int x)    { return x | x; }
+int subvol(void)     { return vg - vg; }
 
 int main(void)
 {
@@ -36,5 +43,10 @@ int main(void)
   orm1(1);
   orcall();
   orvol();
+  subself(1);
+  xorself(1);
+  andself(1);
+  orself(1);
+  subvol();
   return 0;
 }

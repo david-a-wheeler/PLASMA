@@ -90,6 +90,10 @@
 //                                          x % -1 is 0, x | -1 is -1;
 //                                          and x goes too if it has no
 //                                          effect
+//   DUP  SUB / XOR           -> DROP CN 0  x - x, x ^ x (and x goes if it
+//                                          has no effect); never two
+//                                          volatile loads, only a DUP
+//   DUP  AND / IOR           -> (nothing)  x & x, x | x
 //   CN 1  SHL                -> DUP ADD    x << 1, as for x * 2
 //   CN 0  ISEQ               -> NOT        x == 0: PLASMA's NOT gives
 //                                          ISEQ's true ($FFFF) and false
@@ -902,6 +906,25 @@ static int rewrite_minus1(Mop *a, Mop *b)
   return 0;
 }
 
+// A value with itself: DUP SUB and DUP XOR are 0 (x - x, x ^ x), and
+// DUP AND and DUP IOR are x (x & x, x | x). Only a DUP: two loads of a
+// volatile are two reads, which must stay (repeats_load() makes no DUP
+// of one), but a DUP's value was read once, so this reads it once.
+static int rewrite_self(Mop *a, Mop *b)
+{
+  if (a->op != OP_DUP)
+    return 0;
+  if (b->op == OP_SUB || b->op == OP_XOR) {
+    drop_for_const(0);
+    return 1;
+  }
+  if (b->op == OP_AND || b->op == OP_IOR) {
+    nwin -= 2;
+    return 1;
+  }
+  return 0;
+}
+
 // Does window op m read a local: LLW, LLB, or an add of one?
 static int reads_local(Mop *m)
 {
@@ -988,6 +1011,7 @@ static int rewrite(void)
   }
   if (rewrite_load_store(a, b) || rewrite_const(a, b)
       || rewrite_branch(a, b) || rewrite_mul(a, b) || rewrite_minus1(a, b)
+      || rewrite_self(a, b)
       || rewrite_andi(a, b) || rewrite_addsub(a, b)
       || rewrite_noop(a, b) || rewrite_load_andi(a, b)
       || rewrite_drop_zero(a, b) || rewrite_dup_const(a, b)

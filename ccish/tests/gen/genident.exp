@@ -88,6 +88,38 @@
     MINUS1 65535
     LEAVE 0
 
+    ; subself
+    ENTER 2 1
+    ; label 103
+    CN 0
+    LEAVE 2
+
+    ; xorself
+    ENTER 2 1
+    ; label 103
+    CN 0
+    LEAVE 2
+
+    ; andself
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LEAVE 2
+
+    ; orself
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LEAVE 2
+
+    ; subvol
+    ENTER 0 0
+    ; label 103
+    LAW.v data +0
+    LAW.v data +0
+    SUB
+    LEAVE 0
+
     ; main
     ENTER 0 0
     ; label 103
@@ -123,5 +155,19 @@
     CALL orcall
     DROP
     CALL orvol
+    DROP
+    CN 1
+    CALL subself
+    DROP
+    CN 1
+    CALL xorself
+    DROP
+    CN 1
+    CALL andself
+    DROP
+    CN 1
+    CALL orself
+    DROP
+    CALL subvol
     ANDI 0
     LEAVE 0
