@@ -21,6 +21,13 @@ int zshl(int x)      { return 0 << (x & 15); }
 int zshr(int x)      { return 0 >> (x & 15); }
 int zdiv(int x)      { return x ? 0 / x : 0; }
 int zmod(int x)      { return x ? 0 % x : 0; }
+// Left shifts only of x >= 0: shifting a negative value left is
+// undefined in C. Right shifts of a negative value are arithmetic in
+// both compilers.
+int shlshl(int x)    { return x < 0 ? 0 : (x << 2) << 3; }
+int shl16(int x)     { return x < 0 ? 0 : (x << 8) << 8; }
+int shrshr(int x)    { return (x >> 2) >> 3; }
+int shr20(int x)     { return (x >> 10) >> 10; }
 // x / -1, but not for -32768, whose quotient overflows (undefined).
 int divm1(int x)     { return x == -32768 ? 0 : x / -1; }
 
@@ -50,6 +57,10 @@ int main(void)
     puti(w16(zshr(xs[i]))); putc(' ');
     puti(w16(zdiv(xs[i]))); putc(' ');
     puti(w16(zmod(xs[i]))); putc(' ');
+    puti(w16(shlshl(xs[i]))); putc(' ');
+    puti(w16(shl16(xs[i]))); putc(' ');
+    puti(w16(shrshr(xs[i]))); putc(' ');
+    puti(w16(shr20(xs[i]))); putc(' ');
     putln();
   }
   return 0;

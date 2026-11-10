@@ -40,6 +40,12 @@ int zshr(int x)      { return 0 >> x; }
 int zdiv(int x)      { return 0 / x; }
 int zmod(int x)      { return 0 % x; }
 int zdivvol(void)    { return 0 / vg; }
+// Two constant shifts are one: their counts add, a left shift by 16 or
+// more is 0, and a right shift's count stops at 15.
+int shlshl(int x)    { return (x << 2) << 3; }
+int shl16(int x)     { return (x << 8) << 8; }
+int shrshr(int x)    { return (x >> 2) >> 3; }
+int shr20(int x)     { return (x >> 10) >> 10; }
 
 int main(void)
 {
@@ -68,5 +74,9 @@ int main(void)
   zdiv(1);
   zmod(1);
   zdivvol();
+  shlshl(1);
+  shl16(1);
+  shrshr(1);
+  shr20(1);
   return 0;
 }

@@ -98,6 +98,10 @@
 //                                          no effect
 //   CN 0  expr  SHL/SHR/DIV/MOD -> CN 0  the same: 0 << x, 0 >> x,
 //                                          0 / x and 0 % x
+//   const m  SHL  const n  SHL -> const m+n  SHL   two shifts (also SHR),
+//                                          a count of 16 or more making
+//                                          SHL's result 0 and SHR's
+//                                          count 15
 //   CN 1  SHL                -> DUP ADD    x << 1, as for x * 2
 //   CN 0  ISEQ               -> NOT        x == 0: PLASMA's NOT gives
 //                                          ISEQ's true ($FFFF) and false
@@ -1045,6 +1049,24 @@ static int rewrite(void)
       } else {
         nwin = i + 1;
       }
+      return 1;
+    }
+  }
+  // const m SHL const n SHL -> const (m + n) SHL: (x << m) << n is
+  // x << (m + n), and 0 when that's 16 or more; the same for SHR, whose
+  // count stops at 15, since an arithmetic shift by 15 already fills
+  // the value with its sign. Pure stack arithmetic.
+  if (nwin >= 4 && (b->op == OP_SHL || b->op == OP_SHR)
+      && win[nwin - 3].op == b->op && win[nwin - 4].fix == FIX_NONE
+      && a->fix == FIX_NONE) {
+    int m, n;
+    if (mop_const_value(&win[nwin - 4], &m) && mop_const_value(a, &n)
+        && m >= 0 && m <= 15 && n >= 0 && n <= 15) {
+      nwin -= 2;
+      if (m + n <= 15 || b->op == OP_SHR)
+        mop_const(&win[nwin - 2], m + n <= 15 ? m + n : 15);
+      else
+        drop_for_const(0);
       return 1;
     }
   }

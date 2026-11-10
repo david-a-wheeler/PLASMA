@@ -175,6 +175,36 @@
     DIV
     LEAVE 0
 
+    ; shlshl
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CN 5
+    SHL
+    LEAVE 2
+
+    ; shl16
+    ENTER 2 1
+    ; label 103
+    CN 0
+    LEAVE 2
+
+    ; shrshr
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CN 5
+    SHR
+    LEAVE 2
+
+    ; shr20
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CN 15
+    SHR
+    LEAVE 2
+
     ; main
     ENTER 0 0
     ; label 103
@@ -247,5 +277,17 @@
     CALL zmod
     DROP
     CALL zdivvol
+    DROP
+    CN 1
+    CALL shlshl
+    DROP
+    CN 1
+    CALL shl16
+    DROP
+    CN 1
+    CALL shrshr
+    DROP
+    CN 1
+    CALL shr20
     ANDI 0
     LEAVE 0
