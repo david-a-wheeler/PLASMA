@@ -18,6 +18,7 @@
 #include <string.h>
 #include "build.h"
 #include "diag.h"
+#include "diag.opt.h"
 #include "token.h"
 #include "ir.h"
 #include "irin.h"

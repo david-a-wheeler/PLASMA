@@ -41,6 +41,7 @@
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
+#include "diag.opt.h"
 #include "bio.h"
 #include "obj.h"
 #include "obj.fmt.h"

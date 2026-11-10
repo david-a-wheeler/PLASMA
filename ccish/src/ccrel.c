@@ -20,6 +20,7 @@
 #include <string.h>
 #include "build.h"
 #include "diag.h"
+#include "diag.opt.h"
 #include "link.h"
 
 // A partly written module, to remove if the final pass fails.

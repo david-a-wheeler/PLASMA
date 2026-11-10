@@ -17,6 +17,7 @@
 #include <string.h>
 #include "build.h"
 #include "diag.h"
+#include "diag.opt.h"
 #include "token.h"
 #include "ppout.h"
 #include "pp.h"

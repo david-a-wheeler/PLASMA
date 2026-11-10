@@ -76,6 +76,7 @@
 #include "type.h"
 #include "type.tag.h"
 #include "parse.h"
+#include "parse.body.h"
 #include "pstmt.h"
 #include "irout.h"
 

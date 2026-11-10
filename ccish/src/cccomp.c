@@ -17,6 +17,7 @@
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
+#include "diag.opt.h"
 #include "token.h"
 #include "obj.h"
 #include "ir.h"

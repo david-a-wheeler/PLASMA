@@ -2,25 +2,14 @@
 // programs (approach.md, "B3", and "C2 design"). Include after
 // build.h.
 //
-// diag.c's exports are in two headers: this one, and diag.src.h, the
+// diag.c's exports are in three headers: this one; diag.src.h, the
 // source position that messages give (src_name, src_line and
-// src_name_hook). That's kept apart because every variable a file can
-// see counts against cccomp's MAX_VARS when ccish compiles itself, and
-// ccrel's files don't need it. Include diag.src.h after this one.
+// src_name_hook); and diag.opt.h, the command-line options. Those are
+// kept apart because every variable a file can see counts against
+// cccomp's MAX_VARS when ccish compiles itself, and most files need
+// neither. Include diag.src.h and diag.opt.h after this one.
 #ifndef DIAG_H
 #define DIAG_H
-
-#ifdef CCISH_LISTING
-extern int opt_list;        // -l: print a listing of the generated code
-#else
-#define opt_list 0          // no listing in the small build
-#endif
-extern int opt_ir;          // -i: print the IR as ccgen reads it
-#ifdef CCISH_LISTING
-extern int opt_dump;        // -d: print the machine ops after peephole
-                            // (full build only)
-#endif
-extern int opt_keep;        // -k: keep the stream files
 
 // Diagnostics take a message number: its text is in the message file,
 // ccish.msg, and is also written, in double quotes, in a comment right

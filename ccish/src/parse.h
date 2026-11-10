@@ -1,7 +1,9 @@
 // cccomp's parser, stage 1: the table of functions, which irout.c
 // reads too, the operand type and the state all the parser's files
 // (parse.c, pexpr.c, pstmt.c, ptop.c) share, and the front end's
-// entry. Include after obj.h.
+// entry. Include after obj.h. With parse.body.h, the state only the
+// expression and statement files use, apart so that ptop.c needn't
+// see it (MAX_VARS).
 #ifndef PARSE_H
 #define PARSE_H
 
@@ -157,7 +159,6 @@ extern int var_type[MAX_VARS];      // its type, qualified
 extern int var_off[MAX_VARS];       // frame offset, or data offset
 extern char var_link[MAX_VARS];     // its linkage (the VL_* bits)
 extern int nvars, nglobals;
-extern char var_flags[MAX_VARS];  // the depth, plus the V_* bits
 extern int var_val[MAX_VARS];     // its known value (V_KNOWN)
 
 // A global's linkage, for the symbol summary (approach.md issue 11):
@@ -182,14 +183,7 @@ extern int depth;           // block depth; parameters are at depth 1
 extern int frame_next;      // next free frame offset
 extern int frame_max;       // frame size needed so far
 extern int cur_fn;          // the function being parsed, or -1
-#define MAX_NEST     32     // limit function: nesting of parentheses, blocks
-                            // and loops
-extern int nest;            // nesting depth, to limit recursion
 extern int in_params;       // parsing a function's parameter list
-#define MAX_HELD      8     // left operands held back at once
-extern int nheld;          // left operands held back, so far
-extern int suppress;       // parsing code that can never run
-extern char label_used[MAX_LABELS];  // some branch to it so far
 extern int nlabels;         // labels made in the function, so far
 extern int base_tagged;     // parse_base_type() was a struct or enum
 extern int want_addr;       // a global's initializer, for an address

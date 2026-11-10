@@ -10,6 +10,7 @@
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
+#include "diag.opt.h"
 #include "diag.src.h"
 #include "obj.h"
 

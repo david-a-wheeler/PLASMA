@@ -21,6 +21,7 @@
 #include "type.h"
 #include "type.tag.h"
 #include "parse.h"
+#include "parse.body.h"
 #include "irout.h"
 #include "pstmt.h"
 #include "pexpr.h"
