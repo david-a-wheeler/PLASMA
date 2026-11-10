@@ -213,7 +213,8 @@ void out_num(const char *s, int n)
 }
 
 // Print one IR op, for -i: "IR", its name padded to 8 characters, and
-// its operands.
+// its operands. The ops that print alike are mostly blocks of IR
+// numbers, so ranges find them; a switch takes 4 bytes a case.
 void dump_ir(int op, int a, int f)
 {
   int n = (int)strlen(ir_names[op]);
@@ -223,38 +224,39 @@ void dump_ir(int op, int a, int f)
     fputs(" ", stdout);
   if (IR_IS_LOOP_MARKER(op))
     op = IR_JOIN;               // a loop marker's two labels, the same
-  switch (op) {
-  case IR_FUNC:     fputs(" ", stdout); fputs(func_name(f), stdout); break;
-  case IR_ENDFUNC:  out_num(" frame=", a); break;
-  case IR_CONST:    out_num(" ", a); break;
-  case IR_DATAADDR: case IR_GLOBAL: case IR_SETGLOBAL:
-  case IR_GLOBALB: case IR_SETGLOBALB:
-                    if (f >= 0) {
-                      out_num(" sym", f);
-                      out_num("+", a);
-                    } else {
-                      out_num(" data+", a);
-                    }
-                    break;
-  case IR_STRADDR:  out_num(" string+", a); break;
-  case IR_HEAPADDR: out_num(" sym", f); break;
-  case IR_FUNCADDR: fputs(" ", stdout); fputs(func_name(f), stdout); break;
-  case IR_ICALL:    out_num(" nargs=", a); out_num(" words=", f); break;
-  case IR_LOCAL: case IR_SETLOCAL:
-  case IR_LOCALB: case IR_SETLOCALB: case IR_LOCALADDR: case IR_REGLOCAL:
-                    out_num(" [", a); fputs("]", stdout); break;
-  case IR_CALL:     fputs(" ", stdout); fputs(func_name(f), stdout);
-                    out_num(" nargs=", a); break;
-  case IR_LABEL: case IR_JUMP: case IR_BRFALSE: case IR_BRTRUE:
-  case IR_SEL: case IR_CASETO:
-                    out_num(" L", a); break;
-  case IR_JOIN:     out_num(" L", a); out_num(" L", f); break;
-  case IR_CASES: case IR_CASEVAL:
-                    out_num(" ", a); break;
-  case IR_SWAP:     out_num(" ", a); out_num(" ", f); break;
-  case IR_ULT: case IR_UGT: case IR_ULE: case IR_UGE:
-  case IR_UDIV: case IR_UMOD: case IR_USHR:
-                    out_num(" ", a); break;
+  if (op <= IR_SETLOCALB || op == IR_LOCALADDR || op == IR_REGLOCAL) {
+    out_num(" [", a);
+    fputs("]", stdout);
+  } else if (op <= IR_SETGLOBALB || op == IR_DATAADDR) {
+    if (f >= 0) {
+      out_num(" sym", f);
+      out_num("+", a);
+    } else {
+      out_num(" data+", a);
+    }
+  } else if (IR_REFS_LABEL(op) || op == IR_LABEL) {
+    out_num(" L", a);
+  } else if (op == IR_CONST || op == IR_CASES || op == IR_CASEVAL
+             || IR_IS_U_COMPARE(op) || (op >= IR_UDIV && op <= IR_USHR)) {
+    out_num(" ", a);
+  } else {
+    switch (op) {
+    case IR_FUNC: case IR_FUNCADDR:
+      fputs(" ", stdout);
+      fputs(func_name(f), stdout);
+      break;
+    case IR_CALL:
+      fputs(" ", stdout);
+      fputs(func_name(f), stdout);
+      out_num(" nargs=", a);
+      break;
+    case IR_ENDFUNC:  out_num(" frame=", a); break;
+    case IR_STRADDR:  out_num(" string+", a); break;
+    case IR_HEAPADDR: out_num(" sym", f); break;
+    case IR_ICALL:    out_num(" nargs=", a); out_num(" words=", f); break;
+    case IR_JOIN:     out_num(" L", a); out_num(" L", f); break;
+    case IR_SWAP:     out_num(" ", a); out_num(" ", f); break;
+    }
   }
   fputs("\n", stdout);
 }
