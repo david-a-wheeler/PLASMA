@@ -847,10 +847,19 @@ static int unsigned_const(int *op)
 // is a constant 0 or 1 that makes it a test of zero, make it that, an
 // EQ or NE with 0, which the peephole stage makes one branch or a NOT:
 // x <u 1 and x <=u 0 are x == 0, and x >=u 1 and x >u 0 are x != 0.
-// Returns the op to hold.
-static int u_const(int op)
+// And x <u 0 is always 0, and x >=u 0 always 1: the 0 becomes a DROP
+// (x is still computed, for its side effects) and the op that
+// constant, so as many ops are held as before. Returns the op to
+// hold, and sets *a to its operand.
+static int u_const(int op, int *a)
 {
   int c = nbuf > 0 && buf_op[nbuf - 1] == IR_CONST ? buf_a[nbuf - 1] : -1;
+  *a = 0;
+  if (c == 0 && (op == IR_ULT || op == IR_UGE)) {
+    buf_op[nbuf - 1] = IR_DROP;
+    *a = op == IR_UGE;
+    return IR_CONST;
+  }
   if ((c == 1 && (op == IR_ULT || op == IR_UGE))
       || (c == 0 && (op == IR_ULE || op == IR_UGT))) {
     buf_a[nbuf - 1] = 0;
@@ -910,10 +919,8 @@ void ir_hold(int op, int a, int f)
     f = unsigned_const(&op);
     a = 0;
   }
-  if (IR_IS_U_COMPARE(op)) {
-    op = u_const(op);
-    a = 0;                      // (the parser's block length: unused)
-  }
+  if (IR_IS_U_COMPARE(op))
+    op = u_const(op, &a);       // (a was the parser's block length)
   if (op == IR_SWAP) {
     if (f >= 0 && a + f <= nbuf) {
 #ifdef CCISH_CHECKS

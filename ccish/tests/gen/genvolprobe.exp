@@ -66,9 +66,8 @@
     ENTER 0 0
     ; label 103
     LAW.v data +2
-    CN 0
-    CALL __isuge
-    NEG
+    DROP
+    CN 1
     LEAVE 0
 
     ; notnot

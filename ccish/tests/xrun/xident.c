@@ -5,6 +5,8 @@
 #include "ptest.h"
 
 int notnot(int x)    { return !!x; }
+int ult0(unsigned x) { return x < 0u; }
+int uge0(unsigned x) { return x >= 0u; }
 
 // The values of x: the edges of the 16-bit range, and around 0.
 int xs[] = { -32768, -32767, -256, -255, -3, -2, -1, 0, 1, 2, 3, 255,
@@ -15,6 +17,8 @@ int main(void)
   int i, n = sizeof xs / sizeof xs[0];
   for (i = 0; i < n; i++) {
     puti(w16(notnot(xs[i]))); putc(' ');
+    puti(w16(ult0((unsigned)xs[i]))); putc(' ');
+    puti(w16(uge0((unsigned)xs[i]))); putc(' ');
     putln();
   }
   return 0;

@@ -7,10 +7,44 @@
     ANDI 1
     LEAVE 2
 
+    ; ult0
+    ENTER 2 1
+    ; label 103
+    CN 0
+    LEAVE 2
+
+    ; uge0
+    ENTER 2 1
+    ; label 103
+    CN 1
+    LEAVE 2
+
+    ; u7
+    ENTER 0 0
+    ; label 103
+    CN 7
+    LEAVE 0
+
+    ; ucall
+    ENTER 0 0
+    ; label 103
+    CALL u7
+    DROP
+    CN 1
+    LEAVE 0
+
     ; main
     ENTER 0 0
     ; label 103
     CN 1
     CALL notnot
+    DROP
+    CN 1
+    CALL ult0
+    DROP
+    CN 1
+    CALL uge0
+    DROP
+    CALL ucall
     ANDI 0
     LEAVE 0
