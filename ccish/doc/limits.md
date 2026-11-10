@@ -22,7 +22,7 @@ blank for a limit that isn't measured.
 | `MAX_PP_OPTS` | 16 |  | -D and -U options | [src/pp.c](../src/pp.c) |
 | `MAX_LINE` | 255 | 184 (mop.h) | characters in one source line, after joining the lines that end in a backslash: ccpp's buffer | [src/pplex.h](../src/pplex.h) |
 | `MAX_INCLUDE` | 3 | 2 (bio.c) | #include files open at once, beside the source: PLASMA's Apple II file library allows 4 open files, and ccpp has the source and NAME.i open | [src/pplex.h](../src/pplex.h) |
-| `MAX_MACROS` | 155 | 142 (pexpr.c) | macros defined at once, include guards too | [src/ppmac.c](../src/ppmac.c) |
+| `MAX_MACROS` | 200 | 142 (pexpr.c) | macros defined at once, include guards too; well above ccish's own use, as for MAX_MACRO_BYTES | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_MACRO_BYTES` | 2048 | 1241 (pexpr.c) | bytes of their bodies, as tokens, where an identifier or number is 3 bytes; well above ccish's own use, since macros are how a program inlines code (a byte of ccpp's heap each, and nothing of cccomp's) | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_EXPAND` | 16 | 4 (pexpr.c) | macro expansions inside one another | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_EXP_BYTES` | 256 | 139 (emit.c) | bytes of the expansions and arguments being read, and of the arguments' own expansions (two buffers): room for macros longer than ccish's | [src/ppmac.c](../src/ppmac.c) |
