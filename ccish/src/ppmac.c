@@ -33,8 +33,11 @@
 
 #define MAX_MACROS   155    // limit pp: macros defined at once, include
                             // guards too
-#define MAX_MACRO_BYTES 1284 // limit pp: bytes of their bodies, as tokens,
-                             // where an identifier or number is 3 bytes
+#define MAX_MACRO_BYTES 2048 // limit pp: bytes of their bodies, as tokens,
+                             // where an identifier or number is 3 bytes;
+                             // well above ccish's own use, since macros
+                             // are how a program inlines code (a byte of
+                             // ccpp's heap each, and nothing of cccomp's)
 #define MAX_EXPAND   16     // limit pp: macro expansions inside one another
 #define MAX_EXP_BYTES 256   // limit pp: bytes of the expansions and arguments
                             // being read, and of the arguments' own
