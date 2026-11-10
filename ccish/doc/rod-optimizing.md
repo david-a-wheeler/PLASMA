@@ -21,9 +21,9 @@ their larger count). A frame is one pass over i, for one w. Measured
 | rodsimple.c | 61,900 | 4.09 |
 | rodfast.c | 10,200 | 0.57 (and 1.25 once, at the start, for its tables) |
 | rod.pla (PLASMA) | | about 2.6, estimated from `xplasm -AMOS`'s inner loop (73 ops, about 5,830 cycles) and the native code it calls (about 1,140): plvm doesn't run `conio:grplot`'s 6502 code |
-| rodconio.c | | about 2.1 (2.07), estimated the same way: ccish's inner loop (69 ops, about 4,440 cycles) and the same native code; 2.61 without `register` |
+| rod.c (was rodconio.c) | | about 2.1 (2.07), estimated the same way: ccish's inner loop (69 ops, about 4,440 cycles) and the same native code; 2.61 without `register` |
 
-rodconio.c is rod.pla's program in C: the same loops, calling the same
+rod.c is rod.pla's program in C: the same loops, calling the same
 CONIO routines, with `char` variables where rod.pla has `byte` ones.
 Without `register`, ccish's code is within 1% of PLASMA's compiler's,
 op for op the same but for the loop over j, which isn't counted, since
@@ -73,7 +73,8 @@ listed here.
    keeps the store from being a `DLW`), about 77 cycles a plot less.
    I first estimated 10% of rodsimple's time, assuming a `DLW` and
    one `LLW`; measured, it's 5% (4.33 s a frame to 4.11).
-   `LORES_PLOT` now does this itself, in a block-local pointer. For a
+   `LORES_PLOT` then did this itself, in a block-local pointer (I've
+   since removed it from lores.h, with rodsimple). For a
    2-op address (`LLW p ADDLW x`, as in rodfast's loops) it doesn't pay.
    Also in rodsimple: `c << LORES_HI_SHIFT` is computed for each of the
    up to 8 odd-row plots of an (i, j), about 4%. In the compiler, this

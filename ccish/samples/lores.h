@@ -59,20 +59,4 @@ extern char *const lores_row[LORES_HEIGHT];
 #define LORES_SET_HI2(p, n) \
   (*(lores_word *)(p) = (*(lores_word *)(p) & LORES_LO2) | (n))
 
-/* Plot pixel (X, Y) in color C (0-15): a general plot, for code that
- * doesn't know Y's parity in advance. A statement, not a ?:
- * expression, since ccish computes a ?:'s value even when it's
- * dropped (3 ops more each). The byte's address is computed once, into
- * lores_p_, since ccish would compute it again for the store (the VM
- * has no SWAP to keep it under the value): a store and two loads of
- * lores_p_ replace the second 4-op address, about 77 cycles less. */
-#define LORES_PLOT(x, y, c) \
-  do { \
-    char *lores_p_ = lores_row[y] + (x); \
-    if ((y) & 1) \
-      LORES_SET_HI(lores_p_, (c) << LORES_HI_SHIFT); \
-    else \
-      LORES_SET_LO(lores_p_, (c)); \
-  } while (0)
-
 #endif

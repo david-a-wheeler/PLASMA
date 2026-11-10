@@ -8978,4 +8978,6 @@ rodfast.c, where speed is all that matters; rodconio.c is the plain
 version, which saves development time but still uses cheap wins such
 as `register`. rodfast's module is byte-for-byte what rod's was;
 rodconio's no longer links lores.obj. doc/rod-optimizing.md keeps the
-findings, and the removed files are in git history.
+findings, and the removed files are in git history. Then rodconio.c
+became rod.c, so people look at the easy version first, and lores.h
+lost `LORES_PLOT`, which only rodsimple and the test used.

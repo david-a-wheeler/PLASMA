@@ -1,6 +1,6 @@
 /* rodfast.c: Rod's Colors, the lores demo from the Apple II DOS System
  * Master disk, in C for ccish, where speed is all that matters, at the
- * cost of much more code. Press any key to exit. rodconio.c is the same
+ * cost of much more code. Press any key to exit. rod.c is the same
  * program written plainly, calling CONIO to plot.
  *
  * The original (src/samplesrc/rod.bas and rod.pla) does, for each w

@@ -1,4 +1,4 @@
-/* rodconio.c: Rod's Colors, the lores demo from the Apple II DOS System
+/* rod.c: Rod's Colors, the lores demo from the Apple II DOS System
  * Master disk, in C for ccish, written as src/samplesrc/rod.pla is:
  * the original's loops, plot by plot, through CONIO's grcolor, grplot
  * and keypressed. On the Apple II those are the same 6502 routines
