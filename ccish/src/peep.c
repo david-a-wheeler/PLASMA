@@ -112,6 +112,8 @@
 //                                          a[i + c] below
 //   CN 1  MUL                -> (nothing)
 //   DROP  CN 0               -> ANDI 0     one op pops it and pushes 0
+//   expr  ANDI 0             -> CN 0       for an expression with no
+//                                          effect: x & 0, x * 0, x % 1
 //   const MUL, const = 2^n   -> CN n SHL   for n from 2 to 15
 //   DUP  ADD  ADD            -> IDXW       p + 2*i
 //   LA a  expr  add c  ADD   -> LA a+c  expr  ADD   a[i + c] (add c is
@@ -1033,6 +1035,17 @@ static int rewrite(void)
     *a = *b;
     nwin--;
     return 1;
+  }
+  // expr ANDI 0 -> CN 0: x & 0 is 0, and so are x * 0 and x % 1, which
+  // become DROP CN 0, then ANDI 0. When x has no effect (expr_len()),
+  // it goes; a call or a volatile read keeps its ANDI 0.
+  if (b->op == OP_ANDI && b->a == 0) {
+    int n = expr_len(nwin - 1);
+    if (n > 0) {
+      nwin -= n;
+      mop_const(&win[nwin - 1], 0);
+      return 1;
+    }
   }
   // 0 op x, for an expression x with no effect (expr_len(): plain
   // loads and arithmetic): CN 0 expr SUB -> expr NEG, as 0 - x is -x;

@@ -131,12 +131,7 @@
     ; wwhole
     ENTER 2 1
     ; label 103
-    LLW 0
-    CW 32768
-    SUB
-    ANDI 0
-    NOT
-    NEG
+    CN 1
     LEAVE 2
 
     ; wempty

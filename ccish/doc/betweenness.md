@@ -463,7 +463,8 @@ Notes:
   are both handled. On an `int`, a singleton's cast and width-1 mask are both
   `ANDI 255`, which the peephole merges to one, and the whole-byte case folds
   to the tautology `ANDI 0, CN 0, ISEQ`; both are still smaller than the
-  general form.
+  general form. When `x` is a plain load, the peephole makes `x ANDI 0` just
+  `CN 0` (2026-11-10), and the whole tautology then folds to the constant 1.
 * For a true word value (an `int` not known to be 0 to 255) `ANDI` cannot be
   used, because the block mask has high bits set; the full-word `CW`+`AND` form
   is only marginally smaller than, and no cheaper than, the general
@@ -636,7 +637,9 @@ high bits, and the mask is a word AND with a two- or three-byte constant:
 * CFFB (two bytes) for 2 <= w <= 256 (M is 0xFF00 to 0xFFFE);
 * CW (three bytes) for 512 <= w <= 32768 (M is 0x8000 to 0xFE00);
 * CN 0 (one byte, meeting the AND as an ANDI 0 in the peephole) for the
-  whole-word w == 65536 (M is 0).
+  whole-word w == 65536 (M is 0). When x is a plain load, the peephole then
+  makes the ANDI 0 and its operand CN 0, and the test folds to the constant
+  1 (genbetween.c's wwhole).
 
 The compare's constant is likewise often a CW (three) where a byte base
 was a CB (two). That is the word form's extra one to two bytes over the

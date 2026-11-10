@@ -17,8 +17,7 @@
     ; m0
     ENTER 2 1
     ; label 103
-    LLW 0
-    ANDI 0
+    CN 0
     LEAVE 2
 
     ; m1
