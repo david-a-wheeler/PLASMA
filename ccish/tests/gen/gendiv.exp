@@ -1,0 +1,47 @@
+    ; d1
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LEAVE 2
+
+    ; u1
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    LEAVE 2
+
+    ; d2
+    ENTER 2 1
+    ; label 103
+    LLW 0
+    CN 2
+    DIV
+    LEAVE 2
+
+    ; f
+    ENTER 0 0
+    ; label 103
+    CN 7
+    LEAVE 0
+
+    ; c1
+    ENTER 0 0
+    ; label 103
+    CALL f
+    LEAVE 0
+
+    ; main
+    ENTER 0 0
+    ; label 103
+    CN 1
+    CALL d1
+    DROP
+    CN 1
+    CALL u1
+    DROP
+    CN 1
+    CALL d2
+    DROP
+    CALL c1
+    ANDI 0
+    LEAVE 0

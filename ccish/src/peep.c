@@ -60,6 +60,7 @@
 //   CN 0  IOR/XOR/SHL/SHR    -> (nothing)    x | 0, x ^ 0, x << 0, x >> 0
 //                                          and ~~x (COMP COMP) are no-ops,
 //                                          so both ops go
+//   CN 1  DIV                -> (nothing)    x / 1 is x (x * 1: below)
 //   CN 1   ADD / SUB         -> INCR / DECR   (also MINUS1 SUB, ...)
 //   const  ADD / SUB         -> ADDI / SUBI n  for adding n from 2 to 255
 //                                          either way (x - 5, x + -5:
@@ -584,16 +585,18 @@ static int rewrite_addsub(Mop *a, Mop *b)
   return 1;
 }
 
-// A constant 0 under a no-op op (x | 0, x ^ 0, x << 0, x >> 0), or a
-// double complement (~~x), leaves the value unchanged, so both ops go.
-// The front end already folds x + 0 and x - 0; these are the rest.
+// A constant 0 under a no-op op (x | 0, x ^ 0, x << 0, x >> 0), a
+// constant 1 under DIV (x / 1), or a double complement (~~x), leaves
+// the value unchanged, so both ops go. The front end already folds
+// x + 0 and x - 0, and rewrite_mul() does x * 1; these are the rest.
 // Pure stack arithmetic, safe even for a volatile value.
 static int rewrite_noop(Mop *a, Mop *b)
 {
   int v;
-  if (mop_const_value(a, &v) && v == 0
-      && (b->op == OP_IOR || b->op == OP_XOR || b->op == OP_SHL
-          || b->op == OP_SHR)) {
+  if (mop_const_value(a, &v)
+      && ((v == 0 && (b->op == OP_IOR || b->op == OP_XOR
+                      || b->op == OP_SHL || b->op == OP_SHR))
+          || (v == 1 && b->op == OP_DIV))) {
     nwin -= 2;
     return 1;
   }
