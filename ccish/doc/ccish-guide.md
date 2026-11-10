@@ -219,6 +219,25 @@ module). On the host you rarely need the separate passes; the
 exceptions are linking several files (2.3) and keeping the
 intermediates with `-k`.
 
+The code is specifically designed to enable self-hosting, which is
+a challenge:
+
+* The preprocessor/lexer `ccpp` generates a "name" file, a list of
+  identifiers in the numerical order it has assigned.
+  This means that the main parser `cccomp` never needs to read identifiers,
+  unless it's printing an error message. Instead,
+  the parser instead always processes and compares integers.
+  This is important because there is limited space for identifiers.
+* The parser `cccomp` does *not* generate an abstract syntax tree (AST);
+  that's a common approach, but difficult to manage in small memory.
+  The parser instead directly generates an intermediate representation (IR)
+  sequences, which is later lowered to a sequence of VM codes.
+  Passes process the IR and VM codes to reorder and optimize them.
+  You'd think this would mean we can't reorder things, but in fact, we do.
+* Error messages are all in a file, since there's no room for them in the code.
+  If the message file isn't available (e.g., because there's no room on the disk),
+  a numeric error code is printed.
+
 ### 2.3 Linking several files
 
 Compile each file through the passes, then link the objects into one

@@ -11,17 +11,35 @@ Everyone else, enjoy.
 
 ccish compiles C into PLASMA REL modules, which run on PLASMA's VMs:
 the Apple II and its other 6502 targets, and the C VM `plvm` on the
-host. It's a subset of C by design: what it supports generally means
-what C says, so the same source compiles with gcc, but it leaves out
-what's costly on a 64K machine and not needed to compile itself, such
+host. It's a subset/superset of C by design: what it supports generally means
+what C says, so the same source compiles with gcc or clang, but ccish leaves
+out what's costly on a 64K machine and not needed to compile itself, such
 as floating point and `long`. Using one of those is a compile-time
 error.
+
+The ccish compiler is divided into four parts:
+
+* `ccpp` (the preprocessor and lexer) reads the source; it writes tokens
+  and a name file.
+* `cccomp` (the parser) reads the tokens and writes an IR file.
+* `ccgen` (the code generator) reads the IR and name file
+  and writes object files (both are removed unless `-k`).
+* `ccrel` (the final pass) links 1+ objects into a REL module.
+
+The ccish compiler aggressively optimizes for its target (given its
+limitations) including constant folding, self tail call optimization,
+range subset sometimes (becoming AND), hoisting some expensive operations
+from within loops, compile-time order swapping, and so on.
+It does this through parser constant folding, IR window optimization,
+and a VM peephole optimizer that implements many optimization patterns.
+Its results are nowhere near as fast as assembly, but it will generally be
+much smaller and "fast enough" for many tasks.
 
 ccish compiles itself, and `make bootstrap` checks that it reproduces
 itself byte for byte under plvm. Programs it compiles run on an
 emulated 64K Apple IIe (see `samples/`). Running the compiler itself
-on a 64K Apple II is still ahead: its front end, `cccomp`, needs
-PLASMA's loader to stream a module's relocation data to fit, and
+on a 64K Apple II is still ahead. Its heart, a front-end parser named `cccomp`,
+needs PLASMA's loader to stream a module's relocation data to fit, and
 `exit()` isn't implemented yet.
 
 ## Using it
