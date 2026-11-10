@@ -286,6 +286,40 @@ _Static_assert(!IS_ZERO_LEFT(OP_ADD) && !IS_ZERO_LEFT(OP_MUL)
                && !IS_ZERO_LEFT(OP_SHL | MOP_VOLATILE),
                "IS_ZERO_LEFT holds a non-member");
 
+// The guards rewrite() puts before its rules, so that a pass where
+// none can match calls none of them: most rules need one op, or a
+// constant, as a or b. A guard holds at least everything its rule
+// matches, and the rules keep their order, so the code doesn't change.
+
+// Is op a constant add, as add_value() takes (INCR, DECR, ADDI, SUBI)?
+#define IS_ADD_VALUE(op) ((((op) - OP_INCR) & ~2) == 0 \
+                          || ((op) & ~2) == OP_ADDI)
+_Static_assert(IS_ADD_VALUE(OP_INCR) && IS_ADD_VALUE(OP_DECR)
+               && IS_ADD_VALUE(OP_ADDI) && IS_ADD_VALUE(OP_SUBI),
+               "IS_ADD_VALUE misses a member");
+_Static_assert(!IS_ADD_VALUE(OP_MOD) && !IS_ADD_VALUE(OP_NEG)
+               && !IS_ADD_VALUE(OP_DUP) && !IS_ADD_VALUE(OP_ANDI)
+               && !IS_ADD_VALUE(OP_ADD) && !IS_ADD_VALUE(OP_SUB)
+               && !IS_ADD_VALUE(OP_ADDLB) && !IS_ADD_VALUE(OP_ADDAW)
+               && !IS_ADD_VALUE(OP_INCR | MOP_VOLATILE)
+               && !IS_ADD_VALUE(OP_ADDI | MOP_VOLATILE),
+               "IS_ADD_VALUE holds a non-member");
+
+// Is op a branch that tests a value or compares two (BRFLS, BRTRU,
+// BREQ, BRNE), as rewrite_branch()'s patterns end?
+#define IS_VALUE_BRANCH(op) (((op) & ~2) == OP_BRFLS \
+                             || (((op) - OP_BREQ) & ~2) == 0)
+_Static_assert(IS_VALUE_BRANCH(OP_BRFLS) && IS_VALUE_BRANCH(OP_BRTRU)
+               && IS_VALUE_BRANCH(OP_BREQ) && IS_VALUE_BRANCH(OP_BRNE),
+               "IS_VALUE_BRANCH misses a member");
+_Static_assert(!IS_VALUE_BRANCH(OP_BRNCH) && !IS_VALUE_BRANCH(OP_SEL)
+               && !IS_VALUE_BRANCH(OP_ISLE) && !IS_VALUE_BRANCH(OP_MINUS1)
+               && !IS_VALUE_BRANCH(OP_LA) && !IS_VALUE_BRANCH(OP_BRGT)
+               && !IS_VALUE_BRANCH(OP_BRLT)
+               && !IS_VALUE_BRANCH(OP_BRFLS | MOP_VOLATILE)
+               && !IS_VALUE_BRANCH(OP_BREQ | MOP_VOLATILE),
+               "IS_VALUE_BRANCH holds a non-member");
+
 // Send the oldest op in the window on to stage 4; or, if it's a DROP
 // and so is the next, make that a DROP2 (one op, a byte less).
 static void pass_oldest(void)
@@ -496,18 +530,19 @@ static int fold_addr(Mop *base, Mop *m);
 // the window. Returns 1 if one changed anything.
 static int rewrite_load_store(Mop *a, Mop *b)
 {
-  int v;
+  int v, aop = a->op, bop = b->op;
 
   // DLW n DROP -> SLW n (also DLB, DAW, DAB): an assignment whose
   // value is unused just stores, without keeping a copy to throw away.
-  if (plain_store(a->op) >= 0 && b->op == OP_DROP) {
+  if (bop == OP_DROP && plain_store(aop) >= 0) {
     a->op = plain_store(a->op);
     nwin--;
     return 1;
   }
   // LLA n add c -> LLA n+c, and LA a add c -> LA a+c: one address, on
   // rewrite_index()'s terms.
-  if (fold_addr(a, b)) {
+  if ((aop == OP_LA || aop == OP_LLA) && IS_ADD_VALUE(bop)
+      && fold_addr(a, b)) {
     nwin--;
     return 1;
   }
@@ -515,9 +550,9 @@ static int rewrite_load_store(Mop *a, Mop *b)
   // storing a variable and then loading it again becomes a store that
   // keeps the value. DLB keeps the stored byte, which is what LLB would
   // load.
-  if (keeping_store(a->op, b->op) >= 0 && a->a == b->a
-      && a->fix == b->fix && a->fn == b->fn) {
-    a->op = keeping_store(a->op, b->op);
+  if (IS_OPERAND_STORE(aop) && keeping_store(aop, bop) >= 0
+      && a->a == b->a && a->fix == b->fix && a->fn == b->fn) {
+    a->op = keeping_store(aop, bop);
     nwin--;
     return 1;
   }
@@ -527,23 +562,22 @@ static int rewrite_load_store(Mop *a, Mop *b)
   // MINUS1, which are shorter than LAB's address word, nor for an
   // object that may move to the heap (FIX_HEAP), whose LA ccrel may
   // turn into an LAW.
-  if (absolute_op(b->op) >= 0 && a->fix != FIX_HEAP
-      && (a->op == OP_CW || a->op == OP_CB || a->op == OP_CFFB
-          || a->op == OP_LA)) {
-    if (a->op != OP_LA) {
+  if ((aop == OP_CW || aop == OP_CB || aop == OP_CFFB || aop == OP_LA)
+      && a->fix != FIX_HEAP && absolute_op(bop) >= 0) {
+    if (aop != OP_LA) {
       mop_const_value(a, &v);
       a->a = v;
     }
-    a->op = absolute_op(b->op);
+    a->op = absolute_op(bop);
     nwin--;
     return 1;
   }
   // LLW n ADD -> ADDLW n, and LLW n IDXW -> IDXLW n (also for LLB, LAW
   // and LAB): adding a variable's value, or twice it, is one op, a
   // byte smaller.
-  if ((b->op == OP_ADD || b->op == OP_IDXW)
-      && fused_op(a->op, b->op == OP_IDXW) >= 0) {
-    a->op = fused_op(a->op, b->op == OP_IDXW);
+  if ((bop == OP_ADD || bop == OP_IDXW)
+      && fused_op(aop, bop == OP_IDXW) >= 0) {
+    a->op = fused_op(aop, bop == OP_IDXW);
     nwin--;
     return 1;
   }
@@ -1094,18 +1128,20 @@ static void dead_stores(void)
 static int rewrite(void)
 {
   Mop *a, *b;
-  int op;
+  int op, aop, ac;
 
   if (nwin < 2)
     return 0;
   a = &win[nwin - 2];
   b = &win[nwin - 1];
   op = b->op;
+  aop = a->op;
+  ac = MOP_IS_CONST(aop);
   // const OP const -> const (fold_pair()): both sides constant is a
   // backstop for the parser's own folding. It comes first, so that
   // the one-constant rewrites below don't spend one constant into an
   // ADDI or the like, leaving the other stranded.
-  if (nwin >= 3) {
+  if (ac && nwin >= 3) {
     int v1, v2, v;
     if (mop_const_value(&win[nwin - 3], &v1)
         && mop_const_value(a, &v2) && fold_pair(op, v1, v2, &v)) {
@@ -1116,19 +1152,25 @@ static int rewrite(void)
       return 1;
     }
   }
-  if (rewrite_load_store(a, b) || rewrite_const(a, b)
-      || rewrite_branch(a, b) || rewrite_mul(a, b) || rewrite_minus1(a, b)
-      || rewrite_self(a, b)
-      || rewrite_andi(a, b) || rewrite_addsub(a, b)
-      || rewrite_noop(a, b) || rewrite_load_andi(a, b)
-      || rewrite_drop_zero(a, b) || rewrite_dup_const(a, b)
-      || rewrite_index(a, b))
+  // The rules, in order, each behind its guard (above IS_ADD_VALUE).
+  if (rewrite_load_store(a, b)
+      || (ac && rewrite_const(a, b))
+      || (IS_VALUE_BRANCH(op) && rewrite_branch(a, b))
+      || (ac && (rewrite_mul(a, b) || rewrite_minus1(a, b)))
+      || (aop == OP_DUP && rewrite_self(a, b))
+      || (op == OP_ANDI && rewrite_andi(a, b))
+      || (IS_ADD_VALUE(op) && rewrite_addsub(a, b))
+      || ((ac || ((aop - OP_NEG) & ~2) == 0) && rewrite_noop(a, b))
+      || (op == OP_ANDI && rewrite_load_andi(a, b))
+      || (aop == OP_DROP && rewrite_drop_zero(a, b))
+      || (aop == OP_CW && rewrite_dup_const(a, b))
+      || ((op == OP_ADD || op == OP_IDXW) && rewrite_index(a, b)))
     return 1;
   // NOT ANDI n NOT -> NOT NOT: !!x. The ANDI n (n non-zero) only makes
   // the first NOT's true ($FFFF) into 1, and NOT tests only zero
   // against non-zero, so the second NOT gives the same without it.
-  if (nwin >= 3 && win[nwin - 3].op == OP_NOT && a->op == OP_ANDI
-      && a->a != 0 && op == OP_NOT) {
+  if (op == OP_NOT && aop == OP_ANDI && a->a != 0 && nwin >= 3
+      && win[nwin - 3].op == OP_NOT) {
     *a = *b;
     nwin--;
     return 1;
@@ -1181,8 +1223,8 @@ static int rewrite(void)
   }
   // DUP ADD ADD -> IDXW: adding twice x is PLASMA's word index op
   // (p + i for a pointer to 2-byte elements).
-  if (nwin >= 3 && win[nwin - 3].op == OP_DUP && a->op == OP_ADD
-      && op == OP_ADD) {
+  if (op == OP_ADD && aop == OP_ADD && nwin >= 3
+      && win[nwin - 3].op == OP_DUP) {
     win[nwin - 3].op = OP_IDXW;
     nwin -= 2;
     return 1;
@@ -1191,7 +1233,8 @@ static int rewrite(void)
   // a DUP, 10 to 28 cycles faster and a byte or two smaller. Only once
   // an op follows that no rule above joined to it, since a load that
   // fuses with what follows (LLW n ADD -> ADDLW n) beats DUP ADD.
-  if (nwin >= 3 && repeats_load(&win[nwin - 3], a)) {
+  if (aop >= OP_LLB && aop <= OP_LAW && nwin >= 3
+      && repeats_load(&win[nwin - 3], a)) {
     a->op = OP_DUP;
     a->a = 0;
     a->fix = FIX_NONE;

@@ -87,6 +87,27 @@ enum {
 _Static_assert(MOP_CN_VALUE(MOP_CN(0)) == 0 && MOP_CN_VALUE(MOP_CN(15)) == 15,
                "MOP_CN_VALUE must undo MOP_CN");
 
+// Is op a constant push (CN, MINUS1, CB, CW, CFFB), as
+// mop_const_value() (lower.c) takes? Most ops are above CW, and are
+// told by one compare and one test, so test this before calling it.
+// It names op several times: pass it a local.
+#define MOP_IS_CONST(op) ((op) > OP_CW ? (op) == OP_CFFB \
+                          : ((op) & ~0x1E) == 0 || (op) == OP_MINUS1 \
+                            || (((op) - OP_CB) & ~2) == 0)
+_Static_assert(MOP_IS_CONST(MOP_CN(0)) && MOP_IS_CONST(MOP_CN(15))
+               && MOP_IS_CONST(OP_MINUS1) && MOP_IS_CONST(OP_CB)
+               && MOP_IS_CONST(OP_CW) && MOP_IS_CONST(OP_CFFB),
+               "MOP_IS_CONST misses a member");
+_Static_assert(!MOP_IS_CONST(OP_BREQ) && !MOP_IS_CONST(OP_LA)
+               && !MOP_IS_CONST(OP_LLA) && !MOP_IS_CONST(OP_CS)
+               && !MOP_IS_CONST(OP_DROP) && !MOP_IS_CONST(OP_RET)
+               && !MOP_IS_CONST(OP_LB) && !MOP_IS_CONST(OP_LLW)
+               && !MOP_IS_CONST(OP_ADDI) && !MOP_IS_CONST(1)
+               && !MOP_IS_CONST(0x1F)
+               && !MOP_IS_CONST(OP_CB | MOP_VOLATILE)
+               && !MOP_IS_CONST(OP_CFFB | MOP_VOLATILE),
+               "MOP_IS_CONST holds a non-member");
+
 // For a branch op (BRNCH, BRFLS, ...), Mop.a is the label number; stage
 // 4 turns it into a relative offset.
 

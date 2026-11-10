@@ -20,12 +20,12 @@ blank for a limit that isn't measured.
 | `MAX_IF_NEST` | 8 | 2 (bio.c) | #if, #ifdef and #ifndef groups open at once | [src/pp.c](../src/pp.c) |
 | `MAX_INC_DIRS` | 8 |  | -I directories | [src/pp.c](../src/pp.c) |
 | `MAX_PP_OPTS` | 16 |  | -D and -U options | [src/pp.c](../src/pp.c) |
-| `MAX_LINE` | 255 | 177 (pstmt.c) | characters in one source line, after joining the lines that end in a backslash: ccpp's buffer | [src/pplex.h](../src/pplex.h) |
+| `MAX_LINE` | 255 | 184 (mop.h) | characters in one source line, after joining the lines that end in a backslash: ccpp's buffer | [src/pplex.h](../src/pplex.h) |
 | `MAX_INCLUDE` | 3 | 2 (bio.c) | #include files open at once, beside the source: PLASMA's Apple II file library allows 4 open files, and ccpp has the source and NAME.i open | [src/pplex.h](../src/pplex.h) |
 | `MAX_MACROS` | 155 | 138 (ptop.c) | macros defined at once, include guards too | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_MACRO_BYTES` | 1284 | 1123 (pexpr.c) | bytes of their bodies, as tokens, where an identifier or number is 3 bytes | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_EXPAND` | 16 | 4 (pexpr.c) | macro expansions inside one another | [src/ppmac.c](../src/ppmac.c) |
-| `MAX_EXP_BYTES` | 256 | 96 (irin.c) | bytes of the expansions and arguments being read, and of the arguments' own expansions (two buffers): room for macros longer than ccish's | [src/ppmac.c](../src/ppmac.c) |
+| `MAX_EXP_BYTES` | 256 | 139 (emit.c) | bytes of the expansions and arguments being read, and of the arguments' own expansions (two buffers): room for macros longer than ccish's | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_ARG_SLOTS` | 32 | 4 (pexpr.c) | arguments of the calls being expanded | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_PP_PARAMS` | 16 |  | parameters of one macro | [src/ppmac.h](../src/ppmac.h) |
 | `MAX_PP_POOL` | 8432 | 7642 (pexpr.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each | [src/ppname.c](../src/ppname.c) |
@@ -52,9 +52,9 @@ blank for a limit that isn't measured.
 | `MAX_TEMP_USES` | 32 | 4 (pp.c) | operands on ccgen's own temporaries in one function: 4 to 6 for each IR_SWAP done when the code runs | [src/emit.c](../src/emit.c) |
 | `MAX_LABELS` | 128 |  | labels in one function, ordinary and goto; at most 128, since case_label[] is char. Each if, loop, &&, \|\| and ?: uses one to four | [src/ir.h](../src/ir.h) |
 | `ENTRY_LABEL` | 103 | 81 (link.c) | ordinary labels in one function: the goto labels are the rest of MAX_LABELS, above this one | [src/ir.h](../src/ir.h) |
-| `MAX_FUNC_CODE` | 1280 | 872 (link.c) | bytes of bytecode in one function | [src/obj.h](../src/obj.h) |
+| `MAX_FUNC_CODE` | 1280 | 1022 (peep.c) | bytes of bytecode in one function | [src/obj.h](../src/obj.h) |
 | `MAX_FUNC_RELOCS` | 128 | 111 (link.c) | calls and data references in one function | [src/obj.h](../src/obj.h) |
-| `MAX_NEST` | 32 | 16 (peep.c) | nesting of parentheses, blocks and loops | [src/parse.body.h](../src/parse.body.h) |
+| `MAX_NEST` | 32 | 18 (emit.c) | nesting of parentheses, blocks and loops | [src/parse.body.h](../src/parse.body.h) |
 | `MAX_PARAMS` | 16 |  | parameters of one function | [src/pstmt.c](../src/pstmt.c) |
 | `MAX_CASES` | 36 | 25 (pplex.c) | case labels in all the switches open at once; at most 255, a SEL table's limit | [src/pstmt.c](../src/pstmt.c) |
 

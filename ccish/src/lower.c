@@ -298,11 +298,14 @@ void mop_const(Mop *m, int c)
 // masks, not ranges.
 int mop_const_value(Mop *m, int *v)
 {
-  if (MOP_IS_CN(m->op)) {
-    *v = MOP_CN_VALUE(m->op);
+  int op = m->op;
+  if (!MOP_IS_CONST(op))
+    return 0;
+  if (MOP_IS_CN(op)) {
+    *v = MOP_CN_VALUE(op);
     return 1;
   }
-  switch (m->op) {
+  switch (op) {
   case OP_MINUS1: *v = 0xFFFF;          return 1;
   case OP_CB:     *v = m->a;            return 1;
   case OP_CFFB:   *v = m->a | 0xFF00;   return 1;
