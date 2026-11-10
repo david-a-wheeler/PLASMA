@@ -31,15 +31,19 @@
 #include "pplex.h"
 #include "ppmac.h"
 
-#define MAX_MACROS   142    // macros defined at once (129, ptop.c,
+#define MAX_MACROS   142    // limit pp: macros defined at once (129, ptop.c,
                             // about 20 of them include guards)
-#define MAX_MACRO_BYTES 1284 // their bodies, as tokens (1166, pexpr.c)
-#define MAX_EXPAND   16     // macro expansions inside one another (2)
-#define MAX_EXP_BYTES 256   // bytes of the expansions and arguments
+#define MAX_MACRO_BYTES 1284 // limit pp: bytes of their bodies, as tokens,
+                             // where an identifier or number is 3 bytes
+                             // (1166, pexpr.c)
+#define MAX_EXPAND   16     // limit pp: macro expansions inside one another
+                            // (2)
+#define MAX_EXP_BYTES 256   // limit pp: bytes of the expansions and arguments
                             // being read, and of the arguments' own
-                            // expansions (two buffers; 15 and 3): room
-                            // for macros longer than ccish's
-#define MAX_ARG_SLOTS 32    // arguments of the calls being expanded (1)
+                            // expansions (two buffers; 15 and 3): room for
+                            // macros longer than ccish's
+#define MAX_ARG_SLOTS 32    // limit pp: arguments of the calls being expanded
+                            // (1)
 
 int pp_from_lexer;
 

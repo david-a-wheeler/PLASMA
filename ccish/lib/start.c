@@ -4,7 +4,7 @@
  * module's name. */
 #include <plasma.h>
 
-#define MAX_ARGS 24         /* more words than this are dropped */
+#define MAX_ARGS 24         /* limit other: argv words; more are dropped */
 
 int main(int argc, char **argv);
 

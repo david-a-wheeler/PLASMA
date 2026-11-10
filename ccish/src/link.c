@@ -48,14 +48,15 @@
 #include "mop.h"
 #include "link.h"
 
-#define MAX_GSYMS   307     // names shared between objects: the first
-                            // prime 10% above linking cccomp's, with
+#define MAX_GSYMS   307     // limit link: names shared between objects: the
+                            // first prime 10% above linking cccomp's, with
                             // the library (271)
-#define MAX_GNAMES  3000    // bytes of those names, with their NULs:
-                            // 10% above linking cccomp's (2,716)
+#define MAX_GNAMES  3000    // limit link: bytes of those names, with their
+                            // NULs: 10% above linking cccomp's (2,716)
 #define MAX_SEL_TABLES 32   // SEL case tables the listing of one
                             // function waits for at once
-#define MAX_MOVED   32      // globals moved to the heap in one module
+#define MAX_MOVED   32      // limit link: large globals moved to the heap in
+                            // one module (OBJECT.md, "Zero-filled globals")
 
 // A symbol summary entry of the object being read: a function's, or
 // a global variable's (which has a size and no parameter count).
@@ -75,7 +76,7 @@ typedef struct {
 // as the objects' summaries give it, and whether a used import comes
 // from it, so that it goes in the module's dependencies; and, for the
 // object being read, each of its modules' index here.
-#define MAX_MODS 8
+#define MAX_MODS 8          // limit link: modules one link imports from
 static char mod_name[MAX_MODS][MAX_NAME + 1];
 static char mod_used[MAX_MODS];
 static int nmods;

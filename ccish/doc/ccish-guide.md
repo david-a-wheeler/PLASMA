@@ -1,7 +1,7 @@
 # The ccish guide
 
-This ia a user guide to ccish, a C compiler for the PLASMA virtual machine
-running on 6502 computers sich as the Apple II.
+This is a user guide to ccish, a C compiler for the PLASMA virtual machine
+running on 6502 computers such as the Apple II.
 
 1. [What ccish is](#1-what-ccish-is)
 2. [Using the compiler](#2-using-the-compiler)
@@ -29,13 +29,20 @@ share the name: a program written in it is *C-ish*, and `ccish` is the
 compiler. It is intended to aggressively optimize its generated results.
 
 The ccish compiler is designed to run on an Apple II and to compile
-itself there. It doesn't yet. ccish compiles its own sources and links
-them with its C library (section 11.2), and the self-compiled ccpp
-runs under plvm; the bootstrap itself is next. Before the Apple II,
-`exit()` must unwind the VM (section 11.2), PLASMA's loaders must
-stream a module's RLD, and `cccomp` must shrink by about 4 to 5K to
-fit a 64K machine's free memory. The plan is in
-doc/bootstrap-test.md, and the memory budget in approach.md, issue 24.
+itself there. It doesn't yet. ccish compiles its own sources and
+links them with its C library (section 11.2), and `make bootstrap`
+checks that it reproduces itself: it builds the four passes on the
+host, then twice under plvm, and every object and module must be the
+same each time. The programs ccish compiles already run on an
+emulated 64K Apple IIe (`samples/`, and `tools/a2run`). Before the
+compiler itself runs on the Apple II, `exit()` must unwind the VM
+(section 11.2), and `cccomp` must fit a 64K machine's free memory:
+its module file is too big for PLASMA's loader, which reads the whole
+file, relocation data included, before running it. With a loader that
+streams the relocation data, it would fit, with about 1K to spare.
+The plan is in doc/bootstrap-test.md, the memory budget in
+approach.md, issue 24 and "Free memory, measured", and what we'd like
+from PLASMA's loaders in doc/plasma-requests.md.
 
 ### 1.1 A subset of C, not a standard
 
@@ -194,8 +201,10 @@ ccrel [-l] [-o module] output|@file...
 ```
 
 * `ccpp` (the preprocessor and lexer) reads the source, carries out
-  the preprocessor directives, and writes the token stream
-  `output.i` and the name file `output.nam`.
+  the preprocessor directives (section 8), and writes the token stream
+  `output.i` and the name file `output.nam`. `ccpp -E` (full build
+  only) writes the tokens as text to the standard output instead, as
+  `gcc -E` does.
 * `cccomp` (the parser) reads those and writes the IR file
   `output.ir` (`input.i` is removed unless `-k`).
 * `ccgen` (the code generator) reads the IR file and the name file
@@ -270,28 +279,44 @@ hello.c:3: error 41: lvalue required as left operand of assignment
 The text comes from the message file `ccish.msg`, in the programs'
 own directory, read only when a message is printed, so no message
 text takes memory. Each line of the file is a number, a space and the
-text, in ascending order; the numbers alone are enough to read the
-file. Warnings are printed the same way (`file:line: warning 49:
-...`), and compilation continues.
+text, in ascending order. If the file can't be found, only the
+numbers are printed (`hello.c:3: error 41 (194):`, where 194 is a
+second part of the text), and you can look them up in the file.
+Warnings are printed the same way (`file:line: warning 49: ...`), and
+compilation continues. Section 10.7 says how the messages are kept in
+the sources.
 
 Compilation stops at the first error.
 
 ### 2.5 Building and testing the compiler
 
 ```
-make            # builds ./ccish, ./ccpp, ./cccomp, ./ccgen and ./ccrel
+make            # same as make test
+make test       # builds both builds and ../src/plvm (the C VM),
+                # then runs every test that's stale
+make all        # builds ./ccish, ./ccpp, ./cccomp, ./ccgen and ./ccrel
 make small      # the small build: ./ccpp-small, ./cccomp-small,
                 # ./ccgen-small and ./ccrel-small
-make test       # also builds ../src/plvm (the C VM), then runs the tests
-make measure    # compiles ccish's own source with ccish, links the
-                # Apple II programs, and reports their sizes
+make bootstrap  # ccish compiles itself twice under plvm, and the
+                # results must match (about 30 seconds)
+make full-test  # make test and make bootstrap
+make measure    # compiles ccish's own source with ccish (small build),
+                # links the Apple II programs, and reports their sizes
+                # and how full their tables got (needs python3)
+make listings   # each source file's functions, C then machine ops,
+                # in tools/out/lst/ (needs python3)
 ```
 
 `make test` runs the whole suite: programs that must run and print
-their expected output, programs that must fail with their message,
-token-stream checks, link checks, and the cross tests, where the same
-source must print the same under ccish and under a host compiler
-(gcc or clang).
+their expected output (`tests/run/`), programs whose generated code is
+checked (`tests/gen/`), programs that must fail with their message
+(`tests/errors/`), token-stream checks (`tests/pp/`), link checks
+(`tests/link/`), the cross tests, where the same source must print the
+same under ccish and under a host compiler, gcc or clang
+(`tests/xrun/`), and one-off checks (`tests/spec/`). It runs each with
+both builds, and requires them to write the same objects and modules.
+Each test's stamp depends on its input, its expected result, and the
+passes, so a change re-runs exactly the tests it could affect.
 
 ### 2.6 The full and small builds
 
@@ -1659,34 +1684,36 @@ However, that's a "later" task.
 
 ### 9.3 Fixed limits
 
-The limits are fixed sizes, each a `#define` beside its table, set
-just above what ccish's own source needs, since every byte counts on
-a 64K machine. Going past one is a clear error.
+ccish's tables are fixed sizes, each set just above what ccish's own
+source needs, since every byte counts on a 64K machine. Going past one
+is a clear error. These change often, so this guide doesn't give
+their values. Here are some examples of the limits that matter most:
 
-Per function:
+* In one function: its bytes of bytecode, its calls and data
+  references, its labels (each `if`, loop, `&&`, `||` and `?:` uses
+  one to four) and `goto` labels, its `return`s, and its parameters;
+  the `case` labels in the `switch`es open at once; and how deeply
+  parentheses, blocks and loops nest.
+* In one source file: the functions declared, defined or called; the
+  variables visible at once (globals, plus the parameters and locals
+  in scope); the parameter types in all; the distinct types; the
+  struct tags and members; and the enum constants and typedef names
+  visible at once.
+* In the preprocessor: the bytes of distinct names and file names, the
+  macros and the bytes of their bodies, and the characters in a
+  source line.
+* In one link: the objects, and the names shared between them (`ccrel
+  -l` ends its listing with how much of these a link used).
+* Also: the characters in a string literal and in a file name, and the
+  significant characters in an identifier.
 
-* 1280 bytes of bytecode, 128 calls and data references, 103 labels
-  and 24 `goto` labels, 31 `return`s, and 16 parameters. Each `if`,
-  loop, `&&`, `||` and `?:` uses one to four labels.
-* 36 `case` labels in all the `switch`es open at once, and
-  parentheses, blocks and loops nested 32 deep.
-
-Per file:
-
-* 280 functions (declared, defined or called), 79 variables visible
-  at once (globals, plus the parameters and locals in scope), 401
-  parameter types in all, 40 distinct types, 6 struct tags (counting
-  those in blocks that have ended), 32 struct members in all, and 203
-  enum constants and typedef names visible at once.
-
-The preprocessor: 8432 bytes of distinct names and file names, 104
-macros with 704 bytes of bodies (as tokens) in all, and source lines
-of 255 characters.
-
-Other: a string literal of 255 characters (after adjacent ones are
-joined); an identifier's first 31 significant characters; 32 operands
-on the back end's temporaries in one function; a file name of 127
-characters; and per link, 32 objects and 307 shared names.
+The current list, with each limit's value, meaning and source file,
+is in [limits.md](limits.md). It's generated from the sources: each
+limit is a `#define` beside its table, with a comment that starts
+`limit GROUP:` and usually gives the most ccish's own source uses.
+`make limits` (or `make all`) regenerates limits.md when a source
+changes, and `grep -n 'limit [a-z]*:' src/*.[ch] lib/*.c` finds them
+all.
 
 A few other limits: a local array must fit in the 255-byte frame
 with the other locals; globals are limited to 32767 bytes in the
@@ -1857,6 +1884,70 @@ The layout choices, in one place:
   (`BRAND`, `BROR`), which keep the left value when they decide.
 * `switch` is a `SEL` and a 4-bytes-per-case table, not a compare
   chain (within its limits, section 7.5).
+
+### 10.6 The source files
+
+The compiler's sources are in `src/`. Each `.c` file starts with a
+comment describing its design, and has a header of its own (`parse.h`
+for `parse.c`); a header split in parts is `NAME.h` with
+`NAME.SCOPE.h` beside it (`diag.h` and `diag.src.h`), so that a file
+pays only for the declarations it uses. Read `build.h` first: it
+defines the two builds' feature macros.
+
+| Path | Contents |
+|------|----------|
+| `src/main.c` | `ccish`: the command line, then every pass in one process |
+| `src/ccpp.c`, `src/cccomp.c`, `src/ccgen.c`, `src/ccrel.c` | The four passes as programs of their own |
+| `src/build.h`, `src/cclimits.h` | The builds' feature macros, and the limits all the programs share |
+| `src/diag.c` | Messages, and other support every program shares |
+| `src/bio.c` | File I/O through small (128-byte) block buffers |
+| `src/token.h`, `src/fixed.h` | The token stream's codes, and the fixed ids: what ccpp and cccomp must agree on (CCPP.md) |
+| `src/pp.c` | ccpp's driver: the directives, `#include` files and groups, and the tokens, with macros expanded, to the token stream |
+| `src/pplex.c` | ccpp's lexer: a line at a time, into tokens |
+| `src/ppmac.c` | ccpp's macros: the `#define` table, and expansion with `#` and `##` |
+| `src/ppif.c` | ccpp's `#if` and `#elif` expressions |
+| `src/ppname.c` | ccpp's name pool, which gives each identifier its id, and the writer of the name file |
+| `src/ppout.c` | ccpp's output: the token stream, joining adjacent strings |
+| `src/nam.c` | The reader of the name file, for cccomp's messages and ccgen's names |
+| `src/tokin.c` | cccomp's input: the token stream, a token at a time |
+| `src/parse.c` | cccomp's parser machinery: the functions and variables tables, CMDSYS's table, the emitting and folding of IR ops |
+| `src/pexpr.c`, `src/pstmt.c`, `src/ptop.c` | cccomp's parser: expressions; statements and declarations; the top level and initializers |
+| `src/type.c`, `src/name.c` | cccomp's types, struct tags and members; its enum constants and typedef names |
+| `src/irout.c` | cccomp's output: the IR file, with the data, strings and symbol summary (OBJECT.md) |
+| `src/ir.h`, `src/obj.h`, `src/obj.fmt.h`, `src/obj.sym.h`, `src/mop.h` | The IR file's ops, the object format, and ccgen's machine ops |
+| `src/irin.c` | ccgen's input: reads the IR file and drives stages 2 to 4 |
+| `src/irloop.c` | ccgen's loop layout: the test at the bottom, and counted loops |
+| `src/lower.c` | ccgen's stage 2: IR ops to machine ops (IR.md), and `-i` |
+| `src/peep.c` | ccgen's stage 3: the peephole optimizer |
+| `src/emit.c` | ccgen's stage 4: encoding, and writing the stream files |
+| `src/helper.c` | ccgen's helper functions (unsigned `/`, `%` and `>>`), written into each object that calls one |
+| `src/link.c` | ccrel: the linker, the REL module, and the listing |
+| `ccish.msg` | The text of every message, by number (section 10.7) |
+| `lib/`, `lib/include/` | The C library's sources (one function each) and headers (section 11.2) |
+| `tests/` | The test suite (section 2.5) |
+| `tools/` | Measuring and running: `measure.py` (`make measure`), `listings.py`, `opstats.py`, `opcount.py`, `fsize.py` and `loops.py`; `ccrun` and `ccstat.pla`, which run a module under plvm and give `main`'s exit status; `plvmexit.c`, the plvm-only `exit` the passes link (section 11.2); and `a2run`, `a2screen` and `a2time`, which run PLASMA on an emulated 64K Apple IIe in MAME |
+| `samples/` | Sample programs for the Apple II, and `make disk`, a ProDOS disk of them |
+
+### 10.7 Messages in the sources
+
+In the sources, a message is its number, with its text in a comment
+right after it, in double quotes:
+
+```c
+error(41 /* "lvalue required as" */, NULL);
+```
+
+To add a message, give it the next unused number in `ccish.msg` and
+write the same text in both places. `make test` runs
+`tests/spec/msgs.sh`, which checks that every comment matches the
+file, that every number used is in the file and every number in the
+file is used, and that the file's numbers ascend.
+
+Some numbers aren't messages but the spellings of C's keywords
+(262-301) and operators (352-383), which cccomp prints in a message
+("expected an expression, not 'while'"), so that cccomp keeps none of
+them either. A comment in `src/tokin.c` declares the ranges, which
+`tests/spec/msgs.sh` counts as used.
 
 ## 11. Calling built-in CMD library
 
@@ -2029,7 +2120,8 @@ easy:
 
 * `ccish -l program.c` prints a listing of the generated bytecode,
   one op per line: the address, the hex bytes, the mnemonic, and a
-  comment for data and imports. From `tests/run/loops.c`:
+  comment for data and imports. A global is shown by its offset in
+  the data (`; data+4`), not by its name. From `tests/run/loops.c`:
 
   ```
   main:
@@ -2252,19 +2344,11 @@ Here is a short list of some of the optimizations you can count on:
   runs the tail form at depth 5000, and `tests/gen/gentail.c` pins
   the form and the non-forms.)
 * **A "between" test of form (x >= c1 && x <= c2)** where c1 and c2
-  are constants. Where x is a `char` and the range is a power-of-two
-  block of bytes (its width, c2 - c1 + 1, is a power of two, and the
-  range lies within 0 to 255), or where x is an `int` and the range is
-  a power-of-two block of words (the width a power of two, and the
-  range not empty), ccish rewrites it to one load, the misalignment r
-  subtracted, the block's mask ANDed, and one compare to the aligned
-  base, smaller and faster than the two comparisons: an aligned range
-  (r of 0) emits no subtract, an r of 1 is a `DECR`, and the
-  comparison meets its branch as a `BRNE` in the peephole stage. A
-  `(char)` cast on an `int` ((char)x >= c1 && (char)x <= c2) takes
-  the byte form on the word load, with the cast's own mask folded
-  into the block's. A range that is neither a block of bytes nor a
-  block of words keeps the two comparisons. (The analysis is in
-  `doc/betweenness.md`; `tests/gen/genbetween.c` pins the forms and
-  the non-forms, and `tests/xrun/xbetween.c` cross-checks every case
-  against the host compiler over the whole 16-bit space.)
+  are constants whose width (c2 - c1 +1) is a power of two, and
+  ideally x is a char. In this case
+  ccish rewrites it to be more efficient: one load, any misalignment r
+  of c1 is subtracted, the block's mask ANDed, and one compare to the aligned
+  base. It's even faster if c1 is aligned (0 bits where they differ).
+  (The analysis is in `doc/betweenness.md`; `tests/gen/genbetween.c` pins
+  the forms and the non-forms, and `tests/xrun/xbetween.c` cross-checks
+  every case against the host compiler over the whole 16-bit space.)

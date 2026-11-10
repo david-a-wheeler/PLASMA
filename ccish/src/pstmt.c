@@ -23,10 +23,11 @@
 #include "ptop.h"
 #include "pstmt.h"
 #include "pexpr.h"
-#define MAX_PARAMS   16
+#define MAX_PARAMS   16     // limit function: parameters of one function
 
-#define MAX_CASES    36     // case labels in all the switches open at once
-                            // (29); at most 255, a SEL table's limit
+#define MAX_CASES    36     // limit function: case labels in all the switches
+                            // open at once (29); at most 255, a SEL table's
+                            // limit
 
 // ---------- Statements ----------
 
@@ -50,7 +51,8 @@
 // (type.h), so ccish accepts any list a C compiler would and checks
 // none of it.
 enum { DS_PTR, DS_ARRAY, DS_FUNC };
-#define MAX_STEPS    16     // derivations in the declarators being read
+#define MAX_STEPS    16     // limit other: pointers, arrays and functions in
+                            // the declarators being read
 static char step_kind[MAX_STEPS];
 static int step_val[MAX_STEPS];    // a pointer's qualifiers, or an
                                    // array's count (0: left out)

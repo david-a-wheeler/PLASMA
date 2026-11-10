@@ -3,7 +3,7 @@
 #ifndef PPMAC_H
 #define PPMAC_H
 
-#define MAX_PP_PARAMS 16    // parameters of one macro
+#define MAX_PP_PARAMS 16    // limit pp: parameters of one macro
 
 extern int pp_from_lexer;           // pp_next()'s token is the lexer's
 

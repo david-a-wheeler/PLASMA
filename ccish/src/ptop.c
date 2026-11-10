@@ -564,7 +564,8 @@ static int declare_global(int name, int type, int storage)
 // dep_id[], or 0). dep_id[] holds the modules' names, and dep_file[]
 // the file each one's pragma now covers (0 for none: files count
 // from 1).
-#define MAX_IMPORTS  16     // symbols with a label or a pragma (2)
+#define MAX_IMPORTS  16     // limit file: declarations with an asm label, or
+                            // after #pragma plasma import (2)
 static int imp_sym[MAX_IMPORTS];
 static int imp_label[MAX_IMPORTS];
 static unsigned char imp_dep[MAX_IMPORTS];

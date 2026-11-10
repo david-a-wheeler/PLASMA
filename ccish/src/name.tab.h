@@ -6,8 +6,8 @@
 #ifndef NAME_TAB_H
 #define NAME_TAB_H
 
-#define MAX_IDS      203    // enum constants and typedef names (198, in
-                            // irin.c)
+#define MAX_IDS      203    // limit file: enum constants and typedef names
+                            // visible at once (198, in irin.c)
 
 // Entry i's value (a constant's value, or a typedef's type), its kind
 // (ID_*, name.h), and its block depth plus 1 (0 once hidden). Only

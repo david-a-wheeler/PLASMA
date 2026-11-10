@@ -1,9 +1,11 @@
 # Build the ccish compiler and run its tests.
 #
 #   make        build everything the tests need, and run the stale tests
-#   make all    build ccish and its passes (ccpp, cccomp, ccgen, ccrel)
+#   make all    build ccish and its passes (ccpp, cccomp, ccgen, ccrel),
+#               and doc/limits.md
 #   make small  build the small passes (-DCCISH_SMALL), for the host
 #   make xref   write the cross tests' references with a host C compiler
+#   make limits regenerate doc/limits.md, the table of ccish's limits
 #
 # The tests are driven entirely by this Makefile. Each test kind is a
 # directory of inputs; a wildcard finds the inputs, a % rule runs one of
@@ -55,7 +57,7 @@ ACME  ?= acme
 CCSTAT = $(OUT)/ccstat
 CCRUN  = CCSTAT=$(abspath $(CCSTAT)) PLVM=$(PLVMBIN) $(abspath tools/ccrun)
 
-all: ccish ccpp cccomp ccgen ccrel
+all: ccish ccpp cccomp ccgen ccrel doc/limits.md
 
 ccish: src/main.c $(COMMON) $(PP) $(NAM) $(FRONT) $(BACK) $(LINK) $(HEADERS)
 	$(CC) $(CFLAGS) $(CCINC) -o $@ src/main.c $(COMMON) $(PP) $(NAM) $(FRONT) $(BACK) $(LINK)
@@ -287,6 +289,16 @@ tests/xrun/%.ref: tests/xrun/%.c tests/xrun/%.flags inc/ptest.h
 measure: all
 	python3 tools/measure.py
 
+# doc/limits.md, the table of ccish's limits, from the "limit GROUP:"
+# comments in the sources (tools/limits.sh). It's checked in, so that
+# people can read it without building, and make all keeps it current.
+LIMIT_SRC = $(sort $(wildcard src/*.c src/*.h lib/*.c))
+doc/limits.md: tools/limits.sh $(LIMIT_SRC)
+	@echo "tools/limits.sh > $@"
+	@sh tools/limits.sh $(LIMIT_SRC) > $@.tmp && mv $@.tmp $@
+
+limits: doc/limits.md
+
 # Put each source file's functions, C then machine ops, in tools/out/lst/
 # (tools/listings.py); tools/opstats.py counts the ops in them.
 listings: all
@@ -316,4 +328,4 @@ clean:
 	rm -rf $(OUT) tools/out bootstrap
 
 .PHONY: all small test testbuild xref measure listings print-sources bootstrap \
-        full-test clean
+        full-test limits clean

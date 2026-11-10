@@ -173,8 +173,8 @@ enum { VL_STATIC = 1, VL_USED = 2, VL_EXTERN = 4, VL_BSS = 8,
        VL_INDATA = 16, VL_REGISTER = 32 };
 
 // Parameter types of declared functions, in parse.c.
-#define MAX_PARAM_TYPES 352 // parameter types of all declared functions
-                            // (320, pexpr.c)
+#define MAX_PARAM_TYPES 352 // limit file: parameter types of all declared
+                            // functions (320, pexpr.c)
 extern char param_types[MAX_PARAM_TYPES];   // unqualified types
 
 // The parser's state, in parse.c, shared by the parser's files.
@@ -182,7 +182,8 @@ extern int depth;           // block depth; parameters are at depth 1
 extern int frame_next;      // next free frame offset
 extern int frame_max;       // frame size needed so far
 extern int cur_fn;          // the function being parsed, or -1
-#define MAX_NEST     32     // nesting of parentheses and blocks
+#define MAX_NEST     32     // limit function: nesting of parentheses, blocks
+                            // and loops
 extern int nest;            // nesting depth, to limit recursion
 extern int in_params;       // parsing a function's parameter list
 #define MAX_HELD      8     // left operands held back at once

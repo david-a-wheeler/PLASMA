@@ -27,9 +27,10 @@
 #include <plasma.h>
 #endif
 
-#define MAX_IF_NEST  8      // #ifdef groups open at once (3)
-#define MAX_INC_DIRS 8      // -I directories
-#define MAX_PP_OPTS  16     // -D and -U options
+#define MAX_IF_NEST  8      // limit pp: #if, #ifdef and #ifndef groups open
+                            // at once (3)
+#define MAX_INC_DIRS 8      // limit pp: -I directories
+#define MAX_PP_OPTS  16     // limit pp: -D and -U options
 
 int pp_cur_file;
 

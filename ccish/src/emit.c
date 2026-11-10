@@ -35,11 +35,12 @@
 #include "lower.h"
 #include "helper.h"
 
-#define MAX_RETURNS  64     // frame-size bytes (ENTER, LEAVEs) in one
-                            // function (23)
-#define MAX_TEMP_USES 32    // operands on ccgen's own temporaries in one
-                            // function: 4 to 6 for each IR_SWAP done
-                            // when the code runs
+#define MAX_RETURNS  64     // limit function: frame-size bytes in one
+                            // function: one for its ENTER, and one for each
+                            // return's LEAVE (23)
+#define MAX_TEMP_USES 32    // limit function: operands on ccgen's own
+                            // temporaries in one function: 4 to 6 for each
+                            // IR_SWAP done when the code runs
 
 // The output file: the stream, then the symbol summary
 // (emit_summary()). One Bfile serves both, one after the other.

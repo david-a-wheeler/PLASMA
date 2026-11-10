@@ -45,7 +45,7 @@ _Static_assert(Q_ALL == (Q_CONST | Q_VOLATILE) && (Q_ALL & TY_INDEX) == 0
                "a handle isn't an index in its low byte with the qualifier"
                " bits above it, so UNQUAL isn't masking the index");
 
-#define MAX_OBJECT 32767    // bytes in one array
+#define MAX_OBJECT 32767    // limit other: bytes in one array or struct
 
 int type_sub(int t);        // pointer: the type pointed to; array: the
                             // element type (handles, with qualifiers);

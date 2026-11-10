@@ -4,13 +4,14 @@
 #ifndef PPLEX_H
 #define PPLEX_H
 
-#define MAX_LINE     255    // characters in one source line, ccpp's
-                            // buffer (99)
-#define MAX_INCLUDE  3      // #include files open at once, beside the
-                            // source: PLASMA's Apple II file library
-                            // allows 4 open files, and ccpp has the
-                            // source and NAME.i open (2, ccish's own:
-                            // a header, and <stdio.h>'s <stddef.h>)
+#define MAX_LINE     255    // limit pp: characters in one source line, after
+                            // joining the lines that end in a backslash:
+                            // ccpp's buffer (99)
+#define MAX_INCLUDE  3      // limit pp: #include files open at once, beside
+                            // the source: PLASMA's Apple II file library
+                            // allows 4 open files, and ccpp has the source
+                            // and NAME.i open (2, ccish's own: a header, and
+                            // <stdio.h>'s <stddef.h>)
 
 extern int pt_val;                  // TC_NUM, TC_UNUM value; TC_ID,
                                     // TC_KEYWORD id

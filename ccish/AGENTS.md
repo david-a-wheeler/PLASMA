@@ -170,8 +170,13 @@ files of the sessions so far, before a move to a new computer.)
   expected line numbers point into the source, so the blank lines where
   the `// expect:`/`// stderr-has:` comments used to be keep the line
   numbers right; don't tidy them away.
-- A function has at most 104 labels (`MAX_LABELS`), and every loop now
-  takes 4: split a test with many loops into functions.
+- A function has at most `ENTRY_LABEL` ordinary labels (doc/limits.md),
+  and every loop now takes 4: split a test with many loops into
+  functions.
+- **Limits:** mark each user-facing limit's `#define` with a comment
+  starting `limit GROUP:` (pp, file, function, link or other).
+  `make all` (or `make limits`) regenerates doc/limits.md, which is
+  checked in: commit it with the change to a limit.
 
 ## Measuring
 

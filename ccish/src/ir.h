@@ -4,14 +4,18 @@
 #ifndef IR_H
 #define IR_H
 
-#define MAX_LABELS   128    // branch targets in one function (90); at
-                            // most 128, since case_label[] is char
+#define MAX_LABELS   128    // limit function: labels in one function,
+                            // ordinary and goto (90); at most 128, since
+                            // case_label[] is char. Each if, loop, &&, || and
+                            // ?: uses one to four
 // The function's entry label, after its ENTER: ccgen's target for a
 // self tail call's jump (decision 33); ccgen holds it at the
 // function's start, and the front end's ordinary labels stop below it.
 // It is fixed at 103 (not MAX_LABELS - 1) so the goto block can grow
 // above it without moving it (decision 34).
-#define ENTRY_LABEL    103
+#define ENTRY_LABEL    103  // limit function: ordinary labels in one
+                            // function: the goto labels are the rest of
+                            // MAX_LABELS, above this one
 // Goto labels (decision 34): a label is a goto's target iff it is in
 // [GOTO_LABEL_BASE, MAX_LABELS), the block above the entry label. The
 // front end allocates goto labels from GOTO_LABEL_BASE up and ordinary
@@ -25,9 +29,9 @@
 #define GOTO_LABEL_BASE (ENTRY_LABEL + 1)
 #define GOTO_LABELS (MAX_LABELS - GOTO_LABEL_BASE)
 #define IS_GOTO_LABEL(n) ((n) >= GOTO_LABEL_BASE && (n) < MAX_LABELS)
-#define MAX_BYVAL    8      // bytes in a struct passed or returned by
-                            // value: at most MAX_BYVAL / 2 words, so a
-                            // RETURN's a (below)
+#define MAX_BYVAL    8      // limit other: bytes in a struct passed or
+                            // returned by value, so IR_RETURN's a (the
+                            // result's words) is at most MAX_BYVAL / 2
 
 // ---------- Stage 1 -> 2: IR ops, through NAME.ir ----------
 // Each op's meaning, and why it differs from PLASMA's, is in ../IR.md;
