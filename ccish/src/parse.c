@@ -58,6 +58,7 @@
 // checked but emits nothing. In statements, such as if (0) or
 // while (0), the parser emits a jump around the code, and the peephole
 // stage drops the unreachable code after it.
+#include <assert.h>
 #ifdef CCISH_STATS
 #include <stdio.h>
 #endif
@@ -1338,7 +1339,8 @@ void assign_to(Operand *o)
 // The number of words a struct of type t takes on the stack.
 int struct_words(int t)
 {
-  return (type_size(t) + 1) / 2;
+  assert(type_size(t) >= 0);
+  return (type_size(t) + 1) >> 1;
 }
 
 // The words a function of return type t returns: none for void, a

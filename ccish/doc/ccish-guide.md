@@ -2076,6 +2076,7 @@ $ ./ccish -o copy copy.c $L/start $L/fopen $L/path $L/fread $L/fwrite $L/strlen
 | `<stdio.h>` | `fopen`, `fclose`, `getc`, `putc`, `fputs`, `fread`, `fwrite`, `remove`, and `fflush` (a macro), `stdin`, `stdout`, `stderr`, `EOF` |
 | `<stdlib.h>` | `EXIT_SUCCESS`, `EXIT_FAILURE`, and `exit` (declared, but not defined yet) |
 | `<stddef.h>` | `size_t` (`unsigned`), `ptrdiff_t`, `NULL` |
+| `<assert.h>` | `assert`, which is always `((void)0)`, as the standard's is with `NDEBUG` defined: no code, and its argument isn't evaluated. Your program's host build (gcc or clang) checks it. |
 | `<plasma.h>` | `cmdsys`, CMDSYS's table (section 11.1); not standard C |
 | `<fileio.h>` | `fileio`, FILEIO's table (section 11.1), and `<plasma.h>`; not standard C |
 

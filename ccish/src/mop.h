@@ -83,7 +83,9 @@ enum {
 // ANDI for AND, ORI for IOR: the two pairs are the same distance apart.
 #define MOP_BYTE_FORM(op)  ((op) - (OP_AND - OP_ANDI))
 #define MOP_CN(v)          (OP_CN + 2 * (v))     // CN v, for v 0-15
-#define MOP_CN_VALUE(op)   ((op) / 2)            // CN's v
+#define MOP_CN_VALUE(op)   ((op) >> 1)           // CN's v
+_Static_assert(MOP_CN_VALUE(MOP_CN(0)) == 0 && MOP_CN_VALUE(MOP_CN(15)) == 15,
+               "MOP_CN_VALUE must undo MOP_CN");
 
 // For a branch op (BRNCH, BRFLS, ...), Mop.a is the label number; stage
 // 4 turns it into a relative offset.

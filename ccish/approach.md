@@ -5195,6 +5195,23 @@ issue. In summary:
     expression (which the small build simply uses): 534 bytes more,
     cccomp 25,863. Kept: "array elements can't have type void",
     since array_of() divides by the element's size.
+45. **Division by a power of 2 in ccish's own source is a shift, and
+    assert() states why** (decided in discussion, 2026-11-10). C's /
+    truncates toward zero and SHR rounds down, so ccgen can't turn a
+    signed x / 2^n into a shift, and the 6502's DIV and MOD cost
+    about 620 to 880 cycles where SHR by 1 costs about 55 (plvm02.s's
+    _DIV runs 17 bit steps whatever the divisor). Teaching ccgen value
+    ranges would cover the sites automatically, but ccish's own source
+    had only 7 such sites, so not now. Instead the source writes
+    x >> 1 and x & 1 where x can't be negative, and states the
+    precondition: by its guard just above (init_zero's n <= 0 return),
+    by a _Static_assert when it's a compile-time fact (MOP_CN_VALUE),
+    or else by assert(), not a comment, which can go stale. ccish's
+    <assert.h> (lib/include) makes assert(e) ((void)0), as the
+    standard's is with NDEBUG: no code, and e isn't evaluated (a
+    checking assert would need abort()). The host builds, compiled by
+    gcc without NDEBUG, check every assert in each test run. Same
+    code size; it costs ptop.c one macro of ccpp's MAX_MACROS.
 
 
 ## Milestones

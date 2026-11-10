@@ -63,6 +63,7 @@
 // declared to: one for int, none for void. So a void call used as a
 // statement needs no DROP, and a void value can't be used.
 
+#include <assert.h>
 #ifdef CCISH_STATS
 #include <stdio.h>
 #endif
@@ -253,22 +254,23 @@ static int cmdsys_memset(void)
 // LLA CN 0 CB n CALL memset (7 or 8 bytes).
 static void init_zero(int n, int off)
 {
-  int at = init_base + off, words = n / 2, i, f;
+  int at = init_base + off, words, i, f;
   if (!init_local) {
     data_zero(n);
     return;
   }
   if (n <= 0)
     return;
+  words = n >> 1;               // n / 2: a shift is safe, since n > 0
   reserve(at + n);
   if (held_char == 0 && held_at == at - 1) {
     // A held 0 just before (a string's NUL) joins the zeros.
     held_char = -1;
     at--;
     n++;
-    words = n / 2;
+    words = n >> 1;
   }
-  if (words + n % 2 > 3 && (f = cmdsys_memset()) >= 0) {
+  if (words + (n & 1) > 3 && (f = cmdsys_memset()) >= 0) {
     put(IR_LOCALADDR, at, -1);
     put_op(IR_CONST);
     put(IR_CONST, n, -1);
@@ -279,7 +281,7 @@ static void init_zero(int n, int off)
   put_op(IR_CONST);
   for (i = 0; i < words; i++)
     put(init_set, at + 2 * i, -1);
-  if (n % 2)
+  if (n & 1)
     put(IR_CHAR_FORM(init_set, 1), at + n - 1, -1);
   put_op(IR_DROP);
 }
@@ -911,7 +913,8 @@ static void parse_toplevel(void)
 #endif
     fn_flags[f] |= FN_STATIC;
   }
-  pwords = frame_next / 2;
+  assert(frame_next >= 0);
+  pwords = frame_next >> 1;
   i = parse_asm_label();
   if (tok == ';') {
     // A prototype. "()" leaves the parameter count unspecified.
