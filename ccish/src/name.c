@@ -1,11 +1,13 @@
 // The table of enum constants and typedef names (approach.md, "enum and
 // typedef design"), as parallel arrays: entry i has name id_nm[i] (an
 // id, the number ccpp gave the name: ../CCPP.md), value id_v[i], kind
-// id_k[i] (ID_*), and block depth id_d[i], one more than the depth
-// (0 once hidden, since char is unsigned: the 0-means-none idiom, as
-// in irin.c's lab_depth). Names need
+// id_k[i] (ID_*), and block depth id_d[i]. An entry goes when its
+// block ends (id_hide()), so every entry is visible, and the depths
+// never fall from one entry to the next: each is added at the current
+// depth, and the deeper ones went when their blocks ended. Names need
 // no pool of their own: cccomp keeps no spellings (approach.md, "ccpp
 // design").
+#include <assert.h>
 #include <stddef.h>
 #include "build.h"
 #include "diag.h"
@@ -28,10 +30,11 @@ int id_add(int name, int kind, int val, int depth)
 {
   if (nids >= MAX_IDS)
     fatal0(19 /* "too many enum constants and typedef names" */);
+  assert(nids == 0 || id_d[nids - 1] <= depth);  // the depths never fall
   id_nm[nids] = name;
   id_v[nids] = val;
   id_k[nids] = (char)kind;
-  id_d[nids] = (char)(depth + 1);
+  id_d[nids] = (char)depth;
 #ifdef CCISH_STATS
   if (nids + 1 > nids_peak)
     nids_peak = nids + 1;
@@ -44,21 +47,17 @@ int id_find(int name)
 {
   int i;
   for (i = nids - 1; i >= 0; i--)
-    if (id_nm[i] == name && id_d[i] != 0)
+    if (id_nm[i] == name)
       return i;
   return -1;
 }
 
-// Hide the entries declared deeper than depth, at the end of their
-// block, and free them if they are the last ones: unlike struct tags,
-// no type refers to them.
+// Remove the entries declared deeper than depth, at the end of their
+// block (unlike struct tags, no type refers to them): the last ones,
+// as the depths never fall.
 void id_hide(int depth)
 {
-  int i;
-  for (i = 0; i < nids; i++)
-    if (id_d[i] > depth + 1)
-      id_d[i] = 0;
-  while (nids > 0 && id_d[nids - 1] == 0)
+  while (nids > 0 && id_d[nids - 1] > depth)
     nids--;
 }
 

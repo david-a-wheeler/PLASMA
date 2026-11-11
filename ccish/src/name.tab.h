@@ -10,12 +10,11 @@
                             // visible at once
 
 // Entry i's value (a constant's value, or a typedef's type), its kind
-// (ID_*, name.h), and its block depth plus 1 (0 once hidden). Only
-// name.c changes them.
+// (ID_*, name.h), and the block depth it was declared at. Only name.c
+// changes them.
 extern int id_v[MAX_IDS];
 extern char id_k[MAX_IDS];
 extern char id_d[MAX_IDS];
-// The block depth entry i was declared at (visible entries only).
-#define ID_DEPTH(i)  (id_d[i] - 1)
+#define ID_DEPTH(i)  (id_d[i])
 
 #endif
