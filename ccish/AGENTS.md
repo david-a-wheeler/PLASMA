@@ -20,16 +20,14 @@ files of the sessions so far, before a move to a new computer.)
   end → NAME.obj + NAME.syms), ccrel (link → REL module). `ccish` runs
   all four on the host.
 - **Size matters most for cccomp**, the one that doesn't fit yet. The
-  loader reads a whole module file into memory, so a program's module
-  file must fit in free memory (under about 40K, never measured on a
-  real machine). Sizes (small build, 2026-10-31, after d10a1a2e):
-
-  | Program | Code | Module file |
-  |---|---|---|
-  | ccpp | 13,817 | 26,049 |
-  | cccomp | 26,101 | 42,743 (still too big) |
-  | ccgen | 15,635 | 26,297 |
-  | ccrel | 7,713 | 14,200 |
+  loader reads a whole module file into memory, so cccomp (a 43.8K
+  file) can't load in the 41,171 bytes free on a 64K Apple II; with
+  the RLD streamed (doc/plasma-requests.md, item 1) it would, with
+  about 1.2K to spare while running. Each program's "on a 64K Apple
+  II" lines in doc/measure.txt give its need, running and loading,
+  and tests/spec/fit.sh (in make test) fails if one doesn't fit
+  running. ccpp's zero-filled tables are its heap too, so raising its
+  limits costs that margin.
 
   ccgen has headroom; it is a streaming filter with fixed tables, so
   making it bigger doesn't reduce what it can compile.
@@ -200,7 +198,7 @@ files of the sessions so far, before a move to a new computer.)
 - `make measure` (`tools/measure.py`, about 4 seconds) compiles
   ccish's own sources with ccish (small build) and reports each file's
   code, data and strings, each program's totals and module file, table
-  peaks, stack depth. The report is doc/measure.txt, checked in; `make
+  peaks, stack depth, and its fit on a 64K Apple II. The report is doc/measure.txt, checked in; `make
   test` refreshes it (and doc/limits.md) after a change, so commit it
   with the change. It writes `tools/out/PROGRAM.lst`, ccrel's listings, and
   `tools/out/PROGRAM.objs`, the objects tools/cclink linked.

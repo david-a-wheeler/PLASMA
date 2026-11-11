@@ -17,8 +17,10 @@ only the library objects it needs, and writes OUT/PROGRAM.objs, the
 objects linked. The report gives each
 file's code, data and string sizes (from its .syms header) and each
 program's totals and link workload (from ccrel's listing), and how full
-ccpp's tables got (from a ccpp built with CCISH_STATS). See approach.md
-18.5 and 18.6 E2. It ends with each measured limit's peak, the most
+ccpp's tables got (from a ccpp built with CCISH_STATS), and what
+each program needs on a 64K Apple II, running and loading, with the
+loader streaming the RLD (tests/spec/fit.sh checks that each fits).
+See approach.md 18.5 and 18.6 E2. It ends with each measured limit's peak, the most
 ccish's own source uses, which tools/limits.sh puts in doc/limits.md.
 `make measure` writes the report to doc/measure.txt (checked in), and
 `make test` keeps it current.
@@ -44,6 +46,29 @@ TOOLS = os.path.join(CCOMP, "tools")
 CCLINK = os.path.join(TOOLS, "cclink")
 OUT = os.path.join(TOOLS, "out")
 FULL = "-full" in sys.argv[1:]      # measure the full build instead
+
+# For each program's fit on a 64K Apple II, with the loader streaming
+# the RLD (doc/plasma-requests.md, item 1). The free memory and
+# FILEIO's size change only with PLASMA or the machine, so they're
+# measured once, not here.
+APPLE_FREE = 41171      # free at PLASMA 2.20's prompt, before FILEIO
+                        # or any module: MAME's 64K enhanced IIe,
+                        # 2026-11-09 (approach.md, "Free memory,
+                        # measured")
+FILEIO_RESIDENT = 2011  # FILEIO's body and def table, from assembling
+                        # src/libsrc/apple/fileio.pla, 2026-11-08
+                        # (approach.md, "Rechecked 2026-11-08")
+IO_BUFFER = 1024        # ProDOS's buffer for each open file but the
+                        # first, which uses the system one at $0800
+# The files each program holds open at once (from its bopen() calls),
+# and what they are; for ccpp, beside its #include files, whose most
+# open at once is measured ("includes open"), the {} in its text.
+OPEN_FILES = {
+    "ccpp": (2, "the source, {} includes at most, and NAME.i"),
+    "cccomp": (2, "NAME.i and NAME.ir"),
+    "ccgen": (3, "NAME.ir, NAME.nam and the object"),
+    "ccrel": (2, "an object and the module"),
+}
 
 
 
@@ -432,7 +457,37 @@ def stack_report(funcs):
     big = sorted(funcs, key=lambda v: -funcs[v]["frame"])[:5]
     print("    largest frames: " + ", ".join(
         "%s %d" % (v, funcs[v]["frame"]) for v in big))
-    return comps, edges
+    return comps, edges, total["frame"], bool(unbounded)
+
+
+def fit_report(prog, module, rld, defs, heap, frame, unbounded, includes):
+    """Print what prog needs on a 64K Apple II, running and loading, with
+    the RLD streamed; tests/spec/fit.sh checks the "needs" line."""
+    files, what = OPEN_FILES[prog]
+    if prog == "ccpp":
+        files += includes
+    what = what.format(includes)
+    body = os.path.getsize(module) - rld
+    bufs = (files - 1) * IO_BUFFER
+    need = body + 5 * defs + heap + frame + FILEIO_RESIDENT + bufs
+    print("  on a 64K Apple II (%d bytes free), the RLD streamed:"
+          % APPLE_FREE)
+    print("    module body %d, def table %d, zero-filled globals on the"
+          " heap %d," % (body, 5 * defs, heap))
+    print("    frame stack %s%d, FILEIO %d," % (
+        "at least " if unbounded else "", frame, FILEIO_RESIDENT))
+    print("    I/O buffers %d x %d: %d files open (%s)" % (
+        files - 1, IO_BUFFER, files, what))
+    print("    running, needs %d of %d: %d %s" % (
+        need, APPLE_FREE, abs(APPLE_FREE - need),
+        "to spare" if need <= APPLE_FREE else "SHORT"))
+    if unbounded:
+        print("    (a lower bound: the frame stack takes more with the"
+              " unbounded recursion above)")
+    print("    loading, the most at once: %d with the RLD streamed, %d"
+          " today (the whole file)" % (
+              FILEIO_RESIDENT + body + 5 * defs,
+              FILEIO_RESIDENT + os.path.getsize(module) + 5 * defs))
 
 
 def static_report(funcs, comps, edges):
@@ -666,8 +721,15 @@ def main():
             os.remove(named)
         if ok:
             funcs = parse_listing(msg)
-            comps, edges = stack_report(funcs)
+            comps, edges, frame, unbounded = stack_report(funcs)
             static_report(funcs, comps, edges)
+            with open(module + ".lst") as f:
+                heap = sum(int(m.group(1)) for m in re.finditer(
+                    r"^; heap global \d+: \S+, (\d+) bytes$", f.read(),
+                    re.M))
+            fit_report(prog, module, rld, defs, heap, frame, unbounded,
+                       peaks[[t[1] for t in PP_TABLES]
+                             .index("MAX_INCLUDE")])
     # Read by tools/limits.sh: keep this heading and the lines' form.
     print("\nPeaks: each limit, the most ccish's own source uses, and"
           " where:")

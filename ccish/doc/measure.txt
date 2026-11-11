@@ -100,6 +100,13 @@ ccpp: 9 files, and 19 library objects:
     leaf functions: 31 of 141 framed functions, 234 frame accesses; saves 92 bytes with new opcodes, -256 with LAW/SAW
     compiled stack (all non-recursive): 122 of 141 framed functions, 1335 frame accesses; saves 465 bytes with new opcodes, -1218 with LAW/SAW
     leaf region 12 bytes (largest leaf frame); compiled stack region 119 bytes
+  on a 64K Apple II (41171 bytes free), the RLD streamed:
+    module body 19839, def table 830, zero-filled globals on the heap 13256,
+    frame stack at least 485, FILEIO 2011,
+    I/O buffers 3 x 1024: 4 files open (the source, 2 includes at most, and NAME.i)
+    running, needs 39493 of 41171: 1678 to spare
+    (a lower bound: the frame stack takes more with the unbounded recursion above)
+    loading, the most at once: 22680 with the RLD streamed, 30474 today (the whole file)
 
 cccomp: 12 files, and 17 library objects:
   its own code 25688, data 4261, strings 310: 30259 in all
@@ -121,6 +128,13 @@ cccomp: 12 files, and 17 library objects:
     leaf functions: 52 of 267 framed functions, 304 frame accesses; saves 147 bytes with new opcodes, -302 with LAW/SAW
     compiled stack (all non-recursive): 213 of 267 framed functions, 2306 frame accesses; saves 657 bytes with new opcodes, -2288 with LAW/SAW
     leaf region 8 bytes (largest leaf frame); compiled stack region 322 bytes
+  on a 64K Apple II (41171 bytes free), the RLD streamed:
+    module body 31525, def table 1455, zero-filled globals on the heap 2388,
+    frame stack at least 1564, FILEIO 2011,
+    I/O buffers 1 x 1024: 2 files open (NAME.i and NAME.ir)
+    running, needs 39967 of 41171: 1204 to spare
+    (a lower bound: the frame stack takes more with the unbounded recursion above)
+    loading, the most at once: 34991 with the RLD streamed, 47265 today (the whole file)
 
 ccgen: 10 files, and 18 library objects:
   its own code 22045, data 3439, strings 966: 26450 in all
@@ -136,6 +150,13 @@ ccgen: 10 files, and 18 library objects:
     leaf functions: 54 of 190 framed functions, 523 frame accesses; saves 173 bytes with new opcodes, -529 with LAW/SAW
     compiled stack (all non-recursive): 176 of 190 framed functions, 2720 frame accesses; saves 642 bytes with new opcodes, -2584 with LAW/SAW
     leaf region 14 bytes (largest leaf frame); compiled stack region 264 bytes
+  on a 64K Apple II (41171 bytes free), the RLD streamed:
+    module body 27871, def table 1025, zero-filled globals on the heap 4808,
+    frame stack at least 520, FILEIO 2011,
+    I/O buffers 2 x 1024: 3 files open (NAME.ir, NAME.nam and the object)
+    running, needs 38283 of 41171: 2888 to spare
+    (a lower bound: the frame stack takes more with the unbounded recursion above)
+    loading, the most at once: 30907 with the RLD streamed, 40021 today (the whole file)
 
 ccrel: 4 files, and 19 library objects:
   its own code 8557, data 1746, strings 361: 10664 in all
@@ -150,6 +171,12 @@ ccrel: 4 files, and 19 library objects:
     leaf functions: 17 of 87 framed functions, 157 frame accesses; saves 39 bytes with new opcodes, -194 with LAW/SAW
     compiled stack (all non-recursive): 78 of 87 framed functions, 1215 frame accesses; saves 192 bytes with new opcodes, -1273 with LAW/SAW
     leaf region 8 bytes (largest leaf frame); compiled stack region 368 bytes
+  on a 64K Apple II (41171 bytes free), the RLD streamed:
+    module body 12002, def table 455, zero-filled globals on the heap 9830,
+    frame stack 498, FILEIO 2011,
+    I/O buffers 1 x 1024: 2 files open (an object and the module)
+    running, needs 25820 of 41171: 15351 to spare
+    loading, the most at once: 14468 with the RLD streamed, 19050 today (the whole file)
 
 Peaks: each limit, the most ccish's own source uses, and where:
   ENTRY_LABEL 81 link.c

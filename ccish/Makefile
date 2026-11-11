@@ -242,6 +242,7 @@ $(OUT)/spec/smalldiag.stamp: tests/run/const.c
 $(OUT)/spec/tables.stamp: tests/spec/tables.c src/irin.c src/lower.c src/ir.h \
                           src/mop.h
 $(OUT)/spec/enumvals.stamp: $(SOURCES)
+$(OUT)/spec/fit.stamp: doc/measure.txt
 
 # The compiler bootstrap test: the seed, this source's $(CC) build,
 # compiles the compiler's source into a VM module (stage 1); stage 1,
