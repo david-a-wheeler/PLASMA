@@ -305,7 +305,6 @@ void pp_def_end(int id)
   mac_on[nmacs] = 0;
   nmacs++;
   NOTE();
-  pp_set_macro(id, 1);
 }
 
 // #undef id: forget the macro, if there is one, closing up its body's
@@ -328,7 +327,6 @@ void pp_undef(int id)
     mac_on[i] = mac_on[i + 1];
   }
   nmacs--;
-  pp_set_macro(id, 0);
 }
 
 // The first free byte of sbuf[] above everything still in use: the

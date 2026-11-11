@@ -1,10 +1,11 @@
 // ccpp's name pool (../CCPP.md, "NAME.nam"; approach.md, "ccpp
 // design"). Each entry is a length byte and the characters, with no
 // NUL: an identifier, or, with ENT_FILE in its length byte, a source
-// file's name. An identifier's length byte also says whether it names a
-// macro now (ENT_MACRO). Entries are never removed, so an identifier's
-// id is simply its place among the identifiers, and NAME.nam is the pool
-// written out in order, with no table from ids to entries.
+// file's name. Whether an identifier names a macro now is the macro
+// table's, in ppmac.c, not the pool's. Entries are never removed, so an
+// identifier's id is simply its place among the identifiers, and
+// NAME.nam is the pool written out in order, with no table from ids to
+// entries.
 #include <stdio.h>
 #include <string.h>
 #include "build.h"
@@ -23,9 +24,9 @@
                             // 2K to spare on a 64K Apple II)
 
 #define ENT_FILE  0x80          // in a length byte: a file's name
-#define ENT_MACRO 0x40          // an identifier that names a macro
-#define FILE_LEN  0x7F          // a file's name's length
-#define NAME_LEN  0x1F          // an identifier's (at most MAX_NAME)
+#define FILE_LEN  0x7F          // a length byte without the file bit: an
+                                // identifier's is its length (at most
+                                // MAX_NAME), a file's its name's length
 
 int pp_macro_flag;
 
@@ -52,10 +53,11 @@ static const char *const fixed[NFIXED] = {
   "__plasma_import"
 };
 
-// The length of the entry at pool offset i.
+// The length of the entry at pool offset i, the length byte without
+// its file bit: an identifier's is its length, a file's its name's.
 static int entry_len(int i)
 {
-  return pool[i] & ENT_FILE ? pool[i] & FILE_LEN : pool[i] & NAME_LEN;
+  return pool[i] & FILE_LEN;
 }
 
 // Is the entry at pool offset i spelled s (n chars, as long as it)?
@@ -126,22 +128,12 @@ int pp_intern(const char *s, int n)
 {
   int at, id = find(s, n, 0, &at);
   if (id) {
-    pp_macro_flag = (pool[at] & ENT_MACRO) != 0;
+    pp_macro_flag = pp_mac_find(id) >= 0;
     return id;
   }
   add(s, n, 0);
   pp_macro_flag = 0;
   return ++nids;
-}
-
-// Record whether identifier id names a macro (on is 1) or not.
-void pp_set_macro(int id, int on)
-{
-  int i = entry_at(id, 0);
-  if (on)
-    pool[i] |= ENT_MACRO;
-  else
-    pool[i] &= ~ENT_MACRO;
 }
 
 // Does identifier id name a macro? The macro table (ppmac.c) holds

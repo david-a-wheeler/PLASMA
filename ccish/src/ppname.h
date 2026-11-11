@@ -9,7 +9,6 @@ extern int pp_macro_flag;                 // pp_intern()'s: a macro name
 
 void pp_names_init(void);                 // the fixed ids, 1-NFIXED
 int  pp_intern(const char *s, int n);     // the id of s (n chars)
-void pp_set_macro(int id, int on);        // id names a macro, or not
 int  pp_is_macro(int id);
 int  pp_add_file(const char *path);       // a file's number, from 1
 void pp_file_path(int k, char *buf);      // file k's name

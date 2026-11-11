@@ -9038,3 +9038,10 @@ below add nothing, or almost nothing, beside that.
   code. The pool's bit is still kept by pp_set_macro(), so behavior
   is unchanged; the new undef_redefine test pins the flag through
   define, undef and redefine.
+- Step 2: with the table as the authority, the pool's ENT_MACRO bit is
+  write-only: drop it. An identifier's length byte is now just its
+  length, so entry_len() is one masked load (6 ops a call, was 11),
+  and pp_set_macro() goes, define and undef already maintaining the
+  table. ccpp goes from 794,600,000 to 739,000,000 ops (55,500,000
+  more); 115 bytes of module file, no data. The pool's layout, the
+  ids and NAME.nam are unchanged, and the pool is still table-less.
