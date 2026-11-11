@@ -47,6 +47,8 @@ files of the sessions so far, before a move to a new computer.)
 
 ## How the user wants the work done
 
+- **Stay in ccish/:** do not modify or check into git anything
+  outside of ccish/ and its descendents without human approval.
 - **Discuss design before coding.** For a new design question, give the
   options with pros, cons and numbers, and a recommendation; then wait
   for "go ahead". Record the outcome in approach.md ("decided in
