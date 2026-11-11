@@ -784,9 +784,14 @@ static void parse_for(void)
     parse_expr_statement();
   expect(')', 128 /* "expected ')' after 'for' clauses, not" */);
   loop_rest(l);
+  // The for statement is a block (C11 6.8.5p5): what its first clause
+  // declares goes out of scope here, tags and names as well as
+  // variables.
   depth--;
   nvars = nglobals + saved_locals;
   frame_next = saved_next;
+  tag_hide(depth);
+  id_hide(depth);
 }
 
 // break; and continue;: jump to the innermost loop's labels (or, for
