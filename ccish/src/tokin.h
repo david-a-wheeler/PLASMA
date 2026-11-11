@@ -4,6 +4,13 @@
 #ifndef TOKIN_H
 #define TOKIN_H
 
+// ENUM VALUES: the values below are assigned for the set tests and
+// value manipulations on them (the #defines here, and file-local
+// ones in the .c files, each with a _Static_assert of what it
+// relies on), and may be reassigned freely as long as those checks
+// hold; never test or transform one with a raw number outside such
+// a define and assert pair. See ../doc/enums.md.
+
 // Single-character tokens are their character code; others start at
 // 256. The keywords and the operators are in the order of the token
 // stream's codes (token.h; tokin.c maps one to the other by offset, and

@@ -136,6 +136,20 @@ files of the sessions so far, before a move to a new computer.)
   runs it).
 - Messages: every message text is in `ccish.msg` (NUMBER TEXT); code
   writes `error(N /* "text" */, ...)`; `tests/spec/msgs.sh` checks them.
+- **Enum values are assigned for the set tests and may be reassigned
+  freely** (the _Static_asserts are the contract, not the numbers).
+  A set test or value manipulation on one (IR ops, tokens, types,
+  flags, pseudo-ops) is a #define with a _Static_assert: in the .h
+  next to the enum when more than one file uses it, file-local in
+  the .c when one does (each macro used costs the self-hosted build
+  a MAX_IDS or MAX_VARS entry); inside the #define, name the anchor's
+  enum value where reasonable. A comparison with a named constant
+  (tok == T_IF) is fine; a raw number in a bit op, or arithmetic on
+  named constants, outside a define + assert pair is not. Machine
+  opcodes, stream codes, record tags and character codes are fixed
+  by the VM, the format, and C, and their asserts pin the properties
+  the code relies on. tests/spec/enumvals.sh (in make test) checks.
+  See doc/enums.md.
 - Prose in the docs: plain, direct sentences; numbers given.
 
 ## Testing

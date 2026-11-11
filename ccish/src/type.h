@@ -2,6 +2,13 @@
 #ifndef TYPE_H
 #define TYPE_H
 
+// ENUM VALUES: the values below are assigned for the set tests and
+// value manipulations on them (the #defines here, and file-local
+// ones in the .c files, each with a _Static_assert of what it
+// relies on), and may be reassigned freely as long as those checks
+// hold; never test or transform one with a raw number outside such
+// a define and assert pair. See ../doc/enums.md.
+
 // A type is a handle: an int whose low 8 bits index the type table,
 // and whose bits Q_CONST and Q_VOLATILE are its qualifiers
 // (approach.md, "M5 design"). Equal unqualified types share one table

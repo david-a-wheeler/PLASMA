@@ -319,6 +319,24 @@ _Static_assert(!IS_VALUE_BRANCH(OP_BRNCH) && !IS_VALUE_BRANCH(OP_SEL)
                && !IS_VALUE_BRANCH(OP_BRFLS | MOP_VOLATILE)
                && !IS_VALUE_BRANCH(OP_BREQ | MOP_VOLATILE),
                "IS_VALUE_BRANCH holds a non-member");
+// Is op NEG or COMP: a pair, an even number and the next.
+#define IS_NEG_COMP(op)  (((op) - OP_NEG) & ~2) == 0
+_Static_assert(IS_NEG_COMP(OP_NEG) && IS_NEG_COMP(OP_COMP)
+               && OP_COMP - OP_NEG == 2
+               && !IS_NEG_COMP(OP_MUL) && !IS_NEG_COMP(OP_SUB)
+               && !IS_NEG_COMP(OP_NEG | MOP_VOLATILE),
+               "IS_NEG_COMP isn't NEG and COMP, a pair");
+// The frame add of a load (LOAD_FRAME_ADD(LLW, 0) is ADDLW): the VM
+// numbers the adds in the loads' order, ADDLB at LLB + $4C, and the
+// IDX adds at + 8 of their plain adds (asserted below).
+#define LOAD_FRAME_ADD(load, idx) ((load) + (OP_ADDLB - OP_LLB) \
+                                   + ((idx) ? (OP_IDXLB - OP_ADDLB) : 0))
+_Static_assert(OP_ADDLB - OP_LLB == 0x4C && OP_IDXLB - OP_ADDLB == 8
+               && OP_ADDLW - OP_LLW == 0x4C && OP_IDXLW - OP_ADDLW == 8
+               && OP_ADDAB - OP_LAB == 0x4C && OP_IDXAB - OP_ADDAB == 8
+               && OP_ADDAW - OP_LAW == 0x4C && OP_IDXAW - OP_ADDAW == 8,
+               "the frame adds aren't in the loads' order, ADDLB at"
+               " LLB + $4C, the IDX adds at + 8");
 
 // Send the oldest op in the window on to stage 4; or, if it's a DROP
 // and so is the next, make that a DROP2 (one op, a byte less).
@@ -412,7 +430,7 @@ static int fused_op(int load, int idx)
   load = MOP_PLAIN(load);
   if (load < OP_LLB || load > OP_LAW)
     return -1;
-  return (load + (OP_ADDLB - OP_LLB) + (idx ? OP_IDXLB - OP_ADDLB : 0)) | v;
+  return LOAD_FRAME_ADD(load, idx) | v;
 }
 
 // Does op take one value and give one back, adding something to it
@@ -1176,7 +1194,7 @@ static int rewrite(void)
       || (aop == OP_DUP && rewrite_self(a, b))
       || (op == OP_ANDI && rewrite_andi(a, b))
       || (IS_ADD_VALUE(op) && rewrite_addsub(a, b))
-      || ((ac || ((aop - OP_NEG) & ~2) == 0) && rewrite_noop(a, b))
+      || ((ac || IS_NEG_COMP(aop)) && rewrite_noop(a, b))
       || (op == OP_ANDI && rewrite_load_andi(a, b))
       || (aop == OP_DROP && rewrite_drop_zero(a, b))
       || (aop == OP_CW && rewrite_dup_const(a, b))

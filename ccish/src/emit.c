@@ -377,7 +377,18 @@ static void end_function(int frame_size)
 #define K_BYTE   4
 #define K_ENTER  5
 #define K_LEAVE  6
-static const char op_kind[(OP_IDXAW - OP_MINUS1) / 2 + 1] = {
+// The index of a real op (OP_MINUS1 up) in the tables below: the
+// even slots of OP_MINUS1 to OP_IDXAW, a 0 or a K_NONE in a slot the
+// VM leaves empty ($36, and $AC and $AE, which no opcode takes).
+#define MOP_INDEX(op)  (((op) - OP_MINUS1) >> 1)
+_Static_assert((OP_MINUS1 & 1) == 0 && (OP_IDXAW & 1) == 0
+               && OP_BREQ - OP_MINUS1 == 2 && OP_ADDI - OP_DUP == 4
+               && OP_ISEQ - OP_ORI == 2 && OP_NOT - OP_DAW == 2
+               && OP_BRGT - OP_IDXW == 2 && OP_ADDLB - OP_SUBBRGE == 6
+               && MOP_INDEX(OP_IDXAW) + 1 == 80,
+               "the real ops aren't the even slots of OP_MINUS1 to"
+               " OP_IDXAW, $36, $AC and $AE the VM's gaps");
+static const char op_kind[MOP_INDEX(OP_IDXAW) + 1] = {
   // $20: MINUS1 BREQ BRNE LA LLA CB CW -
   K_NONE, K_BRANCH, K_BRANCH, K_WORD, K_FRAME, K_BYTE, K_WORD, K_NONE,
   // $30: DROP DROP2 DUP - ADDI SUBI ANDI ORI
@@ -415,7 +426,7 @@ static const char op_kind[(OP_IDXAW - OP_MINUS1) / 2 + 1] = {
 // (CN, $00 to $1E, is listed by list_op() itself). A table, not a
 // switch of returns: ccish can compile it (doc/bootstrap-test.md, B4),
 // and it takes less memory.
-static const char *const mnems[(OP_IDXAW - OP_MINUS1) / 2 + 1] = {
+static const char *const mnems[MOP_INDEX(OP_IDXAW) + 1] = {
   "MINUS1", "BREQ", "BRNE", "LA", "LLA", "CB", "CW", 0,  // $20
   "DROP", "DROP2", "DUP", 0, "ADDI", "SUBI", "ANDI", "ORI",  // $30
   "ISEQ", "ISNE", "ISGT", "ISLT", "ISGE", "ISLE", "BRFLS", "BRTRU",  // $40
@@ -487,10 +498,10 @@ static void list_op(Mop *m, int frame)
     return;
   }
   fputs("    ", stdout);
-  fputs(mnems[(m->op - OP_MINUS1) >> 1], stdout);
+  fputs(mnems[MOP_INDEX(m->op)], stdout);
   if (vol)
     fputs(".v", stdout);        // volatile (tools/opstats.py reads LW)
-  k = op_kind[(m->op - OP_MINUS1) >> 1];
+  k = op_kind[MOP_INDEX(m->op)];
   if (k == K_WORD)
     list_word(m);
   else if (k >= K_ENTER) {      // ENTER or LEAVE
@@ -572,7 +583,7 @@ void emit_put(Mop *m)
   code_byte(op);
   if (op < OP_MINUS1)
     return;                     // CN: no operand
-  k = op_kind[(op - OP_MINUS1) >> 1];
+  k = op_kind[MOP_INDEX(op)];
   if (k == K_NONE)
     return;
   if (k == K_FRAME)

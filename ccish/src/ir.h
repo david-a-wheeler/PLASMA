@@ -4,6 +4,13 @@
 #ifndef IR_H
 #define IR_H
 
+// ENUM VALUES: the values below are assigned for the set tests and
+// value manipulations on them (the #defines here, and file-local
+// ones in the .c files, each with a _Static_assert of what it
+// relies on), and may be reassigned freely as long as those checks
+// hold; never test or transform one with a raw number outside such
+// a define and assert pair. See ../doc/enums.md.
+
 #define MAX_LABELS   128    // limit function: labels in one function,
                             // ordinary and goto; at most 128, since
                             // case_label[] is char. Each if, loop, &&, || and

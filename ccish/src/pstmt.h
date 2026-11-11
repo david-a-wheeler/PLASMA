@@ -3,6 +3,11 @@
 #ifndef PSTM_H
 #define PSTM_H
 
+// ENUM VALUES: assigned here; a set test or value manipulation on
+// one is a #define with a _Static_assert (next to the values, or
+// file-local in its only user), and the values may be reassigned
+// freely as long as those checks hold. See ../doc/enums.md.
+
 // parse_declarator()'s flags: the name may be left out (a parameter);
 // there is no name (a type name); a file-scope function's own
 // parameter list is parsed by begin_function() (ptop.c).

@@ -1,4 +1,5 @@
 # Build the ccish compiler and run its tests.
+# Requires GNU Make
 #
 #   make        build everything the tests need, and run the stale tests
 #   make all    build ccish and its passes (ccpp, cccomp, ccgen, ccrel),
@@ -46,7 +47,8 @@ CCPP_SRC   = src/ccpp.c $(COMMON) $(PP)
 CCCOMP_SRC = src/cccomp.c $(COMMON) $(NAM) $(FRONT)
 CCGEN_SRC  = src/ccgen.c $(COMMON) $(NAM) $(BACK)
 CCREL_SRC  = src/ccrel.c $(COMMON) $(LINK)
-HEADERS= $(wildcard src/*.h)
+HEADERS := $(wildcard src/*.h)
+SOURCES := $(wildcard src/*.h src/*.c)
 # The library's headers: ccpp's default include directory, compiled in
 # for the host (on the VM it's <syspath>ccinc; src/pp.c).
 CCINC  = -DCCISH_INC='"$(abspath lib/include)"'
@@ -239,6 +241,7 @@ $(OUT)/spec/msgs.stamp: ccish.msg
 $(OUT)/spec/smalldiag.stamp: tests/run/const.c
 $(OUT)/spec/tables.stamp: tests/spec/tables.c src/irin.c src/lower.c src/ir.h \
                           src/mop.h
+$(OUT)/spec/enumvals.stamp: $(SOURCES)
 
 # The compiler bootstrap test: the seed, this source's $(CC) build,
 # compiles the compiler's source into a VM module (stage 1); stage 1,
@@ -301,7 +304,7 @@ tests/xrun/%.ref: tests/xrun/%.c tests/xrun/%.flags inc/ptest.h
 # measure.txt there is; it doesn't depend on measure.txt, so that make
 # all doesn't run the measurement. Instead, the rule that writes
 # measure.txt (which make test runs) regenerates limits.md too.
-LIMIT_SRC = $(sort $(wildcard src/*.c src/*.h lib/*.c))
+LIMIT_SRC := $(sort $(wildcard src/*.c src/*.h lib/*.c))
 LIMITS_CMD = sh tools/limits.sh -m doc/measure.txt $(LIMIT_SRC) \
              > doc/limits.md.tmp && mv doc/limits.md.tmp doc/limits.md
 doc/limits.md: tools/limits.sh $(LIMIT_SRC)

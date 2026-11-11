@@ -4,6 +4,12 @@
 #ifndef PPLEX_H
 #define PPLEX_H
 
+// ENUM VALUES: assigned here, and the TC_* codes are the NAME.i
+// format (CCPP.md); a set test or value manipulation on them is a
+// #define with a _Static_assert (next to the values, or file-local
+// in its only user), and the values may be reassigned freely as
+// long as those checks hold. See ../doc/enums.md.
+
 #define MAX_LINE     255    // limit pp: characters in one source line, after
                             // joining the lines that end in a backslash:
                             // ccpp's buffer

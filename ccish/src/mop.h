@@ -4,6 +4,16 @@
 #ifndef MOP_H
 #define MOP_H
 
+// ENUM VALUES: the values below are assigned for the set tests and
+// value manipulations on them (the #defines here, and file-local
+// ones in the .c files, each with a _Static_assert of what it
+// relies on), and may be reassigned freely as long as those checks
+// hold; never test or transform one with a raw number outside such
+// a define and assert pair. The machine opcodes are the VM's
+// numbers (fixed, ../../doc/Bytecodes.md), and the asserts pin the
+// families the code relies on; the pseudo-ops, the odd numbers
+// below $20, are ours. See ../doc/enums.md.
+
 // PLASMA opcodes used so far (see ../../doc/Bytecodes.md). The VM
 // numbers them in families the code relies on without saying so
 // (approach.md, decision 26):
@@ -67,15 +77,15 @@ enum {
 // even, and CN n is the opcode 2n ($00-$1E); the pseudo-ops are the
 // odd values below $20. (approach.md issue 25 plans bit 0 of a real
 // load or store, $20 up, as its volatile mark.)
-#define MOP_IS_CN(op)      ((op) < 0x20 && !((op) & 1))
-#define MOP_IS_PSEUDO(op)  ((op) < 0x20 && ((op) & 1))
+#define MOP_IS_CN(op)      ((op) < OP_MINUS1 && !((op) & 1))
+#define MOP_IS_PSEUDO(op)  ((op) < OP_MINUS1 && ((op) & 1))
 // A volatile load or store (approach.md issue 25) is its opcode |
 // MOP_VOLATILE: an odd op from $20 up, which no pattern written for
 // the plain one matches; emit.c writes the plain opcode. MOP_PLAIN is
 // the plain op of any op (a pseudo-op, below $20, as it is).
 #define MOP_VOLATILE       1
-#define MOP_IS_VOLATILE(op) ((op) >= 0x20 && ((op) & 1))
-#define MOP_PLAIN(op)      ((op) >= 0x20 ? (op) & ~MOP_VOLATILE : (op))
+#define MOP_IS_VOLATILE(op) ((op) >= OP_MINUS1 && ((op) & 1))
+#define MOP_PLAIN(op)      ((op) >= OP_MINUS1 ? (op) & ~MOP_VOLATILE : (op))
 // An op that only computes, a comparison (ISEQ to ISLE) or arithmetic
 // (NOT to IDXW): no memory, no control, no volatile form.
 #define MOP_IS_ARITH(op)   (((op) >= OP_ISEQ && (op) <= OP_ISLE) \
@@ -86,6 +96,19 @@ enum {
 #define MOP_CN_VALUE(op)   ((op) >> 1)           // CN's v
 _Static_assert(MOP_CN_VALUE(MOP_CN(0)) == 0 && MOP_CN_VALUE(MOP_CN(15)) == 15,
                "MOP_CN_VALUE must undo MOP_CN");
+// The CNs (the evens) and the pseudo-ops (the odds) are all below
+// OP_MINUS1, the first op that may carry the volatile mark (bit 0).
+_Static_assert((OP_MINUS1 & 1) == 0 && MOP_IS_CN(MOP_CN(15))
+               && !MOP_IS_CN(OP_MINUS1) && !MOP_IS_PSEUDO(OP_MINUS1)
+               && MOP_IS_PSEUDO(OP_FUNC_BEGIN) && MOP_IS_PSEUDO(OP_FUNC_END)
+               && MOP_IS_PSEUDO(OP_LABEL) && MOP_IS_PSEUDO(OP_CASES)
+               && MOP_IS_PSEUDO(OP_CASEVAL) && MOP_IS_PSEUDO(OP_CASETO)
+               && MOP_IS_PSEUDO(OP_JOIN)
+               && MOP_IS_VOLATILE(OP_LB | MOP_VOLATILE) && !MOP_IS_VOLATILE(OP_LB)
+               && MOP_PLAIN(OP_LB | MOP_VOLATILE) == OP_LB
+               && MOP_PLAIN(OP_FUNC_BEGIN) == OP_FUNC_BEGIN,
+               "a CN or pseudo-op isn't below OP_MINUS1, the first op"
+               " that may be volatile");
 
 // Is op a constant push (CN, MINUS1, CB, CW, CFFB), as
 // mop_const_value() (lower.c) takes? Most ops are above CW, and are

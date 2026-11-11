@@ -4,6 +4,11 @@
 #ifndef TOKEN_H
 #define TOKEN_H
 
+// ENUM VALUES: the codes below are the NAME.i format (CCPP.md),
+// changed with it and its version (above); the set tests on them
+// here are each a _Static_assert, and the codes may be reassigned
+// freely as long as those hold. See ../doc/enums.md.
+
 #define SUFFIX_I     ".i"
 #define SUFFIX_NAM   ".nam"
 #define TOK_VERSION  8        // NAME.i's format, after its "CTK"

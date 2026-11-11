@@ -7,6 +7,11 @@
 #ifndef PARSE_H
 #define PARSE_H
 
+// ENUM VALUES: assigned here; a set test or value manipulation on
+// one is a #define with a _Static_assert (next to the values, or
+// file-local in its only user), and the values may be reassigned
+// freely as long as those checks hold. See ../doc/enums.md.
+
 // Functions: declared, defined or called. A function is an index into
 // these parallel arrays (approach.md, "Sym split design"), each
 // MAX_FUNCS long.

@@ -6,6 +6,11 @@
 #ifndef OBJ_SYM_H
 #define OBJ_SYM_H
 
+// ENUM VALUES: assigned here; a set test or value manipulation on
+// one is a #define with a _Static_assert (next to the values, or
+// file-local in its only user), and the values may be reassigned
+// freely as long as those checks hold. See ../doc/enums.md.
+
 // Relocation kinds and symbol flags. A REL_DATA target is a data
 // offset, a REL_STR target an offset in the string pool, a REL_FUNC
 // target a function symbol index, and a REL_DSYM target a data symbol
