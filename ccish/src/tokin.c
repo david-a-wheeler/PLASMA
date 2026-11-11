@@ -39,13 +39,17 @@ static void damaged(void)
   fatal(231 /* "token file is damaged:" */, stream_name(base_name, SUFFIX_I));
 }
 
-// The token stream's next byte, which must be there.
+// The token stream's next byte, which must be there. It reads the
+// buffer itself, as bgetc() would, since it runs for every byte of
+// NAME.i: one call a byte, not two.
 static int get_byte(void)
 {
-  int c = bgetc(&in);
-  if (c == EOF)
-    damaged();
-  return c;
+  if (in.pos >= in.len) {
+    bfill(&in);
+    if (in.len == 0)
+      damaged();
+  }
+  return in.buf[in.pos++];
 }
 
 // The token stream's next word.
