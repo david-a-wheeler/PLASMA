@@ -339,9 +339,12 @@ was run again) is never trusted with the ids in `NAME.i`.
 **What `cccomp` checks** (and `ccgen`, of the name file, against the
 IR file's stamp, which `cccomp` copies from the token stream's):
 - `NAME.i`: its header and version (else message 230, "not a token
-  file from ccpp, or the wrong version"); that each code is known,
-  that the file doesn't end before `$00`, and that nothing follows its
-  stamp (else 231, "token file is damaged").
+  file from ccpp, or the wrong version"); that each code is known
+  (a one-character token's only as printable, `$21`-`$7E`: one
+  `ccpp` never writes, such as `#`, is an unexpected token to the
+  parser, an error all the same), that the file doesn't end before
+  `$00`, and that nothing follows its stamp (else 231, "token file is
+  damaged").
 - `NAME.nam`, only if it opens it, for a message, before using any
   name (`ccgen` always, when it starts): that its names come before
   its files, none longer than 31 characters; that at least one file

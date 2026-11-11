@@ -101,9 +101,6 @@ void tok_close(void)
   nam_close();
 }
 
-// The one-character tokens the stream may hold.
-static const char singles[] = "!%&()*+,-./:;<=>?[]^{|}~";
-
 // Advance to the next token.
 void next(void)
 {
@@ -170,10 +167,13 @@ void next(void)
     tok_text[tok_len] = 0;
     return;
   }
-  // A keyword, an operator, or a one-character token is its code.
-  if ((c >= TC_KEYWORDS && c < TC_KEYWORDS + NKEYWORDS)
-      || (c >= TC_OPS && c < TC_OPS + NOPS)
-      || (c >= ' ' && strchr(singles, c)))
+  // A one-character token, a keyword, or an operator is its code. A
+  // one-character code is checked only as printable: one ccpp never
+  // writes (a letter, '#', ...) is an unexpected token to the parser,
+  // so a damaged file is still reported, as a syntax error.
+  if ((c > ' ' && c <= '~')
+      || (c >= TC_KEYWORDS && c < TC_KEYWORDS + NKEYWORDS)
+      || (c >= TC_OPS && c < TC_OPS + NOPS))
     tok = c;
   else
     damaged();

@@ -104,6 +104,25 @@ tok_damaged_test tok_cut "cut short" "token file is damaged"
 ./ccpp -o "$OUT/tok_code" tests/run/hello.c
 printf '\377' | dd of="$OUT/tok_code.i" bs=1 seek=4 conv=notrunc 2>/dev/null
 tok_damaged_test tok_code "with an unknown code" "token file is damaged"
+# A code that's no token at all, between the one-character tokens and
+# the keywords ($7F, for the '(' at offset 9), is damage too.
+./ccpp -o "$OUT/tok_del" tests/run/hello.c
+printf '\177' | dd of="$OUT/tok_del.i" bs=1 seek=9 conv=notrunc 2>/dev/null
+tok_damaged_test tok_del "with a code past '~'" "token file is damaged"
+# next() checks a one-character code only as printable, so a character
+# ccpp never writes ('#', for that '(') is an unexpected token instead:
+# still an error, and still no IR file.
+./ccpp -o "$OUT/tok_char" tests/run/hello.c
+printf '#' | dd of="$OUT/tok_char.i" bs=1 seek=9 conv=notrunc 2>/dev/null
+if ./cccomp "$OUT/tok_char" 2>"$OUT/tok_char.err"; then
+    echo "FAIL cccomp: accepted a token stream with a stray '#'"; bad=1
+elif ! grep -qF "not '#'" "$OUT/tok_char.err"; then
+    echo "FAIL cccomp: wrong message for a token stream with a stray '#':"
+    sed 's/^/    /' "$OUT/tok_char.err"; bad=1
+elif [ -e "$OUT/tok_char.ir" ]; then
+    echo "FAIL cccomp: a token stream with a stray '#' left an IR file"; bad=1
+fi
+rm -f "$OUT/tok_char.i" "$OUT/tok_char.nam"
 ./ccpp -o "$OUT/tok_after" tests/run/hello.c
 printf ';' >> "$OUT/tok_after.i"
 tok_damaged_test tok_after "with something after its stamp" \
