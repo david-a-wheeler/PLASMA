@@ -84,6 +84,22 @@ machine; items 13 to 15 below would add margin if it's needed. (ccish
 has shrunk cccomp's code from 28,321 to 25,854 bytes in 2026-11-08 and
 -09, and will keep trying.)
 
+ccish's doc/measure.txt now gives each program's needs, loading
+(today and streamed) and running, from what `loadmod` allocates; it
+counts each I/O buffer beyond the first as 1,280 bytes, since
+`iobufalloc` page-aligns each one (`heapallocalign(..., 8, ...)`
+skips 1 to 256 bytes). As of 2026-11-11, cccomp has 980 bytes to
+spare running, and ccpp 942.
+
+**Also: no check that the RLD fits.** `loadmod` allocates heap only
+for the body (`allocheap(modsize)`), then reads the rest of the file,
+the RLD and ESD, into the memory after it, 4K at a time, and frees it
+after. I don't see a check there that it fits below the frame stack,
+so a module whose body fits but whose whole file doesn't may overwrite
+the stack rather than fail with an error. Streaming fixes this too;
+until then, a check (say, an `allocheap` of the rest, released after)
+would make such a load fail cleanly.
+
 **The fix.** Read the body into the heap, then stream the RLD four
 bytes at a time from the open file, applying each entry as it
 arrives. Definitions ($02) come first, so the def table is complete

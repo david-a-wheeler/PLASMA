@@ -23,7 +23,7 @@ files of the sessions so far, before a move to a new computer.)
   loader reads a whole module file into memory, so cccomp (a 43.8K
   file) can't load in the 41,171 bytes free on a 64K Apple II; with
   the RLD streamed (doc/plasma-requests.md, item 1) it would, with
-  about 1.2K to spare while running. Each program's "on a 64K Apple
+  under 1K to spare while running. Each program's "on a 64K Apple
   II" lines in doc/measure.txt give its need, running and loading,
   and tests/spec/fit.sh (in make test) fails if one doesn't fit
   running. ccpp's zero-filled tables are its heap too, so raising its

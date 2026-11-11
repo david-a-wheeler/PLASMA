@@ -88,7 +88,7 @@ ccpp: 9 files, and 19 library objects:
   its own code 13573, data 3776, strings 1062: 18411 in all
   the library's code 899, data 183, strings 7: 1089 in all (fopen fputs fread fwrite getc memcpy memmove memset path plvmexit remove start strcat strchr strcmp strcpy strlen strncpy strrchr)
   module file 27633 bytes, all read into memory to load it; 7665 of them RLD and 129 ESD, freed after
-  166 functions: 830 bytes of the loader's def table, kept
+  166 functions: 836 bytes of the loader's def table, kept (init's entry too, and an end byte)
   shared names: 115 of 307 slots, 1075 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
     frame stack at least 485 bytes; 6502 stack at least 34 calls x 4 = 136 bytes
@@ -101,18 +101,18 @@ ccpp: 9 files, and 19 library objects:
     compiled stack (all non-recursive): 122 of 141 framed functions, 1335 frame accesses; saves 465 bytes with new opcodes, -1218 with LAW/SAW
     leaf region 12 bytes (largest leaf frame); compiled stack region 119 bytes
   on a 64K Apple II (41171 bytes free), the RLD streamed:
-    module body 19839, def table 830, zero-filled globals on the heap 13256,
-    frame stack at least 485, FILEIO 2011,
-    I/O buffers 3 x 1024: 4 files open (the source, 2 includes at most, and NAME.i)
-    running, needs 39493 of 41171: 1678 to spare
+    module body 19814, def table 836, zero-filled globals on the heap 13256,
+    frame stack at least 485, FILEIO 1998,
+    I/O buffers 3 x 1280 at most: 4 files open (the source, 2 includes at most, and NAME.i)
+    running, needs 40229 of 41171: 942 to spare
     (a lower bound: the frame stack takes more with the unbounded recursion above)
-    loading, the most at once: 22680 with the RLD streamed, 30474 today (the whole file)
+    loading, the most at once: 22648 with the RLD streamed, 30442 today (the RLD and ESD too)
 
 cccomp: 12 files, and 17 library objects:
   its own code 25688, data 4261, strings 310: 30259 in all
   the library's code 773, data 183, strings 7: 963 in all (fopen fputs fread fwrite getc memcpy memset path plvmexit remove start strcat strcmp strcpy strlen strncpy strrchr)
   module file 43799 bytes, all read into memory to load it; 12145 of them RLD and 129 ESD, freed after
-  291 functions: 1455 bytes of the loader's def table, kept
+  291 functions: 1461 bytes of the loader's def table, kept (init's entry too, and an end byte)
   shared names: 257 of 307 slots, 2496 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
     frame stack at least 1564 bytes; 6502 stack at least 67 calls x 4 = 268 bytes
@@ -129,18 +129,18 @@ cccomp: 12 files, and 17 library objects:
     compiled stack (all non-recursive): 213 of 267 framed functions, 2306 frame accesses; saves 657 bytes with new opcodes, -2288 with LAW/SAW
     leaf region 8 bytes (largest leaf frame); compiled stack region 322 bytes
   on a 64K Apple II (41171 bytes free), the RLD streamed:
-    module body 31525, def table 1455, zero-filled globals on the heap 2388,
-    frame stack at least 1564, FILEIO 2011,
-    I/O buffers 1 x 1024: 2 files open (NAME.i and NAME.ir)
-    running, needs 39967 of 41171: 1204 to spare
+    module body 31500, def table 1461, zero-filled globals on the heap 2388,
+    frame stack at least 1564, FILEIO 1998,
+    I/O buffers 1 x 1280 at most: 2 files open (NAME.i and NAME.ir)
+    running, needs 40191 of 41171: 980 to spare
     (a lower bound: the frame stack takes more with the unbounded recursion above)
-    loading, the most at once: 34991 with the RLD streamed, 47265 today (the whole file)
+    loading, the most at once: 34959 with the RLD streamed, 47233 today (the RLD and ESD too)
 
 ccgen: 10 files, and 18 library objects:
   its own code 22045, data 3439, strings 966: 26450 in all
   the library's code 865, data 183, strings 7: 1055 in all (fopen fputs fread fwrite getc memcpy memmove memset path plvmexit remove start strcat strcmp strcpy strlen strncpy strrchr)
   module file 36985 bytes, all read into memory to load it; 8985 of them RLD and 129 ESD, freed after
-  205 functions: 1025 bytes of the loader's def table, kept
+  205 functions: 1031 bytes of the loader's def table, kept (init's entry too, and an end byte)
   shared names: 106 of 307 slots, 917 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
     frame stack at least 520 bytes; 6502 stack at least 42 calls x 4 = 168 bytes
@@ -151,18 +151,18 @@ ccgen: 10 files, and 18 library objects:
     compiled stack (all non-recursive): 176 of 190 framed functions, 2720 frame accesses; saves 642 bytes with new opcodes, -2584 with LAW/SAW
     leaf region 14 bytes (largest leaf frame); compiled stack region 264 bytes
   on a 64K Apple II (41171 bytes free), the RLD streamed:
-    module body 27871, def table 1025, zero-filled globals on the heap 4808,
-    frame stack at least 520, FILEIO 2011,
-    I/O buffers 2 x 1024: 3 files open (NAME.ir, NAME.nam and the object)
-    running, needs 38283 of 41171: 2888 to spare
+    module body 27846, def table 1031, zero-filled globals on the heap 4808,
+    frame stack at least 520, FILEIO 1998,
+    I/O buffers 2 x 1280 at most: 3 files open (NAME.ir, NAME.nam and the object)
+    running, needs 38763 of 41171: 2408 to spare
     (a lower bound: the frame stack takes more with the unbounded recursion above)
-    loading, the most at once: 30907 with the RLD streamed, 40021 today (the whole file)
+    loading, the most at once: 30875 with the RLD streamed, 39989 today (the RLD and ESD too)
 
 ccrel: 4 files, and 19 library objects:
   its own code 8557, data 1746, strings 361: 10664 in all
   the library's code 869, data 183, strings 7: 1059 in all (fopen fputs fread fwrite getc memcpy memset path plvmexit remove start strcat strchr strcmp strcpy strlen strncat strncpy strrchr)
   module file 16584 bytes, all read into memory to load it; 4461 of them RLD and 121 ESD, freed after
-  91 functions: 455 bytes of the loader's def table, kept
+  91 functions: 461 bytes of the loader's def table, kept (init's entry too, and an end byte)
   shared names: 64 of 307 slots, 510 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
     frame stack 498 bytes; 6502 stack 18 calls x 4 = 72 bytes
@@ -172,11 +172,11 @@ ccrel: 4 files, and 19 library objects:
     compiled stack (all non-recursive): 78 of 87 framed functions, 1215 frame accesses; saves 192 bytes with new opcodes, -1273 with LAW/SAW
     leaf region 8 bytes (largest leaf frame); compiled stack region 368 bytes
   on a 64K Apple II (41171 bytes free), the RLD streamed:
-    module body 12002, def table 455, zero-filled globals on the heap 9830,
-    frame stack 498, FILEIO 2011,
-    I/O buffers 1 x 1024: 2 files open (an object and the module)
-    running, needs 25820 of 41171: 15351 to spare
-    loading, the most at once: 14468 with the RLD streamed, 19050 today (the whole file)
+    module body 11977, def table 461, zero-filled globals on the heap 9830,
+    frame stack 498, FILEIO 1998,
+    I/O buffers 1 x 1280 at most: 2 files open (an object and the module)
+    running, needs 26044 of 41171: 15127 to spare
+    loading, the most at once: 14436 with the RLD streamed, 19018 today (the RLD and ESD too)
 
 Peaks: each limit, the most ccish's own source uses, and where:
   ENTRY_LABEL 81 link.c
@@ -220,12 +220,13 @@ put on the heap at start.
 And their fit on a 64K Apple II (41171 bytes free):
         --- Load today ---- -- Load streamed -- ----- Running -----
 Program   Need  Spare  OK?   Need  Spare  OK?   Need  Spare  OK?
-ccpp     30474  10697  yes  22680  18491  yes  39493   1678  yes*
-cccomp   47265  -6094  NO   34991   6180  yes  39967   1204  yes*
-ccgen    40021   1150  yes  30907  10264  yes  38283   2888  yes*
-ccrel    19050  22121  yes  14468  26703  yes  25820  15351  yes
+ccpp     30442  10729  yes  22648  18523  yes  40229    942  yes*
+cccomp   47233  -6062  NO   34959   6212  yes  40191    980  yes*
+ccgen    39989   1182  yes  30875  10296  yes  38763   2408  yes*
+ccrel    19018  22153  yes  14436  26735  yes  26044  15127  yes
 Load today: the whole file read at once, as PLASMA's loaders do; streamed:
 the body, with the RLD applied as it's read (doc/plasma-requests.md, item 1).
-Each need counts FILEIO (2011) and the loader's def table; running, the heap,
-frame stack and I/O buffers too, the same with either loader.
+Each need counts FILEIO (1998) and the loader's def table; running, the heap,
+frame stack and I/O buffers (at their worst, 1280 each) too, the same with
+either loader.
 * A lower bound: unbounded recursion can take more frame stack.

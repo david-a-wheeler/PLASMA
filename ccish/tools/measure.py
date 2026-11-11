@@ -55,11 +55,16 @@ APPLE_FREE = 41171      # free at PLASMA 2.20's prompt, before FILEIO
                         # or any module: MAME's 64K enhanced IIe,
                         # 2026-11-09 (approach.md, "Free memory,
                         # measured")
-FILEIO_RESIDENT = 2011  # FILEIO's body and def table, from assembling
-                        # src/libsrc/apple/fileio.pla, 2026-11-08
-                        # (approach.md, "Rechecked 2026-11-08")
-IO_BUFFER = 1024        # ProDOS's buffer for each open file but the
-                        # first, which uses the system one at $0800
+FILEIO_RESIDENT = 1998  # what the loader keeps of FILEIO (as for
+                        # ccish's, loader_sizes()): its body without
+                        # the header, and its def table; from assembling
+                        # src/libsrc/apple/fileio.pla, 2026-11-11
+IO_BUFFER = 1280        # ProDOS's 1K buffer for each open file but the
+                        # first (which uses the system one at $0800),
+                        # at its worst: FILEIO's iobufalloc takes each
+                        # from the heap page-aligned (heapallocalign(...,
+                        # 8, ...)), which skips 1 to 256 bytes, and
+                        # ccish's fopen asks for them one at a time
 # The files each program holds open at once (from its bopen() calls),
 # and what they are; for ccpp, beside its #include files, whose most
 # open at once is measured ("includes open"), the {} in its text.
@@ -463,23 +468,41 @@ def stack_report(funcs):
     return comps, edges, total["frame"], bool(unbounded)
 
 
-def fit_report(prog, module, rld, defs, heap, frame, unbounded, includes):
+def loader_sizes(path):
+    """What PLASMA's Apple II loader (loadmod, src/vmsrc/apple/cmd.pla)
+    allocates for the module at path: its body, without the length
+    word, header and dependency list, which it doesn't keep; and its
+    def table, 5 bytes for each function the header counts (init too)
+    and an end byte."""
+    with open(path, "rb") as f:
+        data = f.read()
+    i = 12                          # the dependencies, each a DCI name
+    while data[i] != 0:
+        while data[i] & 0x80:
+            i += 1
+        i += 1
+    kept = (data[0] | data[1] << 8) - (i + 1 - 2)
+    return kept, 5 * (data[8] | data[9] << 8) + 1
+
+
+def fit_report(prog, module, rld, heap, frame, unbounded, includes):
     """Print what prog needs on a 64K Apple II, running and loading, with
-    the RLD streamed; tests/spec/fit.sh checks the "needs" line."""
+    the RLD streamed; tests/spec/fit.sh checks the "needs" line. rld is
+    the module's RLD and ESD bytes."""
     files, what = OPEN_FILES[prog]
     if prog == "ccpp":
         files += includes
     what = what.format(includes)
-    body = os.path.getsize(module) - rld
+    body, deftbl = loader_sizes(module)
     bufs = (files - 1) * IO_BUFFER
-    need = body + 5 * defs + heap + frame + FILEIO_RESIDENT + bufs
+    need = body + deftbl + heap + frame + FILEIO_RESIDENT + bufs
     print("  on a 64K Apple II (%d bytes free), the RLD streamed:"
           % APPLE_FREE)
     print("    module body %d, def table %d, zero-filled globals on the"
-          " heap %d," % (body, 5 * defs, heap))
+          " heap %d," % (body, deftbl, heap))
     print("    frame stack %s%d, FILEIO %d," % (
         "at least " if unbounded else "", frame, FILEIO_RESIDENT))
-    print("    I/O buffers %d x %d: %d files open (%s)" % (
+    print("    I/O buffers %d x %d at most: %d files open (%s)" % (
         files - 1, IO_BUFFER, files, what))
     print("    running, needs %d of %d: %d %s" % (
         need, APPLE_FREE, abs(APPLE_FREE - need),
@@ -487,12 +510,14 @@ def fit_report(prog, module, rld, defs, heap, frame, unbounded, includes):
     if unbounded:
         print("    (a lower bound: the frame stack takes more with the"
               " unbounded recursion above)")
-    load = FILEIO_RESIDENT + body + 5 * defs
-    now = FILEIO_RESIDENT + os.path.getsize(module) + 5 * defs
+    load = FILEIO_RESIDENT + body + deftbl
+    # Today's loader reads the RLD and ESD in after the body, past the
+    # heap it allocated, and frees them after.
+    now = load + rld
     print("    loading, the most at once: %d with the RLD streamed, %d"
-          " today (the whole file)" % (load, now))
+          " today (the RLD and ESD too)" % (load, now))
     return {"heap": heap, "module": os.path.getsize(module), "load": load,
-            "now": now, "need": need, "unbounded": unbounded, "body": body}
+            "now": now, "need": need, "unbounded": unbounded}
 
 
 def summary_table(rows):
@@ -536,8 +561,8 @@ def summary_table(rows):
           " loaders do; streamed:\nthe body, with the RLD applied as it's"
           " read (doc/plasma-requests.md, item 1).\nEach need counts"
           " FILEIO (%d) and the loader's def table; running, the heap,\n"
-          "frame stack and I/O buffers too, the same with either loader."
-          % FILEIO_RESIDENT)
+          "frame stack and I/O buffers (at their worst, %d each) too, the"
+          " same with\neither loader." % (FILEIO_RESIDENT, IO_BUFFER))
     if any(r and r["unbounded"] for _, r in rows):
         print("* A lower bound: unbounded recursion can take more frame"
               " stack.")
@@ -760,7 +785,8 @@ def main():
               " %d of them RLD and %d ESD, freed after" % (
                   os.path.getsize(module), rld, esd))
         print("  %d functions: %d bytes of the loader's def table, kept"
-              % (defs, defs * 5))
+              " (init's entry too, and an end byte)"
+              % (defs, loader_sizes(module)[1]))
         print("  " + last.lstrip("; "))
         if raised:
             print("  (linked by a ccrel with raised limits, for %s)"
@@ -781,11 +807,12 @@ def main():
                 heap = sum(int(m.group(1)) for m in re.finditer(
                     r"^; heap global \d+: \S+, (\d+) bytes$", f.read(),
                     re.M))
-            r = fit_report(prog, module, rld + esd, defs, heap, frame,
+            r = fit_report(prog, module, rld + esd, heap, frame,
                            unbounded, peaks[[t[1] for t in PP_TABLES]
                                             .index("MAX_INCLUDE")])
             r.update(code=code + lcode, data=data + ldata,
-                     strs=strs + lstrs, rld=rld, esd=esd)
+                     strs=strs + lstrs, rld=rld, esd=esd,
+                     body=os.path.getsize(module) - rld - esd)
             fit[prog] = r
     # Read by tools/limits.sh: keep this heading and the lines' form.
     print("\nPeaks: each limit, the most ccish's own source uses, and"
