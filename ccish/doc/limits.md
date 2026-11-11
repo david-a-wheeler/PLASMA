@@ -22,13 +22,13 @@ blank for a limit that isn't measured.
 | `MAX_PP_OPTS` | 16 |  | -D and -U options | [src/pp.c](../src/pp.c) |
 | `MAX_LINE` | 255 | 184 (mop.h) | characters in one source line, after joining the lines that end in a backslash: ccpp's buffer | [src/pplex.h](../src/pplex.h) |
 | `MAX_INCLUDE` | 3 | 2 (bio.c) | #include files open at once, beside the source: PLASMA's Apple II file library allows 4 open files, and ccpp has the source and NAME.i open | [src/pplex.h](../src/pplex.h) |
-| `MAX_MACROS` | 200 | 153 (pexpr.c) | macros defined at once, include guards too; well above ccish's own use, as for MAX_MACRO_BYTES | [src/ppmac.c](../src/ppmac.c) |
-| `MAX_MACRO_BYTES` | 2048 | 1309 (pexpr.c) | bytes of their bodies, as tokens, where an identifier or number is 3 bytes; well above ccish's own use, since macros are how a program inlines code (a byte of ccpp's heap each, and nothing of cccomp's) | [src/ppmac.c](../src/ppmac.c) |
+| `MAX_MACROS` | 200 | 154 (pexpr.c) | macros defined at once, include guards too; well above ccish's own use, as for MAX_MACRO_BYTES | [src/ppmac.c](../src/ppmac.c) |
+| `MAX_MACRO_BYTES` | 2048 | 1324 (pexpr.c) | bytes of their bodies, as tokens, where an identifier or number is 3 bytes; well above ccish's own use, since macros are how a program inlines code (a byte of ccpp's heap each, and nothing of cccomp's) | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_EXPAND` | 16 | 4 (pexpr.c) | macro expansions inside one another | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_EXP_BYTES` | 256 | 139 (emit.c) | bytes of the expansions and arguments being read, and of the arguments' own expansions (two buffers): room for macros longer than ccish's | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_ARG_SLOTS` | 32 | 4 (pexpr.c) | arguments of the calls being expanded | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_PP_PARAMS` | 16 |  | parameters of one macro | [src/ppmac.h](../src/ppmac.h) |
-| `MAX_PP_POOL` | 10240 | 8027 (pexpr.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each; well above ccish's own use (a byte of ccpp's heap each) | [src/ppname.c](../src/ppname.c) |
+| `MAX_PP_POOL` | 10240 | 8042 (pexpr.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each; well above ccish's own use (a byte of ccpp's heap each) | [src/ppname.c](../src/ppname.c) |
 
 ## One source file (cccomp)
 

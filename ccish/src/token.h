@@ -57,6 +57,7 @@ enum {
   TC_STR = 0x08,          // a length (byte), then the bytes
   TC_TAG = 0x09,          // a struct or union tag: id, its spelling's
                           // hash and 31^length (words)
+                          // $10-$1F: ccpp's own (TC_IS_CCPP_OWN)
   TC_KEYWORDS = 0x80,     // the supported keywords:
   TC_INT = TC_KEYWORDS, TC_CHAR, TC_SIGNED, TC_UNSIGNED,
   TC_CONST, TC_VOLATILE,          // +$06-$07: UNUSED (TC_IS_QUAL's 4)
@@ -80,6 +81,18 @@ enum {
 #define NKEYWORDS    40       // keyword codes, UNUSED ones included
 #define TC_OPS       TC_ADDEQ // the first operator's code
 #define NOPS         32       // operator codes, UNUSED ones included
+
+// ccpp's own codes (pplex.h), for macros: never in NAME.i, but in a
+// macro's body beside the stream's, so this block holds no stream
+// code and no one-character token.
+#define TC_IS_CCPP_OWN(c)  IN_BLOCK(c, 0x10, 16)
+_Static_assert(!TC_IS_CCPP_OWN(TC_END) && !TC_IS_CCPP_OWN(TC_NL)
+               && !TC_IS_CCPP_OWN(TC_LINE) && !TC_IS_CCPP_OWN(TC_FILE)
+               && !TC_IS_CCPP_OWN(TC_ID) && !TC_IS_CCPP_OWN(TC_NUM)
+               && !TC_IS_CCPP_OWN(TC_UNUM) && !TC_IS_CCPP_OWN(TC_KEYWORD)
+               && !TC_IS_CCPP_OWN(TC_STR) && !TC_IS_CCPP_OWN(TC_TAG)
+               && !TC_IS_CCPP_OWN(' ') && !TC_IS_CCPP_OWN(TC_KEYWORDS),
+               "TC_IS_CCPP_OWN holds a stream code or a one-character token");
 
 // The tokens that carry a 16-bit value in the stream, their bytes
 // the code plus the value's low and high bytes (CCPP.md).

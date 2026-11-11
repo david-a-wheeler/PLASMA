@@ -51,12 +51,12 @@ strncat       62       0        0          0
 strncpy       52       0        0          0
 strrchr       38       0        0          0
 
-parse.c: 45072 bytes of source; ccpp's token stream 24505, name file 7350
+parse.c: 45072 bytes of source; ccpp's token stream 25024, name file 7365
 
 ccpp's tables: the most one source needed, and the limit:
-  name pool bytes              8027 of  10240  (pexpr)
-  macros                        153 of    200  (pexpr)
-  macro body bytes             1309 of   2048  (pexpr)
+  name pool bytes              8042 of  10240  (pexpr)
+  macros                        154 of    200  (pexpr)
+  macro body bytes             1324 of   2048  (pexpr)
   expansion text bytes          139 of    256  (emit)
   argument expansion bytes       38 of    256  (pexpr)
   expansions open                 4 of     16  (pexpr)
@@ -166,12 +166,12 @@ Peaks: each limit, the most ccish's own source uses, and where:
   MAX_IF_NEST 2 bio.c
   MAX_INCLUDE 2 bio.c
   MAX_LINE 184 mop.h
-  MAX_MACROS 153 pexpr.c
-  MAX_MACRO_BYTES 1309 pexpr.c
+  MAX_MACROS 154 pexpr.c
+  MAX_MACRO_BYTES 1324 pexpr.c
   MAX_MEMBERS 27 irout.c
   MAX_NEST 18 emit.c
   MAX_PARAM_TYPES 305 pexpr.c
-  MAX_PP_POOL 8027 pexpr.c
+  MAX_PP_POOL 8042 pexpr.c
   MAX_RETURNS 47 pplex.c
   MAX_TAGS 4 link.c
   MAX_TEMP_USES 4 pp.c

@@ -181,6 +181,7 @@ order, through a 512-byte block buffer (`src/bio.c`).
 | `$07` | a C keyword ccish doesn't support (`float`, `long`, ...) | its id (word), for the message's spelling |
 | `$08` | a string literal | its length (byte, 0-255), then its bytes |
 | `$09` | a struct or union tag: an identifier right after `struct` or `union` (no other identifier is written so) | its id (word); the hash *h* of its spelling, from 0, for each byte *b*: *h* = (*h* × 31 + *b*) mod 65536 (word); and 31^*n* mod 65536, for its *n* bytes (word) |
+| `$10`-`$1F` | never written: ccpp's own codes, for macros' bodies (`src/pplex.h`) | |
 | `$20`-`$7E` | a one-character token, as itself: one of `! % & ( ) * + , - . / : ; < = > ? [ ] ^ { \| } ~` | none |
 | `$80`-`$BF` | a supported keyword (table below) | none |
 | `$C0`-`$DF` | an operator of more than one character (table below) | none |

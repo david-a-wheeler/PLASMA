@@ -27,7 +27,8 @@ extern int pt_space;                // blanks came before it (for #)
 extern int pt_macro;                // TC_ID, TC_KEYWORD: names a macro
 
 // ccpp's own codes, beside the token stream's, for macros: never in
-// NAME.i. In a macro's body, a parameter (with its index after it), one
+// NAME.i, and in the block token.h keeps for them (TC_IS_CCPP_OWN).
+// In a macro's body, a parameter (with its index after it), one
 // not to be expanded first (next to ##), one after # (to be made a
 // string), and ##; in an argument, blanks between tokens (for #).
 enum { TC_PARAM = 0x10, TC_PARAM_RAW, TC_HASH_PARAM, TC_PASTE, TC_SPACE };
@@ -36,13 +37,17 @@ enum { TC_PARAM = 0x10, TC_PARAM_RAW, TC_HASH_PARAM, TC_PASTE, TC_SPACE };
 // parameter, one not to be expanded first, one after #.
 #define TC_IS_PARAM(c)       ((c) >= TC_PARAM && (c) <= TC_HASH_PARAM)
 _Static_assert(TC_IS_PARAM(TC_PARAM) && TC_IS_PARAM(TC_PARAM_RAW)
-               && TC_IS_PARAM(TC_HASH_PARAM) && TC_HASH_PARAM - TC_PARAM == 2,
-               "TC_IS_PARAM is exactly the three parameter tokens");
-// ccpp's codes share a macro body with the stream's (token.h), so they
-// must differ from those, and from the one-character tokens. (The
-// casts: gcc warns about comparing two enums' constants.)
-_Static_assert((int)TC_PARAM > (int)TC_TAG && TC_SPACE < ' ',
-               "a ccpp code is also a token stream code");
+               && TC_IS_PARAM(TC_HASH_PARAM),
+               "TC_IS_PARAM misses a parameter token");
+_Static_assert(!TC_IS_PARAM(TC_PASTE) && !TC_IS_PARAM(TC_SPACE)
+               && !TC_IS_PARAM(TC_TAG),
+               "TC_IS_PARAM holds a non-member");
+// ccpp's codes share a macro body with the stream's, so they're in
+// the block token.h keeps for them.
+_Static_assert(TC_IS_CCPP_OWN(TC_PARAM) && TC_IS_CCPP_OWN(TC_PARAM_RAW)
+               && TC_IS_CCPP_OWN(TC_HASH_PARAM) && TC_IS_CCPP_OWN(TC_PASTE)
+               && TC_IS_CCPP_OWN(TC_SPACE),
+               "a ccpp code is outside token.h's TC_IS_CCPP_OWN");
 
 // How the lexer reads (pp_mode): ordinary source; a directive's line,
 // up to its newline; or a group #ifdef leaves out.
