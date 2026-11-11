@@ -41,6 +41,7 @@ BEGIN {
   # The report'"'"'s peaks: "  NAME VALUE WHERE", after its "Peaks:" line.
   while ((getline l < report) > 0) {
     if (l ~ /^Peaks:/) in_peaks = 1
+    else if (l == "") in_peaks = 0     # the section ends at a blank line
     else if (in_peaks && l ~ /^  [A-Za-z_0-9]+ [0-9]+ /) {
       split(l, f, " "); where = l
       sub(/^  [A-Za-z_0-9]+ [0-9]+ /, "", where)

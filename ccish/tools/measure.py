@@ -484,10 +484,48 @@ def fit_report(prog, module, rld, defs, heap, frame, unbounded, includes):
     if unbounded:
         print("    (a lower bound: the frame stack takes more with the"
               " unbounded recursion above)")
+    load = FILEIO_RESIDENT + body + 5 * defs
+    now = FILEIO_RESIDENT + os.path.getsize(module) + 5 * defs
     print("    loading, the most at once: %d with the RLD streamed, %d"
-          " today (the whole file)" % (
-              FILEIO_RESIDENT + body + 5 * defs,
-              FILEIO_RESIDENT + os.path.getsize(module) + 5 * defs))
+          " today (the whole file)" % (load, now))
+    return {"heap": heap, "module": os.path.getsize(module), "load": load,
+            "now": now, "need": need, "unbounded": unbounded}
+
+
+def summary_table(rows):
+    """Print the summary at the report's end: for each program (rows,
+    in PROGRAMS' order: its sizes, or None if it wasn't measured)
+    whether it loads and runs on a 64K Apple II, and its margin."""
+    yes = lambda need: "yes" if need <= APPLE_FREE else "NO"
+    print("\nSummary: the %s build's modules on a 64K Apple II (%d bytes"
+          " free),\nwith the loader streaming the RLD:"
+          % ("full" if FULL else "small", APPLE_FREE))
+    print("%41s %s %s" % ("", "----- Loading ----", "----- Running ----"))
+    print("%-7s %6s %5s %7s %5s %6s %6s %6s  %-3s %6s %6s  %s" % (
+        "Program", "Code", "Data", "Strings", "Heap", "Module",
+        "Need", "Spare", "OK?", "Need", "Spare", "OK?"))
+    for prog, r in rows:
+        if r is None:
+            print("%-7s not measured (a file or the link failed)" % prog)
+            continue
+        print("%-7s %6d %5d %7d %5d %6d %6d %6d  %-3s %6d %6d  %s" % (
+            prog, r["code"], r["data"], r["strs"], r["heap"], r["module"],
+            r["load"], APPLE_FREE - r["load"], yes(r["load"]),
+            r["need"], APPLE_FREE - r["need"],
+            yes(r["need"]) + ("*" if r["unbounded"] else "")))
+    print("Code, data and strings: the program's and the library's, in"
+          " the module body;\nheap: its zero-filled globals, moved to the"
+          " heap at start; module: its file.\nEach need counts FILEIO"
+          " (%d); running, the frame stack and I/O buffers too." %
+          FILEIO_RESIDENT)
+    stuck = ["%s (%d)" % (p, r["now"]) for p, r in rows
+             if r and r["now"] > APPLE_FREE]
+    if stuck:
+        print("Without streaming (the whole file read at once), these"
+              " can't load:\n%s." % ", ".join(stuck))
+    if any(r and r["unbounded"] for _, r in rows):
+        print("* A lower bound: unbounded recursion can take more frame"
+              " stack.")
 
 
 def static_report(funcs, comps, edges):
@@ -565,7 +603,7 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     print("The %s build:" % ("full" if FULL else "small"))
     names = sorted({n for _, files in PROGRAMS for n in files})
-    sizes, failed, big, over = {}, False, None, {}
+    sizes, failed, big, over, fit = {}, False, None, {}, {}
     tok_sizes = None
     peaks, peak_of = [0] * len(PP_TABLES), [""] * len(PP_TABLES)
     cpeaks, cpeak_of = [0] * len(CC_TABLES), [""] * len(CC_TABLES)
@@ -727,14 +765,18 @@ def main():
                 heap = sum(int(m.group(1)) for m in re.finditer(
                     r"^; heap global \d+: \S+, (\d+) bytes$", f.read(),
                     re.M))
-            fit_report(prog, module, rld, defs, heap, frame, unbounded,
-                       peaks[[t[1] for t in PP_TABLES]
-                             .index("MAX_INCLUDE")])
+            r = fit_report(prog, module, rld, defs, heap, frame,
+                           unbounded, peaks[[t[1] for t in PP_TABLES]
+                                            .index("MAX_INCLUDE")])
+            r.update(code=code + lcode, data=data + ldata,
+                     strs=strs + lstrs)
+            fit[prog] = r
     # Read by tools/limits.sh: keep this heading and the lines' form.
     print("\nPeaks: each limit, the most ccish's own source uses, and"
           " where:")
     for lim in sorted(limit_peaks):
         print("  %s %d %s" % (lim, limit_peaks[lim][0], limit_peaks[lim][1]))
+    summary_table([(p, fit.get(p)) for p, _ in PROGRAMS])
     return 1 if failed else 0
 
 

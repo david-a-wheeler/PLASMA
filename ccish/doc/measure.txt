@@ -204,3 +204,18 @@ Peaks: each limit, the most ccish's own source uses, and where:
   MAX_TEMP_USES 4 pp.c
   MAX_TYPES 51 link.c
   MAX_VARS 75 link.c
+
+Summary: the small build's modules on a 64K Apple II (41171 bytes free),
+with the loader streaming the RLD:
+                                          ----- Loading ---- ----- Running ----
+Program   Code  Data Strings  Heap Module   Need  Spare  OK?   Need  Spare  OK?
+ccpp     14472  3959    1069 13256  27633  22680  18491  yes  39493   1678  yes*
+cccomp   26461  4444     317  2388  43799  34991   6180  yes  39967   1204  yes*
+ccgen    22910  3622     973  4808  36985  30907  10264  yes  38283   2888  yes*
+ccrel     9426  1929     368  9830  16584  14468  26703  yes  25820  15351  yes
+Code, data and strings: the program's and the library's, in the module body;
+heap: its zero-filled globals, moved to the heap at start; module: its file.
+Each need counts FILEIO (2011); running, the frame stack and I/O buffers too.
+Without streaming (the whole file read at once), these can't load:
+cccomp (47265).
+* A lower bound: unbounded recursion can take more frame stack.
