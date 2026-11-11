@@ -1455,6 +1455,42 @@ static void init_entries(int init_off)
   }
 }
 
+#ifdef CCISH_LISTING
+// Keep init's relocations, of len bytes at code-segment offset
+// init_off, and list it. A function of its own, as list_summary() is,
+// so that link_module() stays within MAX_FUNC_RELOCS in the full build.
+static void list_init(int len, int init_off)
+{
+  int i;
+  nlr = 0;
+  for (i = 0; i < nir; i++)
+    if (ir_g[i] < 0)
+      keep_reloc(REL_DATA, subseg + init_off + ir_at[i],
+                 (fbuf[ir_at[i]] | (fbuf[ir_at[i] + 1] << 8))
+                 - data_base);
+    else
+      keep_reloc(REL_FUNC, subseg + init_off + ir_at[i], -2 - ir_g[i]);
+  if (opt_list)
+    list_code("(init)", len, init_off);
+}
+
+// List the modules loaded first, named dep and the used ones, and how
+// full the shared-name table is, to see a limit coming.
+static void list_summary(const char *dep)
+{
+  int i;
+  if (!opt_list)
+    return;
+  printf("; dependencies:%s", nimports ? " CMDSYS" : "");
+  for (i = 0; i < nmods; i++)
+    if (mod_used[i] && strcmp(mod_name[i], dep))
+      printf(" %s", mod_name[i]);
+  printf("\n");
+  printf("; shared names: %d of %d slots, %d of %d name bytes\n",
+         ngsyms, MAX_GSYMS, gnames_len, MAX_GNAMES);
+}
+#endif
+
 // Run the final pass: link the n objects whose output names (as given
 // to cccomp) are bases, in that order, and write the REL module to
 // path.
@@ -1533,16 +1569,7 @@ void link_module(int n, const char **bases, const char *path)
   if (main_sym >= 0) {
     int len = init_code();
 #ifdef CCISH_LISTING
-    nlr = 0;
-    for (i = 0; i < nir; i++)
-      if (ir_g[i] < 0)
-        keep_reloc(REL_DATA, subseg + init_off + ir_at[i],
-                   (fbuf[ir_at[i]] | (fbuf[ir_at[i] + 1] << 8))
-                   - data_base);
-      else
-        keep_reloc(REL_FUNC, subseg + init_off + ir_at[i], -2 - ir_g[i]);
-    if (opt_list)
-      list_code("(init)", len, init_off);
+    list_init(len, init_off);
 #endif
     bwrite(&out, fbuf, len);
   }
@@ -1583,17 +1610,6 @@ void link_module(int n, const char **bases, const char *path)
   if (bclose(&out) != 0)
     fatal_d(193 /* "error writing output file" */, path);
 #ifdef CCISH_LISTING
-  // The modules loaded first, and how full the shared-name table is,
-  // to see a limit coming.
-  if (opt_list) {
-    printf("; dependencies:%s", nimports ? " CMDSYS" : "");
-    for (i = 0; i < nmods; i++)
-      if (mod_used[i] && strcmp(mod_name[i], dep))
-        printf(" %s", mod_name[i]);
-    printf("\n");
-  }
-  if (opt_list)
-    printf("; shared names: %d of %d slots, %d of %d name bytes\n",
-           ngsyms, MAX_GSYMS, gnames_len, MAX_GNAMES);
+  list_summary(dep);
 #endif
 }
