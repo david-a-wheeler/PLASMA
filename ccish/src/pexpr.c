@@ -225,8 +225,9 @@ int parse_const(int msg, int part)
   return e.val;
 }
 
-// Binary operators: precedence and IR op. Returns 0 if tok is not a
-// binary operator. Sets *supported to 0 for C operators we don't
+// Binary operators: precedence and IR op (-1 for one parsed specially,
+// and for ','). Returns 0, and sets no IR op, if tok is not a binary
+// operator. Sets *supported to 0 for C operators we don't
 // support yet; they still get their real precedence, so that, say, a
 // ',' ending a function argument isn't mistaken for an error.
 static int binary_prec(int *ir_op, int *supported)
@@ -255,8 +256,10 @@ static int binary_prec(int *ir_op, int *supported)
   case '?':      *ir_op = -1;  return PREC_COND;
   }
   *supported = 0;
-  if (tok == ',')
+  if (tok == ',') {
+    *ir_op = -1;
     return PREC_COMMA;
+  }
   return 0;
 }
 
@@ -273,14 +276,16 @@ SAME_AOP(AND); SAME_AOP(OR); SAME_AOP(XOR); SAME_AOP(SHL); SAME_AOP(SHR);
 _Static_assert(TC_INCDEC_IR(TC_INC) == IR_ADD && TC_INCDEC_IR(TC_DEC) == IR_SUB,
                "TC_INCDEC_IR: ++ and -- aren't at ADD's and SUB's places");
 
-// Assignment operators: returns 1 if tok is one. *ir_op is the
-// arithmetic for a compound assignment, or -1 for plain '=' (and
-// meaningless for anything else, but always set).
-static int assign_op(int *ir_op)
-{
-  *ir_op = tok == '=' ? -1 : TC_ASSIGN_IR(tok);
-  return tok == '=' || TC_IS_ASSIGN_OP(tok);
-}
+// Is token t an assignment operator, '=' or a compound one? A test in
+// place, not a call, as parse_expr() asks after every operand. It
+// names t twice: pass it tok.
+#define TC_IS_ANY_ASSIGN(t) ((t) == '=' || TC_IS_ASSIGN_OP(t))
+_Static_assert(TC_IS_ANY_ASSIGN('=') && TC_IS_ANY_ASSIGN(TC_ADDEQ)
+               && TC_IS_ANY_ASSIGN(TC_SHREQ),
+               "TC_IS_ANY_ASSIGN misses a member");
+_Static_assert(!TC_IS_ANY_ASSIGN(TC_EQ) && !TC_IS_ANY_ASSIGN(TC_LE)
+               && !TC_IS_ANY_ASSIGN('<') && !TC_IS_ANY_ASSIGN(TC_INC),
+               "TC_IS_ANY_ASSIGN holds a non-member");
 
 // Push the struct o by value (approach.md, "M6 design"): the words of
 // its bytes, first word deepest; a last odd byte alone, as a word. As
@@ -1769,9 +1774,11 @@ void parse_expr(int min_prec, Operand *o)
   enter_nest();
   parse_unary(o);
 
-  if (assign_op(&ir_op)) {
+  if (TC_IS_ANY_ASSIGN(tok)) {
     // Assignment is right-associative and binds loosest of all but
     // ','; it is only possible directly after a unary expression.
+    // The IR op is a compound assignment's arithmetic, or -1 for '='.
+    ir_op = tok == '=' ? -1 : TC_ASSIGN_IR(tok);
     if (min_prec > PREC_ASSIGN)
       error_in(41 /* "lvalue required as" */,
                194 /* "left operand of assignment" */, NULL);
@@ -1784,7 +1791,7 @@ void parse_expr(int min_prec, Operand *o)
     int mark = -1, is_addr = 0, a, f, op;
     Operand addr;
     lstart = -1;
-    if (assign_op(&ir_op))
+    if (TC_IS_ANY_ASSIGN(tok))
       error_in(41 /* "lvalue required as" */,
                194 /* "left operand of assignment" */, NULL);
     prec = binary_prec(&ir_op, &supported);

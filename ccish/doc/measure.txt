@@ -17,7 +17,7 @@ nam          521     138       12          0
 name         139     408        0        812
 parse       4808    1892      113       1320
 peep        5572      84        0          0
-pexpr       7995       4        0          0
+pexpr       7997       4        0          0
 pp          2289     990      143        552
 ppif        1242       8        0          0
 pplex       3543     234      362        512
@@ -54,9 +54,9 @@ strrchr       38       0        0          0
 parse.c: 45072 bytes of source; ccpp's token stream 25020, name file 7365
 
 ccpp's tables: the most one source needed, and the limit:
-  name pool bytes              8042 of  10240  (pexpr)
-  macros                        154 of    200  (pexpr)
-  macro body bytes             1320 of   2048  (pexpr)
+  name pool bytes              8049 of  10240  (pexpr)
+  macros                        155 of    200  (pexpr)
+  macro body bytes             1338 of   2048  (pexpr)
   expansion text bytes          139 of    256  (emit)
   argument expansion bytes       38 of    256  (pexpr)
   expansions open                 4 of     16  (pexpr)
@@ -65,9 +65,9 @@ ccpp's tables: the most one source needed, and the limit:
   groups open                     2 of      8  (bio)
 
 cccomp's tables: the most one source needed, and the limit:
-  functions                     195 of    242  (pexpr)
+  functions                     194 of    242  (pexpr)
   variables visible              75 of     79  (link)
-  parameter types               305 of    352  (pexpr)
+  parameter types               304 of    352  (pexpr)
   enum constants, typedefs      199 of    203  (irin)
   types                          51 of     54  (link)
   struct tags                     4 of      6  (link)
@@ -102,10 +102,10 @@ ccpp: 9 files, and 19 library objects:
     leaf region 12 bytes (largest leaf frame); compiled stack region 119 bytes
 
 cccomp: 12 files, and 17 library objects:
-  its own code 25686, data 4261, strings 310: 30257 in all
+  its own code 25688, data 4261, strings 310: 30259 in all
   the library's code 773, data 183, strings 7: 963 in all (fopen fputs fread fwrite getc memcpy memset path plvmexit remove start strcat strcmp strcpy strlen strncpy strrchr)
-  module file 43801 bytes, all read into memory to load it; 12278 of them RLD and ESD, freed after
-  292 functions: 1460 bytes of the loader's def table, kept
+  module file 43799 bytes, all read into memory to load it; 12274 of them RLD and ESD, freed after
+  291 functions: 1455 bytes of the loader's def table, kept
   shared names: 257 of 307 slots, 2496 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
     frame stack at least 1564 bytes; 6502 stack at least 67 calls x 4 = 268 bytes
@@ -118,8 +118,8 @@ cccomp: 12 files, and 17 library objects:
     unbounded recursion (no nest count; counted once above): type_size
     largest frames: stop 136, parse_expr 108, report 106, copy_struct 96, parse_declaration 94
   static locals (bytes saved; per call, about 45 cycles saved with new opcodes):
-    leaf functions: 53 of 268 framed functions, 304 frame accesses; saves 149 bytes with new opcodes, -301 with LAW/SAW
-    compiled stack (all non-recursive): 214 of 268 framed functions, 2306 frame accesses; saves 659 bytes with new opcodes, -2287 with LAW/SAW
+    leaf functions: 52 of 267 framed functions, 304 frame accesses; saves 147 bytes with new opcodes, -302 with LAW/SAW
+    compiled stack (all non-recursive): 213 of 267 framed functions, 2306 frame accesses; saves 657 bytes with new opcodes, -2288 with LAW/SAW
     leaf region 8 bytes (largest leaf frame); compiled stack region 322 bytes
 
 ccgen: 10 files, and 18 library objects:
@@ -157,7 +157,7 @@ Peaks: each limit, the most ccish's own source uses, and where:
   MAX_CASES 25 pplex.c
   MAX_EXPAND 4 pexpr.c
   MAX_EXP_BYTES 139 emit.c
-  MAX_FUNCS 195 pexpr.c
+  MAX_FUNCS 194 pexpr.c
   MAX_FUNC_CODE 1022 peep.c
   MAX_FUNC_RELOCS 111 link.c
   MAX_GNAMES 2496 linking cccomp
@@ -166,12 +166,12 @@ Peaks: each limit, the most ccish's own source uses, and where:
   MAX_IF_NEST 2 bio.c
   MAX_INCLUDE 2 bio.c
   MAX_LINE 184 mop.h
-  MAX_MACROS 154 pexpr.c
-  MAX_MACRO_BYTES 1320 pexpr.c
+  MAX_MACROS 155 pexpr.c
+  MAX_MACRO_BYTES 1338 pexpr.c
   MAX_MEMBERS 27 irout.c
   MAX_NEST 18 emit.c
-  MAX_PARAM_TYPES 305 pexpr.c
-  MAX_PP_POOL 8042 pexpr.c
+  MAX_PARAM_TYPES 304 pexpr.c
+  MAX_PP_POOL 8049 pexpr.c
   MAX_RETURNS 47 pplex.c
   MAX_TAGS 4 link.c
   MAX_TEMP_USES 4 pp.c
