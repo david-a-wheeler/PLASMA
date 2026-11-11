@@ -86,8 +86,8 @@
 // and
 //   CCISH_FAST     faster code that is bigger when ccish compiles it,
 //                  kept for when size matters less (so far cccomp's
-//                  find_func(), parse.c). Either way, the output is the
-//                  same.
+//                  find_func(), parse.c, and id_find()'s hash chains,
+//                  name.c). Either way, the output is the same.
 #ifndef CCISH_SMALL
 #define CCISH_LISTING
 #define CCISH_CHECKS
