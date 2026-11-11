@@ -19,15 +19,15 @@ files of the sessions so far, before a move to a new computer.)
   stream + NAME.nam names), cccomp (front end → NAME.ir), ccgen (back
   end → NAME.obj + NAME.syms), ccrel (link → REL module). `ccish` runs
   all four on the host.
-- **Size matters most for cccomp**, the one that doesn't fit yet. The
-  loader reads a whole module file into memory, so cccomp (a 43.8K
-  file) can't load in the 41,171 bytes free on a 64K Apple II; with
-  the RLD streamed (doc/plasma-requests.md, item 1) it would, with
-  under 1K to spare while running. Each program's "on a 64K Apple
-  II" lines in doc/measure.txt give its need, running and loading,
-  and tests/special/fit.sh (in make test) fails if one doesn't fit
-  running. ccpp's zero-filled tables are its heap too, so raising its
-  limits costs that margin.
+- **Size matters most for cccomp**, the one that doesn't fit yet:
+  the loader reads a whole module file into memory, and cccomp's is
+  bigger than the 41,171 bytes free on a 64K Apple II, so it can't
+  load; with the RLD streamed (doc/plasma-requests.md, item 1) it
+  would, with a little to spare while running. Each program's "on a
+  64K Apple II" lines in doc/measure.txt give its need, running and
+  loading, and tests/special/fit.sh (in make test) fails if one
+  doesn't fit running. ccpp's zero-filled tables are its heap too, so
+  raising its limits costs that margin.
 
   ccgen has headroom; it is a streaming filter with fixed tables, so
   making it bigger doesn't reduce what it can compile.
@@ -48,7 +48,9 @@ files of the sessions so far, before a move to a new computer.)
 ## How the user wants the work done
 
 - **Stay in ccish/:** do not modify or check into git anything
-  outside of ccish/ and its descendents without human approval.
+  outside of ccish/ and its descendents without human approval. The
+  git repository's root is one level up (PLASMA/), so git run from
+  ccish/ acts on the whole tree.
 - **Discuss design before coding.** For a new design question, give the
   options with pros, cons and numbers, and a recommendation; then wait
   for "go ahead". Record the outcome in approach.md ("decided in
@@ -100,7 +102,9 @@ files of the sessions so far, before a move to a new computer.)
 
 - The small build is `-DCCISH_SMALL`; code tests feature macros (build.h:
   CCISH_LISTING, CCISH_CHECKS, CCISH_TEXT, CCISH_STATS, CCISH_FAST),
-  never CCISH_SMALL itself. At one time we limited ourselves to C89 or C99, but that
+  never CCISH_SMALL itself. The full build has CCISH_BIG_LIMITS
+  (larger MAX_TYPES and MAX_VARS); it is the small build's limits
+  that must fit on the Apple II. At one time we limited ourselves to C89 or C99, but that
   was really a placeholder to enable bootstrapping. We now test
   bootstrapping separately with `make bootstrap`
 - **2-space indents, never tabs**; continuation lines align under the
@@ -162,6 +166,10 @@ files of the sessions so far, before a move to a new computer.)
   and the scripts, so a change to any of those re-runs it; `make all`
   and `make small` build without testing). It requires the small build
   to write byte-identical objects and modules.
+- `make bootstrap` compiles ccish's sources with ccish itself, in
+  three stages, and passes only if the modules are byte-for-byte the
+  same: the strongest correctness check, so run it after a change to
+  any pass; `make full-test` is the regular suite plus the bootstrap.
 - **The kinds:** run (compile and run: stdout, stderr, the exit
   status, listing directives), gen (the machine ops after the
   peepholes, and a run), link (several files into one program),
@@ -321,16 +329,20 @@ files of the sessions so far, before a move to a new computer.)
 
 ## Where things stand, and what's open (2026-10-31)
 
+A snapshot as of the date in the heading; the numbers that change
+with every commit (sizes, fits, test counts) are in doc/measure.txt
+and make's output, and recent work in git log and approach.md.
+
 Done recently (see git log and approach.md): the ccpp preprocessor;
 the header split; C6 (address constants from the expression parser);
 large zero-filled globals moved to the heap (option 1); loops with the
 test at the bottom; counted loops on the eval stack; the DLW fix (for
 any step that stores the variable); global and expression limits;
 `return` in a counted loop; pure-expression init folding; dead stores
-before a return. 381 tests pass.
+before a return.
 
 Open, roughly in the order they matter:
-- **cccomp doesn't fit** (module file 42,743). Size work recorded but
+- **cccomp doesn't fit**. Size work recorded but
   not done: approach.md's "last 2K" candidates (NAME.i/.ir via stdio,
   enums to #defines), option 3 for zero-filled data (a BSS segment in
   the REL format, preferred once the VM may change).
@@ -338,17 +350,18 @@ Open, roughly in the order they matter:
 - **The 6502 stack depth** of cccomp's recursion (approach.md 18.5).
 - Loop improvement 3: calls that can't recurse in a counted loop's
   body (CMDSYS functions, helpers, earlier leaf functions): **the
-  user's decision; "no calls" stands until then.** cccomp's 22 loops
-  with calls are mostly blocked by calls to its own non-leaf functions.
+  user's decision; "no calls" stands until then.** cccomp's loops
+  with calls are mostly blocked by calls to its own non-leaf
+  functions.
 - Loop improvements 4 and 5's rest (array stores in nested counted
   loops; global or char loop variables), and counting `!=` loops if
   the VM gains INCBRNE.
-- Trim candidates in ccgen: peep.c's `frame_expr()` (166 bytes, a
-  chain of op tests a table could shorten), the DLW-fix generalization
-  (+249), irloop.c's loop code generally.
+- Trim candidates in ccgen: peep.c's `frame_expr()` (a chain of op
+  tests a table could shorten), the DLW-fix generalization, and
+  irloop.c's loop code generally.
 - A dead store before a call is kept (the scan stops at calls); frames
   aren't shrunk when a local's stores all go.
-- `HEAP_SPARE` (512 bytes left for main's frames by the init function)
+- `HEAP_SPARE` (the bytes the init function leaves main's frames)
   was a guess.
-- `CCISH_FAST`: a faster, 12-byte-bigger `find_func()` waits behind it
-  for when size matters less.
+- `CCISH_FAST`: a faster `find_func()` waits behind it for when size
+  matters less.
