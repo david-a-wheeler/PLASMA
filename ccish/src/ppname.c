@@ -13,6 +13,7 @@
 #include "bio.h"
 #include "token.h"
 #include "fixed.h"
+#include "ppmac.h"
 #include "ppname.h"
 
 #define MAX_PP_POOL  8432   // limit pp: bytes of ccpp's names (macros' too)
@@ -143,10 +144,13 @@ void pp_set_macro(int id, int on)
     pool[i] &= ~ENT_MACRO;
 }
 
-// Does identifier id name a macro?
+// Does identifier id name a macro? The macro table (ppmac.c) holds
+// exactly the defined macros, pp_undef() removing its entry, so it is
+// the flag's authority: 386 ops a call measured, where the pool's walk
+// took about 5,500 (approach.md, "ccpp's name lookup").
 int pp_is_macro(int id)
 {
-  return (pool[entry_at(id, 0)] & ENT_MACRO) != 0;
+  return pp_mac_find(id) >= 0;
 }
 
 // The number of source file path, adding it if it is new.

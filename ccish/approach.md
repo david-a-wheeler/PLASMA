@@ -9018,3 +9018,23 @@ twice for each read and write. 0.534 to 0.521 s a frame (2.5%); the
 module is 2,249 bytes (was 2,337). `tools/a2time` gained
 `A2TIME_SUMS`, a checksum of page 1 at each change: the old and new
 versions' screens match over 540 frames.
+
+**ccpp's name lookup** (2026-11-11, asked for in discussion: "review
+the ccpp functions taking the top amount of performance"). ccpp
+compiles ccish's own sources in 942,627,841 VM ops (make profile), of
+which 644,200,000 (68%) walk the name pool entry by entry: find(), one
+full walk per identifier (47,649 calls, 262 entries on average:
+462,100,000 ops with its entry_len() and same() calls), and
+entry_at(), one walk per macro-flag check (112,600,000; 30,173 of its
+33,024 calls are pp_is_macro() from ppmac.c's token reader). ccpp has
+942 bytes of spare in its 64K fit (doc/measure.txt), and the user
+counts on about 200, so the pool itself stays table-less; the wins
+below add nothing, or almost nothing, beside that.
+- Step 1: pp_is_macro() asks the macro table (ppmac.c), which holds
+  exactly the defined macros (pp_undef() compacts it), instead of
+  walking the pool for the ENT_MACRO bit: 386 ops a call, measured,
+  where the walk took about 5,500. ccpp goes from 942,600,000 to
+  794,600,000 ops (148,100,000, 16%), for 0 bytes of data and 8 of
+  code. The pool's bit is still kept by pp_set_macro(), so behavior
+  is unchanged; the new undef_redefine test pins the flag through
+  define, undef and redefine.
