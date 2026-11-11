@@ -28,7 +28,7 @@ blank for a limit that isn't measured.
 | `MAX_EXP_BYTES` | 256 | 139 (emit.c) | bytes of the expansions and arguments being read, and of the arguments' own expansions (two buffers): room for macros longer than ccish's | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_ARG_SLOTS` | 32 | 4 (pexpr.c) | arguments of the calls being expanded | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_PP_PARAMS` | 16 |  | parameters of one macro | [src/ppmac.h](../src/ppmac.h) |
-| `MAX_PP_POOL` | 10240 | 8049 (pexpr.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each; well above ccish's own use (a byte of ccpp's heap each) | [src/ppname.c](../src/ppname.c) |
+| `MAX_PP_POOL` | 8432 | 8049 (pexpr.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each: a byte of ccpp's heap each, so no larger than ccish's own use needs (ccpp has under 2K to spare on a 64K Apple II) | [src/ppname.c](../src/ppname.c) |
 
 ## One source file (cccomp)
 

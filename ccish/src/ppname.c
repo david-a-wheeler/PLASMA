@@ -15,10 +15,11 @@
 #include "fixed.h"
 #include "ppname.h"
 
-#define MAX_PP_POOL  10240  // limit pp: bytes of ccpp's names (macros' too)
-                            // and file names, with a length byte each;
-                            // well above ccish's own use (a byte of
-                            // ccpp's heap each)
+#define MAX_PP_POOL  8432   // limit pp: bytes of ccpp's names (macros' too)
+                            // and file names, with a length byte each:
+                            // a byte of ccpp's heap each, so no larger
+                            // than ccish's own use needs (ccpp has under
+                            // 2K to spare on a 64K Apple II)
 
 #define ENT_FILE  0x80          // in a length byte: a file's name
 #define ENT_MACRO 0x40          // an identifier that names a macro

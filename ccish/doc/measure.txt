@@ -22,7 +22,7 @@ pp          2289     990      143        552
 ppif        1242       8        0          0
 pplex       3543     234      362        512
 ppmac       3541    1614        0       3760
-ppname       918     104      328      10240
+ppname       918     104      328       8432
 ppout        629     545       35          0
 pstmt       4330     296        0          0
 ptop        3777     122        0          0
@@ -54,7 +54,7 @@ strrchr       38       0        0          0
 parse.c: 45072 bytes of source; ccpp's token stream 25020, name file 7365
 
 ccpp's tables: the most one source needed, and the limit:
-  name pool bytes              8049 of  10240  (pexpr)
+  name pool bytes              8049 of   8432  (pexpr)
   macros                        155 of    200  (pexpr)
   macro body bytes             1338 of   2048  (pexpr)
   expansion text bytes          139 of    256  (emit)
