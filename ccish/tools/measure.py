@@ -492,7 +492,7 @@ def fit_report(prog, module, rld, defs, heap, frame, unbounded, includes):
     print("    loading, the most at once: %d with the RLD streamed, %d"
           " today (the whole file)" % (load, now))
     return {"heap": heap, "module": os.path.getsize(module), "load": load,
-            "now": now, "need": need, "unbounded": unbounded, "rld": rld}
+            "now": now, "need": need, "unbounded": unbounded, "body": body}
 
 
 def summary_table(rows):
@@ -503,19 +503,23 @@ def summary_table(rows):
     yes = lambda need: "yes" if need <= APPLE_FREE else "NO"
     build = "full" if FULL else "small"
     print("\nSummary: the %s build's modules, their sizes:" % build)
-    print("%-7s %6s %5s %7s %5s %6s %7s" % (
-        "Program", "Code", "Data", "Strings", "Heap", "Module", "RLD+ESD"))
+    print("%-7s %5s  %6s %5s %7s %5s %5s %4s %6s" % (
+        "Program", "Heap", "Code", "Data", "Strings", "Other", "RLD", "ESD",
+        "Module"))
     for prog, r in rows:
         if r is None:
             print("%-7s not measured (a file or the link failed)" % prog)
             continue
-        print("%-7s %6d %5d %7d %5d %6d %7d" % (
-            prog, r["code"], r["data"], r["strs"], r["heap"], r["module"],
-            r["rld"]))
-    print("Code, data and strings: the program's and the library's, in"
-          " the module body;\nheap: its zero-filled globals, moved to the"
-          " heap at start; module: its file,\nthe body and then the RLD"
-          " and ESD (read only to load it).")
+        print("%-7s %5d  %6d %5d %7d %5d %5d %4d %6d" % (
+            prog, r["heap"], r["code"], r["data"], r["strs"],
+            r["body"] - r["code"] - r["data"] - r["strs"], r["rld"],
+            r["esd"], r["module"]))
+    print("Module: the file, the sum of Code through ESD: the body"
+          " (code, data and\nstrings, the program's and the library's,"
+          " and other, the linker's: header,\ndependencies, init, helpers"
+          " and zero-filled data that stays), then the RLD\nand ESD, read"
+          " only to load it. Heap: zero-filled globals, not in the file,"
+          "\nput on the heap at start.")
     print("\nAnd their fit on a 64K Apple II (%d bytes free):" % APPLE_FREE)
     print("%-7s %s %s %s" % ("", "--- Load today ----",
                              "-- Load streamed --", "----- Running -----"))
@@ -584,7 +588,8 @@ def static_report(funcs, comps, edges):
 
 
 def module_rld(path):
-    """A module's RLD and ESD bytes, and its function (def) entries."""
+    """A module's RLD bytes (with its end byte), its ESD bytes, and its
+    function (def) entries."""
     with open(path, "rb") as f:
         data = f.read()
     i = 2 + (data[0] | data[1] << 8)
@@ -592,7 +597,7 @@ def module_rld(path):
     while data[i] != 0:
         defs += data[i] == 0x02
         i += 4
-    return len(data) - rld_start, defs
+    return i + 1 - rld_start, len(data) - (i + 1), defs
 
 
 def note_peak(peaks, lim, value, where):
@@ -736,7 +741,7 @@ def main():
         lcode = sum(sizes[n][2] for n in libs)
         ldata = sum(sizes[n][0] for n in libs)
         lstrs = sum(sizes[n][1] for n in libs)
-        rld, defs = module_rld(module)
+        rld, esd, defs = module_rld(module)
         last = msg.strip().splitlines()[-1]
         m = re.search(r"shared names: (\d+) of \d+ slots, (\d+) of", last)
         if m:
@@ -752,8 +757,8 @@ def main():
               " (%s)" % (lcode, ldata, lstrs, lcode + ldata + lstrs,
                          " ".join(sorted(libs))))
         print("  module file %d bytes, all read into memory to load it;"
-              " %d of them RLD and ESD, freed after" % (
-                  os.path.getsize(module), rld))
+              " %d of them RLD and %d ESD, freed after" % (
+                  os.path.getsize(module), rld, esd))
         print("  %d functions: %d bytes of the loader's def table, kept"
               % (defs, defs * 5))
         print("  " + last.lstrip("; "))
@@ -776,11 +781,11 @@ def main():
                 heap = sum(int(m.group(1)) for m in re.finditer(
                     r"^; heap global \d+: \S+, (\d+) bytes$", f.read(),
                     re.M))
-            r = fit_report(prog, module, rld, defs, heap, frame,
+            r = fit_report(prog, module, rld + esd, defs, heap, frame,
                            unbounded, peaks[[t[1] for t in PP_TABLES]
                                             .index("MAX_INCLUDE")])
             r.update(code=code + lcode, data=data + ldata,
-                     strs=strs + lstrs)
+                     strs=strs + lstrs, rld=rld, esd=esd)
             fit[prog] = r
     # Read by tools/limits.sh: keep this heading and the lines' form.
     print("\nPeaks: each limit, the most ccish's own source uses, and"
