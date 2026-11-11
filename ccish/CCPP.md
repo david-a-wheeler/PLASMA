@@ -187,10 +187,10 @@ order, through a 512-byte block buffer (`src/bio.c`).
 
 Any other code is a damaged file.
 
-**The keywords**, `$80` up, in this order (the order of `T_INT` to
-`T_STATIC_ASSERT` in `cccomp`'s src/tokin.h, of `TC_INT` to
+**The keywords**, `$80` up, in this order (the order of `TC_INT` to
 `TC_STATIC_ASSERT` in `src/token.h`, and of `keywords[]` in
-`src/pplex.c`). Each set the parser tests is a block whose size is a
+`src/pplex.c`). `cccomp`'s parser uses these codes as its tokens, so
+the set tests on them are in `src/token.h` too. Each set the parser tests is a block whose size is a
 power of 2, starting at a multiple of its size, so a test is one AND
 and one compare; a block's spare codes (blank here, UNUSED in the
 sources) are room for a new keyword of its kind, and are never
@@ -207,7 +207,7 @@ and union first; `void`. Then the storage classes, `typedef` and
 | `$98` | `return` | `if` | `else` | `while` | `do` | `for` | `break` | `continue` |
 | `$A0` | `sizeof` | `switch` | `goto` | `_Static_assert` | | | | |
 
-**The operators**, `$C0` up (the order of `T_ADDEQ` to `T_ELLIPSIS`),
+**The operators**, `$C0` up (the order of `TC_ADDEQ` to `TC_ELLIPSIS`),
 in blocks as the keywords are: first the compound assignments, in the
 order of the binary IR ops they do (with the same spare places), then
 `++` and `--`, `&&` and `||`, each a pair, then the rest:
