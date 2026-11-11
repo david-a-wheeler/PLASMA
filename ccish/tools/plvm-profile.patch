@@ -1,0 +1,161 @@
+plvm: an optional op profile, by module bytecode offset
+
+A plvm built with -DPLVM_PROFILE counts the ops it runs at each offset
+of each loaded module's bytecode, and at exit, if the environment
+variable PLVM_PROFILE names a file, writes the counts there. A normal
+build is unchanged. With a listing of a module's bytecode, the counts
+show where a program spends its time: ccish's tools/profile.py
+(make profile) maps them to functions.
+
+To build one, from src/, after the patch:
+
+    cc -DPLVM_PROFILE vmsrc/plvm.c vmsrc/cmdsys.c vmsrc/sysio.c \
+       vmsrc/a1cffa.c vmsrc/lib6502/lib6502.a -o plvmprof
+
+The file it writes: for each module, "module NAME LENGTH", then
+"OFFSET COUNT" for each offset that ran (offsets from the module's
+first bytecode byte); last, "other COUNT", the ops run outside any
+module's bytecode.
+
+This is ccish's copy, which ccish's tools/profile.py applies to a copy
+of src/vmsrc (with patch -p3); src/vmsrc itself isn't changed. Apply
+it to a PLASMA tree with patch -p1 from the top.
+
+--- a/src/vmsrc/plvm.h
++++ b/src/vmsrc/plvm.h
+@@ -127,6 +127,19 @@
+ extern int vm_exdef(M6502 *mpu, uword address, byte data);
+ extern int vm_natvdef(M6502 *mpu, uword address, byte data);
+ extern void vm_interp(M6502 *mpu, code *vm_ip);
++#ifdef PLVM_PROFILE
++/*
++ * Profiling, in a plvm built with -DPLVM_PROFILE (a normal build has
++ * none of it): count the ops run at each offset of each module's
++ * bytecode, and at exit, if the environment variable PLVM_PROFILE names
++ * a file, write the counts there: for each module, a line
++ * "module NAME LENGTH", then a line "OFFSET COUNT" for each offset that
++ * ran; and last, "other COUNT", the ops run outside any module's
++ * bytecode.
++ */
++extern void profile_module(const char *name, code *bytecode, int len);
++extern void profile_write(void);
++#endif
+ /*
+  * Heap routines
+  */
+--- a/src/vmsrc/plvm.c
++++ b/src/vmsrc/plvm.c
+@@ -162,6 +162,77 @@
+     }}                                                              \
+     mpu->registers->x = ea + 1
+ 
++#ifdef PLVM_PROFILE
++#define PROFILE_MODULES 64
++static struct {
++    char name[18];
++    code *start;
++    int len;
++    unsigned long *count;
++} profile_mod[PROFILE_MODULES];
++static int profile_nmods, profile_last;
++static unsigned long profile_other;
++
++/*
++ * Note a module's bytecode, once it is copied to where it runs.
++ */
++void profile_module(const char *name, code *bytecode, int len)
++{
++    if (profile_nmods < PROFILE_MODULES && len > 0)
++    {
++        strncpy(profile_mod[profile_nmods].name, name, 17);
++        profile_mod[profile_nmods].start = bytecode;
++        profile_mod[profile_nmods].len   = len;
++        profile_mod[profile_nmods].count = calloc(len, sizeof(unsigned long));
++        if (profile_mod[profile_nmods].count)
++            profile_nmods++;
++    }
++}
++
++/*
++ * Count the op at ip: in the module last counted, most likely.
++ */
++static void profile_op(code *ip)
++{
++    int m = profile_last;
++    if (m < profile_nmods && ip >= profile_mod[m].start
++        && ip < profile_mod[m].start + profile_mod[m].len)
++    {
++        profile_mod[m].count[ip - profile_mod[m].start]++;
++        return;
++    }
++    for (m = 0; m < profile_nmods; m++)
++        if (ip >= profile_mod[m].start && ip < profile_mod[m].start + profile_mod[m].len)
++        {
++            profile_mod[m].count[ip - profile_mod[m].start]++;
++            profile_last = m;
++            return;
++        }
++    profile_other++;
++}
++
++/*
++ * Write the counts to the file PLVM_PROFILE names, if it names one.
++ */
++void profile_write(void)
++{
++    const char *path = getenv("PLVM_PROFILE");
++    FILE *f;
++    int m, i;
++    if (!path || !(f = fopen(path, "w")))
++        return;
++    for (m = 0; m < profile_nmods; m++)
++    {
++        fprintf(f, "module %s %d\n", profile_mod[m].name, profile_mod[m].len);
++        for (i = 0; i < profile_mod[m].len; i++)
++            if (profile_mod[m].count[i])
++                fprintf(f, "%d %lu\n", i, profile_mod[m].count[i]);
++    }
++    fprintf(f, "other %lu\n", profile_other);
++    fclose(f);
++}
++#endif
++
+ void vm_interp(M6502 *mpu, code *vm_ip)
+ {
+     int val, ea, frmsz, parmcnt;
+@@ -191,6 +262,9 @@
+             if (trace == SINGLE_STEP)
+                 fgets(cmdline, 15, stdin);
+         }
++#ifdef PLVM_PROFILE
++        profile_op(vm_ip);
++#endif
+         switch (*vm_ip++)
+         {
+             /*
+--- a/src/vmsrc/cmdsys.c
++++ b/src/vmsrc/cmdsys.c
+@@ -607,6 +607,13 @@
+         free(defxtbl);
+         if (trace) printf("Copy bytecode from $%04X to 0x%08X, size %d\r\n", bytecode, (unsigned int)extcode, end - bytecode);
+         memcpy(extcode, mem_6502 + bytecode, end - bytecode);
++#ifdef PLVM_PROFILE
++        {
++            char name[18];
++            dcitos(mod, name);
++            profile_module(name, extcode, end - bytecode);
++        }
++#endif
+         end = bytecode; // Free up bytecode in main memory
+     }
+     alloc_heap(end - modaddr);
+@@ -915,6 +922,9 @@
+     // Init 6502 emulator/VM
+     //
+     M6502 *mpu = M6502_new(0, mem_6502, 0);
++#ifdef PLVM_PROFILE
++    atexit(profile_write);
++#endif
+     M6502_reset(mpu);
+     M6502_setVector(mpu, IRQ, VM_IRQ_ENTRY); // Dummy address to BRK/IRQ on
+     //

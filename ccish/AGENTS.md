@@ -224,6 +224,16 @@ files of the sessions so far, before a move to a new computer.)
   this tree's, and prints each test whose count changed, any whose
   output differs, and the totals (`-v`: by opcode). Report how many
   tests change, that no output changed, and the totals.
+- **Where the passes spend their time:** `make profile`
+  (`tools/profile.py`, about 20 seconds) builds a plvm that counts
+  ops by bytecode offset, from a copy of ../src/vmsrc patched with
+  `tools/plvm-profile.patch` (src/vmsrc itself isn't changed; the
+  patch is written so it could go to PLASMA's maintainer). It
+  compiles ccish's own sources with ccpp, cccomp and ccgen, each a
+  module under that VM, and prints each pass's busiest functions
+  (ops, share, entries, ops per entry) in tools/out/profile.txt.
+  `PROFILE_ARGS="-f FUNCTION"` adds a function's listing with each
+  op's count; `PROFILE_ARGS=cccomp` profiles one pass.
 - **Why an optimization doesn't apply:** build a scratch copy of ccgen
   with `fprintf(stderr, ...)` at each rejection, and run it on ccish's
   own sources (as measure.py prepares them in `tools/out/src`). That is

@@ -327,6 +327,10 @@ make measure    # compiles ccish's own source with ccish (small build),
 make limits     # doc/limits.md, the table of ccish's limits
 make listings   # each source file's functions, C then machine ops,
                 # in tools/out/lst/ (needs python3)
+make profile    # where ccpp, cccomp and ccgen spend their VM ops,
+                # compiling ccish's own source: each pass's busiest
+                # functions, in tools/out/profile.txt (about 20
+                # seconds; needs python3 and patch)
 ```
 
 `make test` also refreshes doc/measure.txt and doc/limits.md when a
@@ -1950,7 +1954,7 @@ defines the two builds' feature macros.
 | `ccish.msg` | The text of every message, by number (section 10.7) |
 | `lib/`, `lib/include/` | The C library's sources (one function each) and headers (section 11.2) |
 | `tests/` | The test suite (section 2.5) |
-| `tools/` | Measuring and running: `measure.py` (`make measure`), `listings.py`, `opstats.py`, `opcount.py`, `fsize.py` and `loops.py`; `ccrun` and `ccstat.pla`, which run a module under plvm and give `main`'s exit status; `plvmexit.c`, the plvm-only `exit` the passes link (section 11.2); and `a2run`, `a2screen` and `a2time`, which run PLASMA on an emulated 64K Apple IIe in MAME |
+| `tools/` | Measuring and running: `measure.py` (`make measure`), `profile.py` and `plvm-profile.patch` (`make profile`), `listings.py`, `opstats.py`, `opcount.py`, `fsize.py` and `loops.py`; `ccrun` and `ccstat.pla`, which run a module under plvm and give `main`'s exit status; `plvmexit.c`, the plvm-only `exit` the passes link (section 11.2); and `a2run`, `a2screen` and `a2time`, which run PLASMA on an emulated 64K Apple IIe in MAME |
 | `samples/` | Sample programs for the Apple II, and `make disk`, a ProDOS disk of them |
 
 ### 10.7 Messages in the sources

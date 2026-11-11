@@ -327,6 +327,18 @@ doc/measure.txt: ccpp cccomp ccgen ccrel ccish.msg tools/measure.py \
 measure: doc/measure.txt
 	@cat doc/measure.txt
 
+# Profile ccpp, cccomp and ccgen compiling ccish's own sources, each a
+# module under a plvm patched to count ops by bytecode offset
+# (tools/profile.py, tools/plvm-profile.patch; about 20 seconds): each
+# pass's busiest functions, in tools/out/profile.txt. PROFILE_ARGS
+# passes options on, e.g. PROFILE_ARGS="-n 50 -f id_find cccomp".
+PROFILE_ARGS ?=
+profile: all doc/measure.txt $(CCSTAT)
+	@python3 tools/profile.py $(PROFILE_ARGS) > tools/out/profile.txt.tmp \
+	 && mv tools/out/profile.txt.tmp tools/out/profile.txt \
+	 || { rm -f tools/out/profile.txt.tmp; exit 1; }
+	@cat tools/out/profile.txt
+
 # The demo disk and the emulator: samples/Makefile's disk and run, after
 # building the compiler. Variables set on the command line (RUN_VM,
 # BOOT_DISK, DISK_PUT, ...) pass on to it.
@@ -367,4 +379,4 @@ clean:
 	rm -f doc/measure.txt doc/limits.md
 
 .PHONY: all small test testbuild xref measure listings print-sources bootstrap \
-        full-test limits demo-disk demo-run clean
+        full-test limits demo-disk demo-run profile clean
