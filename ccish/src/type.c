@@ -33,10 +33,14 @@
 #include "type.h"
 #include "type.tag.h"
 
+#ifndef CCISH_BIG_LIMITS
 #define MAX_TYPES    54     // limit file: distinct types; at most 128, since
                             // char tables (fn_type[], param_types[]) hold
                             // unqualified types, and a host's char may be
                             // signed
+#else
+#define MAX_TYPES    128    // the full build's: its own link.c needs 58
+#endif
 // (128 is a portability limit for a signed char; measure.py's big
 // build uses 256 on a host whose char isn't. The index bits are a
 // hard one.)

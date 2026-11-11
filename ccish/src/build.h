@@ -81,6 +81,14 @@
 //                  three (approach.md issue 24). Either way, a correct
 //                  compile never opens NAME.nam (CCPP.md, "The
 //                  stamp"). Both builds write the same files.
+//   CCISH_BIG_LIMITS  larger limits, where the small build's would stop
+//                  ccish compiling its own full-build sources: so far
+//                  MAX_TYPES (type.c) and MAX_VARS (obj.h), for
+//                  link.c's listing code. Each is #ifndef CCISH_BIG_LIMITS,
+//                  the small build's value, #else, the full build's
+//                  (measure.py reads the first for the small build and
+//                  the last for the full). A source within the small
+//                  build's limits compiles the same either way.
 // And ones that neither build has: tools/measure.py builds a ccpp with
 //   CCISH_STATS    report how full ccpp's tables got, for sizing them.
 // and
@@ -94,6 +102,7 @@
 #define CCISH_TEXT
 #define CCISH_DIAG
 #define CCISH_LINT
+#define CCISH_BIG_LIMITS
 #endif
 
 // Is x in the block of size numbers from first? With size a power of 2

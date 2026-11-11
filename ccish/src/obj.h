@@ -9,8 +9,12 @@
 
 #define MAX_FUNCS    242    // limit file: functions declared, defined or
                             // called
+#ifndef CCISH_BIG_LIMITS
 #define MAX_VARS     79     // limit file: globals, plus the parameters and
                             // locals visible at once
+#else
+#define MAX_VARS     128    // the full build's: its own link.c needs 85
+#endif
 #define MAX_FUNC_CODE 1280  // limit function: bytes of bytecode in one
                             // function
 #define MAX_FUNC_RELOCS 128 // limit function: calls and data references in

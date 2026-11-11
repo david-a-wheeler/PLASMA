@@ -262,14 +262,17 @@ def longest_line(paths):
 
 
 def limit(name):
-    """The value of limit NAME, #defined in one of the sources."""
+    """The value of limit NAME, #defined in one of the sources, in the
+    build measured: one with a value for each build has the small
+    build's first and the full build's last (CCISH_BIG_LIMITS,
+    build.h)."""
     for file in sorted(os.listdir(os.path.join(CCOMP, "src"))):
         if not file.endswith((".c", ".h")):
             continue                # not an editor's files
         with open(os.path.join(CCOMP, "src", file)) as f:
-            m = re.search(r"#define %s\s+(\d+)" % name, f.read())
-        if m:
-            return int(m.group(1))
+            values = re.findall(r"#define %s\s+(\d+)" % name, f.read())
+        if values:
+            return int(values[-1 if FULL else 0])
     raise KeyError(name)
 
 
