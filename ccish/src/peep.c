@@ -1125,6 +1125,21 @@ static void dead_stores(void)
 
 // Try one pattern at the end of the window. Returns 1 if it changed
 // anything, so the caller tries again.
+//
+// It runs after every op, and most passes match nothing (71% of them,
+// compiling ccish's own source), so each rule's call has a guard: a
+// cheap test, of b's op, a's op, or whether a is a constant, that its
+// rule can't match without. A pass then skips the calls (about 150
+// cycles each, before any test in them) of the rules that can't apply:
+// ccgen ran 12.7% fewer VM ops, for a few bytes a rule. Each guard
+// sits at its rule's call and states that rule's own condition, so the
+// two are easy to keep in step, and a guard that wrongly stops its
+// rule shows in the rule's gen test, as code no longer optimized.
+// The guards aren't grouped further, as one test of b's op choosing a
+// group of rules: that would save little more, but such a test sits
+// apart from the rules it must agree with, so a rule changed to match
+// a new op could silently stop firing, and it nests the rules, whose
+// order changes what they make, one level deeper.
 static int rewrite(void)
 {
   Mop *a, *b;
@@ -1152,7 +1167,8 @@ static int rewrite(void)
       return 1;
     }
   }
-  // The rules, in order, each behind its guard (above IS_ADD_VALUE).
+  // The rules, in order, each behind its guard (above IS_ADD_VALUE, and
+  // this function's comment).
   if (rewrite_load_store(a, b)
       || (ac && rewrite_const(a, b))
       || (IS_VALUE_BRANCH(op) && rewrite_branch(a, b))
