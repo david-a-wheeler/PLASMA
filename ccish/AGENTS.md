@@ -162,6 +162,15 @@ files of the sessions so far, before a move to a new computer.)
   and the scripts, so a change to any of those re-runs it; `make all`
   and `make small` build without testing). It requires the small build
   to write byte-identical objects and modules.
+- **The kinds:** run (compile and run: stdout, stderr, the exit
+  status, listing directives), gen (the machine ops after the
+  peepholes, and a run), link (several files into one program),
+  errors (must fail with the message), xrun (the same source run
+  under ccish and a host compiler, against the .ref that make xref
+  builds; inc/ptest.h is the portability contract), and the spec
+  scripts (source properties). Each is a directory under tests/,
+  driven by the Makefile's wildcards and % rules, which say the
+  rest.
 - **Expected outputs are worked out by hand from C semantics, never
   copied from the compiler's output.** (Watch 16-bit overflow: an int
   is 16 bits; 65432 prints as -104. Several of my expected values were
