@@ -15,18 +15,18 @@ link        6987    1397      209       9318
 lower       1422     384      681          0
 nam          521     138       12          0
 name         184     408        0        812
-parse       4828    1892      113       1320
+parse       4809    1892      113       1320
 peep        5572      84        0          0
-pexpr       8013       4        0          0
+pexpr       7995       4        0          0
 pp          2289     990      143        552
 ppif        1242       8        0          0
 pplex       3543     234      362        512
 ppmac       3541    1614        0       3760
 ppname       918     104      328       8432
 ppout        629     545       35          0
-pstmt       4349     296        0          0
-ptop        3807     122        0          0
-tokin        677     309        8        256
+pstmt       4319     296        0          0
+ptop        3777     122        0          0
+tokin        642     309        8        256
 type        1042     560        0          0
 The library:
 fopen        133       4        0          0
@@ -51,12 +51,12 @@ strncat       62       0        0          0
 strncpy       52       0        0          0
 strrchr       38       0        0          0
 
-parse.c: 45506 bytes of source; ccpp's token stream 21387, name file 7042
+parse.c: 45072 bytes of source; ccpp's token stream 24505, name file 7350
 
 ccpp's tables: the most one source needed, and the limit:
-  name pool bytes              7707 of   8432  (pexpr)
-  macros                        142 of    200  (pexpr)
-  macro body bytes             1241 of   2048  (pexpr)
+  name pool bytes              8027 of   8432  (pexpr)
+  macros                        153 of    200  (pexpr)
+  macro body bytes             1309 of   2048  (pexpr)
   expansion text bytes          139 of    256  (emit)
   argument expansion bytes       38 of    256  (pexpr)
   expansions open                 4 of     16  (pexpr)
@@ -102,9 +102,9 @@ ccpp: 9 files, and 19 library objects:
     leaf region 12 bytes (largest leaf frame); compiled stack region 119 bytes
 
 cccomp: 12 files, and 18 library objects:
-  its own code 25839, data 4286, strings 310: 30435 in all
+  its own code 25707, data 4286, strings 310: 30303 in all
   the library's code 807, data 183, strings 7: 997 in all (fopen fputs fread fwrite getc memcpy memset path plvmexit remove start strcat strchr strcmp strcpy strlen strncpy strrchr)
-  module file 44009 bytes, all read into memory to load it; 12274 of them RLD and ESD, freed after
+  module file 43869 bytes, all read into memory to load it; 12266 of them RLD and ESD, freed after
   293 functions: 1465 bytes of the loader's def table, kept
   shared names: 257 of 307 slots, 2496 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
@@ -119,7 +119,7 @@ cccomp: 12 files, and 18 library objects:
     largest frames: stop 136, parse_expr 108, report 106, copy_struct 96, parse_declaration 94
   static locals (bytes saved; per call, about 45 cycles saved with new opcodes):
     leaf functions: 54 of 270 framed functions, 316 frame accesses; saves 152 bytes with new opcodes, -314 with LAW/SAW
-    compiled stack (all non-recursive): 216 of 270 framed functions, 2322 frame accesses; saves 668 bytes with new opcodes, -2298 with LAW/SAW
+    compiled stack (all non-recursive): 216 of 270 framed functions, 2320 frame accesses; saves 666 bytes with new opcodes, -2298 with LAW/SAW
     leaf region 8 bytes (largest leaf frame); compiled stack region 322 bytes
 
 ccgen: 10 files, and 18 library objects:
@@ -166,12 +166,12 @@ Peaks: each limit, the most ccish's own source uses, and where:
   MAX_IF_NEST 2 bio.c
   MAX_INCLUDE 2 bio.c
   MAX_LINE 184 mop.h
-  MAX_MACROS 142 pexpr.c
-  MAX_MACRO_BYTES 1241 pexpr.c
+  MAX_MACROS 153 pexpr.c
+  MAX_MACRO_BYTES 1309 pexpr.c
   MAX_MEMBERS 27 irout.c
   MAX_NEST 18 emit.c
   MAX_PARAM_TYPES 305 pexpr.c
-  MAX_PP_POOL 7707 pexpr.c
+  MAX_PP_POOL 8027 pexpr.c
   MAX_RETURNS 47 pplex.c
   MAX_TAGS 4 link.c
   MAX_TEMP_USES 4 pp.c

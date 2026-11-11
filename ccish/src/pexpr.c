@@ -13,6 +13,7 @@
 #include "cclimits.h"
 #include "diag.h"
 #include "fixed.h"
+#include "token.h"
 #include "tokin.h"
 #include "obj.h"
 #include "ir.h"
@@ -237,20 +238,20 @@ static int binary_prec(int *ir_op, int *supported)
   case '%':   *ir_op = IR_MOD; return PREC_MUL;
   case '+':   *ir_op = IR_ADD; return PREC_ADD;
   case '-':   *ir_op = IR_SUB; return PREC_ADD;
-  case T_SHL: *ir_op = IR_SHL; return PREC_SHIFT;
-  case T_SHR: *ir_op = IR_SHR; return PREC_SHIFT;
+  case TC_SHL: *ir_op = IR_SHL; return PREC_SHIFT;
+  case TC_SHR: *ir_op = IR_SHR; return PREC_SHIFT;
   case '&':   *ir_op = IR_AND; return PREC_AND;
   case '^':   *ir_op = IR_XOR; return PREC_XOR;
   case '|':   *ir_op = IR_OR;  return PREC_OR;
   case '<':   *ir_op = IR_LT;  return PREC_RELATIONAL;
   case '>':   *ir_op = IR_GT;  return PREC_RELATIONAL;
-  case T_LE:  *ir_op = IR_LE;  return PREC_RELATIONAL;
-  case T_GE:  *ir_op = IR_GE;  return PREC_RELATIONAL;
-  case T_EQ:  *ir_op = IR_EQ;  return PREC_EQUALITY;
-  case T_NE:  *ir_op = IR_NE;  return PREC_EQUALITY;
+  case TC_LE:  *ir_op = IR_LE;  return PREC_RELATIONAL;
+  case TC_GE:  *ir_op = IR_GE;  return PREC_RELATIONAL;
+  case TC_EQ:  *ir_op = IR_EQ;  return PREC_EQUALITY;
+  case TC_NE:  *ir_op = IR_NE;  return PREC_EQUALITY;
   // These three are parsed specially, not with an IR op.
-  case T_ANDAND: *ir_op = -1;  return PREC_ANDAND;
-  case T_OROR:   *ir_op = -1;  return PREC_OROR;
+  case TC_ANDAND: *ir_op = -1;  return PREC_ANDAND;
+  case TC_OROR:   *ir_op = -1;  return PREC_OROR;
   case '?':      *ir_op = -1;  return PREC_COND;
   }
   *supported = 0;
@@ -259,26 +260,26 @@ static int binary_prec(int *ir_op, int *supported)
   return 0;
 }
 
-// The binary IR op a compound assignment token t does (T_ADDEQ's
+// The binary IR op a compound assignment token t does (TC_ADDEQ's
 // IR_ADD, ...), and the one ++ or -- does: by offset, so each token
 // must be at its op's place. Here, as the one file that maps them.
-#define T_ASSIGN_IR(t)  (IR_ADD + ((t) - T_ADDEQ))
-#define T_INCDEC_IR(t)  (IR_ADD + ((t) - T_INC))
-#define SAME_AOP(x) _Static_assert(T_ASSIGN_IR(T_##x##EQ) == IR_##x, \
-                                   "T_" #x "EQ isn't at IR_" #x "'s place")
+#define TC_ASSIGN_IR(t)  (IR_ADD + ((t) - TC_ADDEQ))
+#define TC_INCDEC_IR(t)  (IR_ADD + ((t) - TC_INC))
+#define SAME_AOP(x) _Static_assert(TC_ASSIGN_IR(TC_##x##EQ) == IR_##x, \
+                                   "TC_" #x "EQ isn't at IR_" #x "'s place")
 SAME_AOP(ADD); SAME_AOP(SUB); SAME_AOP(MUL); SAME_AOP(DIV); SAME_AOP(MOD);
 SAME_AOP(AND); SAME_AOP(OR); SAME_AOP(XOR); SAME_AOP(SHL); SAME_AOP(SHR);
 #undef SAME_AOP
-_Static_assert(T_INCDEC_IR(T_INC) == IR_ADD && T_INCDEC_IR(T_DEC) == IR_SUB,
-               "T_INCDEC_IR: ++ and -- aren't at ADD's and SUB's places");
+_Static_assert(TC_INCDEC_IR(TC_INC) == IR_ADD && TC_INCDEC_IR(TC_DEC) == IR_SUB,
+               "TC_INCDEC_IR: ++ and -- aren't at ADD's and SUB's places");
 
 // Assignment operators: returns 1 if tok is one. *ir_op is the
 // arithmetic for a compound assignment, or -1 for plain '=' (and
 // meaningless for anything else, but always set).
 static int assign_op(int *ir_op)
 {
-  *ir_op = tok == '=' ? -1 : T_ASSIGN_IR(tok);
-  return tok == '=' || T_IS_ASSIGN_OP(tok);
+  *ir_op = tok == '=' ? -1 : TC_ASSIGN_IR(tok);
+  return tok == '=' || TC_IS_ASSIGN_OP(tok);
 }
 
 // Push the struct o by value (approach.md, "M6 design"): the words of
@@ -447,15 +448,6 @@ _Static_assert(!K_CONST_OR_VAR(K_VALUE) && !K_CONST_OR_VAR(K_VOID)
                && !K_CONST_OR_VAR(K_ADDR) && !K_CONST_OR_VAR(K_FUNC),
                "K_CONST_OR_VAR holds a non-member");
 
-// Is token t a number or a name? T_ID and T_NUM differ only in bit 0.
-#define T_NUM_OR_ID(t) (((t) & ~1) == T_ID)
-_Static_assert(T_NUM_OR_ID(T_NUM) && T_NUM_OR_ID(T_ID),
-               "T_NUM_OR_ID misses a member");
-_Static_assert(!T_NUM_OR_ID(T_STR) && !T_NUM_OR_ID(T_ID - 1)
-               && !T_NUM_OR_ID(T_INT) && !T_NUM_OR_ID(T_KEYWORD)
-               && !T_NUM_OR_ID(0) && !T_NUM_OR_ID(1),
-               "T_NUM_OR_ID holds a non-member");
-
 // Can a value of type t be called: is it a function, or a pointer to
 // one?
 static int callable(int t)
@@ -505,7 +497,7 @@ static void parse_pstr(void)
 {
   int off;
   next();                         // '('
-  if (tok != T_STR)
+  if (tok != TC_STR)
     error(56 /* "pstr() needs a string literal, not" */, tok_desc());
   off = suppress ? 1 : data_string(tok_text, tok_len);
   next();
@@ -547,14 +539,14 @@ static void parse_primary(Operand *o)
   o->is_bool = 0;
   o->assigned = 0;
   switch (tok) {
-  case T_NUM:
+  case TC_NUM:
     o->kind = K_CONST;          // emit it later, if needed
     o->val = wrap16((unsigned)tok_val);
     if (tok_unsigned)
       o->type = TY_UINT;
     next();
     return;
-  case T_STR:
+  case TC_STR:
     if (in_sizeof) {
       // In C a literal is a char array, so sizeof "hi" is 3: here
       // it is that array, at an address on the stack. Elsewhere
@@ -592,7 +584,7 @@ static void parse_primary(Operand *o)
     expect(')', 60 /* "expected ')', not" */);
     nest--;
     return;
-  case T_ID:
+  case TC_ID:
     name = tok_val;
     next();
     c = find_id(name);
@@ -664,7 +656,7 @@ static void parse_primary(Operand *o)
     }
     error(64 /* "undeclared identifier" */, quote(name));
     return;
-  case T_KEYWORD:
+  case TC_KEYWORD:
     not_yet();
     return;
   }
@@ -777,7 +769,7 @@ static void parse_index(Operand *o)
   int t = o->type, simple, size, d, start = ir_here(), h = nheld, mid;
 
   next();                         // '['
-  simple = T_NUM_OR_ID(tok) && pending_base(o, tok == T_ID)
+  simple = TC_IS_NUM_OR_ID(tok) && pending_base(o, tok == TC_ID)
            && next_is_rbracket();
   if (!simple)
     rvalue(o);
@@ -920,7 +912,7 @@ static void parse_member(Operand *o, int arrow)
   if (!arrow && o->kind == K_VALUE)
     materialize(o);             // f().x
   tag = STRUCT_TAG(arrow ? type_sub(t) : t);
-  if (tok != T_ID)
+  if (tok != TC_ID)
     error(74 /* "expected a member name, not" */, tok_desc());
   if (tg_size[tag] < 0)
     error(75 /* "member access into the incomplete type" */,
@@ -996,10 +988,10 @@ static void parse_unary(Operand *o)
     if (t != '+')
       o->is_bool = t == '!';
     return;
-  case T_INC: case T_DEC:
+  case TC_INC: case TC_DEC:
     next();
     parse_unary(o);             // ++N: the folded N's Q_CONST, error 42
-    pre_incdec(o, T_INCDEC_IR(t));
+    pre_incdec(o, TC_INCDEC_IR(t));
     return;
   case '*': case '&':
     next();
@@ -1010,7 +1002,7 @@ static void parse_unary(Operand *o)
     else
       address_of(o);
     return;
-  case T_SIZEOF:
+  case TC_SIZEOF:
     next();
     parse_sizeof(o);
     return;
@@ -1027,17 +1019,17 @@ static void parse_postfix(Operand *o)
   int t;
   for (;;) {
     switch (tok) {
-    case T_INC:
-    case T_DEC:
+    case TC_INC:
+    case TC_DEC:
       t = tok;
       next();
-      post_incdec(o, T_INCDEC_IR(t));
+      post_incdec(o, TC_INCDEC_IR(t));
       continue;
     case '[':
       parse_index(o);
       continue;
-    case '.': case T_ARROW:
-      parse_member(o, tok == T_ARROW);
+    case '.': case TC_ARROW:
+      parse_member(o, tok == TC_ARROW);
       continue;
     case '(':
       if (!callable(o->type))
@@ -1108,7 +1100,7 @@ static void parse_sizeof(Operand *o)
 // constant left side folds.
 static void parse_logical(Operand *o, int prec)
 {
-  int is_and = tok == T_ANDAND, end, t, f;
+  int is_and = tok == TC_ANDAND, end, t, f;
   Operand r;
 
   next();
@@ -1800,7 +1792,7 @@ void parse_expr(int min_prec, Operand *o)
       break;
     if (!supported)
       not_yet();
-    if (T_IS_LOGICAL(tok)) {
+    if (TC_IS_LOGICAL(tok)) {
       parse_logical(o, prec);
       continue;
     }

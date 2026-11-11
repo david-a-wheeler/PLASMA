@@ -68,6 +68,7 @@
 #include "diag.h"
 #include "fixed.h"
 #include "nam.h"
+#include "token.h"
 #include "tokin.h"
 #include "obj.h"
 #include "ir.h"
@@ -430,8 +431,8 @@ void set_param_types(int f, int n)
 // qualifier, or a visible typedef name?
 int is_type_start(void)
 {
-  return T_IS_TYPE_START(tok)
-         || (tok == T_ID && typedef_type(tok_val) >= 0);
+  return TC_IS_TYPE_START(tok)
+         || (tok == TC_ID && typedef_type(tok_val) >= 0);
 }
 
 #ifdef CCISH_DIAG
@@ -461,8 +462,8 @@ void need_complete(int t, int msg)
 int parse_quals(void)
 {
   int q = 0;
-  while (T_IS_QUAL(tok)) {
-    q |= tok == T_CONST ? Q_CONST : Q_VOLATILE;
+  while (TC_IS_QUAL(tok)) {
+    q |= tok == TC_CONST ? Q_CONST : Q_VOLATILE;
     next();
   }
   return q;
@@ -484,58 +485,49 @@ _Static_assert(!IS_C_TRUTH_VALUE(2) && !IS_C_TRUTH_VALUE(3)
                && !IS_C_TRUTH_VALUE(0x100) && !IS_C_TRUTH_VALUE(0x101),
                "IS_C_TRUTH_VALUE holds a non-member");
 
-// Is token t int or char? They differ only in bit 0.
-#define T_INT_OR_CHAR(t) (((t) & ~1) == T_INT)
-_Static_assert(T_INT_OR_CHAR(T_INT) && T_INT_OR_CHAR(T_CHAR),
-               "T_INT_OR_CHAR misses a member");
-_Static_assert(!T_INT_OR_CHAR(T_SIGNED) && !T_INT_OR_CHAR(T_UNSIGNED)
-               && !T_INT_OR_CHAR(T_INT - 1) && !T_INT_OR_CHAR(T_VOID)
-               && !T_INT_OR_CHAR(T_ID) && !T_INT_OR_CHAR(T_INT & 0xFF),
-               "T_INT_OR_CHAR holds a non-member");
-
 // Parse a basic type name (int, char, void, unsigned, a struct or enum
 // type, or a typedef name), with any qualifiers before or after it
 // (const char, char const), and return its type.
 int parse_base_type(void)
 {
   int q = parse_quals(), t = TY_INT, base = 0, sign = 0;
-  int tagged = T_IS_TAGGED(tok);  // after the quals
-  if (T_IS_STRUCT_UNION(tok)) {
-    t = parse_struct(tok == T_UNION);
-  } else if (tok == T_ENUM) {
+  int tagged = TC_IS_TAGGED(tok);  // after the quals
+  if (TC_IS_STRUCT_UNION(tok)) {
+    t = parse_struct(tok == TC_UNION);
+  } else if (tok == TC_ENUM) {
     t = parse_enum();
-  } else if (T_IS_INT_TYPE(tok)) {
+  } else if (TC_IS_INT_TYPE(tok)) {
     // int, char, signed and unsigned, in any order, with any qualifiers
     // among them (unsigned const int): unsigned int, int, or char.
     // unsigned char is plain char, which is unsigned; signed char isn't
     // supported yet.
-    while (T_IS_INT_OR_QUAL(tok)) {
-      if (T_IS_QUAL(tok)) {
+    while (TC_IS_INT_OR_QUAL(tok)) {
+      if (TC_IS_QUAL(tok)) {
         q |= parse_quals();
         continue;
       }
 #ifdef CCISH_LINT
-      if (T_INT_OR_CHAR(tok) ? base != 0 : sign != 0)
+      if (TC_IS_INT_OR_CHAR(tok) ? base != 0 : sign != 0)
         error(226 /* "conflicting or repeated type specifier:" */,
               tok_desc());
 #endif
-      if (T_INT_OR_CHAR(tok))
+      if (TC_IS_INT_OR_CHAR(tok))
         base = tok;
       else
         sign = tok;
       next();
     }
-    if (base == T_CHAR) {
-      if (sign == T_SIGNED)
+    if (base == TC_CHAR) {
+      if (sign == TC_SIGNED)
         error0(227 /* "'signed char' is not supported yet" */);
       t = TY_CHAR;
-    } else if (sign == T_UNSIGNED) {
+    } else if (sign == TC_UNSIGNED) {
       t = TY_UINT;
     }
   } else {
-    if (tok == T_VOID)
+    if (tok == TC_VOID)
       t = TY_VOID;
-    else if (tok != T_ID || (t = typedef_type(tok_val)) < 0)
+    else if (tok != TC_ID || (t = typedef_type(tok_val)) < 0)
       error(33 /* "expected a type, not" */, tok_desc());
     next();
   }

@@ -73,6 +73,7 @@
 #include "diag.h"
 #include "diag.src.h"
 #include "fixed.h"
+#include "token.h"
 #include "tokin.h"
 #include "obj.h"
 #include "obj.sym.h"
@@ -413,7 +414,7 @@ static void init_sub(int t, int off)
 static void init_flat(int t, int off)
 {
   int n, i, m, tag;
-  if (is_array(t) && UNQUAL(type_sub(t)) == TY_CHAR && tok == T_STR) {
+  if (is_array(t) && UNQUAL(type_sub(t)) == TY_CHAR && tok == TC_STR) {
     n = type_count(t);
     i = init_string(n, off);
     init_zero(n - i, off + i);
@@ -452,7 +453,7 @@ static int parse_aggr_init(int type, int name)
   init_name = name;
   init_end = 0;
   if (is_array(type) && UNQUAL(type_sub(type)) == TY_CHAR
-      && tok == T_STR) {
+      && tok == TC_STR) {
     init_end = init_string(type_count(type), 0);
   } else {
     expect('{', is_array(type)
@@ -530,7 +531,7 @@ static int same_global_type(int a, int b)
 #endif
 
 // Declare a global named name of type type, with storage class storage
-// (T_STATIC, T_EXTERN or 0), and return it. An extern one has no
+// (TC_STATIC, TC_EXTERN or 0), and return it. An extern one has no
 // storage here (VL_EXTERN); otherwise it is at the next data offset, and
 // the caller writes its bytes. A global may be declared again if all but
 // one of its declarations are extern, as in C; the last gives it its
@@ -541,17 +542,17 @@ static int declare_global(int name, int type, int storage)
   int s = find_var(name);
   if (s < 0) {
     s = add_global(name, type);
-    if (storage == T_EXTERN) {
+    if (storage == TC_EXTERN) {
       var_off[s] = 0;
       var_link[s] = VL_EXTERN;
-    } else if (storage == T_STATIC) {
+    } else if (storage == TC_STATIC) {
       var_link[s] = VL_STATIC;
     }
     return s;
   }
   // Not a validity check only: two with storage (int x; int x;, valid
   // C, tentative definitions) are something ccish can't compile.
-  if (storage != T_EXTERN && !(var_link[s] & VL_EXTERN))
+  if (storage != TC_EXTERN && !(var_link[s] & VL_EXTERN))
     error(27 /* "redeclaration of" */, quote(name));    /* two have storage */
 #ifdef CCISH_LINT
   if (!same_global_type(var_type[s], type))
@@ -560,11 +561,11 @@ static int declare_global(int name, int type, int storage)
   if (type_count(type) > 0)
     var_type[s] = type;         // extern int a[]; then int a[10];
 #ifdef CCISH_LINT
-  if (storage == T_STATIC && !(var_link[s] & VL_STATIC))
+  if (storage == TC_STATIC && !(var_link[s] & VL_STATIC))
     error(217 /* "static declaration follows a non-static declaration"
                  " of" */, quote(name));
 #endif
-  if (storage == T_EXTERN)
+  if (storage == TC_EXTERN)
     return s;
   var_link[s] &= ~VL_EXTERN;
   var_off[s] = data_offset();
@@ -603,7 +604,7 @@ static void parse_pimport(void)
 {
   int i, d = -1;
   next();                         // __plasma_import
-  if (tok != T_ID)
+  if (tok != TC_ID)
     error0(13 /* "expected a module name after #pragma plasma"
                  " import" */);
   for (i = 0; i < ndeps; i++) {
@@ -627,11 +628,11 @@ static void parse_pimport(void)
 int parse_asm_label(void)
 {
   int label;
-  if (tok != T_ID || tok_val != ID_ASM)
+  if (tok != TC_ID || tok_val != ID_ASM)
     return 0;
   next();
   expect('(', 57 /* "expected '(' after __asm__, not" */);
-  if (tok != T_ID)
+  if (tok != TC_ID)
     error(158 /* "expected a PLASMA name in quotes in __asm__, not" */,
           tok_desc());
   label = tok_val;
@@ -692,7 +693,7 @@ int dep_count(void)
 }
 
 // Declare the global variable name of type type, with storage class
-// storage (T_STATIC, T_EXTERN or 0), and parse its asm label and its
+// storage (TC_STATIC, TC_EXTERN or 0), and parse its asm label and its
 // initializer, if any. A global without an initializer is zero when the
 // module loads. Only an extern can be an import (a label on a
 // definition does nothing).
@@ -702,17 +703,17 @@ static void define_global(int name, int type, int storage)
   type = parse_var_type(type, 1);
   // In C, the name is in scope in its own initializer.
   s = declare_global(name, type, storage);
-  if (storage == T_EXTERN)
+  if (storage == TC_EXTERN)
     note_import(IMP_DATA + s, label);
   type = var_type[s];
   if (tok == '=') {
-    if (storage == T_EXTERN)
+    if (storage == TC_EXTERN)
       error0(216 /* "'extern' with an initializer is not supported" */);
     next();
     var_type[s] = parse_global_init(type, name);
     if (init_known)
       set_known(s, init_val);
-  } else if (storage != T_EXTERN) {
+  } else if (storage != TC_EXTERN) {
     if (is_array(type) && type_count(type) == 0)
       error0(87 /* "array size missing" */);
     if ((is_array(type) || is_struct(type))
@@ -738,7 +739,7 @@ static void parse_globals(int base, int type, int name, int storage)
 {
   for (;;) {
     if (is_func(type))
-      note_import(declare_function(name, type, storage == T_STATIC),
+      note_import(declare_function(name, type, storage == TC_STATIC),
                   parse_asm_label());
     else
       define_global(name, type, storage);
@@ -800,7 +801,7 @@ void parse_block_extern(void)
               quote(name));
       if (tok == '=')
         error0(216 /* "'extern' with an initializer is not supported" */);
-      s = declare_global(name, parse_var_type(type, 1), T_EXTERN);
+      s = declare_global(name, parse_var_type(type, 1), TC_EXTERN);
       note_import(IMP_DATA + s, label);
     }
     if (tok != ',')
@@ -850,7 +851,7 @@ void parse_static_assert(void)
                          " integer constant" */,
                   322 /* "(a _Static_assert's expression must be one)" */);
   expect(',', 320 /* "bad _Static_assert, at" */);
-  if (tok != T_STR)
+  if (tok != TC_STR)
     error(320 /* "bad _Static_assert, at" */, tok_desc());
   if (v == 0)                     // before next(): tok_text is the message
     error_d(323 /* "static assertion failed:" */, tok_text);
@@ -879,32 +880,32 @@ static void parse_toplevel(void)
   int base, type, nparams, pwords, i, f, name, storage = 0;
 
   depth = 0;                      // file scope, for tags and names
-  if (tok == T_ID && tok_val == ID_PIMPORT) {
+  if (tok == TC_ID && tok_val == ID_PIMPORT) {
     parse_pimport();
     return;
   }
-  if (tok == T_STATIC_ASSERT) {
+  if (tok == TC_STATIC_ASSERT) {
     parse_static_assert();
     return;
   }
-  if (T_IS_ID_DECL(tok)) {
+  if (TC_IS_ID_DECL(tok)) {
     parse_typedef();
     return;
   }
-  if (T_IS_STORAGE(tok)) {
+  if (TC_IS_STORAGE(tok)) {
     storage = tok;
 #ifdef CCISH_LINT
-    if (storage == T_REGISTER)
+    if (storage == TC_REGISTER)
       error0(247 /* "a declaration at file scope can't be register" */);
 #endif
     next();
     if (!is_type_start())
-      error(storage == T_STATIC
+      error(storage == TC_STATIC
             ? 147 /* "expected a type after 'static', not" */
             : 218 /* "expected a type after 'extern', not" */,
             tok_desc());
   }
-  if (tok == T_KEYWORD)
+  if (tok == TC_KEYWORD)
     not_yet();
   if (!is_type_start())
     error(164 /* "expected a declaration or function definition, not" */,
@@ -925,7 +926,7 @@ static void parse_toplevel(void)
   nparams = decl_nparams;
   type = UNQUAL(type_sub(type));
   check_byval(type, 0);
-  if (storage == T_STATIC) {
+  if (storage == TC_STATIC) {
 #ifdef CCISH_LINT
     if ((fn_flags[f] & FN_DECLARED) && !(fn_flags[f] & FN_STATIC))
       error(217 /* "static declaration follows a non-static declaration"
@@ -1032,7 +1033,7 @@ static void report_stats(void)
 // not defined here is left to the final pass, which finds it in
 // another file or CMDSYS (approach.md issue 11).
 // A macro, not a function: it has one caller.
-#define parse_program() while (tok != T_EOF) parse_toplevel()
+#define parse_program() while (tok != TC_END) parse_toplevel()
 
 // After an error in the front end: close its open files (ProDOS needs
 // it), writing out what the IR file holds.

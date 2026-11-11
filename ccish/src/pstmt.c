@@ -11,6 +11,7 @@
 #include "build.h"
 #include "cclimits.h"
 #include "diag.h"
+#include "token.h"
 #include "tokin.h"
 #include "obj.h"
 #include "ir.h"
@@ -92,7 +93,7 @@ static void skip_params(void)
 {
   int open = 1;
   while (open) {
-    if (tok == T_EOF)
+    if (tok == TC_END)
       error0(219 /* "missing ')' at end of file" */);
     if (tok == '(')
       open++;
@@ -151,37 +152,24 @@ static void parse_suffixes(int open, int own_name)
 
 // Does token t start a nested declarator after '(': '*' or '('? They
 // differ only in bit 1. (A name does too, unless it's a type's.)
-#define T_STARTS_NESTED(t) (((t) & ~2) == '(')
-_Static_assert(T_STARTS_NESTED('*') && T_STARTS_NESTED('('),
-               "T_STARTS_NESTED misses a member");
-_Static_assert(!T_STARTS_NESTED(')') && !T_STARTS_NESTED('+')
-               && !T_STARTS_NESTED('&') && !T_STARTS_NESTED(',')
-               && !T_STARTS_NESTED('[') && !T_STARTS_NESTED(T_ID)
-               && !T_STARTS_NESTED('(' + 0x100),
-               "T_STARTS_NESTED holds a non-member");
+#define TC_STARTS_NESTED(t) (((t) & ~2) == '(')
+_Static_assert(TC_STARTS_NESTED('*') && TC_STARTS_NESTED('('),
+               "TC_STARTS_NESTED misses a member");
+_Static_assert(!TC_STARTS_NESTED(')') && !TC_STARTS_NESTED('+')
+               && !TC_STARTS_NESTED('&') && !TC_STARTS_NESTED(',')
+               && !TC_STARTS_NESTED('[') && !TC_STARTS_NESTED(TC_ID),
+               "TC_STARTS_NESTED holds a non-member");
 
 // Does token t end a struct tag's use with a definition or a
 // declaration of the tag alone: '{' or ';'? They differ only in bit 6.
-#define T_DEFINES_TAG(t) (((t) & ~0x40) == ';')
-_Static_assert(T_DEFINES_TAG('{') && T_DEFINES_TAG(';'),
-               "T_DEFINES_TAG misses a member");
-_Static_assert(!T_DEFINES_TAG('}') && !T_DEFINES_TAG(':')
-               && !T_DEFINES_TAG('[') && !T_DEFINES_TAG('=')
-               && !T_DEFINES_TAG(',') && !T_DEFINES_TAG('*')
-               && !T_DEFINES_TAG(T_ID) && !T_DEFINES_TAG(';' + 0x100),
-               "T_DEFINES_TAG holds a non-member");
-
-// Is token t static or extern, a storage class a for loop can't
-// declare? They differ only in bit 0.
-#define T_STATIC_OR_EXTERN(t) (((t) & ~1) == T_STATIC)
-_Static_assert(T_STATIC_OR_EXTERN(T_STATIC) && T_STATIC_OR_EXTERN(T_EXTERN),
-               "T_STATIC_OR_EXTERN misses a member");
-_Static_assert(!T_STATIC_OR_EXTERN(T_REGISTER)
-               && !T_STATIC_OR_EXTERN(T_STATIC - 1)
-               && !T_STATIC_OR_EXTERN(T_TYPEDEF)
-               && !T_STATIC_OR_EXTERN(T_CONSTEXPR)
-               && !T_STATIC_OR_EXTERN(T_INT) && !T_STATIC_OR_EXTERN(T_ID),
-               "T_STATIC_OR_EXTERN holds a non-member");
+#define TC_DEFINES_TAG(t) (((t) & ~0x40) == ';')
+_Static_assert(TC_DEFINES_TAG('{') && TC_DEFINES_TAG(';'),
+               "TC_DEFINES_TAG misses a member");
+_Static_assert(!TC_DEFINES_TAG('}') && !TC_DEFINES_TAG(':')
+               && !TC_DEFINES_TAG('[') && !TC_DEFINES_TAG('=')
+               && !TC_DEFINES_TAG(',') && !TC_DEFINES_TAG('*')
+               && !TC_DEFINES_TAG(TC_ID),
+               "TC_DEFINES_TAG holds a non-member");
 
 // Parse a declarator, pushing its derivations, and store its name's id
 // in *name (-1 if it has none, which flags must allow: D_ABSTRACT).
@@ -194,7 +182,7 @@ static void parse_steps(int flags, int *name)
   }
   if (tok == '(') {
     next();
-    if (T_STARTS_NESTED(tok) || (tok == T_ID && !is_type_start())) {
+    if (TC_STARTS_NESTED(tok) || (tok == TC_ID && !is_type_start())) {
       // A nested declarator, (*p): its derivations apply after the
       // suffixes that follow it.
       enter_nest();
@@ -216,7 +204,7 @@ static void parse_steps(int flags, int *name)
     return;
   }
   *name = -1;
-  if (tok == T_ID && !(flags & D_NONAME)) {
+  if (tok == TC_ID && !(flags & D_NONAME)) {
     *name = tok_val;
     next();
   } else if (!(flags & D_ABSTRACT)) {
@@ -315,7 +303,7 @@ static void parse_members(int tag, int is_union)
   if (tok == '}')
     error0(95 /* "a struct or union needs at least one member" */);
   while (tok != '}') {
-    if (tok == T_KEYWORD)
+    if (tok == TC_KEYWORD)
       not_yet();
     if (!is_type_start())
       error(96 /* "expected a struct or union member, not" */,
@@ -383,12 +371,12 @@ int parse_struct(int is_union)
   int name = -1, tag = -1, hsum = 0, hmul = 1;
 
   next();                         // struct or union
-  if (tok == T_ID) {
+  if (tok == TC_ID) {
     name = tok_val;
     hsum = tok_hsum;
     hmul = tok_hmul;
     next();
-    tag = tag_find(name, T_DEFINES_TAG(tok) ? depth : -1);
+    tag = tag_find(name, TC_DEFINES_TAG(tok) ? depth : -1);
     if (tag >= 0 && tg_union[tag] != is_union)
       error(104 /* "redefinition of" */, tag_desc(tag));
   } else if (tok != '{') {
@@ -426,7 +414,7 @@ int parse_enum(void)
   int v = 0, full = 0, name;
 
   next();                         // enum
-  if (tok == T_ID)
+  if (tok == TC_ID)
     next();                     // the tag
   else if (tok != '{')
     error(105 /* "expected an enum name or '{' after 'enum', not" */,
@@ -437,7 +425,7 @@ int parse_enum(void)
   if (tok == '}')
     error0(106 /* "an enum needs at least one constant" */);
   while (tok != '}') {
-    if (tok != T_ID)
+    if (tok != TC_ID)
       error(107 /* "expected an enum constant, not" */, tok_desc());
     check_not_var(tok_val);
     check_not_id(tok_val);
@@ -481,7 +469,7 @@ void parse_typedef(void)
   base = parse_base_type();
   for (;;) {
     t = parse_declarator(base, 0, &name);
-    if (kw == T_CONSTEXPR) {
+    if (kw == TC_CONSTEXPR) {
       kind = UNQUAL(t);
       if (!IS_INT_TYPE(kind))
         not_yet();
@@ -567,7 +555,7 @@ void set_known(int s, int v)
 // on: C would hide it after the block, and ccish doesn't.
 static void parse_declaration(int is_static)
 {
-  int reg = tok == T_REGISTER, base;
+  int reg = tok == TC_REGISTER, base;
   if (reg)
     next();
   base = parse_base_type();
@@ -757,7 +745,7 @@ static void parse_do(void)
   next();                         /* "do" */
   place_label(top);
   loop_body(brk, cont);
-  expect(T_WHILE, 122 /* "expected 'while' after the body of 'do', not" */);
+  expect(TC_WHILE, 122 /* "expected 'while' after the body of 'do', not" */);
   place_forward(cont);
   parse_paren_cond(top, 1);
   expect(';', 123 /* "expected ';' after 'do ... while (...)', not" */);
@@ -775,10 +763,10 @@ static void parse_for(void)
   next();                         /* "for" */
   expect('(', 124 /* "expected '(' after 'for', not" */);
   depth++;
-  if (T_STATIC_OR_EXTERN(tok))
+  if (TC_IS_STATIC_OR_EXTERN(tok))
     error0(125 /* "a 'for' loop can't declare a static or extern"
                   " variable" */);
-  if (tok == T_REGISTER || is_type_start()) {
+  if (tok == TC_REGISTER || is_type_start()) {
     parse_declaration(0);       // includes the ';'
   } else {
     if (tok != ';')
@@ -805,7 +793,7 @@ static void parse_for(void)
 // break, the innermost switch's).
 static void parse_break_continue(void)
 {
-  int is_break = tok == T_BREAK;
+  int is_break = tok == TC_BREAK;
   next();
   if (nloops == 0 && is_break)
     error0(129 /* "'break' is not inside a loop or switch" */);
@@ -836,7 +824,7 @@ static void parse_goto(void)
 {
   int l;
   next();                         // 'goto'
-  if (tok != T_ID)
+  if (tok != TC_ID)
     error(316 /* "expected a label after 'goto', not" */, tok_desc());
   l = goto_label(tok_val, 0);
   next();                         // the label
@@ -866,13 +854,13 @@ static void parse_case_labels(void)
   int i;
 #endif
   int l, v;
-  while (T_IS_CASE_LABEL(tok)) {
+  while (TC_IS_CASE_LABEL(tok)) {
     if (sw_first < 0)
-      error(tok == T_CASE ? 133 /* "'case' is not inside a switch" */
+      error(tok == TC_CASE ? 133 /* "'case' is not inside a switch" */
                           : 134 /* "'default' is not inside a switch" */,
 NULL);
     l = new_label();
-    if (tok == T_DEFAULT) {
+    if (tok == TC_DEFAULT) {
       next();
 #ifdef CCISH_LINT
       if (sw_default >= 0)
@@ -988,7 +976,7 @@ static void parse_statement(void)
 {
   Operand o;
   int else_l, end_l;
-  if (tok == T_ID && next_is_colon()) {
+  if (tok == TC_ID && next_is_colon()) {
     parse_label();              /* label: (before the typedef check, as
                                   a label may spell a typedef) */
     return;
@@ -998,7 +986,7 @@ static void parse_statement(void)
     return;
   }
   switch (tok) {
-  case T_IF:
+  case TC_IF:
     // if (c) s1 [else s2]:  c BRFLS Lelse  s1  [BRNCH Lend]  Lelse:
     // [s2  Lend:]. Here, not in a function of its own, and an else-if
     // chain is a loop that shares one Lend, not a recursion through
@@ -1010,7 +998,7 @@ static void parse_statement(void)
       next();                     /* "if" */
       parse_paren_cond(else_l, 0);
       parse_statement();
-      if (tok != T_ELSE) {
+      if (tok != TC_ELSE) {
         place_forward(else_l);
         break;
       }
@@ -1019,7 +1007,7 @@ static void parse_statement(void)
         end_l = new_label();
       branch(IR_JUMP, end_l);
       place_forward(else_l);
-      if (tok != T_IF) {
+      if (tok != TC_IF) {
         parse_statement();
         break;
       }
@@ -1027,31 +1015,31 @@ static void parse_statement(void)
     if (end_l >= 0)
       place_forward(end_l);
     return;
-  case T_WHILE:
+  case TC_WHILE:
     parse_while();
     return;
-  case T_DO:
+  case TC_DO:
     parse_do();
     return;
-  case T_FOR:
+  case TC_FOR:
     parse_for();
     return;
-  case T_SWITCH:
+  case TC_SWITCH:
     parse_switch();
     return;
-  case T_CASE:
-  case T_DEFAULT:
+  case TC_CASE:
+  case TC_DEFAULT:
     parse_case_labels();
     parse_statement();          // the statement they label
     return;
-  case T_BREAK:
-  case T_CONTINUE:
+  case TC_BREAK:
+  case TC_CONTINUE:
     parse_break_continue();
     return;
-  case T_GOTO:
+  case TC_GOTO:
     parse_goto();
     return;
-  case T_ELSE:
+  case TC_ELSE:
     error0(144 /* "'else' without a matching 'if'" */);
     return;
   case '{':
@@ -1060,7 +1048,7 @@ static void parse_statement(void)
   case ';':
     next();
     return;
-  case T_RETURN:
+  case TC_RETURN:
     next();
     if (tok == ';') {
       if (fn_type[cur_fn] != TY_VOID)
@@ -1085,29 +1073,29 @@ static void parse_statement(void)
     expect(';', 146 /* "expected ';' after return value, not" */);
     put(IR_RETURN, result_words(fn_type[cur_fn]), -1);
     return;
-  case T_TYPEDEF:
-  case T_CONSTEXPR:
+  case TC_TYPEDEF:
+  case TC_CONSTEXPR:
     parse_typedef();
     return;
-  case T_STATIC_ASSERT:
+  case TC_STATIC_ASSERT:
     parse_static_assert();
     return;
-  case T_EXTERN:
+  case TC_EXTERN:
     next();
     if (!is_type_start())
       error(218 /* "expected a type after 'extern', not" */, tok_desc());
     parse_block_extern();
     return;
-  case T_STATIC:
+  case TC_STATIC:
     next();
     if (!is_type_start())
       error(147 /* "expected a type after 'static', not" */, tok_desc());
     parse_declaration(1);
     return;
-  case T_REGISTER:
+  case TC_REGISTER:
     parse_declaration(0);       // which reads the "register"
     return;
-  case T_KEYWORD:
+  case TC_KEYWORD:
     not_yet();
     return;
   }
@@ -1125,7 +1113,7 @@ void parse_block(int new_scope)
     depth++;
   next();                         // '{'
   while (tok != '}') {
-    if (tok == T_EOF)
+    if (tok == TC_END)
       error0(149 /* "missing '}' at end of file" */);
     parse_statement();
   }
@@ -1161,9 +1149,9 @@ int parse_params(void)
   }
   for (;;) {
     int name, type;
-    if (tok == T_ELLIPSIS)
+    if (tok == TC_ELLIPSIS)
       error0(150 /* "variable argument lists are not supported yet" */);
-    if (tok == T_KEYWORD)
+    if (tok == TC_KEYWORD)
       not_yet();
     if (!is_type_start())
       error(151 /* "expected a parameter type, not" */, tok_desc());

@@ -470,8 +470,8 @@ static const char spare[] = " ";
 // The C keywords: the supported ones first, in the order of their
 // codes.
 static const char *const keywords[] = {
-  // supported: in the order of TC_INT ... (token.h, CCPP.md) and T_INT
-  // ..., with spare at each UNUSED code
+  // supported: in the order of TC_INT ... (token.h, CCPP.md), with
+  // spare at each UNUSED code
   "int", "char", "signed", "unsigned", "const", "volatile", spare, spare,
   "struct", "union", "enum", spare, "void", spare, spare, spare,
   "static", "extern", "register", spare, "typedef", "constexpr", "case",

@@ -109,7 +109,7 @@ void next(void)
 {
   int c, n, i;
   if (at_end) {
-    tok = T_EOF;
+    tok = TC_END;
     return;
   }
   for (;;) {
@@ -137,7 +137,7 @@ void next(void)
                         // the name file
     nam_sum = i;
     at_end = 1;
-    tok = T_EOF;
+    tok = TC_END;
     return;
   case TC_ID:
   case TC_KEYWORD:
@@ -145,9 +145,9 @@ void next(void)
     // A struct's or union's tag, and only that, has its spelling's
     // hash.
     if ((c == TC_TAG)
-        != (T_IS_STRUCT_UNION(tok) && c != TC_KEYWORD))
+        != (TC_IS_STRUCT_UNION(tok) && c != TC_KEYWORD))
       damaged();
-    tok = c == TC_KEYWORD ? T_KEYWORD : T_ID;
+    tok = c == TC_KEYWORD ? TC_KEYWORD : TC_ID;
     tok_val = get_word();
     if (tok_val < 1)
       damaged();
@@ -158,56 +158,26 @@ void next(void)
     return;
   case TC_NUM:
   case TC_UNUM:
-    tok = T_NUM;
+    tok = TC_NUM;
     tok_unsigned = c == TC_UNUM;
     tok_val = get_word();
     return;
   case TC_STR:
-    tok = T_STR;
+    tok = TC_STR;
     tok_len = get_byte();
     for (i = 0; i < tok_len; i++)
       tok_text[i] = (char)get_byte();
     tok_text[tok_len] = 0;
     return;
   }
-  // By offset: the keywords and operators are in the same order in
-  // both (asserted below next()).
-  if (c >= TC_KEYWORDS && c < TC_KEYWORDS + NKEYWORDS)
-    tok = T_INT + (c - TC_KEYWORDS);
-  else if (c >= TC_OPS && c < TC_OPS + NOPS)
-    tok = T_ADDEQ + (c - TC_OPS);
-  else if (c >= ' ' && strchr(singles, c))
+  // A keyword, an operator, or a one-character token is its code.
+  if ((c >= TC_KEYWORDS && c < TC_KEYWORDS + NKEYWORDS)
+      || (c >= TC_OPS && c < TC_OPS + NOPS)
+      || (c >= ' ' && strchr(singles, c)))
     tok = c;
   else
     damaged();
 }
-
-// next() maps a stream code to a token by its offset in its block
-// (T_INT + (c - TC_KEYWORDS), T_ADDEQ + (c - TC_OPS)), so the tokens must
-// be in the stream's order (token.h, CCPP.md): each keyword and each
-// operator at its code's place. Here, since next() is what relies on
-// it. (The keywords' spellings, pplex.c's keywords[], follow the same
-// order; strings can't be checked here, but tests/pp's token streams
-// do.)
-#define SAME_KW(x) _Static_assert(T_##x - T_INT == TC_##x - TC_KEYWORDS, \
-                                  "T_" #x " isn't at TC_" #x "'s place")
-SAME_KW(INT); SAME_KW(CHAR); SAME_KW(SIGNED); SAME_KW(UNSIGNED);
-SAME_KW(VOID); SAME_KW(CONST); SAME_KW(VOLATILE); SAME_KW(STRUCT);
-SAME_KW(ENUM); SAME_KW(RETURN); SAME_KW(IF); SAME_KW(ELSE);
-SAME_KW(WHILE); SAME_KW(DO); SAME_KW(FOR); SAME_KW(BREAK);
-SAME_KW(CONTINUE); SAME_KW(SIZEOF); SAME_KW(STATIC); SAME_KW(EXTERN);
-SAME_KW(SWITCH); SAME_KW(CASE); SAME_KW(DEFAULT); SAME_KW(TYPEDEF);
-SAME_KW(GOTO); SAME_KW(UNION); SAME_KW(STATIC_ASSERT); SAME_KW(CONSTEXPR);
-#undef SAME_KW
-#define SAME_OP(x) _Static_assert(T_##x - T_ADDEQ == TC_##x - TC_OPS, \
-                                  "T_" #x " isn't at TC_" #x "'s place")
-SAME_OP(EQ); SAME_OP(NE); SAME_OP(LE); SAME_OP(GE);
-SAME_OP(SHL); SAME_OP(SHR); SAME_OP(ANDAND); SAME_OP(OROR);
-SAME_OP(INC); SAME_OP(DEC); SAME_OP(ADDEQ); SAME_OP(SUBEQ);
-SAME_OP(MULEQ); SAME_OP(DIVEQ); SAME_OP(MODEQ); SAME_OP(ANDEQ);
-SAME_OP(OREQ); SAME_OP(XOREQ); SAME_OP(SHLEQ); SAME_OP(SHREQ);
-SAME_OP(ARROW); SAME_OP(ELLIPSIS);
-#undef SAME_OP
 
 // Is the token after the current one a ']' on the same line? The
 // parser uses this to see whether an index is simple.
@@ -238,22 +208,23 @@ int next_is_colon(void)
 // The spellings of the supported keywords and the multi-character
 // operators, for messages, are in the message file, as messages' texts
 // are, not in cccomp (approach.md, "C2 design"): messages 262-301 are
-// the keywords, in T_INT's order, and messages 352-383 the operators,
-// in T_ADDEQ's, each block with a "(spare)" text at each UNUSED code.
+// the keywords, in their codes' order (token.h), and messages 352-383
+// the operators, in theirs, each block with a "(spare)" text at each UNUSED code.
 #define MSG_KEYWORDS 262
 #define MSG_OPS      352
 // The ranges above, which ccish.msg must match (tests/spec/msgs.sh
 // checks the comment against it); and tok_desc()'s order: the
-// one-character tokens below T_INT, and the keywords below T_ADDEQ.
+// one-character tokens below the keywords, and those below the
+// operators.
 _Static_assert(MSG_KEYWORDS + NKEYWORDS - 1 == 301,
                "the keywords' messages aren't 262-301: fix the comment"
                " and ccish.msg");
 _Static_assert(MSG_OPS + NOPS - 1 == 383,
                "the operators' messages aren't 352-383: fix the comment"
                " and ccish.msg");
-_Static_assert(T_INT > '~' && T_INT + NKEYWORDS <= T_ADDEQ,
-               "tok_desc() needs the one-character tokens below T_INT, and"
-               " the keywords below T_ADDEQ");
+_Static_assert(TC_KEYWORDS > '~' && TC_KEYWORDS + NKEYWORDS <= TC_OPS,
+               "tok_desc() needs the one-character tokens below the"
+               " keywords, and the keywords below the operators");
 
 #ifdef CCISH_DIAG
 // Describe the current token for an error message, e.g. "'while'" or
@@ -264,16 +235,16 @@ const char *tok_desc(void)
   static char buf[MAX_NAME + 16];
   int n;
   switch (tok) {
-  case T_EOF: return "end of file";
-  case T_NUM: return "a number";
-  case T_STR: return "a string";
+  case TC_END: return "end of file";
+  case TC_NUM: return "a number";
+  case TC_STR: return "a string";
   }
   strcpy(buf, "'");
-  if (tok == T_ID || tok == T_KEYWORD) {
+  if (tok == TC_ID || tok == TC_KEYWORD) {
     strcat(buf, nam_name(tok_val));
-  } else if (tok >= T_INT) {
-    n = tok >= T_ADDEQ ? MSG_OPS + (tok - T_ADDEQ)
-                       : MSG_KEYWORDS + (tok - T_INT);
+  } else if (tok >= TC_KEYWORDS) {
+    n = tok >= TC_OPS ? MSG_OPS + (tok - TC_OPS)
+                      : MSG_KEYWORDS + (tok - TC_KEYWORDS);
     if (!msg_text(n, buf + 1, MAX_NAME + 1))
       strcpy(buf + 1, num_text(n));
   } else {

@@ -10,7 +10,7 @@
 #    whose block a _Static_assert follows (blanks between). A raw
 #    number in a .c's bit op assumes the assignment, and breaks
 #    silently when the values move.
-# 2. In src/*.c, arithmetic on a named constant (tok == T_CASE + 1,
+# 2. In src/*.c, arithmetic on a named constant (tok == TC_CASE + 1,
 #    names[op - IR_ADD]) must be in such a pair, or be one of the
 #    existing uses in the list in the program below, each noted with
 #    where its relationship is pinned. A combination of two named
@@ -19,7 +19,7 @@
 #    enum (an IN_BLOCK, or a #define whose body is a bit op) must
 #    name doc/enums.md (the ENUM VALUES banner) and hold a
 #    _Static_assert.
-# Comparisons with a named constant (tok == T_IF) name one value only,
+# Comparisons with a named constant (tok == TC_IF) name one value only,
 # and are allowed. Character codes (';', '*') are fixed by C, not
 # assigned, and need no define; a value mask (0xFF, 0x8000)
 # manipulates a value, not an enum.
@@ -129,9 +129,10 @@ for f in src/*.c; do
         # Guarded by IR_IS_BINARY; the block anchor and alignment are
         # pinned by the asserts in ir.h.
         exf[nex] = "src/pexpr.c"; exr[nex] = "names\\[op - IR_ADD\\]"; nex++
-        # The stream codes and the tokens are by offset in their blocks
-        # (the format, CCPP.md); next() in tokin.c checks each code.
-        exf[nex] = "src/tokin.c"; exr[nex] = "T_INT \\+ \\(c - TC_KEYWORDS\\)|T_ADDEQ \\+ \\(c - TC_OPS\\)|MSG_OPS \\+ \\(tok - T_ADDEQ\\)|MSG_KEYWORDS \\+ \\(tok - T_INT\\)|TC_KEYWORDS \\+ NKEYWORDS|TC_OPS \\+ NOPS|keywords\\[code - TC_KEYWORDS\\]|ops\\[code - TC_OPS\\]"; nex++
+        # The message numbers of the keywords and the operators are by
+        # offset in their blocks (the format, CCPP.md); tokin.c asserts
+        # the ranges.
+        exf[nex] = "src/tokin.c"; exr[nex] = "MSG_OPS \\+ \\(tok - TC_OPS\\)|MSG_KEYWORDS \\+ \\(tok - TC_KEYWORDS\\)|TC_KEYWORDS \\+ NKEYWORDS|TC_OPS \\+ NOPS"; nex++
         # The ccpp stream codes, and the spellings, by offset in their
         # blocks (the format, CCPP.md).
         exf[nex] = "src/pplex.c"; exr[nex] = "return TC_KEYWORDS \\+ i|return TC_OPS \\+ i|TC_KEYWORDS \\+ NKEYWORDS|TC_OPS \\+ NOPS|keywords\\[code - TC_KEYWORDS\\]|ops\\[code - TC_OPS\\]"; nex++
