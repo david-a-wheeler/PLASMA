@@ -9064,3 +9064,17 @@ below add nothing, or almost nothing, beside that.
   sums pinning the hits) and undef_redefine (the printed
   intermediates pinning the macro flag through define, undef and
   redefine) cross-check against the host compiler.
+
+The candidates were compared before any C was written, and the
+  recipe is worth keeping for the next data-structure decision:
+  record the real workload (an instrumented scratch build prints
+  its calls; here 46,867 pp_intern and 410 file references from
+  ccish's own 29 sources, in .tmp/,seq/out); calibrate the unit
+  costs from `make profile` (37.16 ops per scanned pool entry, fit
+  to this section's measured find cost); replay the recorded
+  sequence against the candidates in Python (sim.py, sim2.py),
+  which first reproduced the 462M measured ops and then predicted
+  each design; and verify the chosen one on the real VM with
+  `make profile`. .tmp/,seq is a temporary name kept on purpose,
+  with a README.md; the general mechanism for where a pass spends
+  its ops is `make profile` itself (AGENTS.md, "Measuring").
