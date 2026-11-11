@@ -28,11 +28,29 @@
                                 // identifier's is its length (at most
                                 // MAX_NAME), a file's its name's length
 
+#define PP_CACHE  16    // slots in the recent-names cache: a power of
+                        // 2, for PP_SLOT's mask; it is a speedup, not a
+                        // limit: a miss walks the pool as before
+_Static_assert((PP_CACHE & (PP_CACHE - 1)) == 0,
+               "PP_CACHE isn't a power of 2");
+#define PP_SLOT(n) ((n) & (PP_CACHE - 1))
+
 int pp_macro_flag;
 
 static unsigned char pool[MAX_PP_POOL];
 static int pool_used;
 static int nids;                // identifiers in the pool
+// The recent-names cache (approach.md, "ccpp's name lookup"), 16
+// slots indexed by the name hash's low four bits: a name interned
+// just now is reused close by in
+// C sources, and a hit saves find()'s walk of the pool. Slot k keeps
+// the id and pool offset of the name whose hash maps to it, and its
+// length plus 1, 0 being an empty slot: the pool is never changed,
+// so a slot needs no invalidating, and a hit is checked against the
+// pool's spelling, so it can never be wrong; a miss walks as before.
+static int cache_id[PP_CACHE];
+static int cache_off[PP_CACHE];
+static unsigned char cache_len[PP_CACHE];
 
 // The names every file has, in id order from 1 (CCPP.md, "The fixed
 // ids"): the CMDSYS functions in cmdsys_sigs[]'s order (parse.c), main
@@ -121,19 +139,44 @@ void pp_names_init(void)
     pp_intern(fixed[i], (int)strlen(fixed[i]));
 }
 
+// The hash of s, n characters, for the cache's slot: the same
+// h = (h + h) ^ c as the linker's name hash (approach.md, "the
+// shared-name table"), cheap in the VM, no MUL or SHL loop.
+static int name_hash(const char *s, int n)
+{
+  int h = 0, k;
+  for (k = 0; k < n; k++)
+    h = ((h + h) ^ s[k]) & 0x7FFF;
+  return h;
+}
+
 // The id of identifier s, of n characters (at most MAX_NAME), giving
 // it the next one if it is new; pp_macro_flag says whether it names a
-// macro.
+// macro. The recent-names cache goes first (above); the pool's walk
+// is the miss.
 int pp_intern(const char *s, int n)
 {
-  int at, id = find(s, n, 0, &at);
+  int k = PP_SLOT(name_hash(s, n)), at, id;
+  if (cache_len[k] == n + 1 && same(cache_off[k], s, n)) {
+    pp_macro_flag = pp_mac_find(cache_id[k]) >= 0;
+    return cache_id[k];
+  }
+  id = find(s, n, 0, &at);
   if (id) {
     pp_macro_flag = pp_mac_find(id) >= 0;
+    cache_id[k] = id;
+    cache_off[k] = at;
+    cache_len[k] = (unsigned char)(n + 1);
     return id;
   }
+  at = pool_used;
+  id = ++nids;
   add(s, n, 0);
+  cache_id[k] = id;
+  cache_off[k] = at;
+  cache_len[k] = (unsigned char)(n + 1);
   pp_macro_flag = 0;
-  return ++nids;
+  return id;
 }
 
 // Does identifier id name a macro? The macro table (ppmac.c) holds

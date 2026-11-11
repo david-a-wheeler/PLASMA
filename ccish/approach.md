@@ -9036,8 +9036,8 @@ below add nothing, or almost nothing, beside that.
   where the walk took about 5,500. ccpp goes from 942,600,000 to
   794,600,000 ops (148,100,000, 16%), for 0 bytes of data and 8 of
   code. The pool's bit is still kept by pp_set_macro(), so behavior
-  is unchanged; the new undef_redefine test pins the flag through
-  define, undef and redefine.
+  is unchanged; the undef_redefine test (an xrun test, the last item)
+  pins the flag through define, undef and redefine.
 - Step 2: with the table as the authority, the pool's ENT_MACRO bit is
   write-only: drop it. An identifier's length byte is now just its
   length, so entry_len() is one masked load (6 ops a call, was 11),
@@ -9045,3 +9045,22 @@ below add nothing, or almost nothing, beside that.
   table. ccpp goes from 794,600,000 to 739,000,000 ops (55,500,000
   more); 115 bytes of module file, no data. The pool's layout, the
   ids and NAME.nam are unchanged, and the pool is still table-less.
+- Step 3: pp_intern() keeps a cache of recent names, PP_CACHE (16)
+  slots, indexed by the low four bits of the name's hash (the same
+  h = (h + h) ^ c as the linker's name hash): a C source reuses a
+  name close by, and a hit saves find()'s walk of the pool. A hit is checked against the
+  pool's spelling, so it can never be wrong, and a miss walks as
+  before; the pool is never changed, so the slots need no
+  invalidating. The cache is 80 bytes of data. ccpp goes from
+  739,000,000 to 581,900,000 ops (157,100,000 more); 308 bytes of
+  module file. In all, the three steps take ccpp from 942,600,000 to
+  581,900,000 ops (38%), at 193 bytes of module file: ccpp still has
+  787 of its 942 bytes to spare, and the lookup's find, entry_len
+  and entry_at are under half of ccpp where they were two-thirds.
+  The slotted hash table (the linker's, "the shared-name table")
+  would take the lookup down further, but it wants 3.4K, past the
+  budget; this cache is what fits. The xrun tests name_cache (16
+  names all in one cache slot, each used three times, the printed
+  sums pinning the hits) and undef_redefine (the printed
+  intermediates pinning the macro flag through define, undef and
+  redefine) cross-check against the host compiler.
