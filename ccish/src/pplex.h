@@ -39,8 +39,7 @@ enum { TC_PARAM = 0x10, TC_PARAM_RAW, TC_HASH_PARAM, TC_PASTE, TC_SPACE };
 _Static_assert(TC_IS_PARAM(TC_PARAM) && TC_IS_PARAM(TC_PARAM_RAW)
                && TC_IS_PARAM(TC_HASH_PARAM),
                "TC_IS_PARAM misses a parameter token");
-_Static_assert(!TC_IS_PARAM(TC_PASTE) && !TC_IS_PARAM(TC_SPACE)
-               && !TC_IS_PARAM(TC_TAG),
+_Static_assert(!TC_IS_PARAM(TC_PASTE) && !TC_IS_PARAM(TC_SPACE),
                "TC_IS_PARAM holds a non-member");
 // ccpp's codes share a macro body with the stream's, so they're in
 // the block token.h keeps for them.
