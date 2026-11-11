@@ -5,7 +5,7 @@
 # the link errors for main(argc, argv) without the start object and
 # for exit without the stand-in.
 . "$(dirname "$0")/../lib.sh"
-D=$OUT/libspec
+D=$OUT/libspecial
 L=$OUT/lib
 bad=0
 mkdir -p "$D"

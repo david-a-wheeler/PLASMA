@@ -216,7 +216,7 @@ int next_is_colon(void)
 // the operators, in theirs, each block with a "(spare)" text at each UNUSED code.
 #define MSG_KEYWORDS 262
 #define MSG_OPS      352
-// The ranges above, which ccish.msg must match (tests/spec/msgs.sh
+// The ranges above, which ccish.msg must match (tests/special/msgs.sh
 // checks the comment against it); and tok_desc()'s order: the
 // one-character tokens below the keywords, and those below the
 // operators.

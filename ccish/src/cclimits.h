@@ -13,7 +13,7 @@
                             // a prefix (diag.c's buffers)
 #define MAX_MSG      96     // a message's text in ccish.msg, with its
                             // NUL (diag.c's report(); 87 is the longest,
-                            // and tests/spec/msgs.sh checks that each
+                            // and tests/special/msgs.sh checks that each
                             // fits)
 
 #endif

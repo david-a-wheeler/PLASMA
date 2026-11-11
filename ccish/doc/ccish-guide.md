@@ -341,7 +341,7 @@ checked (`tests/gen/`), programs that must fail with their message
 (`tests/errors/`), token-stream checks (`tests/pp/`), link checks
 (`tests/link/`), the cross tests, where the same source must print the
 same under ccish and under a host compiler, gcc or clang
-(`tests/xrun/`), and one-off checks (`tests/spec/`). It runs each with
+(`tests/xrun/`), and one-off checks (`tests/special/`). It runs each with
 both builds, and requires them to write the same objects and modules.
 Each test's stamp depends on its input, its expected result, and the
 passes, so a change re-runs exactly the tests it could affect.
@@ -1968,7 +1968,7 @@ error(41 /* "lvalue required as" */, NULL);
 
 To add a message, give it the next unused number in `ccish.msg` and
 write the same text in both places. `make test` runs
-`tests/spec/msgs.sh`, which checks that every comment matches the
+`tests/special/msgs.sh`, which checks that every comment matches the
 file, that every number used is in the file and every number in the
 file is used, and that the file's numbers ascend.
 
@@ -1976,7 +1976,7 @@ Some numbers aren't messages but the spellings of C's keywords
 (262-301) and operators (352-383), which cccomp prints in a message
 ("expected an expression, not 'while'"), so that cccomp keeps none of
 them either. A comment in `src/tokin.c` declares the ranges, which
-`tests/spec/msgs.sh` counts as used.
+`tests/special/msgs.sh` counts as used.
 
 ## 11. Calling built-in CMD library
 

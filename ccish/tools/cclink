@@ -3,7 +3,7 @@
 # needs, and write the list of the objects linked, for `ccrel @list`
 # (doc/bootstrap-test.md, R10 and step 4). It's the one place that
 # knows which library object defines a name; tools/measure.py and
-# tests/spec/bootstrap.sh both use it.
+# tests/special/bootstrap.sh both use it.
 #
 # Usage: cclink [-r ccrel] [-l] [-L libdir] -o module -w list object...
 #

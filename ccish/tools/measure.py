@@ -19,7 +19,7 @@ file's code, data and string sizes (from its .syms header) and each
 program's totals and link workload (from ccrel's listing), and how full
 ccpp's tables got (from a ccpp built with CCISH_STATS), and what
 each program needs on a 64K Apple II, running and loading, with the
-loader streaming the RLD (tests/spec/fit.sh checks that each fits).
+loader streaming the RLD (tests/special/fit.sh checks that each fits).
 See approach.md 18.5 and 18.6 E2. It ends with each measured limit's peak, the most
 ccish's own source uses, which tools/limits.sh puts in doc/limits.md.
 `make measure` writes the report to doc/measure.txt (checked in), and
@@ -487,7 +487,7 @@ def loader_sizes(path):
 
 def fit_report(prog, module, rld, heap, frame, unbounded, includes):
     """Print what prog needs on a 64K Apple II, running and loading, with
-    the RLD streamed; tests/spec/fit.sh checks the "needs" line. rld is
+    the RLD streamed; tests/special/fit.sh checks the "needs" line. rld is
     the module's RLD and ESD bytes."""
     files, what = OPEN_FILES[prog]
     if prog == "ccpp":

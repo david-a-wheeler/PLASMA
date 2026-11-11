@@ -3896,7 +3896,7 @@ copied from the token stream's end, and the full build's argument
 text ("1 of 'f'") is spelled only for a message: so in either build
 a correct compile never opens NAME.nam (checked with strace on
 pexpr.c, parse.c, ptop.c and link.c), and a damaged or stale one is
-found by ccgen. tests/spec/front.sh compiles hello.c with its name
+found by ccgen. tests/special/front.sh compiles hello.c with its name
 file gone. cccomp doesn't check the stamp or the ids itself any more,
 since ccgen checks both (the user: "Error-checking is a nice-to-have,
 but must be repeatedly sacrificed"); nam.c opens the file on a name's
@@ -4095,7 +4095,7 @@ to date). Anything added meanwhile, such as issue 23, widens the gap.
   frame's bytes count only at the peak, so making one static saves
   nothing. Done 2026-11-07: stop()'s copy of the detail went from 200
   bytes to MAX_PATH (128), and report()'s message buffer from 128 to
-  MAX_MSG (96; the longest text is 87, and tests/spec/msgs.sh checks
+  MAX_MSG (96; the longest text is 87, and tests/special/msgs.sh checks
   that each fits). The worst-case frame stack went from 1,763 bytes to
   1,665 in cccomp, 567 to 463 in ccpp, and 538 to 434 in ccrel, with
   no change in code. Next on the chain: parse_expr() 148,
@@ -4295,7 +4295,7 @@ issue updated as each step lands.
    (the letter `| $20`); irin.c clears that bit from a record's tag, so
    its comparisons and `copy_record()`'s write to the stream are
    unchanged. The objects are the same for all 171 source, library and
-   test files. tests/spec/back.sh refuses an uppercase tag and one past
+   test files. tests/special/back.sh refuses an uppercase tag and one past
    the letters, and its SWAP test now takes SWAP's tag from src/ir.h:
    it had looked for `$B2`, SWAP's byte form before the function
    pointer ops moved it (now `$B6`), found none, and so damaged the
@@ -4321,7 +4321,7 @@ issue updated as each step lands.
      host build's tests can't see it, since gcc preprocesses them, but
      measure.py and the bootstrap can. `MAX_MACROS` is now 114 and
      `MAX_MACRO_BYTES` 868, 10% over; step 4 will measure them again.
-     tests/spec/ppopt.sh now reads `MAX_MACROS` from src/ppmac.c.
+     tests/special/ppopt.sh now reads `MAX_MACROS` from src/ppmac.c.
    - **A latent bug fixed:** irin.c's `stk_effect[]` is a `char` table,
      and `char` is unsigned (in ccish, and on this ARM64 host), so its
      -1 ("can't be in an expression") read as 255, and the full
@@ -4478,7 +4478,7 @@ non-volatile twin that still gets the optimization:
   reads: not counted.
 - Damaged-IR tests: a reserved op number, and an old IR version.
 Plus the bootstrap, and the small build's objects identical to the
-full build's (tests/spec/small.sh).
+full build's (tests/special/small.sh).
 
 ## Decisions so far
 
@@ -5044,7 +5044,7 @@ issue. In summary:
     through the ccstat driver module and `tools/ccrun`. Every test that
     runs a module checks it: run, gen and link tests against an
     expected status (`NAME.status`, or a link test's `status`, else
-    0), xrun tests require 0, and the spec scripts use `run_module`
+    0), xrun tests require 0, and the special scripts use `run_module`
     (tests/lib.sh). Checking found one wrong test: genunion's expected
     sum was 18, but C (and gcc) gives 16.
 37. **_Static_assert** (decided in discussion, 2026-11-09; plan in
@@ -5084,7 +5084,7 @@ issue. In summary:
     (stk_effect[], lw_kind[], lw_op[], ir_names[]) are sized by their
     entries and checked against IR_NOPS, which ir.h checks is past
     every op; their contents can't be asserted (an entry isn't a
-    constant expression), so tests/spec/tables.c checks them, by
+    constant expression), so tests/special/tables.c checks them, by
     symbol, never by number: every op's name, that no gap has a name or
     stack effect, and each block's first and last entry in the others.
     ccgen carries none of it. The checks are of relationships only, never of a
@@ -5152,7 +5152,7 @@ issue. In summary:
     grow at each level.
 43. **The small build drops a diagnostic's detail** (decided in
     discussion, 2026-11-09), as CCISH_DIAG's design and
-    tests/spec/smalldiag.sh already said it did for cccomp's names:
+    tests/special/smalldiag.sh already said it did for cccomp's names:
     in the small build, error(), error_in() and fatal() are macros
     that drop their detail without evaluating it, so no call carries
     it, and code only for details (op_name()) is left out. A message

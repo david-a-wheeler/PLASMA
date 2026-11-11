@@ -23,7 +23,7 @@
 # re-runs the test (no stale results). Adding a test is adding an input
 # file (and its expected result); nothing here changes. The one-off
 # checks that don't fit "input -> expected -> diff" are the scripts
-# under tests/spec/.
+# under tests/special/.
 
 CC ?= cc
 CFLAGS ?= -Wall -Wextra -O2
@@ -223,26 +223,26 @@ $(OUT)/link/%.stamp: $(wildcard tests/link/*/*.c) $(LINK_TESTS) \
                      tests/link_test.sh tests/lib.sh tests/check_listing.sh
 	@mkdir -p $(dir $@) && tests/link_test.sh $* && touch $@
 
-# spec: the specialized checks, each a self-contained script that exits
+# special: the specialized checks, each a self-contained script that exits
 # nonzero on failure; the ones that read test inputs or ccish.msg depend
-# on them too. The bootstrap test (below) is a spec script but is kept
-# out of SPEC, so the regular suite does not run it.
-SPEC := $(filter-out tests/spec/bootstrap.sh,$(wildcard tests/spec/*.sh))
-$(OUT)/spec/%.stamp: tests/spec/%.sh tests/lib.sh $(PASSES)
+# on them too. The bootstrap test (below) is a special script but is kept
+# out of SPECIAL, so the regular suite does not run it.
+SPECIAL := $(filter-out tests/special/bootstrap.sh,$(wildcard tests/special/*.sh))
+$(OUT)/special/%.stamp: tests/special/%.sh tests/lib.sh $(PASSES)
 	@mkdir -p $(dir $@) && sh $< && touch $@
 
-$(OUT)/spec/small.stamp: $(wildcard tests/run/*.c tests/xrun/*.c tests/xrun/*.lib \
+$(OUT)/special/small.stamp: $(wildcard tests/run/*.c tests/xrun/*.c tests/xrun/*.lib \
                          tests/gen/*.c tests/link/*/*.c)
-$(OUT)/spec/front.stamp: tests/run/hello.c tests/errors/const_assign.c
-$(OUT)/spec/back.stamp: tests/run/hello.c tests/run/global_init.c src/ir.h
-$(OUT)/spec/ccrel.stamp: tests/run/hello.c tests/run/global_init.c \
+$(OUT)/special/front.stamp: tests/run/hello.c tests/errors/const_assign.c
+$(OUT)/special/back.stamp: tests/run/hello.c tests/run/global_init.c src/ir.h
+$(OUT)/special/ccrel.stamp: tests/run/hello.c tests/run/global_init.c \
                          tests/link/helpers/a.c tests/link/helpers/b.c
-$(OUT)/spec/msgs.stamp: ccish.msg
-$(OUT)/spec/smalldiag.stamp: tests/run/const.c
-$(OUT)/spec/tables.stamp: tests/spec/tables.c src/irin.c src/lower.c src/ir.h \
+$(OUT)/special/msgs.stamp: ccish.msg
+$(OUT)/special/smalldiag.stamp: tests/run/const.c
+$(OUT)/special/tables.stamp: tests/special/tables.c src/irin.c src/lower.c src/ir.h \
                           src/mop.h
-$(OUT)/spec/enumvals.stamp: $(SOURCES)
-$(OUT)/spec/fit.stamp: doc/measure.txt
+$(OUT)/special/enumvals.stamp: $(SOURCES)
+$(OUT)/special/fit.stamp: doc/measure.txt
 
 # The compiler bootstrap test: the seed, this source's $(CC) build,
 # compiles the compiler's source into a VM module (stage 1); stage 1,
@@ -251,7 +251,7 @@ $(OUT)/spec/fit.stamp: doc/measure.txt
 # stage 3 are byte-for-byte the same module. It's its own target, not
 # in the regular suite (full-test runs both), because it's slow. The
 # sources come from here: each program's, and the library's.
-$(OUT)/spec/bootstrap.stamp: tests/spec/bootstrap.sh $(PASSES) tests/lib.sh \
+$(OUT)/special/bootstrap.stamp: tests/special/bootstrap.sh $(PASSES) tests/lib.sh \
                              tools/cclink ccish.msg $(wildcard lib/include/*.h)
 	@mkdir -p $(dir $@) && BOOTSTRAP_VM="$(BOOTSTRAP_VM)" \
 	 BOOT_ccpp="$(CCPP_SRC)" BOOT_cccomp="$(CCCOMP_SRC)" \
@@ -259,10 +259,10 @@ $(OUT)/spec/bootstrap.stamp: tests/spec/bootstrap.sh $(PASSES) tests/lib.sh \
 	 BOOT_LIB="$(CCLIB_SRC)" sh $< && touch $@
 
 # Run bootstrap test. This takes ~30 seconds on Linux
-bootstrap: $(OUT)/spec/bootstrap.stamp
+bootstrap: $(OUT)/special/bootstrap.stamp
 
 # Run all tests, including bootstrap. Thorough but takes longer
-full-test: test $(OUT)/spec/bootstrap.stamp
+full-test: test $(OUT)/special/bootstrap.stamp
 
 # Everything the tests need, built but not run: the passes, the small
 # passes, the VM, and the cross references. The test stamps hang off this,
@@ -278,7 +278,7 @@ ALL_STAMPS := $(patsubst tests/run/%.c,$(OUT)/run/%.stamp,$(RUN)) \
               $(patsubst tests/errors/%.c,$(OUT)/err/%.stamp,$(ERR)) \
               $(patsubst tests/pp/%.c,$(OUT)/pp/%.stamp,$(PP_TESTS)) \
               $(LINK_STAMPS) \
-              $(patsubst tests/spec/%.sh,$(OUT)/spec/%.stamp,$(SPEC))
+              $(patsubst tests/special/%.sh,$(OUT)/special/%.stamp,$(SPECIAL))
 
 test: testbuild $(ALL_STAMPS) $(OUT)/ALL.stamp
 

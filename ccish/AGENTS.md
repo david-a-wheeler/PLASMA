@@ -25,7 +25,7 @@ files of the sessions so far, before a move to a new computer.)
   the RLD streamed (doc/plasma-requests.md, item 1) it would, with
   under 1K to spare while running. Each program's "on a 64K Apple
   II" lines in doc/measure.txt give its need, running and loading,
-  and tests/spec/fit.sh (in make test) fails if one doesn't fit
+  and tests/special/fit.sh (in make test) fails if one doesn't fit
   running. ccpp's zero-filled tables are its heap too, so raising its
   limits costs that margin.
 
@@ -132,10 +132,10 @@ files of the sessions so far, before a move to a new computer.)
 - **Every function has a comment directly above it** (1-2 lines, what
   it does), including one-line static helpers; with `#ifdef` versions,
   one directly above each. Each peephole pattern in peep.c has a
-  comment. `tests/spec/comments.sh` checks the functions (`make test`
+  comment. `tests/special/comments.sh` checks the functions (`make test`
   runs it).
 - Messages: every message text is in `ccish.msg` (NUMBER TEXT); code
-  writes `error(N /* "text" */, ...)`; `tests/spec/msgs.sh` checks them.
+  writes `error(N /* "text" */, ...)`; `tests/special/msgs.sh` checks them.
 - **Enum values are assigned for the set tests and may be reassigned
   freely** (the _Static_asserts are the contract, not the numbers).
   A set test or value manipulation on one (IR ops, tokens, types,
@@ -148,7 +148,7 @@ files of the sessions so far, before a move to a new computer.)
   named constants, outside a define + assert pair is not. Machine
   opcodes, stream codes, record tags and character codes are fixed
   by the VM, the format, and C, and their asserts pin the properties
-  the code relies on. tests/spec/enumvals.sh (in make test) checks.
+  the code relies on. tests/special/enumvals.sh (in make test) checks.
   See doc/enums.md.
 - Prose in the docs: plain, direct sentences; numbers given.
 
@@ -167,7 +167,7 @@ files of the sessions so far, before a move to a new computer.)
   peepholes, and a run), link (several files into one program),
   errors (must fail with the message), xrun (the same source run
   under ccish and a host compiler, against the .ref that make xref
-  builds; inc/ptest.h is the portability contract), and the spec
+  builds; inc/ptest.h is the portability contract), and the special
   scripts (source properties). Each is a directory under tests/,
   driven by the Makefile's wildcards and % rules, which say the
   rest.
@@ -308,7 +308,7 @@ files of the sessions so far, before a move to a new computer.)
   `main`'s status. Every test that runs a module checks it: the run
   and gen tests against `NAME.status` (else 0), the link tests against
   `tests/link/NAME/status` (else 0), xrun tests require 0, and the
-  spec scripts run modules with `run_module` (tests/lib.sh), which
+  special scripts run modules with `run_module` (tests/lib.sh), which
   fails on a nonzero status. Work an expected status out by hand (or
   with gcc), as for outputs; a gen test that returns `x == k` exits 1
   when it's right.

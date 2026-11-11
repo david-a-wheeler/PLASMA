@@ -55,7 +55,7 @@
 // They aren't names, since each name costs cccomp an entry in its table
 // of enum constants (MAX_IDS). The tables indexed by op (irin.c's
 // stk_effect[], lower.c's lw_kind[], lw_op[] and ir_names[]) follow the
-// numbers; tests/spec/tables.c checks them.
+// numbers; tests/special/tables.c checks them.
 
 enum {
   // The access ops, $00-$0B: a variable's or an address's value, and

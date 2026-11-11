@@ -63,7 +63,7 @@ of the generated compiler (either on a host or self-hosted).
    the names, give it a #define of its own, with the semantic name
    (emit.c's `MOP_INDEX`, peep.c's `IS_NEG_COMP`), and assert what it
    relies on.
-5. tests/spec/enumvals.sh (run by make test) checks the .c files
+5. tests/special/enumvals.sh (run by make test) checks the .c files
    against 1 and 4: a hex number, or a decimal of 16 or more, in a
    bit or shift op must be a value mask (0xFF, a byte of a value;
    0x8000, a sign bit; the list is in the script), or be in a
@@ -107,7 +107,7 @@ of the generated compiler (either on a host or self-hosted).
 2. make (and make small): the `_Static_asserts` that fail name the
    #defines that rely on what moved and were not fully fixed.
 3. Fix those #defines, where their asserts are.
-4. make test: tests/spec/tables.c checks the op-indexed tables
+4. make test: tests/special/tables.c checks the op-indexed tables
    (`stk_effect, lw_kind, lw_op, ir_names`) against the new numbers,
    and the run tests check the generated code. A format's values
    (`IR_VERSION, TOK_VERSION, NAM_VERSION, OBJ_VERSION`) also get

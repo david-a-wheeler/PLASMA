@@ -380,7 +380,7 @@ splitting.
 | src/irin.c: `mod = 0` for modulo 65536 | Keep; a real 16-bit fix |
 | The per-file sweep and blockers B2 to B7 | Keep (below) |
 | src/main.c: N files in one process | Revert (R1) |
-| tests/spec/bootstrap.sh: one invocation, one-letter sources | Rewrite (R1, R10) |
+| tests/special/bootstrap.sh: one invocation, one-letter sources | Rewrite (R1, R10) |
 | `-DSMALL` alias in src/build.h | Drop; the short lines don't need it |
 | Quoted std includes in 32 places, `src/std` | Revert to `<...>`; headers move to the library (R2) |
 | src/vmsys.c | Replace with the library (R4 to R7) |
@@ -570,7 +570,7 @@ decision 35).**
 10. The C library (R4, R5): string.h, then stdio over FILEIO
     (`fopen`, `fread`, `fwrite`, `fclose`, `remove`, `getc`, `putc`,
     `fputs`), and no `exit` (R8 part 3), with xrun tests against the
-    host's library and tests/spec/lib.sh under plvm. Measured with
+    host's library and tests/special/lib.sh under plvm. Measured with
     the library linked in (each program links only the objects it
     needs): cccomp's library is 760 bytes of code and 179 of data
     (the 128-byte path buffer, the 50-byte `argv`), its module file
@@ -579,7 +579,7 @@ decision 35).**
     ccgen's 824; ccrel's 822.
 
 **Phase 6: the bootstrap (done, 2026-11-08).**
-11. ccrel's `@list` file (R10), then rewrite tests/spec/bootstrap.sh
+11. ccrel's `@list` file (R10), then rewrite tests/special/bootstrap.sh
     for R1 and R2, sharing measure.py's preparation.
 12. B2 to B5, each measured against B7.
 13. Run the stages; diagnose a stage 2 versus stage 3 difference with
@@ -624,7 +624,7 @@ The order agreed on 2026-11-08, as five steps:
   @cccomp.objs`, one object name per line, read into a static buffer
   in ccrel only; cccomp's link names 30 objects, over the 127-character
   command line.
-- **Step 4: tests/spec/bootstrap.sh.** Stage 1: the host passes
+- **Step 4: tests/special/bootstrap.sh.** Stage 1: the host passes
   compile src/ (small build) and the library, and link the four
   programs, finding each program's library objects as measure.py does
   (one per undefined reference; see its `lib_object`), and write the
