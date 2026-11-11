@@ -205,17 +205,25 @@ Peaks: each limit, the most ccish's own source uses, and where:
   MAX_TYPES 51 link.c
   MAX_VARS 75 link.c
 
-Summary: the small build's modules on a 64K Apple II (41171 bytes free),
-with the loader streaming the RLD:
-                                          ----- Loading ---- ----- Running ----
-Program   Code  Data Strings  Heap Module   Need  Spare  OK?   Need  Spare  OK?
-ccpp     14472  3959    1069 13256  27633  22680  18491  yes  39493   1678  yes*
-cccomp   26461  4444     317  2388  43799  34991   6180  yes  39967   1204  yes*
-ccgen    22910  3622     973  4808  36985  30907  10264  yes  38283   2888  yes*
-ccrel     9426  1929     368  9830  16584  14468  26703  yes  25820  15351  yes
+Summary: the small build's modules, their sizes:
+Program   Code  Data Strings  Heap Module RLD+ESD
+ccpp     14472  3959    1069 13256  27633    7794
+cccomp   26461  4444     317  2388  43799   12274
+ccgen    22910  3622     973  4808  36985    9114
+ccrel     9426  1929     368  9830  16584    4582
 Code, data and strings: the program's and the library's, in the module body;
-heap: its zero-filled globals, moved to the heap at start; module: its file.
-Each need counts FILEIO (2011); running, the frame stack and I/O buffers too.
-Without streaming (the whole file read at once), these can't load:
-cccomp (47265).
+heap: its zero-filled globals, moved to the heap at start; module: its file,
+the body and then the RLD and ESD (read only to load it).
+
+And their fit on a 64K Apple II (41171 bytes free):
+        --- Load today ---- -- Load streamed -- ----- Running -----
+Program   Need  Spare  OK?   Need  Spare  OK?   Need  Spare  OK?
+ccpp     30474  10697  yes  22680  18491  yes  39493   1678  yes*
+cccomp   47265  -6094  NO   34991   6180  yes  39967   1204  yes*
+ccgen    40021   1150  yes  30907  10264  yes  38283   2888  yes*
+ccrel    19050  22121  yes  14468  26703  yes  25820  15351  yes
+Load today: the whole file read at once, as PLASMA's loaders do; streamed:
+the body, with the RLD applied as it's read (doc/plasma-requests.md, item 1).
+Each need counts FILEIO (2011) and the loader's def table; running, the heap,
+frame stack and I/O buffers too, the same with either loader.
 * A lower bound: unbounded recursion can take more frame stack.

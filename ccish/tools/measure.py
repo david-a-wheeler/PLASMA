@@ -492,40 +492,48 @@ def fit_report(prog, module, rld, defs, heap, frame, unbounded, includes):
     print("    loading, the most at once: %d with the RLD streamed, %d"
           " today (the whole file)" % (load, now))
     return {"heap": heap, "module": os.path.getsize(module), "load": load,
-            "now": now, "need": need, "unbounded": unbounded}
+            "now": now, "need": need, "unbounded": unbounded, "rld": rld}
 
 
 def summary_table(rows):
     """Print the summary at the report's end: for each program (rows,
-    in PROGRAMS' order: its sizes, or None if it wasn't measured)
-    whether it loads and runs on a 64K Apple II, and its margin."""
+    in PROGRAMS' order: its sizes, or None if it wasn't measured) its
+    sizes, then whether it loads, with today's loader and with one
+    that streams the RLD, and runs on a 64K Apple II, and its margin."""
     yes = lambda need: "yes" if need <= APPLE_FREE else "NO"
-    print("\nSummary: the %s build's modules on a 64K Apple II (%d bytes"
-          " free),\nwith the loader streaming the RLD:"
-          % ("full" if FULL else "small", APPLE_FREE))
-    print("%41s %s %s" % ("", "----- Loading ----", "----- Running ----"))
-    print("%-7s %6s %5s %7s %5s %6s %6s %6s  %-3s %6s %6s  %s" % (
-        "Program", "Code", "Data", "Strings", "Heap", "Module",
-        "Need", "Spare", "OK?", "Need", "Spare", "OK?"))
+    build = "full" if FULL else "small"
+    print("\nSummary: the %s build's modules, their sizes:" % build)
+    print("%-7s %6s %5s %7s %5s %6s %7s" % (
+        "Program", "Code", "Data", "Strings", "Heap", "Module", "RLD+ESD"))
     for prog, r in rows:
         if r is None:
             print("%-7s not measured (a file or the link failed)" % prog)
             continue
-        print("%-7s %6d %5d %7d %5d %6d %6d %6d  %-3s %6d %6d  %s" % (
+        print("%-7s %6d %5d %7d %5d %6d %7d" % (
             prog, r["code"], r["data"], r["strs"], r["heap"], r["module"],
-            r["load"], APPLE_FREE - r["load"], yes(r["load"]),
-            r["need"], APPLE_FREE - r["need"],
-            yes(r["need"]) + ("*" if r["unbounded"] else "")))
+            r["rld"]))
     print("Code, data and strings: the program's and the library's, in"
           " the module body;\nheap: its zero-filled globals, moved to the"
-          " heap at start; module: its file.\nEach need counts FILEIO"
-          " (%d); running, the frame stack and I/O buffers too." %
-          FILEIO_RESIDENT)
-    stuck = ["%s (%d)" % (p, r["now"]) for p, r in rows
-             if r and r["now"] > APPLE_FREE]
-    if stuck:
-        print("Without streaming (the whole file read at once), these"
-              " can't load:\n%s." % ", ".join(stuck))
+          " heap at start; module: its file,\nthe body and then the RLD"
+          " and ESD (read only to load it).")
+    print("\nAnd their fit on a 64K Apple II (%d bytes free):" % APPLE_FREE)
+    print("%-7s %s %s %s" % ("", "--- Load today ----",
+                             "-- Load streamed --", "----- Running -----"))
+    print("%-7s" % "Program" + " %6s %6s  %-3s" % ("Need", "Spare", "OK?") * 3)
+    for prog, r in rows:
+        if r is None:
+            continue
+        print("%-7s" % prog + "".join(
+            " %6d %6d  %-3s" % (n, APPLE_FREE - n, yes(n) + m)
+            for n, m in ((r["now"], ""), (r["load"], ""),
+                         (r["need"], "*" if r["unbounded"] else ""))
+        ).rstrip())
+    print("Load today: the whole file read at once, as PLASMA's"
+          " loaders do; streamed:\nthe body, with the RLD applied as it's"
+          " read (doc/plasma-requests.md, item 1).\nEach need counts"
+          " FILEIO (%d) and the loader's def table; running, the heap,\n"
+          "frame stack and I/O buffers too, the same with either loader."
+          % FILEIO_RESIDENT)
     if any(r and r["unbounded"] for _, r in rows):
         print("* A lower bound: unbounded recursion can take more frame"
               " stack.")
