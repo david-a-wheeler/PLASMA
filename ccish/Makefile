@@ -353,7 +353,7 @@ limits: doc/limits.md
 # doc/measure.txt: tools/measure.py's report, compiling ccish's own
 # source with ccish (about 4 seconds; needs python3).
 doc/measure.txt: ccpp cccomp ccgen ccrel ccish.msg tools/measure.py \
-                 tools/cclink tools/plvmexit.c $(LIMIT_SRC) \
+                 tools/cclink tools/plvmexit.c $(LIMIT_SRC) $(XLOAD) \
                  $(wildcard lib/include/*.h)
 	@echo "tools/measure.py > $@"
 	@python3 tools/measure.py > $@.tmp && mv $@.tmp $@ \

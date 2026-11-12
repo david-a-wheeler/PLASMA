@@ -606,7 +606,9 @@ tree (v2.21):
 ## 6. Sizes on the disk
 
 Version 4 images (ccrel -x, 2026-11-12, the small build's objects, as
-measure.py builds them):
+measure.py builds them). doc/measure.txt has the current figures, and
+each program's need on a 64K Apple II through XLOAD, loading and
+running, in its summary at the end:
 
 | Program | Data | Zero region | Code | Functions | Fixups (bytes, words) | Image file | REL module |
 |---|---:|---:|---:|---:|---:|---:|---:|

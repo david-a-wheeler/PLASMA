@@ -18,8 +18,9 @@ objects linked. The report gives each
 file's code, data and string sizes (from its .syms header) and each
 program's totals and link workload (from ccrel's listing), and how full
 ccpp's tables got (from a ccpp built with CCISH_STATS), and what
-each program needs on a 64K Apple II, running and loading, with the
-loader streaming the RLD (tests/special/fit.sh checks that each fits).
+each program needs on a 64K Apple II, running and loading, in the
+form that runs there (APPLE_LINK: XLOAD images, loaded through XLOAD;
+tests/special/fit.sh checks that each fits).
 See approach.md 18.5 and 18.6 E2. It ends with each measured limit's peak, the most
 ccish's own source uses, which tools/limits.sh puts in doc/limits.md.
 `make measure` writes the report to doc/measure.txt (checked in), and
@@ -47,8 +48,7 @@ CCLINK = os.path.join(TOOLS, "cclink")
 OUT = os.path.join(TOOLS, "out")
 FULL = "-full" in sys.argv[1:]      # measure the full build instead
 
-# For each program's fit on a 64K Apple II, with the loader streaming
-# the RLD (doc/plasma-requests.md, item 1). The free memory and
+# For each program's fit on a 64K Apple II. The free memory and
 # FILEIO's size change only with PLASMA or the machine, so they're
 # measured once, not here.
 APPLE_FREE = 41171      # free at PLASMA 2.20's prompt, before FILEIO
@@ -65,6 +65,15 @@ IO_BUFFER = 1280        # ProDOS's 1K buffer for each open file but the
                         # from the heap page-aligned (heapallocalign(...,
                         # 8, ...)), which skips 1 to 256 bytes, and
                         # ccish's fopen asks for them one at a time
+# The form that runs on an Apple II: ccrel's flags for it. "-x" for
+# XLOAD images, as tools/a2disk builds them (doc/xload.md); [] for REL
+# modules. The fit lines and the summary follow the form of the file
+# this links (an image starts with "XL"), so they describe what runs.
+APPLE_LINK = ["-x"]
+XLOAD = os.path.join(CCOMP, "tests", "out", "xload", "xload")
+XLOAD2 = XLOAD + "2"            # XLOAD's second part, an image
+FRAME_SPARE = 512               # what XLOAD leaves for frames, as
+                                # HEAP_SPARE does (xload.c, xload2.c)
 # The files each program holds open at once (from its bopen() calls),
 # and what they are; for ccpp, beside its #include files, whose most
 # open at once is measured ("includes open"), the {} in its text.
@@ -520,6 +529,99 @@ def fit_report(prog, module, rld, heap, frame, unbounded, includes):
             "now": now, "need": need, "unbounded": unbounded}
 
 
+def is_image(path):
+    """Is the file at path an XLOAD image (ccrel -x), not a REL module?"""
+    with open(path, "rb") as f:
+        return f.read(2) == b"XL"
+
+
+def image_sizes(path):
+    """An XLOAD image's sizes (doc/xload.md, 3.2): data, zero region,
+    code, functions (init too), fixup bytes (with the end byte), and the
+    file; and what it takes in memory, placed: its def entries, 5 bytes
+    each on the 64K VM, then data, zero region and code."""
+    with open(path, "rb") as f:
+        b = f.read()
+    word = lambda i: b[i] | b[i + 1] << 8
+    d, z, c, n = word(4), word(6), word(8), word(10)
+    at = 12
+    for _ in range(2):              # the dependencies, then the imports
+        while b[at]:
+            while b[at] & 0x80:
+                at += 1
+            at += 1
+        at += 1
+    at += 2 * n + d + c             # the function table, data, bytecode
+    return {"d": d, "z": z, "c": c, "n": n, "fixups": len(b) - at,
+            "file": len(b), "mem": 5 * n + d + z + c}
+
+
+def xload_sizes():
+    """XLOAD's file, what its first part takes in memory once loaded
+    (its body and def table, at the heap's bottom), and its second
+    part's placed size; None if XLOAD isn't built (make xload)."""
+    if not (os.path.exists(XLOAD) and os.path.exists(XLOAD2)):
+        return None
+    body, deftbl = loader_sizes(XLOAD)
+    return {"file": os.path.getsize(XLOAD), "first": body + deftbl,
+            "second": image_sizes(XLOAD2)["mem"]}
+
+
+def image_fit(prog, image, frame, unbounded, includes, xl):
+    """Print what prog, an XLOAD image, needs on a 64K Apple II, running
+    and loading through XLOAD; tests/special/fit.sh checks the "needs"
+    lines. Loading, it's XLOAD's own checks (xload.c, xload2.c): the
+    program goes at the heap's bottom, where XLOAD's module starts, and
+    XLOAD's second part goes in its zero region if it fits there above
+    the first part, else above the program; both leave FRAME_SPARE
+    for frames."""
+    files, what = OPEN_FILES[prog]
+    if prog == "ccpp":
+        files += includes
+    what = what.format(includes)
+    s = image_sizes(image)
+    bufs = (files - 1) * IO_BUFFER
+    top = s["mem"]
+    need = FILEIO_RESIDENT + top + frame + bufs
+    print("  as an XLOAD image: file %d bytes; data %d, zero region %d,"
+          " code %d," % (s["file"], s["d"], s["z"], s["c"]))
+    print("    %d functions (init too), fixups %d bytes"
+          % (s["n"], s["fixups"]))
+    print("  on a 64K Apple II (%d bytes free), through XLOAD:"
+          % APPLE_FREE)
+    print("    def table %d, data %d, zero region %d, code %d,"
+          % (5 * s["n"], s["d"], s["z"], s["c"]))
+    print("    frame stack %s%d, FILEIO %d," % (
+        "at least " if unbounded else "", frame, FILEIO_RESIDENT))
+    print("    I/O buffers %d x %d at most: %d files open (%s)" % (
+        files - 1, IO_BUFFER, files, what))
+    print("    running, needs %d of %d: %d %s" % (
+        need, APPLE_FREE, abs(APPLE_FREE - need),
+        "to spare" if need <= APPLE_FREE else "SHORT"))
+    if unbounded:
+        print("    (a lower bound: the frame stack takes more with the"
+              " unbounded recursion above)")
+    r = {"unbounded": unbounded, "need": need, "load": None}
+    r.update(s)
+    if xl is None:
+        print("    loading: not measured (no XLOAD: make xload)")
+        return r
+    zero = 5 * s["n"] + s["d"]
+    t = max(zero, xl["first"])
+    where = "in its zero region"
+    if t + xl["second"] > zero + s["z"]:
+        t, where = max(top, xl["first"]), "above it"
+    load = FILEIO_RESIDENT + max(top, t + xl["second"]) + FRAME_SPARE
+    r["load"] = load
+    print("    loading, needs %d of %d: %d %s (XLOAD's second part %s,"
+          % (load, APPLE_FREE, abs(APPLE_FREE - load),
+             "to spare" if load <= APPLE_FREE else "SHORT", where))
+    print("    at %d to %d above the heap's bottom, the zero region %d to"
+          " %d; %d for frames)" % (t, t + xl["second"], zero,
+                                   zero + s["z"], FRAME_SPARE))
+    return r
+
+
 def summary_table(rows):
     """Print the summary at the report's end: for each program (rows,
     in PROGRAMS' order: its sizes, or None if it wasn't measured) its
@@ -563,6 +665,61 @@ def summary_table(rows):
           " FILEIO (%d) and the loader's def table; running, the heap,\n"
           "frame stack and I/O buffers (at their worst, %d each) too, the"
           " same with\neither loader." % (FILEIO_RESIDENT, IO_BUFFER))
+    if any(r and r["unbounded"] for _, r in rows):
+        print("* A lower bound: unbounded recursion can take more frame"
+              " stack.")
+
+
+def image_summary(rows, xl):
+    """Print the summary at the report's end when what runs on an Apple
+    II is XLOAD images: for each program (rows, as for summary_table) its
+    image's sizes, then XLOAD's, then whether each loads and runs on a
+    64K Apple II, and its margin."""
+    yes = lambda need: "yes" if need <= APPLE_FREE else "NO"
+    build = "full" if FULL else "small"
+    print("\nSummary: the %s build's programs, as XLOAD images:" % build)
+    print("%-7s %5s %6s %6s %5s %6s %6s %6s" % (
+        "Program", "Data", "Zero", "Code", "Funcs", "Fixups", "Image",
+        "REL"))
+    for prog, r in rows:
+        if r is None:
+            print("%-7s not measured (a file or the link failed)" % prog)
+            continue
+        print("%-7s %5d %6d %6d %5d %6d %6d %6d" % (
+            prog, r["d"], r["z"], r["c"], r["n"], r["fixups"], r["file"],
+            r["module"]))
+    print("Image: the file, its header, names and function table, then"
+          " Data, Code and\nFixups; Zero, the zero region, isn't in it."
+          " Funcs counts init. REL: the\nsame program's REL module, for"
+          " comparison.")
+    if xl:
+        print("XLOAD (a REL module): file %d bytes; in memory, its first"
+              " part %d,\nits second part %d, placed (none of it stays"
+              " once the program runs)."
+              % (xl["file"], xl["first"], xl["second"]))
+    print("\nAnd their fit on a 64K Apple II (%d bytes free), through"
+          " XLOAD:" % APPLE_FREE)
+    print("%-7s %s %s" % ("", "----- Loading -----", "----- Running -----"))
+    print("%-7s" % "Program" + " %6s %6s  %-3s" % ("Need", "Spare", "OK?") * 2)
+    if xl:
+        print("%-7s %6d %6d  %s" % ("XLOAD", xl["now"], APPLE_FREE - xl["now"],
+                                    yes(xl["now"])))
+    for prog, r in rows:
+        if r is None:
+            continue
+        load = ("  %6s %6s  %-3s" % ("-", "-", "?") if r["load"] is None
+                else " %6d %6d  %-3s" % (r["load"], APPLE_FREE - r["load"],
+                                         yes(r["load"])))
+        print("%-7s" % prog + load + (" %6d %6d  %-3s" % (
+            r["need"], APPLE_FREE - r["need"],
+            yes(r["need"]) + ("*" if r["unbounded"] else ""))).rstrip())
+    print("XLOAD: PLASMA's loader reading XLOAD's whole file (RLD and ESD"
+          " too) and FILEIO\n(%d). A program loading: FILEIO, the program"
+          " (its def table, data, zero\nregion and code), XLOAD's second"
+          " part if it's above the program, and %d\nfor frames, as XLOAD"
+          " checks; running: FILEIO, the program, the frame stack\nand"
+          " I/O buffers (at their worst, %d each)."
+          % (FILEIO_RESIDENT, FRAME_SPARE, IO_BUFFER))
     if any(r and r["unbounded"] for _, r in rows):
         print("* A lower bound: unbounded recursion can take more frame"
               " stack.")
@@ -652,6 +809,10 @@ def main():
     gpeaks, gpeak_of = [0] * len(GEN_TABLES), [""] * len(GEN_TABLES)
     prepare_all()
     big = build_big()
+    xl = xload_sizes()
+    if xl:
+        rld, esd, _ = module_rld(XLOAD)
+        xl["now"] = FILEIO_RESIDENT + xl["first"] + rld + esd
 
     libsrc = LIB_SOURCES
     print("File        Code    Data  Strings     Zero")
@@ -784,8 +945,8 @@ def main():
         print("  the library's code %d, data %d, strings %d: %d in all"
               " (%s)" % (lcode, ldata, lstrs, lcode + ldata + lstrs,
                          " ".join(sorted(libs))))
-        print("  module file %d bytes, all read into memory to load it;"
-              " %d of them RLD and %d ESD, freed after" % (
+        print("  as a REL module: file %d bytes, all read into memory to"
+              " load it;\n    %d of them RLD and %d ESD, freed after" % (
                   os.path.getsize(module), rld, esd))
         print("  %d functions: %d bytes of the loader's def table, kept"
               " (init's entry too, and an end byte)"
@@ -810,19 +971,41 @@ def main():
                 heap = sum(int(m.group(1)) for m in re.finditer(
                     r"^; heap global \d+: \S+, (\d+) bytes$", f.read(),
                     re.M))
-            r = fit_report(prog, module, rld + esd, heap, frame,
-                           unbounded, peaks[[t[1] for t in PP_TABLES]
-                                            .index("MAX_INCLUDE")])
-            r.update(code=code + lcode, data=data + ldata,
-                     strs=strs + lstrs, rld=rld, esd=esd,
-                     body=os.path.getsize(module) - rld - esd)
+            includes = peaks[[t[1] for t in PP_TABLES]
+                             .index("MAX_INCLUDE")]
+            # The form that runs on an Apple II (APPLE_LINK), linked
+            # from the same objects.
+            apple = module
+            if APPLE_LINK:
+                apple = module + ".apple"
+                ok, msg = run([ccrel] + APPLE_LINK + ["-o", apple] + objs)
+                if not ok:
+                    print("  the Apple II form: link FAILED: %s"
+                          % msg.strip().splitlines()[-1])
+                    failed = True
+                    continue
+            if is_image(apple):
+                r = image_fit(prog, apple, frame, unbounded, includes, xl)
+                note_peak(limit_peaks, "MAX_DEFS", r["n"],
+                          "linking " + prog)
+                r["module"] = os.path.getsize(module)
+            else:
+                r = fit_report(prog, apple, rld + esd, heap, frame,
+                               unbounded, includes)
+                r.update(code=code + lcode, data=data + ldata,
+                         strs=strs + lstrs, rld=rld, esd=esd,
+                         body=os.path.getsize(module) - rld - esd)
             fit[prog] = r
     # Read by tools/limits.sh: keep this heading and the lines' form.
     print("\nPeaks: each limit, the most ccish's own source uses, and"
           " where:")
     for lim in sorted(limit_peaks):
         print("  %s %d %s" % (lim, limit_peaks[lim][0], limit_peaks[lim][1]))
-    summary_table([(p, fit.get(p)) for p, _ in PROGRAMS])
+    rows = [(p, fit.get(p)) for p, _ in PROGRAMS]
+    if any(r and "fixups" in r for _, r in rows):
+        image_summary(rows, xl)
+    else:
+        summary_table(rows)
     return 1 if failed else 0
 
 

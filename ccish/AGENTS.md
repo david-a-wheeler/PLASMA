@@ -19,18 +19,19 @@ files of the sessions so far, before a move to a new computer.)
   stream + NAME.nam names), cccomp (front end → NAME.ir), ccgen (back
   end → NAME.obj + NAME.syms), ccrel (link → REL module). `ccish` runs
   all four on the host.
-- **Size matters most for cccomp**, the one that doesn't fit yet:
-  the loader reads a whole module file into memory, and cccomp's is
+- **Size matters most for cccomp**, the tightest fit: PLASMA's loader
+  reads a whole module file into memory, and cccomp's REL module is
   bigger than the 41,171 bytes free on a 64K Apple II, so it can't
-  load; with the RLD streamed (doc/plasma-requests.md, item 1) it
-  would, with a little to spare while running. Each program's "on a
-  64K Apple II" lines in doc/measure.txt give its need, running and
-  loading, and tests/special/fit.sh (in make test) fails if one
-  doesn't fit running. ccpp's zero-filled tables are its heap too, so
-  raising its limits costs that margin. The way past the load limit,
-  chosen 2026-11-11, is XLOAD, a second-stage loader ccish ships, for
-  images ccrel writes with `-x`: doc/xload.md (the design and plan;
-  doc/streaming-options.md has the analysis behind the choice).
+  load that way. The way past the load limit, chosen 2026-11-11, is
+  XLOAD, a second-stage loader ccish ships, for images ccrel writes
+  with `-x`: doc/xload.md (the design and plan;
+  doc/streaming-options.md has the analysis behind the choice). Each
+  program's "on a 64K Apple II, through XLOAD" lines in
+  doc/measure.txt give its need as an image, loading and running, and
+  tests/special/fit.sh (in make test) fails if one doesn't fit either
+  way; the summary at the report's end has both, and XLOAD's own.
+  ccpp's zero-filled tables are its heap too, so raising its limits
+  costs that margin.
 
   ccgen has headroom; it is a streaming filter with fixed tables, so
   making it bigger doesn't reduce what it can compile.
