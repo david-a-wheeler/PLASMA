@@ -10,11 +10,10 @@ needn't change.
 
 **Status (2026-11-11).** Decided in discussion: XLOAD (section 5), on
 the `c-compiler` branch with the rest of ccish (no separate branch).
-Not yet implemented. **Still to come, first: reading plvm02.s** for
-the VM's state when a module's init is called (the 6502 stack, the
-evaluation stack index in X, and the frame pointer `IFP`), which
-XLOAD's hand-off depends on (section 5.4); and its ENTER handler, for
-any per-frame overhead in the loader-frame figure of fact 11.
+Not yet implemented. plvm02.s has been read for the hand-off: section
+5.4 gives the VM's calling convention and the two native routines.
+Eventually ccish should write either a standard REL module or an XLOAD
+image, chosen by a flag (5.7).
 
 The first version of this document (eef1dd1e) had errors in its
 memory map and missed options; section 8 lists the corrections, so
@@ -198,8 +197,9 @@ add later.
     loadmod's call to init, with loadmod's locals (about 233 bytes:
     the 128-byte `header`, the 64-byte `filename`, and 20 words),
     execmod's (about 73: a 63-byte name), and docmds' (3) on the
-    frame stack: about 310 bytes, plus any per-frame overhead
-    (plvm02.s's ENTER, still to read). `MEM FREE` was measured without
+    frame stack: about 310 bytes. ENTER adds no overhead: it just
+    subtracts the frame size from `IFP` (plvm02.s:1425-1447), and
+    LEAVE adds it back. `MEM FREE` was measured without
     them, and measure.py counts frames only from the program's init,
     so measure.txt's running margins are about 310 bytes too high.
 12. **loadmod reads to EOF.** Its read loop (cmd.pla:1083-1088) runs
@@ -245,7 +245,10 @@ PRELOAD, GO, LAUNCH, XLOAD, STREAM and FETCH.)
 - **Arguments.** lib/start.c builds `argv` by splitting CMDSYS's
   command line in place, so XLOAD takes its own word off the front of
   that buffer before the hand-off: the program sees `CCCOMP FOO`, and
-  its `argv[0]` is `CCCOMP`, as now.
+  its `argv[0]` is `CCCOMP`, as now. XLOAD itself mustn't use
+  `__start` (it would split the line, overwriting its length byte):
+  its `main` takes no parameters, so ccrel's init calls it directly,
+  and it reads `cmdsys.cmdline` itself.
 - **Files.** The payload is a file of its own (fact 12). It can keep
   the plain name `CCCOMP`, with a ProDOS type other than $FE, so that
   `+CCCOMP` without the prefix gets CMD's "incompatible type" error
@@ -330,25 +333,89 @@ the payload can't return into XLOAD's code (its heap tables are
 allocated over it). So the last step is a tail call: the payload's
 init returns straight to loadmod, as if loadmod had called it.
 
-That takes a small native routine, about 20 to 30 bytes of 6502 code,
-kept as bytes in a data array and run through CMDSYS's `call`:
+**The VM's calling convention** (read in plvm02.s, 2026-11-11):
 
-1. Restore the 6502 stack pointer, the evaluation stack index (X) and
-   `IFP` to their values when XLOAD's init was entered.
-2. `JMP` to the payload's init def entry, `JSR $03D6`, so the VM's
-   indirect entry takes over.
+- **The Apple's zero page** (vmsrc/apple/plvmzp.inc): the evaluation
+  stack's high bytes `ESTKH` at $A0-$BF and low bytes `ESTKL` at
+  $C0-$DF, indexed by the 6502's X, which counts down as values are
+  pushed (a pop is INX); `IFP`, the frame pointer, at $E0-$E1;
+  `JMPTMP` at $E6 (a JMP opcode) with `TMP` at $E7-$E8; the IP at
+  $F2-$F3. (The C64's layout differs: ESTK at $50. The untracked
+  src/vmsrc/plvmzp.inc left by the first version's CMD build is the
+  C64's, which the makefile copies only for C64 builds.)
+- **CALL and ICAL** (:1380-1423) push the return IP (2 bytes) on the
+  6502 stack, then `JSR JMPTMP`, which jumps to the target (2 more).
+  ICAL takes the target from the evaluation stack (one INX). The
+  target is either native code, run directly, or a def entry, whose
+  `JSR $03D6` pushes 2 bytes that IINTRP (:163-174) pulls at once to
+  find the bytecode's address. Either way, **a call holds 4 bytes of
+  the 6502 stack**, and nothing else.
+- **ENTER** (:1425-1447) subtracts the frame size from `IFP` and copies
+  the arguments from the evaluation stack into the frame; **LEAVE**
+  (:1450-1457) adds the frame size back and does an RTS; **RET** is a
+  bare RTS (:1458). So `IFP` isn't saved anywhere: each function
+  restores it itself. A return value is left on the evaluation stack.
+- **loadmod calls init** with ICAL through a new def entry (cmd.pla:
+  1166, `adddef(init, @deflast)()`). So when init's first op runs, the
+  6502 stack holds loadmod's 4 bytes on top, `IFP` is loadmod's, and X
+  is loadmod's evaluation stack index after the ICAL's pop.
+- **ccrel's init has no frame** and calls `main` directly when main
+  takes no parameters (link.c's init_code; lib/start.c's comment), with
+  nothing left on the evaluation stack.
 
-When the payload's init returns, it lands in loadmod, which frees
-XLOAD's (stale) init address; execmod then puts the heap back as
-usual.
+**The hand-off, then.** XLOAD's first part has `int main(void)`, with
+no locals, so no frame. Its first act is to call a native **capture
+routine**, as a C function pointer to a data array (ccish emits ICAL
+for that; CMDSYS's `call` isn't used, since it switches in the ROM
+and pushes more onto the stack, cmd.pla:176-213). At the capture
+routine's first instruction the 6502 stack pointer is init's less 8
+(init's call of main, main's call of the routine), `IFP` is loadmod's,
+and X is loadmod's evaluation stack index. It returns the stack
+pointer and X packed in one word (14 bytes, zero page only, so it runs
+anywhere):
 
-This rests on the VM's calling convention: the zero-page layout and
-what the 6502 stack holds when init is called. **Reading plvm02.s's
-CALL, ICAL, ENTER, LEAVE and RET handlers is the next step**, before
-writing the routine. The first version's appendix inferred the
-indirect entry's behavior (IINTRP pops the def entry's address and
-loads the IP from it, plvm02.s:161-174; a function returns with a
-bare RTS, :1458) but didn't read the CALL handler.
+```
+86 E7     STX TMPL        ; keep the evaluation stack index
+BA        TSX             ; the 6502 stack pointer
+8A        TXA
+A6 E7     LDX TMPL
+CA        DEX             ; push the result:
+95 A0     STA ESTKH,X     ;   high byte, the stack pointer
+A5 E7     LDA TMPL
+95 C0     STA ESTKL,X     ;   low byte, the evaluation stack index
+60        RTS
+```
+
+main also reads `IFP` from $E0 in C. The second part, once it has
+loaded the payload, writes those values (the stack pointer plus 8) and
+the payload's init def entry into a **hand-off routine** (14 bytes)
+and calls it, the same way:
+
+```
+A9 ll     LDA #<IFP
+85 E0     STA IFPL
+A9 hh     LDA #>IFP
+85 E1     STA IFPH
+A2 ss     LDX #SP         ; init's stack pointer:
+9A        TXS             ;   loadmod's 4 bytes on top again
+A2 xx     LDX #X          ; loadmod's evaluation stack index
+4C ll hh  JMP init        ; the payload's init def entry
+```
+
+The payload's init then runs exactly as if loadmod had called it, and
+its RET returns into loadmod's ICAL. loadmod then frees XLOAD's
+(stale) init address, which execmod's restore of the heap overrides,
+and execmod drops XLOAD's symbol-table entries (its own and FILEIO's,
+which the payload used) as usual. loadmod's frame and the 6502 stack
+above the restored pointer were never touched: the payload's frames
+and calls go below them.
+
+What this rests on, to check in the implementation: that the first
+part's `main` really has no frame and calls the capture routine with
+nothing on the evaluation stack (a listing test can check both); and
+that nothing between capture and hand-off leaves the VM in another
+state (the language card stays readable for the VM, and $03D6 sets
+it anyway).
 
 ### 5.5 Memory and disk
 
@@ -363,11 +430,25 @@ On the disk, cccomp's payload would be about 33K of image plus about
 
 ### 5.6 Testing
 
-plvm's VM is C, so the native hand-off can't run there as written.
-Under plvm, XLOAD would end with a plain call instead, which still
-tests the format, the relocation, the imports and the in-place load
-with ccish's suite on the host. Only the hand-off routine needs MAME
-(tools/a2screen, with its guards).
+plvm's VM is C, with its frame pointer and stacks in C variables, so
+the native routines can't run there as written. Under plvm, XLOAD
+would end with a plain call instead, which still tests the format,
+the relocation, the imports and the in-place load with ccish's suite
+on the host. Only the two native routines need MAME (tools/a2screen,
+with its guards).
+
+### 5.7 REL modules or XLOAD images: a flag
+
+The user wants the finished compiler able to write either a standard
+REL module or an XLOAD image, likely chosen by a flag. Only ccrel
+writes modules, so the flag is ccrel's (and the `ccish` driver's,
+passed through): ccpp, cccomp and ccgen, and the objects, are the same
+either way. A REL module runs anywhere PLASMA runs; an XLOAD image
+loads programs too big for the stock loader, but needs XLOAD on the
+disk. ccish's own build would use the image for cccomp (and perhaps
+the others), and REL for everything else, the tests included, so
+nothing else changes. XLOAD's own second part is an image too, which
+its build embeds as data in the first part.
 
 ## 6. The other options
 
@@ -487,8 +568,8 @@ The cost: a CMD for each PLASMA release supported.
    plvm02.s:161-174), and a function returns with a bare RTS
    (:1458). So copying a function, rewriting its def entry and
    calling it works, the same pattern as CMD's own boot (cmdstub.s,
-   CMDMOVE). Inferred from IINTRP and RET, not from the CALL handler:
-   5.4's reading will confirm.
+   CMDMOVE). First inferred from IINTRP and RET; confirmed by reading
+   the CALL and ICAL handlers (5.4).
 2. **The heap is the whole budget.** CMD's image ends at $1B45 in this
    tree (3,909 bytes from $0C00), and the heap runs from there to the
    frame stack: the 41,171 free is all there is. The 2.20 disk's
@@ -534,25 +615,22 @@ The cost: a CMD for each PLASMA release supported.
 
 ## 9. Still to learn
 
-1. **The VM's state at init entry** (plvm02.s: CALL, ICAL, ENTER,
-   LEAVE, RET, IINTRP): the 6502 stack's contents, X, and `IFP`, for
-   the hand-off (5.4); and ENTER's per-frame overhead, for fact 11.
-   **Next.**
+1. ~~The VM's state at init entry~~: read 2026-11-11 (5.4).
 2. The ProDOS file type for payloads.
 3. Whether FILEIO's init allocates anything on the heap (it would sit
    between CMD and XLOAD).
 4. How small the first part can be, and the second part's real size.
 5. Which disk is the target: the 41,171 is from the 2.20 disk; this
    tree is 2.21, whose CMD is 745 bytes smaller.
-6. Whether cmdsys itself is in the $DA00 symbol table that
-   `lookupsym` searches (the first version's open item 6), since the
-   payload imports CMDSYS's functions by name.
+6. ~~Whether CMDSYS's functions are in the symbol table~~: they are.
+   CMD adds every entry of its export table, `CMDSYS` itself
+   first, at startup (cmd.pla:1442-1447), so `lookupsym` finds them.
 
 ## 10. Plan
 
-1. Read plvm02.s (9.1), and write down the hand-off routine.
-2. Give ccrel a way to write a payload: the image, the sorted fixups,
-   the imports.
+1. ~~Read plvm02.s, and write down the hand-off routine~~ (5.4).
+2. Give ccrel a flag to write a payload (5.7): the image, the sorted
+   fixups, the imports.
 3. Write XLOAD in ccish C: the first part, and the second part as an
    image inside it.
 4. Test under plvm with ccish's suite (a plain call in place of the
