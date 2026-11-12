@@ -1,7 +1,8 @@
 /* start.c: the startup for main(argc, argv) (doc/bootstrap-test.md,
  * R7). When main has two parameters, ccrel's init calls __start, which
  * splits CMDSYS's command line at spaces and calls main. argv[0] is the
- * module's name. */
+ * module's name, without the "+" CMD's command line has on an Apple II
+ * when CMD runs the module itself. */
 #include <plasma.h>
 
 #define MAX_ARGS 24         /* limit other: argv words; more are dropped */
@@ -20,6 +21,8 @@ int __start(void)
   char *end = s + *d;
   int argc = 0;
   int gap = 1;
+  if (s < end && *s == '+')
+    s++;                    /* CMD's "+NAME" on an Apple II: NAME */
   while (s < end) {
     if (*s == ' ') {
       *d = 0;

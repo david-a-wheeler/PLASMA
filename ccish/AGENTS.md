@@ -334,7 +334,10 @@ files of the sessions so far, before a move to a new computer.)
   tools/a2screen (boot, print the screen), tools/a2time (time a
   program), tools/a2cmd (boot samples/boot.po, a PLASMA disk that
   stops at its prompt, with a second disk, type commands, print the
-  screen). Disks are made with AppleCommander
+  screen; A2CMD_DISK3 adds a third drive). tools/a2disk makes the
+  disks that run ccish there: boot.po (with the headers), ccish.po
+  (XLOAD, the four passes as images, the messages), cclib.po (the
+  library, and room for a program's files). Disks are made with AppleCommander
   (../bin/ac-linux-aarch64-15.2). Leave a load time to finish before
   the next command (A2CMD_GAP): keys typed meanwhile are lost. CMD
   uppercases the command line. The user owns Apple IIs and prefers an

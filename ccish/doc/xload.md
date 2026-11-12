@@ -28,7 +28,11 @@ included, again and again with memory coming back each time; and
 ccish's four passes, as images through XLOAD, compile tests/run/hello.c
 into a module byte-identical to the host's, which CMD then runs
 (`+XLOAD CCPP HELLO.C`, then CCCOMP, CCGEN and CCREL on HELLO, then
-`+HELLO`). Not yet on a real Apple II, nor the 128K VM.
+`+HELLO`). With three drives (tools/a2disk's disks: the boot disk
+with the headers, CCISH with XLOAD, the passes and the messages, CCLIB
+with the library and a program's files), ccish compiles and links a
+program that includes `<fileio.h>` and uses the library's startup, and
+CMD runs it. Not yet on a real Apple II, nor the 128K VM.
 
 ## 1. Requirements
 

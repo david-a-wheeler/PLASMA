@@ -53,6 +53,9 @@ a2cmd_sub = emu.add_machine_frame_notifier(function()
       next_at = t + 1
     elseif t >= boot then
       print(string.format("no PLASMA prompt after %d s", boot))
+      for r = 0, 23 do
+        print(row(r))
+      end
       machine:exit()
     end
   elseif typed < #cmds then

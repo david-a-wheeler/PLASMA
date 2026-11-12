@@ -8,6 +8,11 @@
 # not given). For running ccish's programs and XLOAD (doc/xload.md) on
 # a 64K machine.
 #
+# With A2CMD_DISK3 set to a disk image, a second Disk II controller
+# goes in slot 5, with that disk in its first drive. (MAME then numbers
+# slot 5's drives first: flop1 and flop2 are slot 5's, flop3 and flop4
+# slot 6's, which the IIe boots.)
+#
 # Usage: tools/a2cmd ROMDIR BOOT.po DISK2.po SECONDS COMMAND...
 # e.g.:  tools/a2cmd ROMDIR samples/boot.po xl.po 30 "P /XL" "+XLOAD HELLO"
 #
@@ -24,17 +29,21 @@ after=$4
 shift 4
 here=$(dirname "$0")
 gap=${A2CMD_GAP:-5}
-boot=60          # emulated seconds allowed for booting to the prompt
+boot=${A2CMD_BOOT:-60}  # emulated seconds allowed for booting to the prompt
 cmds=
 for c in "$@"; do
   cmds="$cmds$c|"
 done
 run_for=$((boot + gap * $# + after + 10))
+drives="-flop1 $boot_disk -flop2 $disk2"
+if [ -n "${A2CMD_DISK3:-}" ]; then
+  drives="-sl5 diskiing -flop3 $boot_disk -flop4 $disk2 -flop1 $A2CMD_DISK3"
+fi
 
 A2CMD_CMDS=$cmds A2CMD_GAP=$gap A2CMD_AFTER=$after A2CMD_BOOT=$boot \
   SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
   timeout $((run_for + 60)) mame apple2ee -rompath "$romdir" \
-  -aux "" -flop1 "$boot_disk" -flop2 "$disk2" \
+  -aux "" $drives \
   -video none -sound none -keyboardprovider none -mouseprovider none \
   -joystickprovider none -lightgunprovider none \
   -nothrottle -skip_gameinfo -seconds_to_run "$run_for" \
