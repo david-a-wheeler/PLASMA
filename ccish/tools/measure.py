@@ -679,8 +679,8 @@ def image_summary(rows, xl):
     64K Apple II, and its margin."""
     yes = lambda need: "yes" if need <= APPLE_FREE else "NO"
     build = "full" if FULL else "small"
-    print("\nSummary: the %s build's programs, as XLOAD images, their"
-          " sizes:" % build)
+    print("\nDisk space: %s build programs (XLOAD images) file sizes +"
+          " XLOAD itself:" % build.capitalize())
     print("%-7s %5s %5s %5s %6s %6s %6s %6s %6s" % (
         "Program", "Names", "Table", "Data", "(Zero)", "Code", "Fixups",
         "(REL)", "File"))
@@ -693,18 +693,20 @@ def image_summary(rows, xl):
         print("%-7s %5d %5d %5d %6d %6d %6d %6d %6d" % (
             prog, r["names"], 2 * r["n"], r["d"], r["z"], r["c"],
             r["fixups"], r["module"], r["file"]))
-    print("The image file's parts, in its order: a %d-byte header (the same"
-          " in every\nimage), Names (the dependencies' and imports'), Table"
-          " (the function\ntable, 2 bytes a function, init too), Data,"
-          " Code and Fixups; File, the\nwhole file's bytes. Not in the"
-          " file: (REL), the same program as a REL\nmodule, for comparison;"
-          " (Zero), the zero region, shown where it goes in\nmemory, after"
-          " Data, which init clears." % IMAGE_HEADER)
     if xl:
-        print("XLOAD (a REL module): file %d bytes; in memory, its first"
-              " part %d,\nits second part %d, placed (none of it stays"
-              " once the program runs)."
-              % (xl["file"], xl["first"], xl["second"]))
+        print("%-7s %55d" % ("XLOAD", xl["file"]))
+    print("File: the whole file's bytes. An image file's parts, in its"
+          " order: a %d-byte\nheader (the same in every image), Names"
+          " (the dependencies' and imports'),\nTable (the function table,"
+          " 2 bytes a function, init too), Data, Code and\nFixups. Not in"
+          " the file: (Zero), the zero region, the disk space saved,\nshown"
+          " where it goes in memory, after Data (init clears it); (REL), the"
+          "\nsame program as a REL module, for comparison. XLOAD is a REL"
+          " module." % IMAGE_HEADER)
+    if xl:
+        print("XLOAD in memory: its first part %d, its second part %d,"
+              " placed\n(none of it stays once the program runs)."
+              % (xl["first"], xl["second"]))
     print("\nAnd their fit on a 64K Apple II (%d bytes free), through"
           " XLOAD:" % APPLE_FREE)
     print("%-7s %s %s" % ("", "----- Loading -----", "----- Running -----"))
