@@ -26,6 +26,15 @@ int opt_dump;
 #endif
 int opt_keep;
 
+// Is arg option -c, for letter c (lowercase), in either case? PLASMA's
+// command line on an Apple II is uppercase (CMD's input), so the passes
+// take -K as -k, and so on (diag.opt.h).
+int is_opt(const char *arg, int c)
+{
+  return arg[0] == '-' && (arg[1] == c || arg[1] == c - 'a' + 'A')
+         && arg[2] == 0;
+}
+
 // Return base followed by suffix, in a static buffer that the next
 // call reuses.
 const char *stream_name(const char *base, const char *suffix)

@@ -96,13 +96,13 @@ int main(int argc, char **argv)
   msg_init(argv[0]);
   for (i = 1; i < argc; i++) {
 #ifdef CCISH_LISTING
-    if (!strcmp(argv[i], "-l"))
+    if (is_opt(argv[i], 'l'))
       opt_list = 1;
     else
 #endif
-    if (!strcmp(argv[i], "-o") && i + 1 < argc)
+    if (is_opt(argv[i], 'o') && i + 1 < argc)
       modname = argv[++i];
-    else if (!strcmp(argv[i], "-x"))
+    else if (is_opt(argv[i], 'x'))
       opt_xload = 1;
     else if (argv[i][0] == '-')
       usage();

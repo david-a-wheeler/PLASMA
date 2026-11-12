@@ -6,7 +6,10 @@
 # a few of ccish's own sources (the largest among them) and the hello
 # test, as a REL module (rel/) and as an image run through XLOAD
 # (img/); every file each writes must be the same, and so must the
-# module ccrel links for hello.
+# module ccrel links for hello. The image runs give their options in
+# uppercase, as CMD's command line on an Apple II does (-K for -k), and
+# ccpp also compiles HELLO.C, a copy of hello.c, with no -o, into HELLO
+# (the REL run, lowercase, into hello2): the same files again.
 . "$(dirname "$0")/../lib.sh"
 D=$OUT/xlself
 W=$D/w
@@ -19,6 +22,7 @@ for f in name bio parse link peep; do
     cp "src/$f.c" "$W/src/"
 done
 cp tests/run/hello.c src/*.h "$W/src/"
+cp tests/run/hello.c "$W/HELLO.C"
 
 # Each program: the REL module measure.py linked, and an image of the
 # same objects (named bare in a list file, as ccrel's @file takes them).
@@ -54,18 +58,26 @@ pass() {
 OUTS="name bio parse link peep hello"
 for k in rel img; do
     cp "$D/$k/ccpp" "$D/$k/cccomp" "$D/$k/ccgen" "$D/$k/ccrel" "$W/"
+    if [ $k = rel ]; then K=-k O=-o; else K=-K O=-O; fi
     for f in $OUTS; do
-        pass $k ccpp -DCCISH_SMALL -k -o $f src/$f.c
-        pass $k cccomp -k $f
-        pass $k ccgen -k $f
+        pass $k ccpp -DCCISH_SMALL $K $O $f src/$f.c
+        pass $k cccomp $K $f
+        pass $k ccgen $K $f
     done
     pass $k ccrel hello
+    if [ $k = rel ]; then
+        pass $k ccpp $O hello2 HELLO.C
+    else
+        pass $k ccpp HELLO.C
+    fi
     if [ $k = rel ]; then
         mkdir -p "$D/out"
         for f in $OUTS; do
             mv "$W/$f.i" "$W/$f.nam" "$W/$f.ir" "$W/$f.obj" "$W/$f.syms" "$D/out/"
         done
         mv "$W/hello" "$D/out/"
+        mv "$W/hello2.i" "$D/out/HELLO.i"
+        mv "$W/hello2.nam" "$D/out/HELLO.nam"
     fi
 done
 for f in $OUTS; do
@@ -73,6 +85,10 @@ for f in $OUTS; do
         cmp -s "$D/out/$f$s" "$W/$f$s" \
             || { echo "FAIL xload_self: $f$s differs"; bad=1; }
     done
+done
+for s in .i .nam; do
+    cmp -s "$D/out/HELLO$s" "$W/HELLO$s" \
+        || { echo "FAIL xload_self: HELLO$s (from HELLO.C) differs"; bad=1; }
 done
 cmp -s "$D/out/hello" "$W/hello" \
     || { echo "FAIL xload_self: ccrel's hello differs"; bad=1; }

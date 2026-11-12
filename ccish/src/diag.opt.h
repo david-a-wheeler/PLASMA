@@ -19,4 +19,9 @@ extern int opt_dump;        // -d: print the machine ops after peephole
 #endif
 extern int opt_keep;        // -k: keep the stream files
 
+// Is arg option -c (c lowercase), in either case? For the passes, whose
+// options are one letter and never differ only in case; not for ccish,
+// whose -i and -I do.
+int is_opt(const char *arg, int c);
+
 #endif

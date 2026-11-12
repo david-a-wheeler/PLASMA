@@ -568,13 +568,14 @@ void pp_abort(void)
   pp_out_abort();
 }
 
-// The output name for source file src: its name without ".c", in a
-// static buffer.
+// The output name for source file src: its name without ".c" (or ".C",
+// as an Apple II's uppercase command line gives it), in a static
+// buffer.
 const char *base_of(const char *src)
 {
   static char buf[MAX_PATH];
   size_t n = strlen(src);
-  if (n < 3 || strcmp(src + n - 2, ".c"))
+  if (n < 3 || src[n - 2] != '.' || (src[n - 1] != 'c' && src[n - 1] != 'C'))
     fatal0(2 /* "input name must end in .c, or use -o" */);
   if (n - 2 >= sizeof(buf))
     fatal0(1 /* "output name too long" */);

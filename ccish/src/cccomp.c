@@ -49,9 +49,9 @@ int main(int argc, char **argv)
 
   msg_init(argv[0]);
   for (i = 1; i < argc; i++) {
-    if (!strcmp(argv[i], "-k"))
+    if (is_opt(argv[i], 'k'))
       opt_keep = 1;
-    else if (!strcmp(argv[i], "-o") && i + 1 < argc)
+    else if (is_opt(argv[i], 'o') && i + 1 < argc)
       outname = argv[++i];
     else if (argv[i][0] == '-' || src)
       usage();

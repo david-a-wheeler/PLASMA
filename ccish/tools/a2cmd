@@ -1,0 +1,42 @@
+#!/bin/sh
+# a2cmd: run commands at PLASMA's prompt on an emulated 64K Apple IIe
+# in MAME, and print the 40-column text screen afterwards. It boots
+# BOOT.po (a PLASMA boot disk that stops at its prompt, showing its
+# "MEM FREE:" line) with DISK2.po in the second drive, types each
+# COMMAND with a Return, GAP seconds of emulated time apart (5 unless
+# A2CMD_GAP says), and prints the screen SECONDS after the last (20 if
+# not given). For running ccish's programs and XLOAD (doc/xload.md) on
+# a 64K machine.
+#
+# Usage: tools/a2cmd ROMDIR BOOT.po DISK2.po SECONDS COMMAND...
+# e.g.:  tools/a2cmd ROMDIR samples/boot.po xl.po 30 "P /XL" "+XLOAD HELLO"
+#
+# The machine and ROMDIR are tools/a2screen's, as are the guards: it
+# never touches the desktop (SDL's dummy drivers, no input providers)
+# and always ends (-seconds_to_run, the script's exit, and a timeout).
+set -eu
+[ $# -ge 5 ] || {
+  echo "usage: $0 ROMDIR BOOT.po DISK2.po SECONDS COMMAND..." >&2; exit 2; }
+romdir=$1
+boot_disk=$2
+disk2=$3
+after=$4
+shift 4
+here=$(dirname "$0")
+gap=${A2CMD_GAP:-5}
+boot=60          # emulated seconds allowed for booting to the prompt
+cmds=
+for c in "$@"; do
+  cmds="$cmds$c|"
+done
+run_for=$((boot + gap * $# + after + 10))
+
+A2CMD_CMDS=$cmds A2CMD_GAP=$gap A2CMD_AFTER=$after A2CMD_BOOT=$boot \
+  SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
+  timeout $((run_for + 60)) mame apple2ee -rompath "$romdir" \
+  -aux "" -flop1 "$boot_disk" -flop2 "$disk2" \
+  -video none -sound none -keyboardprovider none -mouseprovider none \
+  -joystickprovider none -lightgunprovider none \
+  -nothrottle -skip_gameinfo -seconds_to_run "$run_for" \
+  -autoboot_script "$here/a2cmd.lua" 2>&1 \
+  | grep -v '^ *$'

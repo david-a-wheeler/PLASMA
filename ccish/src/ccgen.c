@@ -53,13 +53,13 @@ int main(int argc, char **argv)
   msg_init(argv[0]);
   for (i = 1; i < argc; i++) {
 #ifdef CCISH_LISTING
-    if (!strcmp(argv[i], "-d"))
+    if (is_opt(argv[i], 'd'))
       opt_dump = 1;
     else
 #endif
-    if (!strcmp(argv[i], "-i"))
+    if (is_opt(argv[i], 'i'))
       opt_ir = 1;
-    else if (!strcmp(argv[i], "-k"))
+    else if (is_opt(argv[i], 'k'))
       opt_keep = 1;
     else if (argv[i][0] == '-' || base_name)
       usage();

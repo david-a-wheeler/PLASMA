@@ -22,8 +22,13 @@ plvm, `make test` runs every run test again as an image through XLOAD
 (the img tests), XLOAD's own test program and its errors
 (tests/special/xload.sh), and ccish's four programs as images, which
 must write the same files, byte for byte, as the REL programs
-(tests/special/xload_self.sh). Nothing has run on an Apple II yet,
-so the native hand-off (4.5) is untested: plan step 9, MAME, is next.
+(tests/special/xload_self.sh). **On MAME's 64K enhanced IIe** (tools/a2cmd,
+2026-11-12), XLOAD loads and runs images, the native hand-off
+included, again and again with memory coming back each time; and
+ccish's four passes, as images through XLOAD, compile tests/run/hello.c
+into a module byte-identical to the host's, which CMD then runs
+(`+XLOAD CCPP HELLO.C`, then CCCOMP, CCGEN and CCREL on HELLO, then
+`+HELLO`). Not yet on a real Apple II, nor the 128K VM.
 
 ## 1. Requirements
 
@@ -642,15 +647,16 @@ Still to learn:
 
 To check once XLOAD runs, on MAME and then a real Apple II:
 
-- The capture routine's results, against 4.5's arithmetic.
+- ~~The capture routine's results~~: the hand-off works on MAME
+  (SP $E6, X $20, IFP $BDCB at the prompt, for hello).
 - ~~That the first part's `main` has no frame and calls the capture
   routine with an empty evaluation stack~~: a listing check in
   tests/special/xload.sh.
-- That the program's init returns into loadmod, and execmod puts back
-  the heap and symbol table: `MEM FREE` after a run equals the one
-  before.
-- That an error in the program (init's negative return) is reported
-  as CMD reports one today (`ERR:$xx`).
+- ~~That the program's init returns into loadmod, and execmod puts
+  back the heap and symbol table~~: on MAME, the same image loads and
+  runs again and again.
+- ~~That an error in the program (init's negative return) is reported
+  as CMD reports one today~~: xltest's status 7 shows as `ERR:$07`.
 - That every file XLOAD opened is closed before the `heaprelease`.
 - The load time against today's, for ccgen (which loads either way).
 - On a 128K machine with PLVM.128: the same image loads, its bytecode
@@ -710,7 +716,15 @@ To check once XLOAD runs, on MAME and then a real Apple II:
 8. ~~Then ccish's four programs as images~~ (done: tests/special/xload_self.sh): compile with them under
    plvm through XLOAD, and require the same output, byte for byte, as
    the REL programs' (a bootstrap-like check).
-9. **MAME, the 64K Apple II,** with tools/a2screen (with its guards):
+9. ~~MAME, the 64K Apple II~~ (2026-11-12, tools/a2cmd, with
+   tools/a2screen's guards: the status above). It took two fixes
+   outside XLOAD: the passes take their options in either case and a
+   source named NAME.C, since CMD's command line is uppercase; and
+   ccrel creates its REL modules as ProDOS type $FE, aux type $1000
+   (the library's `__filetype()`), or CMD won't run them. Still to do
+   on the Apple: `exit()` (a pass's error ends in the Monitor, through
+   the plvm-only stand-in), a ProDOS type of its own for images, and
+   timing. Was:
    the small test program first, then cccomp.
 10. **The 128K VM** (4.3-4.5): read plvmjit02.s's calls and returns for
     the hand-off, then test on MAME's 128K IIe with PLVM.128.

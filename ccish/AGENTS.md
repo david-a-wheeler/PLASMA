@@ -328,9 +328,17 @@ files of the sessions so far, before a move to a new computer.)
   fails on a nonzero status. Work an expected status out by hand (or
   with gcc), as for outputs; a gen test that returns `x == k` exits 1
   when it's right.
-- No Apple II emulator is installed: measuring free memory on a real
-  64K Apple II (approach.md 18.6 E1) is still to do. The user owns Apple
-  IIs and prefers an Apple II+ or IIe.
+- MAME emulates a 64K enhanced IIe, with ROMs in ../mame (never
+  commit them). Run it only through ccish's guarded scripts, which
+  never open a window or take the keyboard and always end:
+  tools/a2screen (boot, print the screen), tools/a2time (time a
+  program), tools/a2cmd (boot samples/boot.po, a PLASMA disk that
+  stops at its prompt, with a second disk, type commands, print the
+  screen). Disks are made with AppleCommander
+  (../bin/ac-linux-aarch64-15.2). Leave a load time to finish before
+  the next command (A2CMD_GAP): keys typed meanwhile are lost. CMD
+  uppercases the command line. The user owns Apple IIs and prefers an
+  Apple II+ or IIe.
 - Shell commands: keep each call simple and plainly safe (one command,
   `git -C` and `make -C` rather than `cd` chains; files written with
   the editor tools).

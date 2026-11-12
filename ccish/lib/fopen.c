@@ -17,8 +17,18 @@ char *__path(const char *path);
 static int nopen;
 static int nbufs = 1;
 
+/* The ProDOS type and aux type fopen creates a file with (stdio.h). */
+static int ftype = 6, faux;
+
+/* Create files of ProDOS type type, aux type aux, from now on. */
+void __filetype(int type, int aux)
+{
+  ftype = type;
+  faux = aux;
+}
+
 /* Open path: mode "r..." to read, "w..." to write (destroying and
- * creating it first, as a binary file); NULL if that fails, or for any
+ * creating it first, as a binary file of __filetype()'s type); NULL if that fails, or for any
  * other mode. FILEIO opens a file for both, so "r" and "w" differ only
  * in the create. */
 FILE *fopen(const char *path, const char *mode)
@@ -31,7 +41,7 @@ FILE *fopen(const char *path, const char *mode)
     /* Their results aren't reliable (plvm returns a stale errno), but
      * the open fails if they did. */
     fileio.destroy(p);
-    fileio.create(p, 6, 0);
+    fileio.create(p, ftype, faux);
   } else if (*mode != 'r')
     return NULL;
   if (nopen == nbufs && nbufs < MAX_IOBUFS) {

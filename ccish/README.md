@@ -37,10 +37,12 @@ much smaller and "fast enough" for many tasks.
 
 ccish compiles itself, and `make bootstrap` checks that it reproduces
 itself byte for byte under plvm. Programs it compiles run on an
-emulated 64K Apple IIe (see `samples/`). Running the compiler itself
-on a 64K Apple II is still ahead. Its heart, a front-end parser named `cccomp`,
-needs PLASMA's loader to stream a module's relocation data to fit, and
-`exit()` isn't implemented yet.
+emulated 64K Apple IIe (see `samples/`), and so does the compiler
+itself: its four passes, built as images (`-x`) and run through XLOAD,
+ccish's own second-stage loader ([doc/xload.md](doc/xload.md)), compile
+a program on an emulated 64K Apple IIe. (Its heart, a front-end parser
+named `cccomp`, is too big for PLASMA's own loader there.) `exit()`
+isn't implemented on the Apple yet.
 
 ## Using it
 

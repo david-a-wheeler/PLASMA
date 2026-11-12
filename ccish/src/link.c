@@ -1779,6 +1779,12 @@ void link_module(int n, const char **bases, const char *path)
     fatal0(191 /* "module too large" */);
 
   // Step 2.
+#ifdef __CCISH__
+  // On an Apple II, a REL module is ProDOS type $FE, aux type $1000,
+  // or CMD won't run it; an image stays BIN (../doc/xload.md, 2).
+  if (!opt_xload)
+    __filetype(0xFE, 0x1000);
+#endif
   if (!bopen(&out, path, 1))
     fatal_d(192 /* "cannot create output file" */, path);
   write_header(dep, init_off, total);
