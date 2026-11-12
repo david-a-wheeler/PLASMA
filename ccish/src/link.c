@@ -29,8 +29,10 @@
 // one object's map is in memory.
 //
 // With -x (opt_xload), it writes an XLOAD image instead
-// (../doc/xload.md, section 3): the same body, for load address
-// 0, its data segment as runs of literal bytes and zeros; a table of its functions, in address order, by whose numbers
+// (../doc/xload.md, section 3): for load address 0, the data and
+// strings, then a zero region (every zero-filled global, none moved to
+// the heap, and the zero areas), not in the file, then the bytecode; a
+// table of its functions, in address order, by whose numbers
 // every reference to a function is written, so that XLOAD can lay out
 // the def entries each VM wants; and compact fixups in address order,
 // for which step 4 reads the streams twice, for the data's and then
@@ -112,6 +114,9 @@ static int nmoved;
 static unsigned mv_total;            // and all their bytes
 #define HEAP_SPARE 512               // heap init leaves for main's frames
 static int zstay;
+static int zbase;               // where they start, from data_base: after
+                                // every object's data (and with -x, the
+                                // strings)
 static int obj_mv[MAX_OBJS + 1], obj_zs[MAX_OBJS + 1];
 static int patch_law;               // add_reloc() met a moved global
 
@@ -403,8 +408,9 @@ static void read_sym(Lsym *s, int data, const char *name)
     read_name(s->label, name);
   }
   // A zero-filled global under BSS_MIN bytes stays in the module, as
-  // one whose address an initializer holds does (place_zero()).
-  if ((s->flags & SYM_BSS) && (unsigned)s->size < BSS_MIN)
+  // one whose address an initializer holds does (place_zero()); with
+  // -x, every one does, in the image's zero region.
+  if ((s->flags & SYM_BSS) && (opt_xload || (unsigned)s->size < BSS_MIN))
     s->flags |= SYM_INDATA;
   // A function has at least one byte of code, so it can't start at
   // the code's end.
@@ -674,6 +680,8 @@ static void resolve(void)
     use_cmdsys("__memset");
     use_cmdsys("__puts");
   }
+  if (opt_xload && zstay > 0)
+    use_cmdsys("__memset");           // init clears the zero region
   for (g = 0; g < MAX_GSYMS; g++) {
     const char *name;
     int fl = g_flags[g];
@@ -753,14 +761,13 @@ static void map_object(int k)
     if (data && (s.flags & (SYM_DEFINED | SYM_BSS)) == (SYM_DEFINED | SYM_BSS)
         && g < 0) {
       // A zero-filled static, placed in step 1's order.
-      v = s.flags & SYM_INDATA ? obj_data[nobjs] + zs : -2 - mv;
+      v = s.flags & SYM_INDATA ? zbase + zs : -2 - mv;
       if (s.flags & SYM_INDATA)
         zs += s.size;
       else
         mv++;
     } else if (data && g >= 0 && (g_flags[g] & G_BSS)) {
-      v = g_flags[g] & G_INDATA ? obj_data[nobjs] + g_off[g]
-                                : -2 - g_off[g];
+      v = g_flags[g] & G_INDATA ? zbase + g_off[g] : -2 - g_off[g];
     } else if (s.flags & SYM_DEFINED) {
       v = s.off + (data ? obj_data[k] : obj_code[k]);
     } else if (g >= 0) {
@@ -1048,7 +1055,7 @@ static int add_reloc(int kind, int at, int target, int add, int list)
     if (add != 0)
       bad_obj();
     kind = REL_DATA;
-    target = obj_data[nobjs] + zstay + 2 * (-2 - dmap[target]);
+    target = zbase + zstay + 2 * (-2 - dmap[target]);
     patch_law = 1;
   } else if (kind == REL_DSYM) {
     if (target >= ndsyms || dmap[target] < 0)
@@ -1063,7 +1070,7 @@ static int add_reloc(int kind, int at, int target, int add, int list)
     // In the object's zero area, first in its share of the zero-filled
     // globals that stay, after every object's data; wrapped, as data.
     kind = REL_DATA;
-    target = (target + obj_data[nobjs] + obj_zs[cur]) & 0xFFFF;
+    target = (target + zbase + obj_zs[cur]) & 0xFFFF;
   } else if (kind == REL_STR) {
     target = (target + obj_strs[cur]) & 0xFFFF;
   } else if (kind == REL_HELPER && target >= NHELPERS) {
@@ -1144,70 +1151,6 @@ static int next_record(const char *want)
   return t;
 }
 
-// With -x, the data segment's bytes waiting to be written (step 2):
-// nlit literal bytes in fbuf (unused until step 3), then nzero zeros.
-static int nlit;
-static unsigned nzero;
-
-#define ZRUN_MIN 3          // the fewest zeros worth a zero run: 2 cost
-                            // no more inside a literal run
-
-// With -x, write the literal bytes waiting in fbuf as one run.
-static void put_lit(void)
-{
-  if (nlit > 0) {
-    bputc(&out, nlit);
-    bwrite(&out, fbuf, nlit);
-    nlit = 0;
-  }
-}
-
-// With -x, write the zeros waiting: as a zero run if there are
-// ZRUN_MIN or more, else in the literal run.
-static void put_zeros(void)
-{
-  if (nzero >= ZRUN_MIN) {
-    put_lit();
-    if (nzero < 0x80) {
-      bputc(&out, 0x80 + (int)nzero);
-    } else {
-      bputc(&out, 0x80);
-      bputw(&out, (int)nzero);
-    }
-  } else {
-    for (; nzero > 0; nzero--) {
-      fbuf[nlit++] = 0;
-      if (nlit == 0x7F)
-        put_lit();
-    }
-  }
-  nzero = 0;
-}
-
-// Write data segment byte c (step 2): as is, or with -x, into the
-// runs of literal bytes and zeros.
-static void dput(int c)
-{
-  if (!opt_xload) {
-    bputc(&out, c);
-  } else if (c == 0) {
-    nzero++;
-  } else {
-    if (nzero > 0)
-      put_zeros();
-    fbuf[nlit++] = (unsigned char)c;
-    if (nlit == 0x7F)
-      put_lit();
-  }
-}
-
-// Write data segment word w (step 2).
-static void dputw(int w)
-{
-  dput(w & 0xFF);
-  dput((w >> 8) & 0xFF);
-}
-
 // Copy the next n bytes of the stream into the data segment.
 static void copy_bytes(int n)
 {
@@ -1215,7 +1158,7 @@ static void copy_bytes(int n)
   while (n-- > 0) {
     if ((c = bgetc(&in)) == EOF)
       bad_obj();
-    dput(c);
+    bputc(&out, c);
   }
 }
 
@@ -1238,14 +1181,15 @@ static void copy_data(int k)
         bad_obj();
       at += n;
       while (n-- > 0)
-        dput(0);
+        bputc(&out, 0);
     } else {
       kind = bgetc(&in);
       target = bgetw(&in);
       add = kind == REL_DSYM ? bgetw(&in) : 0;
       if (at + 2 > data_size)
         bad_obj();
-      dputw(add_reloc(kind, data_base + obj_data[k] + at, target, add, 0));
+      bputw(&out, add_reloc(kind, data_base + obj_data[k] + at, target,
+                            add, 0));
       if (patch_law)
         bad_obj();              // a moved global's address in data
       at += 2;
@@ -1268,9 +1212,9 @@ static void copy_strings(int k)
     n = bgetw(&in);
     if (n > size - at - 2)
       bad_obj();
-    dput(n > 255 ? 0 : n);
+    bputc(&out, n > 255 ? 0 : n);
     copy_bytes(n);
-    dput(0);
+    bputc(&out, 0);
     at += n + 2;
   }
   bclose(&in);
@@ -1547,15 +1491,16 @@ static void init_word(int *n, int op, int w)
 // HEAP_SPARE more (or prints no_memory and returns -1, an error), takes
 // the block from heapalloc, zeroes it, and points each pointer word at
 // its global. (It asks heapavail first: plvm's heapalloc stops the VM
-// when the heap is full, and the Apple's can wrap past $FFFF.) Then it
-// calls main and returns -(status & 255), main's exit status as a
+// when the heap is full, and the Apple's can wrap past $FFFF.) In an
+// image (-x), nothing moved, and init clears the zero region, which
+// isn't in the file. Then it calls main and returns -(status & 255), main's exit status as a
 // PLASMA error (0 for success, or for a void main), never positive: a
 // positive init result would be read as "keep the module" flags. CMD
 // reports a negative one as ERR:$xx, and tools/ccstat.pla hands it to
 // the host (approach.md issue 22). Init must be the last bytecode.
 static int init_code(void)
 {
-  int n = 0, i, pw = data_base + obj_data[nobjs] + zstay;
+  int n = 0, i, pw = data_base + zbase + zstay;
   nir = 0;
   if (nmoved > 0) {
     init_op(&n, OP_CALL, 0, gsym_find("__heapavail"));
@@ -1585,6 +1530,13 @@ static int init_code(void)
     init_word(&n, OP_CW, (int)mv_total);
     init_op(&n, OP_CALL, 0, gsym_find("__memset"));
   }
+  if (opt_xload && zstay > 0) {
+    // An image's zero region isn't in its file: clear it.
+    init_op(&n, OP_LA, data_base + zbase, -1);
+    fbuf[n++] = OP_CN;
+    init_word(&n, OP_CW, zstay);
+    init_op(&n, OP_CALL, 0, gsym_find("__memset"));
+  }
   init_op(&n, OP_CALL, 0, main_sym);
   if (g_flags[main_sym] & G_RETURNS) {
     fbuf[n++] = OP_ANDI;
@@ -1604,6 +1556,8 @@ static int init_size(void)
   if (main_sym < 0)
     return 0;
   n = g_flags[main_sym] & G_RETURNS ? 7 : 5;
+  if (opt_xload && zstay > 0)
+    n += 3 + 1 + 3 + 3;
   if (nmoved > 0)
     n += 3 + 3 + 3 + 3 + 1 + sizeof(no_memory) + 3 + 1 + 1
          + 3 + 3 + 3 + 7 * (nmoved - 1) + 1 + 3 + 1 + 3 + 3;
@@ -1701,10 +1655,11 @@ static void write_header(const char *dep, int init_off, int total)
   if (opt_xload) {
     bputc(&out, 'X');                     // magic
     bputc(&out, 'L');
-    bputc(&out, 3);                       // version
+    bputc(&out, 4);                       // version
     bputc(&out, 0);                       // flags
-    bputw(&out, subseg + total);          // the body's length
-    bputw(&out, subseg);                  // where its bytecode starts
+    bputw(&out, zbase);                   // the initialized data
+    bputw(&out, zstay);                   // the zero region
+    bputw(&out, total);                   // the bytecode
     bputw(&out, ndefs);
   } else {
     bputw(&out, subseg - MODULE_BASE + total);
@@ -1809,8 +1764,16 @@ void link_module(int n, const char **bases, const char *path)
       data_base += strlen(mod_name[i]) > 16 ? 16 : (int)strlen(mod_name[i]);
   if (opt_xload)
     data_base = 0;
-  strs_base = data_base + obj_data[n] + zstay + 2 * nmoved;
-  subseg = strs_base + obj_strs[n] + 1;
+  zbase = obj_data[n];
+  if (opt_xload) {
+    // An image: the data, the strings, the zero region, the bytecode.
+    zbase += obj_strs[n];
+    strs_base = data_base + obj_data[n];
+    subseg = data_base + zbase + zstay;
+  } else {
+    strs_base = data_base + zbase + zstay + 2 * nmoved;
+    subseg = strs_base + obj_strs[n] + 1;
+  }
   total = init_off + init_size();
   if (subseg + total > 0xFFFF)
     fatal0(191 /* "module too large" */);
@@ -1822,13 +1785,16 @@ void link_module(int n, const char **bases, const char *path)
 
   for (i = 0; i < n; i++)
     copy_data(i);
-  for (i = zstay + 2 * nmoved; i > 0; i--)
-    dput(0);                              // zero-filled; pointer words
+  // A REL module holds its zero-filled globals and pointer words, then
+  // the strings and the pad; an image, the strings, then nothing of its
+  // zero region.
+  if (!opt_xload)
+    for (i = zstay + 2 * nmoved; i > 0; i--)
+      bputc(&out, 0);
   for (i = 0; i < n; i++)
     copy_strings(i);
-  dput(0);                                // pad
-  put_zeros();                            // with -x, the last runs
-  put_lit();
+  if (!opt_xload)
+    bputc(&out, 0);                       // pad
 
   // Step 3.
   for (i = 0; i < n; i++)

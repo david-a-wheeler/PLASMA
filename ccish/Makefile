@@ -130,11 +130,26 @@ $(OUT)/lib/plvmexit.obj: tools/plvmexit.c $(wildcard lib/include/*.h) \
 	 && ./cccomp -o $(OUT)/lib/plvmexit $(OUT)/lib/plvmexit \
 	 && ./ccgen $(OUT)/lib/plvmexit
 
+# XLOAD (doc/xload.md), the loader for ccish's images (ccish -x): its
+# second part, an image, held in its first part as data
+# (tools/img2h.py), both built with the host's ccish, for plvm and the
+# Apple II alike.
+XLOAD_DIR := $(OUT)/xload
+XLOAD     := $(XLOAD_DIR)/xload
+$(XLOAD_DIR)/xload2: xload/xload2.c xload/xlcore.c ccish
+	@mkdir -p $(dir $@)
+	@./ccish -x -o $@ xload/xload2.c
+$(XLOAD_DIR)/xl2img.h: $(XLOAD_DIR)/xload2 tools/img2h.py
+	@python3 tools/img2h.py $< xl2_image > $@
+$(XLOAD): xload/xload.c xload/xlcore.c $(XLOAD_DIR)/xl2img.h ccish
+	@./ccish -I $(XLOAD_DIR) -o $@ xload/xload.c
+xload: $(XLOAD)
+
 # The passes a test may run; a stamp depends on these, so a rebuilt pass
 # re-runs the tests.
 PASSES := ccish ccpp cccomp ccgen ccrel \
           ccpp-small cccomp-small ccgen-small ccrel-small $(PLVM) \
-          $(CCSTAT) tools/ccrun $(LIBOBJS)
+          $(CCSTAT) tools/ccrun $(LIBOBJS) $(XLOAD)
 
 # --- The test kinds. Each is a directory of inputs; the stamp for input
 # tests/<kind>/<stem> is tests/out/<kind>/<stem>.stamp.
@@ -158,6 +173,16 @@ $(OUT)/run/%.stamp: tests/run/%.c tests/run/%.expected \
 	@if [ -f tests/run/$*.stderr.expected ]; then diff -u tests/run/$*.stderr.expected $(dir $@)$*.stderr; elif [ -s $(dir $@)$*.stderr ]; then echo "run: unexpected stderr"; cat $(dir $@)$*.stderr; exit 1; fi
 	@tests/check_listing.sh tests/run/$*.c $(dir $@)$*.lst
 	@touch $@
+
+# img: each run test again as an XLOAD image (ccish -x), run through
+# XLOAD under plvm, from a directory that holds XLOAD: its stdout and
+# exit status as for run (tests/imgrun.sh; its listing and compile-time
+# stderr are run's to check).
+$(OUT)/img/xload: $(XLOAD)
+	@mkdir -p $(dir $@) && cp $< $@
+$(OUT)/img/%.stamp: tests/run/%.c tests/run/%.expected tests/imgrun.sh \
+                    $(wildcard tests/run/*.status) $(PASSES) $(OUT)/img/xload
+	@sh tests/imgrun.sh $* && touch $@
 
 # gen: ccish -d (machine ops after the peephole stage) must equal the
 # .exp, and the module must run under plvm (through tools/ccrun) and
@@ -243,7 +268,10 @@ $(OUT)/special/tables.stamp: tests/special/tables.c src/irin.c src/lower.c src/i
                           src/mop.h
 $(OUT)/special/enumvals.stamp: $(SOURCES)
 $(OUT)/special/fit.stamp: doc/measure.txt
-$(OUT)/special/xload.stamp: doc/measure.txt tools/xlcheck.py ccrel-small \
+$(OUT)/special/xload_self.stamp: doc/measure.txt ccrel-small $(XLOAD) \
+                         tests/run/hello.c $(wildcard src/*.c src/*.h)
+$(OUT)/special/xload.stamp: ccrel-small $(XLOAD) tools/xlinfo.py \
+                         tests/xload/xltest.c tests/xload/xltest.expected \
                          $(patsubst %,tests/run/%.c,hello global_init pointers addr_const c_names)
 
 # The compiler bootstrap test: the seed, this source's $(CC) build,
@@ -275,6 +303,7 @@ testbuild: all small $(PLVM) $(CCSTAT) $(LIBOBJS) xref doc/measure.txt
 # The whole suite: a stamp for every test, then one that depends on all
 # of them and reports the count (only when something actually ran).
 ALL_STAMPS := $(patsubst tests/run/%.c,$(OUT)/run/%.stamp,$(RUN)) \
+              $(patsubst tests/run/%.c,$(OUT)/img/%.stamp,$(RUN)) \
               $(patsubst tests/gen/%.c,$(OUT)/gen/%.stamp,$(GEN)) \
               $(patsubst tests/xrun/%.c,$(OUT)/xrun/%.stamp,$(XRUN)) \
               $(patsubst tests/errors/%.c,$(OUT)/err/%.stamp,$(ERR)) \
@@ -381,5 +410,5 @@ clean:
 	rm -rf $(OUT) tools/out bootstrap
 	rm -f doc/measure.txt doc/limits.md
 
-.PHONY: all small test testbuild xref measure listings print-sources bootstrap \
+.PHONY: all small test testbuild xref measure listings print-sources bootstrap xload \
         full-test limits demo-disk demo-run profile clean

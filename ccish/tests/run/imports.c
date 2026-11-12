@@ -5,6 +5,7 @@
 // in, so the dependency loads no file. The test opens its own module
 // file and reads its header's magic, $6502; then a file that doesn't
 // exist, which sets CMDSYS's error byte.
+// img-skip: it reads its own module file, a REL module's header.
 extern void __puti(int);              // still CMDSYS's, after the pragma
 
 struct t_cmdsys

@@ -11,7 +11,7 @@ helper       136     342       57          2
 irin        5809       0       38       2578
 irloop      5477       0        0       1180
 irout       1135       0       20        278
-link        7996      51      209      11316
+link        7938      51      229      11314
 lower       1445     384      689          0
 nam          521       0       12        138
 name         139       0        0       1220
@@ -66,7 +66,7 @@ ccpp's tables: the most one source needed, and the limit:
 
 cccomp's tables: the most one source needed, and the limit:
   functions                     195 of    242  (pexpr)
-  variables visible              78 of     79  (link)
+  variables visible              77 of     79  (link)
   parameter types               305 of    352  (pexpr)
   enum constants, typedefs      201 of    203  (irin)
   types                          53 of     54  (link)
@@ -159,24 +159,24 @@ ccgen: 10 files, and 18 library objects:
     loading, the most at once: 30949 with the RLD streamed, 40079 today (the RLD and ESD too)
 
 ccrel: 4 files, and 19 library objects:
-  its own code 9587, data 181, strings 370: 10138 in all
+  its own code 9529, data 181, strings 390: 10100 in all
   the library's code 869, data 2, strings 7: 878 in all (fopen fputs fread fwrite getc memcpy memset path plvmexit remove start strcat strchr strcmp strcpy strlen strncat strncpy strrchr)
-  module file 18252 bytes, all read into memory to load it; 5061 of them RLD and 129 ESD, freed after
-  101 functions: 511 bytes of the loader's def table, kept (init's entry too, and an end byte)
+  module file 18156 bytes, all read into memory to load it; 5005 of them RLD and 129 ESD, freed after
+  97 functions: 491 bytes of the loader's def table, kept (init's entry too, and an end byte)
   shared names: 66 of 307 slots, 528 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
     frame stack 492 bytes; 6502 stack 19 calls x 4 = 76 bytes
     largest frames: stop 136, report 106, map_object 92, read_summary 82, def_entries 82
   static locals (bytes saved; per call, about 45 cycles saved with new opcodes):
-    leaf functions: 16 of 95 framed functions, 141 frame accesses; saves 37 bytes with new opcodes, -170 with LAW/SAW
-    compiled stack (all non-recursive): 86 of 95 framed functions, 1308 frame accesses; saves 216 bytes with new opcodes, -1367 with LAW/SAW
+    leaf functions: 16 of 93 framed functions, 143 frame accesses; saves 37 bytes with new opcodes, -172 with LAW/SAW
+    compiled stack (all non-recursive): 84 of 93 framed functions, 1312 frame accesses; saves 210 bytes with new opcodes, -1375 with LAW/SAW
     leaf region 8 bytes (largest leaf frame); compiled stack region 362 bytes
   on a 64K Apple II (41171 bytes free), the RLD streamed:
-    module body 13037, def table 511, zero-filled globals on the heap 10470,
+    module body 12997, def table 491, zero-filled globals on the heap 10470,
     frame stack 492, FILEIO 1998,
     I/O buffers 1 x 1280 at most: 2 files open (an object and the module)
-    running, needs 27788 of 41171: 13383 to spare
-    loading, the most at once: 15546 with the RLD streamed, 20736 today (the RLD and ESD too)
+    running, needs 27728 of 41171: 13443 to spare
+    loading, the most at once: 15486 with the RLD streamed, 20620 today (the RLD and ESD too)
 
 Peaks: each limit, the most ccish's own source uses, and where:
   ENTRY_LABEL 78 pplex.c
@@ -204,14 +204,14 @@ Peaks: each limit, the most ccish's own source uses, and where:
   MAX_TAGS 4 link.c
   MAX_TEMP_USES 4 pp.c
   MAX_TYPES 53 link.c
-  MAX_VARS 78 link.c
+  MAX_VARS 77 link.c
 
 Summary: the small build's modules, their sizes:
 Program  Heap    Code  Data Strings Other   RLD  ESD Module
 ccpp    13256   14545   381    1069  3997  7693  129  27814
 cccomp   2388   26673   248     317  4503 12289  129  44159
 ccgen    4808   22976   940     981  3048  9001  129  37075
-ccrel   10470   10456   183     377  2046  5061  129  18252
+ccrel   10470   10398   183     397  2044  5005  129  18156
 Module: the file, the sum of Code through ESD: the body (code, data and
 strings, the program's and the library's, and other, the linker's: header,
 dependencies, init, helpers and zero-filled data that stays), then the RLD
@@ -224,7 +224,7 @@ Program   Need  Spare  OK?   Need  Spare  OK?   Need  Spare  OK?
 ccpp     30623  10548  yes  22801  18370  yes  40384    787  yes*
 cccomp   47613  -6442  NO   35195   5976  yes  40427    744  yes*
 ccgen    40079   1092  yes  30949  10222  yes  38837   2334  yes*
-ccrel    20736  20435  yes  15546  25625  yes  27788  13383  yes
+ccrel    20620  20551  yes  15486  25685  yes  27728  13443  yes
 Load today: the whole file read at once, as PLASMA's loaders do; streamed:
 the body, with the RLD applied as it's read (doc/plasma-requests.md, item 1).
 Each need counts FILEIO (1998) and the loader's def table; running, the heap,
