@@ -89,6 +89,8 @@
 
 int bss_next;                       // the zero-filled space so far
                                     // (ptop.h)
+int zarea_next;                     // the zero area so far: static
+                                    // locals with no initializer
 
 // Set by parse_scalar_init(): whether the initializer it parsed was an
 // integer constant (not an address), and its value. A const variable
@@ -169,23 +171,25 @@ static void parse_scalar_init(int type)
       data_word(o.val);
     return;
   }
-  // An address must stay within the data written so far (one past the
-  // end is allowed, as in C), within its string, or within its
-  // zero-filled object (C11 6.5.6p8).
-  if ((o.global == 1 && (o.off < 0 || o.off > data_offset()))
-      || (o.global == G_STR && (o.off < o.disp || o.off > o.val))
-      || (o.global >= 2 && (var_link[o.global - 2] & VL_BSS)
-          && (o.off < 0 || o.off > type_size(var_type[o.global - 2]))))
-    error0(155 /* "initializer address is out of range" */);
+  // An address must stay within its string, within its zero-filled
+  // object (C11 6.5.6p8), or within the data or zero area written so
+  // far (one past the end is allowed, as in C).
   if (o.global == G_STR) {
+    if (o.off < o.disp || o.off > o.val)
+      error0(155 /* "initializer address is out of range" */);
     data_addr(REL_STR, o.off, 0);
-  } else if (o.global == 1) {
-    data_addr(REL_DATA, o.off, 0);
-  } else {
+  } else if (o.global >= 2) {
     // An extern global's or a zero-filled one's: through its symbol,
     // and now it can't move to the heap.
+    if ((var_link[o.global - 2] & VL_BSS)
+        && (o.off < 0 || o.off > type_size(var_type[o.global - 2])))
+      error0(155 /* "initializer address is out of range" */);
     var_link[o.global - 2] |= VL_USED | VL_INDATA;
     data_addr(REL_DSYM, o.global - 2, o.off);
+  } else {
+    if (o.off < 0 || o.off > (o.global == 1 ? data_offset() : zarea_next))
+      error0(155 /* "initializer address is out of range" */);
+    data_addr(o.global == 1 ? REL_DATA : REL_ZERO, o.off, 0);
   }
 }
 
@@ -722,12 +726,20 @@ static void define_global(int name, int type, int storage)
     // In the zero-filled space, with no data bytes, whatever its
     // size: ccrel places it, after every object's data, or on the heap
     // if it's at least BSS_MIN bytes (../doc/xload.md, 3.3).
-    if (bss_next > 0x7FFF - type_size(type))
-      error0(182 /* "too much data: globals over 32767 bytes" */);
     var_link[s] |= VL_BSS;
-    var_off[s] = bss_next;
-    bss_next += type_size(type);
+    var_off[s] = zero_alloc(&bss_next, type_size(type));
   }
+}
+
+// Reserve n bytes in a zero-filled space whose size so far is *next
+// (bss_next or zarea_next), and return their offset.
+int zero_alloc(int *next, int n)
+{
+  int at = *next;
+  if (at > 0x7FFF - n)
+    error0(182 /* "too much data: globals over 32767 bytes" */);
+  *next = at + n;
+  return at;
 }
 
 // Parse global declarations, after the base type base and the first

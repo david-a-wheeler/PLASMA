@@ -82,7 +82,7 @@ void ir_put(int op, int a, int f)
   }
   if (IR_NAMES_FUNC(op))
     name_func(f);
-  if (f >= 0) {
+  if (f != -1) {                    // -1 is the reader's default
     bputc(&out, IR_REC(REC_SECOND));
     bputw(&out, f);
   }
@@ -219,6 +219,7 @@ void ir_finish(void)
   bputw(&out, nstrs);
   bputw(&out, 0);
   bputw(&out, bss_next);
+  bputw(&out, zarea_next);
   bputw(&out, nfuncs);
   bputw(&out, nsyms);
   bputc(&out, dep_count());       // the modules pragmas named

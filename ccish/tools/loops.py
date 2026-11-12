@@ -50,8 +50,8 @@ def static_names(starts):
                 d = f.read()
         except OSError:
             continue
-        nfsyms = struct.unpack_from("<H", d, 11)[0]
-        p = 15                      # after the header (OBJECT.md)
+        nfsyms = struct.unpack_from("<H", d, 13)[0]
+        p = 17                      # after the header (OBJECT.md)
         for _ in range(nfsyms):
             flags, _, off, _, n = struct.unpack_from("<BBHHB", d, p)
             if flags & 1:

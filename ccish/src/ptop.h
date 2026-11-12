@@ -9,6 +9,8 @@
 #define MAX_DEPS     4      // limit file: modules named by #pragma plasma
                             // import
 extern int bss_next;
+extern int zarea_next;
+int zero_alloc(int *next, int n);
 extern int dep_id[MAX_DEPS];
 
 // Set by parse_scalar_init(): whether the initializer it parsed was

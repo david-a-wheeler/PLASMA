@@ -644,12 +644,15 @@ int hold(int op, int a, int f)
 }
 
 // Where variable v is, as an Operand's global field: 0 in the frame, 1
-// in this file's data, or 2 + v for a global reached through its symbol,
+// in this file's data, G_ZERO in its zero area, or 2 + v for a global
+// reached through its symbol,
 // which is then used (unless no code is emitted): one declared extern
 // with no storage here, or one in the zero-filled space (VL_BSS), whose
 // address only ccrel knows.
 int var_where(int v)
 {
+  if (var_link[v] & VL_ZAREA)
+    return G_ZERO;
   if (!(var_link[v] & (VL_EXTERN | VL_BSS)))
     return var_data(v);
   if (!suppress)
@@ -908,12 +911,16 @@ void cond_branch(Operand *o, int n, int on_true)
 // ---------- Expressions ----------
 
 
+// data_sym_of() gives G_ZERO to the IR as it is.
+_Static_assert(G_ZERO == IR_ZERO_AREA, "the zero area's two names");
+
 // The data symbol for a global IR op on an operand whose global field
-// is global: the extern variable, or -1 for an address in this file's
-// data.
+// is global: the extern variable (global 2 up), -1 for an offset in
+// this file's data (global 1), or IR_ZERO_AREA for one in its zero area
+// (G_ZERO, the same number).
 static int data_sym_of(int global)
 {
-  return global >= 2 ? global - 2 : -1;
+  return global >= 1 ? global - 2 : global;
 }
 
 // May the global that global (an Operand's field) names move to the

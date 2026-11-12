@@ -118,6 +118,9 @@ _Static_assert(K_VALUE >= 0 && K_VOID >= 0 && K_CONST >= 0 && K_VAR >= 0
                && K_FUNC < 16, "K_IN: each kind's bit must fit an int");
 
 #define G_STR (-1)      // K_ADDR's global field: the string pool
+#define G_ZERO (-2)     // a global field: the file's zero area, where a
+                        // static local with no initializer is (at
+                        // var_off[], VL_ZAREA); the IR's IR_ZERO_AREA
 
 typedef struct {
   int kind;
@@ -188,9 +191,10 @@ extern int var_val[MAX_VARS];     // its known value (V_KNOWN)
 // no data bytes, only an offset (var_off[]) in the file's zero-filled
 // space, and may move to the heap (approach.md, "Large zero-filled data
 // on the heap"); VL_INDATA if an initializer holds its address, which
-// stops that. 0 for a local.
+// stops that. VL_ZAREA for a static local with no initializer: it's at
+// var_off[] in the file's zero area (G_ZERO). 0 for another local.
 enum { VL_STATIC = 1, VL_USED = 2, VL_EXTERN = 4, VL_BSS = 8,
-       VL_INDATA = 16, VL_REGISTER = 32 };
+       VL_INDATA = 16, VL_REGISTER = 32, VL_ZAREA = 64 };
 
 // Parameter types of declared functions, in parse.c.
 #define MAX_PARAM_TYPES 352 // limit file: parameter types of all declared

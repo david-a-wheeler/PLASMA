@@ -458,6 +458,8 @@ static void list_word(Mop *m)
       out_num(" +", m->a);
   } else if (m->fix == FIX_DATA) {
     out_num(" data +", m->a);
+  } else if (m->fix == FIX_ZERO) {
+    out_num(" zero +", m->a);
   } else {
     out_num(" str +", m->a);
   }
@@ -593,6 +595,8 @@ void emit_put(Mop *m)
     // its addend; the final pass fills it in.
     if (m->fix == FIX_DATA)
       add_reloc(REL_DATA, m->a);
+    else if (m->fix == FIX_ZERO)
+      add_reloc(REL_ZERO, m->a);
     else if (m->fix == FIX_STR)
       add_reloc(REL_STR, m->a);
     else if (m->fix == FIX_FUNC)

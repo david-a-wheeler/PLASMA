@@ -14,9 +14,14 @@ version number bumped.
 For output `NAME`, the files are `NAME.obj` and `NAME.syms`. `ccish`
 removes them after the module is written, and after any error, unless
 `-k` is given; `ccgen` leaves them for `ccrel`, which keeps them.
-`NAME.obj` and `NAME.syms` are format version 8 (`OBJ_VERSION`), and
-the IR file, `NAME.ir`, is IR format version 16 (`IR_VERSION`); the
-history below gives both. Object version 8 added the CMDSYS unsigned
+`NAME.obj` and `NAME.syms` are format version 9 (`OBJ_VERSION`), and
+the IR file, `NAME.ir`, is IR format version 17 (`IR_VERSION`); the
+history below gives both. Object version 9 and IR version 17 added
+each file's **zero area** (2026-11-12, for XLOAD's images:
+doc/xload.md, 3.3): its static locals with no initializer, in no
+data, at offsets in the zero area, whose size is a new summary word,
+reached by relocation kind 6, an offset in it; in the IR, a global
+op's symbol operand -2. Object version 8 added the CMDSYS unsigned
 comparisons as helper numbers 3-6 (calls, with no code), and lets a
 data or string target be any offset, wrapped. IR version 16 added
 `IR_REGLOCAL` (`$1B`), which marks a `register` local. IR version 15
@@ -123,8 +128,8 @@ the zeros that end an initializer (`char buf[100] = "hi";`).
 | Size | Field |
 |------|-------|
 | byte | tag `R` |
-| byte | kind: 1 = data address, 2 = function address, 3 = string address, 4 = data symbol address |
-| word | target: a data offset (kind 1), a function symbol index (kind 2), a string pool offset (kind 3), or a data symbol index (kind 4) |
+| byte | kind: 1 = data address, 2 = function address, 3 = string address, 4 = data symbol address, 6 = zero area address |
+| word | target: a data offset (kind 1), a function symbol index (kind 2), a string pool offset (kind 3), a data symbol index (kind 4), or a zero area offset (kind 6) |
 | word | kind 4 only: the addend, bytes added to the symbol's address |
 
 It stands for the next two bytes of the data (`char *p = "hi";`,
@@ -174,9 +179,9 @@ needs a final address:
 
 | Size | Field |
 |------|-------|
-| byte | kind: 1 = data address, 2 = function address, 3 = string address, 4 = data symbol address, 5 = helper address |
+| byte | kind: 1 = data address, 2 = function address, 3 = string address, 4 = data symbol address, 5 = helper address, 6 = zero area address |
 | word | offset of the word, from the start of this function |
-| word | target: a data offset (kind 1), a function symbol index (kind 2), a string pool offset (kind 3), a data symbol index (kind 4), or a helper's number (kind 5) |
+| word | target: a data offset (kind 1), a function symbol index (kind 2), a string pool offset (kind 3), a data symbol index (kind 4), a helper's number (kind 5), or a zero area offset (kind 6) |
 
 The word itself is written as 0, except for kind 4, where it holds the
 addend; the final pass fills it in. A function address may refer to a
@@ -220,11 +225,12 @@ of its own so that the compiler needn't seek back to patch a header.
 | Size | Field |
 |------|-------|
 | 2 bytes | magic `CI` |
-| byte | format version: 7 |
+| byte | format version: 9 |
 | word | data size |
 | word | string pool size |
 | word | code size (the total code length of the `F` records) |
 | word | zero-filled size: the total size of the data symbols with flag 64 defined here |
+| word | zero area size: the static locals with no initializer, which have no symbols; kind 6 relocations are offsets in it |
 | word | function symbol count *N* |
 | word | data symbol count *M* |
 | byte | module count *D* (0-8): the modules `#pragma plasma import` named |
@@ -322,7 +328,10 @@ move one of at least `BSS_MIN` (256) bytes to the heap (approach.md,
 "Large zero-filled data on the heap"); a smaller one stays in the
 module, after every object's data (2026-11-12; before that only arrays
 and structs of `BSS_MIN` bytes or more had flag 64; doc/xload.md,
-3.3). Static locals with no initializer are still in the data. A global declared `extern` may get flag 64
+3.3). Static locals with no initializer are in the object's zero
+area instead (kind 6 relocations; the summary's zero area size):
+ccrel puts each object's at the start of its share of the zero-filled
+globals that stay, and never moves one to the heap. A global declared `extern` may get flag 64
 from the object that defines it. Flag 128 says that an initializer in
 this object holds its address (`int *p = big + 3;`), or, for an
 `extern` one, may.

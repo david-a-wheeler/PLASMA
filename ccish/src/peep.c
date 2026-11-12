@@ -604,15 +604,16 @@ static int rewrite_load_store(Mop *a, Mop *b)
 
 static int add_value(Mop *m, int *v);
 
-// If base is an address that can take an addend d (LA of data or a
-// string, which ccrel wraps, or of a global reached through its
+// If base is an address that can take an addend d (LA of data, the
+// zero area or a string, which ccrel wraps, or of a global reached
+// through its
 // symbol, whose word holds the addend; LLA while it stays a frame
 // offset; not a global that may move to the heap, FIX_HEAP, whose LA
 // ccrel may rewrite), add it and return 1.
 static int add_to_addr(Mop *base, int d)
 {
   if (base->op == OP_LA ? base->fix != FIX_DATA && base->fix != FIX_STR
-                          && base->fix != FIX_DSYM
+                          && base->fix != FIX_DSYM && base->fix != FIX_ZERO
       : base->op != OP_LLA || base->a + d < 0 || base->a + d > 255)
     return 0;
   base->a += d;

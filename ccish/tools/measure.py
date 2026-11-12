@@ -633,11 +633,12 @@ def note_peak(peaks, lim, value, where):
 
 def summary(name):
     """The sizes in OUT/NAME.syms: data, strings, code, zero-filled
-    (the data symbols ccrel may move to the heap)."""
+    (the zero-filled globals, which ccrel may move to the heap, and the
+    zero area's static locals)."""
     with open(os.path.join(OUT, name + ".syms"), "rb") as f:
         h = f.read(13)
     word = lambda i: h[i] | h[i + 1] << 8
-    return word(3), word(5), word(7), word(9)
+    return word(3), word(5), word(7), word(9) + word(11)
 
 
 def main():

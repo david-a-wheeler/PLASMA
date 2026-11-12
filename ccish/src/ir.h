@@ -182,10 +182,15 @@ enum {
   IR_MOP = IR_NOPS
 };
 
+// A global op's f operand (IR_DATAADDR, IR_GLOBAL and the rest) for an
+// offset in the file's zero area, where its zero-filled static locals
+// are (IR.md); -1 is the file's data, and 0 up a data symbol.
+#define IR_ZERO_AREA (-2)
+
 // The IR file: the output name plus this suffix, and its format's
 // version (in its header, after the magic "CIR").
 #define SUFFIX_IR   ".ir"
-#define IR_VERSION  16
+#define IR_VERSION  17
 
 // The sets of ops the compiler tests, and its value manipulations on
 // ops, each defined here next to the values it names, so all such

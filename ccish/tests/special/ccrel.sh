@@ -48,13 +48,13 @@ damaged_test badtag "with an unknown record tag"
 
 # A summary whose function starts at the code's end, where no function
 # can, is found damaged as it is read: the message names the summary, not
-# the stream file. The only symbol is main; its offset is bytes 18-19,
-# after the 15-byte header and the module count (0). It becomes the
+# the stream file. The only symbol is main; its offset is bytes 20-21,
+# after the 17-byte header and the module count (0). It becomes the
 # code size, bytes 7-8.
 echo 'int main() { return 0; }' >"$OUT/atend.c"
 cc_obj "" "$OUT/atend" "$OUT/atend.c"
 dd if="$OUT/atend.syms" of="$OUT/atend.size" bs=1 skip=7 count=2 2>/dev/null
-dd if="$OUT/atend.size" of="$OUT/atend.syms" bs=1 seek=18 conv=notrunc \
+dd if="$OUT/atend.size" of="$OUT/atend.syms" bs=1 seek=20 conv=notrunc \
    2>/dev/null
 rm -f "$OUT/atend.size"
 if ./ccrel "$OUT/atend" 2>"$OUT/atend.err"; then

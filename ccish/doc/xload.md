@@ -207,7 +207,7 @@ already zero-filled symbols, and explicit zero initializers (`int x =
 - **every global and static local with no initializer, of any size**
   (plan step 3: cccomp puts them in the file's zero-filled space,
   where before only arrays and structs of `BSS_MIN` bytes or more
-  went; done for globals, not yet for static locals);
+  went; static locals go in each object's zero area, plan step 3);
 - **every one whose initializer is all zeros** (plan step 4), as gcc
   does with `.bss`; C can't tell the difference (C11 6.7.9p10).
 
@@ -613,12 +613,18 @@ To check once XLOAD runs, on MAME and then a real Apple II:
    `BSS_MIN` and up, ccrel moves only those, and the peephole stage
    folds constants into any symbol's address, so the code is the same
    (the gen tests' ops are unchanged, only their operands' names).
-   **Static locals aren't done:** a zero-filled global is reached
-   through its symbol, and cccomp writes the symbol summary when the
-   file ends, by which time a static local's variable slot has gone
-   with its block (and may have been reused). They need a design of
-   their own (1,799 bytes of zeros in ccish), perhaps a new IR op that
-   declares a static local's zero-filled symbol when its block ends.
+   **Static locals** came next (2026-11-12): a zero-filled global is
+   reached through its symbol, but cccomp writes the symbol summary
+   when the file ends, by which time a static local's variable slot
+   has gone with its block. So static locals with no initializer have
+   no symbols: they're in each object's **zero area**, at offsets, as
+   initialized data is in its data (object version 9, IR version 17:
+   relocation kind 6; a global op's symbol operand -2 in the IR;
+   ccgen's `FIX_ZERO`, folded as `FIX_DATA` is). ccrel puts each
+   object's zero area first in its share of the zero-filled globals
+   that stay. Cost: 74 bytes of cccomp's code (891 to spare running).
+   Tests: tests/run/static_zero.c, tests/link/static_zero,
+   tests/errors/init_range_zero.c.
 4. **cccomp: all-zero initializers too** (3.3): `int x = 0;`, `= {0}`
    and the like go in the zero-filled space. cccomp writes an
    initializer's bytes to the IR as it parses, so irout.c's data

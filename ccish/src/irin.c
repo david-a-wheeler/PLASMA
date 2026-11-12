@@ -1077,6 +1077,7 @@ static void read_summary(void)
   get_word();                   // code size: 0
   emit_word(emit_code_size());
   emit_word(get_word());        // zero-filled (BSS) size
+  emit_word(get_word());        // the zero area's size
   nf = get_word();
   nd = get_word();
   if (nf > MAX_FUNCS || max_func >= nf)
@@ -1159,7 +1160,7 @@ void gen_file(const char *base)
     t = get_byte();
     // Prefixes: X (f), then W (a word a), just before their op.
     if (t == IR_REC(REC_SECOND) && !prefixed) {
-      f = get_word();
+      f = (get_word() ^ 0x8000) - 0x8000;   // sign-extended
       prefixed = 1;
       continue;
     }

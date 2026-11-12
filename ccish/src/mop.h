@@ -135,9 +135,11 @@ _Static_assert(!MOP_IS_CONST(OP_BREQ) && !MOP_IS_CONST(OP_LA)
 // 4 turns it into a relative offset.
 
 // What an operand word refers to, if it needs relocation: a data
-// offset, a function, or an offset in the string pool.
+// offset, a function, an offset in the string pool, or one in the zero
+// area (FIX_ZERO, which is relocated and folded as FIX_DATA is).
 enum { FIX_NONE, FIX_DATA, FIX_FUNC, FIX_STR, FIX_DSYM, FIX_HELPER,
-       FIX_HEAP };    // FIX_DSYM and FIX_HEAP are the two operand
+       FIX_HEAP, FIX_ZERO };
+                      // FIX_DSYM and FIX_HEAP are the two operand
                       // words ccrel may rewrite (the fixups in emit.c);
                       // FIX_HEAP is IR_HEAPADDR's symbol, never folded
 

@@ -97,14 +97,16 @@ static unsigned char obj_mod[MAX_MODS];
 // How many symbols of each kind the object being read has.
 static int nfsyms, ndsyms;
 
-// The object being read (an index in obj_name[]), and its sizes.
+// The object being read (an index in obj_name[]), and its sizes: zarea
+// is its zero area's, its zero-filled static locals (REL_ZERO).
 static int cur;
-static int data_size, strs_size, code_size, bss_size;
+static int data_size, strs_size, code_size, bss_size, zarea;
 
 // The zero-filled globals (SYM_BSS): those moved to the heap, each with
 // a pointer word, by its number (mv_size[]: its bytes), and the bytes of
 // those that stay, after every object's data. obj_mv[k] and obj_zs[k]
-// are where object k's own (static) ones start, in each.
+// are where object k's own (static) ones start, in each; in the second,
+// after object k's zero area, which starts at obj_zs[k].
 static int mv_size[MAX_MOVED];
 static int nmoved;
 static unsigned mv_total;            // and all their bytes
@@ -364,6 +366,7 @@ static const char *open_syms(int k)
   strs_size = bgetw(&in);
   code_size = bgetw(&in);
   bss_size = bgetw(&in);
+  zarea = bgetw(&in);
   nfsyms = bgetw(&in);
   ndsyms = bgetw(&in);
   if (nfsyms > MAX_FUNCS)
@@ -626,6 +629,7 @@ static void read_summary(int k)
   obj_code[k + 1] = obj_code[k] + code_size;
   obj_mv[k] = nmoved;
   obj_zs[k] = zstay;
+  place_zero(name, zarea, 1);           // the zero area, which stays
   for (i = 0; i < nfsyms + ndsyms; i++) {
     read_sym(&s, i >= nfsyms, name);
     if ((s.flags & SYM_DEFINED) && i < nfsyms) {
@@ -734,7 +738,7 @@ static void map_object(int k)
 {
   const char *name = open_syms(k);
   Lsym s;
-  int i, g, v, mv = obj_mv[k], zs = obj_zs[k];
+  int i, g, v, mv = obj_mv[k], zs = obj_zs[k] + zarea;
 
 #ifdef CCISH_LISTING
   lnames_len = gnames_len;
@@ -1023,8 +1027,8 @@ static void out_dci(const char *name)
 // Return the final value of the word at load address at, given a
 // relocation read from the current object's stream; keep it for the
 // listing if list. The record is checked first. Its target is an
-// offset in the object's data or strings, or a symbol of the object's,
-// through fmap[] and dmap[]. A REL_DSYM (data symbol target, plus add)
+// offset in the object's data, zero area or strings, or a symbol of
+// the object's, through fmap[] and dmap[]. A REL_DSYM (data symbol target, plus add)
 // becomes the REL_DATA it stands for: for a global moved to the heap
 // (dmap[] -2 - its number), its pointer word's, and patch_law is set,
 // since the LA before the word must become an LAW.
@@ -1055,6 +1059,11 @@ static int add_reloc(int kind, int at, int target, int add, int list)
     // Any offset, wrapped: ccgen folds a[i - 1]'s -1 into a's address
     // (peep.c, rewrite_index), which the index brings back inside.
     target = (target + obj_data[cur]) & 0xFFFF;
+  } else if (kind == REL_ZERO) {
+    // In the object's zero area, first in its share of the zero-filled
+    // globals that stay, after every object's data; wrapped, as data.
+    kind = REL_DATA;
+    target = (target + obj_data[nobjs] + obj_zs[cur]) & 0xFFFF;
   } else if (kind == REL_STR) {
     target = (target + obj_strs[cur]) & 0xFFFF;
   } else if (kind == REL_HELPER && target >= NHELPERS) {
@@ -1274,7 +1283,7 @@ static void copy_strings(int k)
 static void copy_code(int k)
 {
   int at = 0, idx, len, n, i, c, start;
-  unsigned char *p, *end;
+  unsigned char *p;
 
   map_object(k);
 #ifdef CCISH_LISTING
@@ -1288,11 +1297,10 @@ static void copy_code(int k)
     if (idx >= nfsyms || fmap[idx] != obj_code[k] + at
         || len > MAX_FUNC_CODE)
       bad_obj();
-    end = fbuf + len;
-    for (p = fbuf; p != end; p++) {
+    for (i = 0; i < len; i++) {
       if ((c = bgetc(&in)) == EOF)
         bad_obj();
-      *p = (unsigned char)c;
+      fbuf[i] = (unsigned char)c;
     }
     start = obj_code[k] + at;
 #ifdef CCISH_LISTING
@@ -1301,12 +1309,14 @@ static void copy_code(int k)
     if ((n = bgetw(&in)) > MAX_FUNC_RELOCS)
       bad_obj();
     for (i = 0; i < n; i++) {
-      int kind = bgetc(&in), off = bgetw(&in), target = bgetw(&in), v;
+      // Its final value goes in c, free here (for MAX_VARS: this loop
+      // is link.c's peak).
+      int kind = bgetc(&in), off = bgetw(&in), target = bgetw(&in);
       if (off < 0 || off > len - 2)
         bad_obj();
       // The word holds an extern global's addend, else 0.
       p = fbuf + off;
-      v = add_reloc(kind, subseg + start + off, target,
+      c = add_reloc(kind, subseg + start + off, target,
                     p[0] | (p[1] << 8), opt_list);
       if (patch_law) {
         // A moved global: LA its address becomes LAW its pointer.
@@ -1315,8 +1325,8 @@ static void copy_code(int k)
           bad_obj();
         p[-1] = OP_LAW;
       }
-      p[0] = (unsigned char)v;
-      p[1] = (unsigned char)(v >> 8);
+      p[0] = (unsigned char)c;
+      p[1] = (unsigned char)(c >> 8);
     }
 #ifdef CCISH_LISTING
     if (opt_list)
@@ -1754,7 +1764,7 @@ static void write_relocs(int n, int init_off)
 void link_module(int n, const char **bases, const char *path)
 {
   static const char dep[] = "CMDSYS";
-  int init_off, deplen, total, i;   // i also counts objects
+  int init_off, total, i;   // i also counts objects
 
   // Step 1.
   if (n > MAX_OBJS)
@@ -1787,16 +1797,18 @@ void link_module(int n, const char **bases, const char *path)
     add_def(init_off);
   }
 
-  // The dependencies: CMDSYS, if anything is imported, then each
-  // module a used import comes from: their names, then $00.
-  deplen = nimports ? (int)sizeof(dep) - 1 + 1 : 1;
-  for (i = 0; i < nmods; i++)
-    if (mod_used[i] && strcmp(mod_name[i], dep))
-      deplen += strlen(mod_name[i]) > 16 ? 16 : (int)strlen(mod_name[i]);
   // The data segment holds the globals, then the string pool. One pad
   // byte between it and the bytecode keeps data from ever sharing an
-  // address with the first function.
-  data_base = opt_xload ? 0 : MODULE_BASE + 10 + deplen;  // the header
+  // address with the first function. In a REL module it follows the
+  // header, 10 bytes, and the dependencies: CMDSYS, if anything is
+  // imported, then each module a used import comes from: their names,
+  // then $00.
+  data_base = MODULE_BASE + 10 + (nimports ? (int)sizeof(dep) : 1);
+  for (i = 0; i < nmods; i++)
+    if (mod_used[i] && strcmp(mod_name[i], dep))
+      data_base += strlen(mod_name[i]) > 16 ? 16 : (int)strlen(mod_name[i]);
+  if (opt_xload)
+    data_base = 0;
   strs_base = data_base + obj_data[n] + zstay + 2 * nmoved;
   subseg = strs_base + obj_strs[n] + 1;
   total = init_off + init_size();
@@ -1823,11 +1835,11 @@ void link_module(int n, const char **bases, const char *path)
     copy_code(i);
   copy_helpers();
   if (main_sym >= 0) {
-    int len = init_code();
+    total = init_code();          // its length (total is done with)
 #ifdef CCISH_LISTING
-    list_init(len, init_off);
+    list_init(total, init_off);
 #endif
-    bwrite(&out, fbuf, len);
+    bwrite(&out, fbuf, total);
   }
 
   // Step 4.

@@ -268,9 +268,12 @@ element).
 
 The same as `IR_LOCAL`, `IR_SETLOCAL`, `IR_LOCALB` and `IR_SETLOCALB`,
 for a global variable at offset *a* of the data segment, or at *a*
-bytes past an `extern` global (as for `IR_DATAADDR`). A global without
-an initializer is zero when the module loads: zero bytes in the data
-segment, in declaration order.
+bytes past an `extern` global (as for `IR_DATAADDR`), or with the
+function operand -2 (`IR_ZERO_AREA`, `zero+`*a* in the `-i`
+listing), at offset *a* of the file's zero area, where its static
+locals with no initializer are (IR version 17; a kind 6 relocation,
+OBJECT.md). A global without an initializer is zero when the module
+loads, in the zero-filled space (OBJECT.md, "Zero-filled globals").
 
 - **Stack:** as for the local ops.
 - **Now:** `LAW`, `DAW`, `LAB` and `DAB`, with the address relocated

@@ -6,7 +6,7 @@
 #ifndef OBJ_FMT_H
 #define OBJ_FMT_H
 
-#define OBJ_VERSION 8       // the format version, in the symbol summary
+#define OBJ_VERSION 9       // the format version, in the symbol summary
 
 // Record tags in the stream (see ../OBJECT.md), as letters so that a
 // dump of the file is easy to read.

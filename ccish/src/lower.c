@@ -232,7 +232,7 @@ void dump_ir(int op, int a, int f)
       out_num(" sym", f);
       out_num("+", a);
     } else {
-      out_num(" data+", a);
+      out_num(f == IR_ZERO_AREA ? " zero+" : " data+", a);
     }
   } else if (IR_REFS_LABEL(op) || op == IR_LABEL) {
     out_num(" L", a);
@@ -261,12 +261,13 @@ void dump_ir(int op, int a, int f)
   fputs("\n", stdout);
 }
 
-// The fixup for a global op's address: a data offset (f is -1), or
-// extern global f plus the addend in m->a, which m->fn then names.
+// The fixup for a global op's address: a data offset (f is -1), a zero
+// area offset (IR_ZERO_AREA), or extern global f plus the addend in
+// m->a, which m->fn then names.
 static int data_fix(Mop *m, int f)
 {
   m->fn = f;
-  return f < 0 ? FIX_DATA : FIX_DSYM;
+  return f >= 0 ? FIX_DSYM : f == IR_ZERO_AREA ? FIX_ZERO : FIX_DATA;
 }
 
 // Make m push the constant c, using the shortest encoding (the same

@@ -533,12 +533,13 @@ void set_known(int s, int v)
   var_val[s] = UNQUAL(var_type[s]) == TY_CHAR ? v & 0xFF : v;
 }
 
-// Add a static local (parse.c's push_var()): in block scope, like any
-// local, but in the data segment like a global (V_DATA, at the next
-// data offset), so it keeps its value between calls and takes no frame
-// space. The caller then writes its bytes to the data stream: its
-// initial value, or zeros. A macro, not a function: this is its one
-// user.
+// Add a static local with an initializer (parse.c's push_var()): in
+// block scope, like any local, but in the data segment like a global
+// (V_DATA, at the next data offset), so it keeps its value between
+// calls and takes no frame space. The caller then writes its initial
+// value to the data stream. A macro, not a function: this is its one
+// user. One with no initializer goes in the file's zero area instead
+// (VL_ZAREA).
 #define add_static_local(name, type) \
   push_var(name, type, data_offset(), V_DATA)
 
@@ -578,15 +579,18 @@ static void parse_declaration(int is_static)
     if (is_array(type) && type_count(type) == 0 && tok != '=')
       error0(87 /* "array size missing" */);
     if (is_static) {
-      // In C, the name is in scope in its own initializer.
-      s = add_static_local(name, type);
       if (tok == '=') {
+        // In C, the name is in scope in its own initializer.
+        s = add_static_local(name, type);
         next();
         var_type[s] = parse_global_init(type, name);
         if (init_known)
           set_known(s, init_val);
       } else {
-        data_zero(type_size(type));
+        // Zero-filled: no data bytes, an offset in the zero area.
+        s = push_var(name, type, zero_alloc(&zarea_next, type_size(type)),
+                     V_DATA);
+        var_link[s] |= VL_ZAREA;
       }
       if (tok != ',')
         break;
