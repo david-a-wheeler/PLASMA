@@ -15,7 +15,7 @@
 //           splitting, which an Apple II's CR lines don't need
 //   -l      print a listing of the module's bytecode
 //   -o      module name (default: output, if there is only one)
-//   -x      write an XLOAD image (../doc/streaming-options.md, 5.3),
+//   -x      write an XLOAD image (../doc/xload.md, section 3),
 //           not a REL module
 #include <stdio.h>
 #include <stdlib.h>

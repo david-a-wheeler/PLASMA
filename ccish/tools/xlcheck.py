@@ -3,7 +3,7 @@
 
 Usage: tools/xlcheck.py MODULE IMAGE
 
-The image's format is doc/streaming-options.md, 5.3. Until XLOAD
+The image's format is doc/xload.md, section 3. Until XLOAD
 exists, this is what tests the format: it reads both files as their
 loaders would, and requires that they describe the same program:
 

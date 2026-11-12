@@ -27,7 +27,10 @@ files of the sessions so far, before a move to a new computer.)
   64K Apple II" lines in doc/measure.txt give its need, running and
   loading, and tests/special/fit.sh (in make test) fails if one
   doesn't fit running. ccpp's zero-filled tables are its heap too, so
-  raising its limits costs that margin.
+  raising its limits costs that margin. The way past the load limit,
+  chosen 2026-11-11, is XLOAD, a second-stage loader ccish ships, for
+  images ccrel writes with `-x`: doc/xload.md (the design and plan;
+  doc/streaming-options.md has the analysis behind the choice).
 
   ccgen has headroom; it is a streaming filter with fixed tables, so
   making it bigger doesn't reduce what it can compile.
@@ -40,6 +43,9 @@ files of the sessions so far, before a move to a new computer.)
   changing anything. Recent work: "Large zero-filled data on the heap",
   "Loop design" (steps 1 and 2, the DLW fix, "Possible improvements to
   the loop forms"), issue 20 "Writing fast C-ish".
+- `doc/xload.md`: XLOAD and its image format, what's left to do, and
+  the plan; `doc/streaming-options.md`: why XLOAD, and the options
+  set aside.
 - `OBJECT.md` (object, IR file and module formats, versions), `IR.md`
   (each IR op), `CCPP.md` (the preprocessor and its files), `README.md`
   (the language as users see it), `../doc/Bytecodes.md` (the VM).

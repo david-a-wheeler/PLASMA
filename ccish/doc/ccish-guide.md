@@ -169,8 +169,7 @@ ccish [-l] [-d] [-i] [-k] [-x] [-o output] [-I dir] [-D name[=text]] [-U name] i
 * `-x`: write an XLOAD image instead of a REL module: the same
   program, for a second-stage loader (XLOAD) that loads programs too
   big for PLASMA's own loader on a 64K Apple II
-  ([streaming-options.md](streaming-options.md), section 5; its format
-  is 5.3). XLOAD isn't written yet, so nothing runs an image so far;
+  ([xload.md](xload.md); its format is section 3). XLOAD isn't written yet, so nothing runs an image so far;
   `tools/xlcheck.py MODULE IMAGE` checks one against the REL module of
   the same link. An image needs `main`, at most 127 imports, and at
   most 320 functions (`MAX_DEFS`).

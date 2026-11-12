@@ -29,7 +29,7 @@
 // one object's map is in memory.
 //
 // With -x (opt_xload), it writes an XLOAD image instead
-// (../doc/streaming-options.md, 5.3): the same body, for load address
+// (../doc/xload.md, section 3): the same body, for load address
 // 0; a table of its functions, in address order, by whose numbers
 // every reference to a function is written, so that XLOAD can lay out
 // the def entries each VM wants; and compact fixups in address order,

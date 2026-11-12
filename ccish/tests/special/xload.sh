@@ -1,5 +1,5 @@
 #!/bin/sh
-# XLOAD images (ccrel -x; doc/streaming-options.md, 5.3): until XLOAD
+# XLOAD images (ccrel -x; doc/xload.md, section 3): until XLOAD
 # exists to run them, tools/xlcheck.py checks each against the REL
 # module of the same link. For a few run tests and for ccish's own
 # four programs (tools/measure.py's objects, the small build's), both

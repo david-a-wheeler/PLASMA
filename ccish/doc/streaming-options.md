@@ -10,14 +10,8 @@ needn't change.
 
 **Status (2026-11-12).** Decided in discussion: XLOAD (section 5), on
 the `c-compiler` branch with the rest of ccish (no separate branch).
-plvm02.s has been read for the hand-off: section 5.4 gives the VM's
-calling convention and the two native routines. ccish writes either
-a standard REL module or an XLOAD image, chosen by `-x` (ccrel's and
-ccish's; 5.7), in 5.3's format, which tools/xlcheck.py checks
-against the REL module (5.6). One image must work on the 64K and the
-128K Apple II, XLOAD handling the difference (5.8; format version 2
-is built for that). XLOAD itself isn't written yet, and nothing here
-has run on an Apple II: section 9 lists what to check.
+This document is now the record of the analysis and the decision; the
+design and plan are in [xload.md](xload.md).
 
 The first version of this document (eef1dd1e) had errors in its
 memory map and missed options; section 8 lists the corrections, so
@@ -235,410 +229,17 @@ gets itself out of the way, loads the real program in place, streams
 its relocation data, does the final fixups, and jumps to the program.
 PLASMA's loader needn't change, since it only ever loads XLOAD.
 
-### 5.1 What the user sees
+**Its design, format and plan are now in [xload.md](xload.md)**
+(moved there 2026-11-12, so that the work can go on from a document
+without the alternatives): what the user sees, the image format
+ccrel writes with `-x`, what XLOAD must do on each VM (the 64K and
+128K Apple II and plvm, from one image), the hand-off, the factors
+that shape it, sizes, open questions, and the plan.
 
-```
-+XLOAD CCCOMP FOO
-```
-
-where today it's `+CCCOMP FOO`. XLOAD is a prefix, the loader for
-all four programs: one copy on the disk, one thing to test. ("RUN" is
-BASIC's, and "GO" is common elsewhere; the name was chosen from
-PRELOAD, GO, LAUNCH, XLOAD, STREAM and FETCH.)
-
-- **Arguments.** lib/start.c builds `argv` by splitting CMDSYS's
-  command line in place, so XLOAD takes its own word off the front of
-  that buffer before the hand-off: the program sees `CCCOMP FOO`, and
-  its `argv[0]` is `CCCOMP`, as now. XLOAD itself mustn't use
-  `__start` (it would split the line, overwriting its length byte):
-  its `main` takes no parameters, so ccrel's init calls it directly,
-  and it reads `cmdsys.cmdline` itself.
-- **Files.** The payload is a file of its own (fact 12). It can keep
-  the plain name `CCCOMP`, with a ProDOS type other than $FE, so that
-  `+CCCOMP` without the prefix gets CMD's "incompatible type" error
-  (fact 9) rather than a load that overwrites memory; XLOAD checks
-  the type too. Which type, still to choose.
-- **One program, or all four.** cccomp first, since it's the one that
-  can't load; ccpp, ccgen and ccrel load today and can stay ordinary
-  modules until XLOAD works on MAME. All four as images would save
-  most of their RLDs on the disk (section 5.3).
-
-### 5.2 How it works
-
-XLOAD's file is an ordinary $6502 module in two parts:
-
-1. **The first part**, a few hundred bytes, is all loadmod runs. It's
-   a small relocator.
-2. **The second part**, the real loader, is carried inside XLOAD's
-   data as an image in the payloads' own format (5.3). loadmod sees
-   only bytes and doesn't touch them.
-
-The steps:
-
-1. loadmod loads XLOAD (and FILEIO, its dependency) and calls its
-   init.
-2. The first part reads the payload's header for its size, then
-   copies the second part's image to its new home, adds that address
-   at each of its fixups, and looks up its imports with `lookupsym`.
-   Since it's properly relocated, the second part is ordinary ccish C:
-   globals, strings, helpers and calls all work. The first part then
-   calls it, and isn't needed again.
-3. The second part reads the payload's image straight into its final
-   place, the bottom of the heap where XLOAD's own def table starts,
-   over the first part and the original XLOAD module. It reads in
-   chunks through a small buffer, then applies the sorted fixups and
-   resolves the imports.
-4. XLOAD closes its files, sets the heap to the image's end
-   (`heaprelease`), and the hand-off (5.4) jumps to the payload's
-   init. Nothing of XLOAD stays. The heap must end at the image, since
-   the payload's init takes its moved globals from `heapalloc` (link.c,
-   init_code), as it does after loadmod; and nothing may allocate after
-   that, since the second part's code is above the image, now free.
-
-**Where the second part goes:** just above where the payload will
-end, which the first part knows from the payload's header. Its frames
-then grow from the current frame pointer as usual, with no change to
-`IFP`. The payload's heap tables are later allocated over the dead
-second part. The other place considered, just below the frame stack
-(the user's first form), needs `IFP` lowered below it first, another
-piece of native code; it's the fallback if memory is tighter than
-expected.
-
-**Why load in place:** the alternative (leave XLOAD at the bottom,
-read and fix up the payload higher up for its final address, then
-block-move it down) would let XLOAD stay unmoved, but adds the move:
-about 16 cycles a byte, so about half a second for cccomp's 31.5K at
-1 MHz, against several seconds of disk reads. "Apples aren't fast";
-loading in place avoids it, and keeps the hand-off to restoring state
-and a jump.
-
-**Reusing CMD.** XLOAD uses only what CMDSYS exports (fact 14): the
-heap functions, `memcpy`, `memset`, `call`, `lookupsym`, and file
-reads through FILEIO. It needs none of CMD's internals (`reloc`,
-`lookupdef`, `adddef`, `addsym`), since the payload's format avoids
-what they do.
-
-### 5.3 The payload's format, ours to choose
-
-Both ends are ccish's, so the payload needn't be PLASMA's RLD
-format. The format ccrel writes with `-x` (version 2, 2026-11-12;
-words are little-endian, and every address in it is an offset from
-the body's start, where XLOAD loads it):
-
-| Bytes | What |
-|---|---|
-| 2 | Magic: `X` `L` ($58 $4C) |
-| 1 | Version: 2 |
-| 1 | Flags: 0 (none yet; a "no JIT" bit, as a REL header's, could go here) |
-| 2 | The body's length |
-| 2 | Where its bytecode starts: everything before is data and strings |
-| 2 | The functions, init's included (the last) |
-| any | Dependencies: module names in DCI form, as a REL module's, then $00 |
-| any | Imports: names in DCI form, numbered from 0, then $00 |
-| 2 each | The function table: each function's offset, in address order, init last |
-| length | The body |
-| any | The fixups, then $FF |
-
-- **The body** is exactly the REL module's (data, strings, a pad byte,
-  bytecode, helpers, init), relocated for address 0, except that every
-  reference to a function (a call, or a function pointer in code or
-  data) holds the function's number in the function table. **The
-  image holds no def entries:** XLOAD builds them, in the form the VM
-  it's running on wants and wherever it wants them (5.8), and each
-  such word becomes its entry's address. So one image serves every VM
-  whose bytecode is the same.
-- **The function table is in address order** so that XLOAD can tell
-  each function's size from the next one's start, as the 128K loader
-  does to decide which functions the JIT may compile (5.8); and so
-  that no search is needed (CMD's lookupdef is a linear search for
-  each such fixup).
-- **The fixups,** in address order. Each gives the gap from the end of
-  the word before (from 0 for the first), and its kind:
-  - $00-$3E: a gap of 0-62; add the load address. $3F lo hi: the
-    same, with the gap as a word.
-  - $40-$7E: a gap of b - $40; the word holds a function's number:
-    write its def entry's address. $7F lo hi: the same, with the gap
-    as a word.
-  - $80-$FE: import number b - $80 (so at most 127 imports), then a
-    gap byte ($00-$FE, or $FF lo hi); add the import's address, which
-    XLOAD looks up with `lookupsym`. The word holds an addend, as in a
-    REL module.
-  - $FF: the end.
-  The data's come first, then the code's, object by object, then
-  init's. ccrel stops with an error if they're ever out of order.
-- A program with no `main` can't be an image (there's nothing to
-  run); one with more than 127 imports, or more functions than
-  `MAX_DEFS` (link.c), can't either.
-- **The dependencies** are only checked: XLOAD can't load a module
-  itself (it would load where the payload goes), so each must already
-  be in the symbol table, as FILEIO is, being XLOAD's own dependency.
-- Possibly item 12's zero runs in the data (doc/plasma-requests.md), a
-  later version.
-
-**Version 1** (bc34918a, the same day, never used) put a def table of
-5-byte `JSR $03D6` entries at the image's start, so a function's
-references pointed at its entry. That fit only the 64K Apple VM;
-version 2 replaced it so that one image runs on the 64K and the 128K
-Apple (the user's requirement, 2026-11-12), and plvm, with XLOAD
-handling the difference quietly. Version 2 is also smaller: cccomp's
-file is 35,024 bytes, not 36,164, since the table's 1,460 bytes become
-584, its 292 fixups go, and the gaps are measured from each word's end.
-
-### 5.4 The hand-off
-
-With under 1K to spare while running, XLOAD can't stay resident, and
-the payload can't return into XLOAD's code (its heap tables are
-allocated over it). So the last step is a tail call: the payload's
-init returns straight to loadmod, as if loadmod had called it.
-
-**The VM's calling convention** (read in plvm02.s, 2026-11-11):
-
-- **The Apple's zero page** (vmsrc/apple/plvmzp.inc): the evaluation
-  stack's high bytes `ESTKH` at $A0-$BF and low bytes `ESTKL` at
-  $C0-$DF, indexed by the 6502's X, which counts down as values are
-  pushed (a pop is INX); `IFP`, the frame pointer, at $E0-$E1;
-  `JMPTMP` at $E6 (a JMP opcode) with `TMP` at $E7-$E8; the IP at
-  $F2-$F3. (The C64's layout differs: ESTK at $50. The untracked
-  src/vmsrc/plvmzp.inc, left by the first version's CMD build, is the
-  C64's, which the makefile copies before assembling CMD. There's
-  partial work to make PLASMA run on the C64, outside ccish: the user
-  said to leave all of it alone, that file included, 2026-11-12.)
-- **CALL and ICAL** (:1380-1423) push the return IP (2 bytes) on the
-  6502 stack, then `JSR JMPTMP`, which jumps to the target (2 more).
-  ICAL takes the target from the evaluation stack (one INX). The
-  target is either native code, run directly, or a def entry, whose
-  `JSR $03D6` pushes 2 bytes that IINTRP (:163-174) pulls at once to
-  find the bytecode's address. Either way, **a call holds 4 bytes of
-  the 6502 stack**, and nothing else.
-- **ENTER** (:1425-1447) subtracts the frame size from `IFP` and copies
-  the arguments from the evaluation stack into the frame; **LEAVE**
-  (:1450-1457) adds the frame size back and does an RTS; **RET** is a
-  bare RTS (:1458). So `IFP` isn't saved anywhere: each function
-  restores it itself. A return value is left on the evaluation stack.
-- **loadmod calls init** with ICAL through a new def entry (cmd.pla:
-  1166, `adddef(init, @deflast)()`). So when init's first op runs, the
-  6502 stack holds loadmod's 4 bytes on top, `IFP` is loadmod's, and X
-  is loadmod's evaluation stack index after the ICAL's pop.
-- **ccrel's init has no frame** and calls `main` directly when main
-  takes no parameters (link.c's init_code; lib/start.c's comment), with
-  nothing left on the evaluation stack.
-
-**The hand-off, then.** XLOAD's first part has `int main(void)`, with
-no locals, so no frame. Its first act is to call a native **capture
-routine**, as a C function pointer to a data array (ccish emits ICAL
-for that; CMDSYS's `call` isn't used, since it switches in the ROM
-and pushes more onto the stack, cmd.pla:176-213). At the capture
-routine's first instruction the 6502 stack pointer is init's less 8
-(init's call of main, main's call of the routine), `IFP` is loadmod's,
-and X is loadmod's evaluation stack index. It returns the stack
-pointer and X packed in one word (14 bytes, zero page only, so it runs
-anywhere):
-
-```
-86 E7     STX TMPL        ; keep the evaluation stack index
-BA        TSX             ; the 6502 stack pointer
-8A        TXA
-A6 E7     LDX TMPL
-CA        DEX             ; push the result:
-95 A0     STA ESTKH,X     ;   high byte, the stack pointer
-A5 E7     LDA TMPL
-95 C0     STA ESTKL,X     ;   low byte, the evaluation stack index
-60        RTS
-```
-
-main also reads `IFP` from $E0 in C. The second part, once it has
-loaded the payload, writes those values (the stack pointer plus 8) and
-the payload's init def entry into a **hand-off routine** (14 bytes)
-and calls it, the same way:
-
-```
-A9 ll     LDA #<IFP
-85 E0     STA IFPL
-A9 hh     LDA #>IFP
-85 E1     STA IFPH
-A2 ss     LDX #SP         ; init's stack pointer:
-9A        TXS             ;   loadmod's 4 bytes on top again
-A2 xx     LDX #X          ; loadmod's evaluation stack index
-4C ll hh  JMP init        ; the payload's init def entry
-```
-
-The payload's init then runs exactly as if loadmod had called it, and
-its RET returns into loadmod's ICAL. loadmod then frees XLOAD's
-(stale) init address, which execmod's restore of the heap overrides,
-and execmod drops XLOAD's symbol-table entries (its own and FILEIO's,
-which the payload used) as usual. loadmod's frame and the 6502 stack
-above the restored pointer were never touched: the payload's frames
-and calls go below them.
-
-What this rests on, to check in the implementation: that the first
-part's `main` really has no frame and calls the capture routine with
-nothing on the evaluation stack (a listing test can check both); and
-that nothing between capture and hand-off leaves the VM in another
-state (the language card stays readable for the VM, and $03D6 sets
-it anyway).
-
-### 5.5 Memory and disk
-
-At the load peak, for cccomp on the 64K Apple: the payload (the def
-table XLOAD builds, 1,460, and the body, 31,500: 32,960), the second
-part (about 2K, a guess), FILEIO
-(1,998), a 512-byte buffer, and frames, CMD's included (about 400):
-**about 37.9K**, leaving about 3.3K of the 41,171. Running, after the
-hand-off, needs exactly what it does today.
-
-On the disk, XLOAD itself perhaps 3K, once, and the images, from
-ccrel -x (2026-11-12, the small build's objects):
-
-| Program | Body | Functions | Fixups (words) | Image file | REL module |
-|---|---:|---:|---:|---:|---:|
-| ccpp | 19,967 | 167 | 1,837 (1,757) | 22,245 | 27,814 |
-| cccomp | 31,500 | 292 | 2,833 (2,745) | 35,024 | 43,799 |
-| ccgen | 27,846 | 206 | 2,160 (2,041) | 30,525 | 36,985 |
-| ccrel | 12,736 | 98 | 1,164 (1,110) | 14,203 | 17,719 |
-
-The fixups average just over a byte each. They came out in address
-order with no sorting: ccgen writes each function's relocations in
-address order. `-x` cost ccrel 735 bytes of code and 640 of heap (the
-function table's offsets, MAX_DEFS of them), leaving it about 13.7K
-to spare running.
-
-### 5.6 Testing
-
-plvm's VM is C, with its frame pointer and stacks in C variables, so
-the native routines can't run there as written. Under plvm, XLOAD
-would end with a plain call instead, which still tests the format,
-the relocation, the imports and the in-place load with ccish's suite
-on the host. Only the two native routines need MAME (tools/a2screen,
-with its guards).
-
-**plvm's def entries differ** (read 2026-11-12, src/vmsrc/cmdsys.c
-add_def, load_mod, and plvm.c): its loader copies each module's
-bytecode out to host memory, and its def entries are `JSR $FF0C`
-(VM_EXT_ENTRY) with a handle, not an address. But its `JSR $FF08`
-(VM_INDIRECT_ENTRY, vm_iidef) runs bytecode in the 6502 memory at the
-entry's address word, as the Apple 64K VM's $03D6 does. So under plvm
-XLOAD builds 5-byte `JSR $FF08` entries (5.8).
-
-**Until XLOAD exists,** tools/xlcheck.py checks ccrel's images
-against its REL modules: it relocates both, as their loaders would,
-for the same load address, and requires the same bytes, reading each
-REL word that points into the bytecode as the function there, and
-each image word with a "def" fixup as the function of that number.
-tests/special/xload.sh runs it in `make test`.
-
-### 5.7 REL modules or XLOAD images: a flag
-
-The user wants the finished compiler able to write either a standard
-REL module or an XLOAD image, chosen by a flag: `-x`. Only ccrel
-writes modules, so the flag is ccrel's (and the `ccish` driver's,
-which runs the same link code): ccpp, cccomp and ccgen, and the objects, are the same
-either way. A REL module runs anywhere PLASMA runs; an XLOAD image
-loads programs too big for the stock loader, but needs XLOAD on the
-disk. ccish's own build would use the image for cccomp (and perhaps
-the others), and REL for everything else, the tests included, so
-nothing else changes. XLOAD's own second part is an image too, which
-its build embeds as data in the first part.
-
-### 5.8 One image for the 64K and 128K Apple II
-
-The user's requirement (2026-11-12): a single image works on a 64K and
-a 128K Apple II, with XLOAD handling the difference quietly, reusing
-existing mechanisms as much as possible. Version 2 of the format (5.3)
-is the first step; the rest is XLOAD's. Read 2026-11-12 in
-vmsrc/apple/cmdjit.pla, plvmjit02.s and plvm02.s.
-
-**Which VM runs.** PLASMA.SYSTEM (plvm02.s:48-62, :1500-1542) checks
-ProDOS's MACHID for 128K and then tries to load another VM: first the
-65802/65816 VM (PLVM16, plvm802.s), then PLVM.128 (plvmjit02.s, with
-CMDJIT, cmdjit.pla), and falls back to the 64K VM if neither file is
-on the disk. So the memory size doesn't say which VM is running;
-XLOAD has to ask the VM itself (below).
-
-**What the 128K VM (PLVM.128 and CMDJIT) does differently:**
-
-- **Bytecode lives in auxiliary memory.** loadmod reads the whole file
-  into main memory as the 64K one does, relocates it there, then
-  copies the bytecode to aux with the ROM's XMOVE (`call($C311, ...)`
-  with $3C/$3E/$42 set, cmdjit.pla:1229-1235) and frees it in main.
-  Data, strings and the def table stay in main memory.
-- **Def entries are 7 bytes** (t_defentry, cmdjit.pla:55-61): `JSR`,
-  the vector, the bytecode's address in aux, a call countdown, and the
-  bytecode's size.
-- **Three page-3 vectors** (plvmjit02.s:382-389): $03D0, direct
-  (bytecode right after the JSR, in main memory: how CMD's own code
-  runs); $03D6, the JIT's entry (counts calls down, then compiles the
-  function); $03DC, indirect from aux, interpreted. The 64K VM has
-  only $03D0 (direct) and $03D6 (indirect, from main memory).
-- **adddef** (cmdjit.pla:1056-1074) gives each entry $03DC, then,
-  when it adds the next one, makes the previous one $03D6, with the
-  countdown `jitcount` and its size, if its size (the next entry's
-  address less its own) is at most `jitsize`, unless the module's
-  header asks for no JIT. Hence the function table's address order.
-  `jitcount` and `jitsize` are in CMDSYS's exported table (both 0
-  until the JIT module, loaded at startup, sets them to 32 and 255,
-  libsrc/apple/jit.pla:52-53), so XLOAD can read them.
-- **The aux heap** (`xheap`, from $0200 below `xheaptop` $A000; the
-  JIT's compiled code goes above) isn't exported. execmod saves and
-  restores it around a program, as it does the main heap.
-- **The indirect aux entry pushes the status register** (IINTRPX,
-  plvmjit02.s:241-257: `PHP`, `SEI`, then `STA ALTRDON`), so a call
-  into aux bytecode holds 5 bytes of the 6502 stack, not 4, and runs
-  with interrupts off and aux memory read.
-- The Apple's zero page (vmsrc/apple/plvmzp.inc) is the same file for
-  both VMs: ESTK at $A0, IFP at $E0.
-
-**What XLOAD needs, to make one image work on both:**
-
-1. **Tell the VMs apart from its own def entries.** The vector alone
-   doesn't: $03D6 is the 64K VM's indirect entry and also the 128K
-   VM's JIT entry. The entries' spacing does: the loader lays out a
-   module's entries consecutively, 5 bytes apart on the 64K VM and on
-   plvm, 7 on the 128K VM. If XLOAD's first file defines two small
-   functions as its first two symbols, ccrel's RLD gives them
-   consecutive entries, and the difference of their addresses is the
-   entry size. Then: 5 and `JSR $03D6`, the 64K VM; 5 and `JSR $FF0C`,
-   plvm; 7 and `JSR $03DC` or `$03D6`, the 128K VM; anything else
-   (the 65816 VM, the Apple ///), refuse, with a message. A listing
-   test can pin that the two entries are consecutive.
-2. **Build the def entries the way the VM's own loader does:**
-   - 64K: 5 bytes, `JSR $03D6` and the bytecode's address in main
-     memory, as loadmod's adddef.
-   - plvm: 5 bytes, `JSR $FF08` and the address.
-   - 128K: 7 bytes, as cmdjit's adddef: $03DC; or $03D6 with
-     `jitcount` and the size if the size is at most `jitsize`; the
-     address in aux. The same rule as CMDJIT's, from the same
-     exported settings, so the JIT treats the payload as it would a
-     REL module.
-3. **On the 128K VM, move the bytecode to aux with XMOVE**, as CMDJIT
-   does, after the fixups (which patch bytecode words too) and before
-   the hand-off, then free its main memory: the heap goes back to the
-   body's bytecode offset (the header's), not its end. The payload's
-   main-memory need then drops by its bytecode, about 25K for cccomp.
-4. **Find free aux memory** without `xheap`. Aux is roomier than main
-   (about $0C00-$A000, 37K, if the text pages are reserved; $0200 up
-   if not), and execmod puts `xheap` back after the run, so XLOAD
-   needn't move it: only avoid what's there. Its own bytecode and
-   FILEIO's are the only things in use, and XLOAD's is the last
-   loaded; the highest address in its own def entries (scanned from
-   the first of item 1's pair until the zero byte that ends the
-   table, cmdjit.pla:1073), plus init's size, is where free aux
-   starts. cccomp's bytecode is about 25K, so it fits with room.
-   To check: what else may sit in aux (the 80-column text page, the
-   `resxtxt` flags, cmdjit.pla:968-1003).
-5. **Run XLOAD's second part on the 128K VM.** It's an image too, so
-   the first part does items 2 and 3 for it, putting its bytecode in
-   aux above where the payload's will go.
-6. **The hand-off on the 128K VM** (5.4's routines) needs its own
-   reading of plvmjit02.s: the extra status byte on the 6502 stack
-   per call into aux code (so the capture's offset is 9, not 8, if
-   init and main run from aux), and the aux-read and interrupt state
-   that init's return into CMDJIT's loadmod expects.
-
-**Reuse.** Items 2-4 mirror CMDJIT's loadmod, with the settings it
-exports (`jitcount`, `jitsize`) and the ROM's XMOVE it uses; XLOAD
-reimplements only adddef's few lines, since CMDSYS exports neither
-adddef nor `xheap`. With option 1 or 9 (section 6), CMD's own loader
-would do all of it.
+How it meets section 3's requirements: R2, R3 (nothing in PLASMA
+changes) and R4, and R1 for programs ccrel writes as images, which is
+all ccish needs. R1 for everyone else is what option 1, offered
+upstream, would add later.
 
 ## 6. The other options
 
@@ -682,7 +283,7 @@ The first version's name for what became XLOAD.
 
 - **3a, a VM module that stays resident while the program runs:** its
   body and def table, perhaps 1.5-2.5K, stay for the whole run, more
-  than the margin. XLOAD avoids this with the tail call (5.4).
+  than the margin. XLOAD avoids this with the tail call (xload.md, 4.5).
 - **3b, a native shim** run by `-NAME` into $2000 (fact 8), moved into
   a "low-RAM hole" below CMD. **There is no such hole** (section 8,
   corrections 1-3): $0200-$02FF, $0400-$07FF and $0800-$0BFF are all
@@ -706,7 +307,7 @@ its own words. The RLD keeps only the 291 $02 defs (1,165 bytes).
 As option 4, with the table in a NAME.fx file that init streams.
 
 - The first version rejected it for disk space (17-19K more: "152K
-  of 136K usable"). XLOAD's format (5.3) is in effect this idea done
+  of 136K usable"). XLOAD's format (xload.md, section 3) is in effect this idea done
   properly: the fixups in a file of their own, compact, applied by a
   loader that then leaves.
 
@@ -759,7 +360,7 @@ The cost: a CMD for each PLASMA release supported.
    (:1458). So copying a function, rewriting its def entry and
    calling it works, the same pattern as CMD's own boot (cmdstub.s,
    CMDMOVE). First inferred from IINTRP and RET; confirmed by reading
-   the CALL and ICAL handlers (5.4).
+   the CALL and ICAL handlers (xload.md, 4.5).
 2. **The heap is the whole budget.** CMD's image ends at $1B45 in this
    tree (3,909 bytes from $0C00), and the heap runs from there to the
    frame stack: the 41,171 free is all there is. The 2.20 disk's
@@ -801,65 +402,9 @@ The cost: a CMD for each PLASMA release supported.
    proposed (section 5).
 7. **Its view that every loader option needs the maintainer** missed
    that ccish's disk is its own (option 9), and that a loader ccish
-   ships can use a format of ccish's own (5.3).
+   ships can use a format of ccish's own (xload.md, section 3).
 
-## 9. Still to learn, and to check
+## 9. Still to learn, and the plan
 
-1. ~~The VM's state at init entry~~: read 2026-11-11 (5.4), for the
-   64K VM; the 128K VM's is still to read (5.8, item 6).
-2. The ProDOS file type for payloads.
-3. Whether FILEIO's init allocates anything on the heap (it would sit
-   between CMD and XLOAD).
-4. How small the first part can be, and the second part's real size.
-5. Which disk is the target: the 41,171 is from the 2.20 disk; this
-   tree is 2.21, whose CMD is 745 bytes smaller.
-6. ~~Whether CMDSYS's functions are in the symbol table~~: they are.
-   CMD adds every entry of its export table, `CMDSYS` itself
-   first, at startup (cmd.pla:1442-1447), so `lookupsym` finds them.
-7. How `lookupsym` reports a missing name (0, presumably), so XLOAD
-   can say which import or dependency is missing.
-8. For the 128K VM (5.8): what else may sit in aux memory, and the
-   hand-off's details (items 4 and 6); whether XMOVE is safe to call
-   from code that's itself running from aux (CMDJIT calls it from
-   main-memory code).
-9. Whether CMDJIT's free memory is enough to load cccomp as a plain
-   REL module: its loader still reads the whole file into main memory
-   before moving the bytecode out. Not needed for the requirement
-   (one image for both), but worth knowing.
-
-To check once XLOAD runs, on MAME and then a real Apple II (none of
-this has been tried):
-
-- The capture routine's results, against 5.4's arithmetic (stack
-  pointer less 8 at its first instruction).
-- That the first part's `main` has no frame and calls the capture
-  routine with an empty evaluation stack (a listing test).
-- That the payload's init returns into loadmod, and that execmod puts
-  back the heap and symbol table: `MEM FREE` after a run should equal
-  the one before.
-- That an error in the payload (init's negative return) is reported as
-  CMD reports one today (`ERR:$xx`).
-- That `heaprelease` to the image's end leaves FILEIO's state sane:
-  every file XLOAD opened is closed first.
-- The load time against today's for ccgen (which loads either way).
-- On a 128K machine with PLVM.128: the same image loads, its bytecode
-  goes to aux, the JIT compiles its hot functions, and `MEM FREE` is
-  unchanged after the run.
-
-## 10. Plan
-
-1. ~~Read plvm02.s, and write down the hand-off routine~~ (5.4).
-2. ~~Give ccrel a flag to write a payload (5.7)~~: `-x`, 2026-11-12,
-   checked by tools/xlcheck.py in tests/special/xload.sh. Format
-   version 2 the same day, for 5.8.
-3. Write XLOAD in ccish C: the first part, and the second part as an
-   image inside it, building def entries for the 64K VM and plvm
-   first, with 5.8's VM test refusing the rest.
-4. Test under plvm with ccish's suite (a plain call in place of the
-   hand-off), then on MAME with tools/a2screen, booting a disk with
-   XLOAD and cccomp's payload.
-5. The 128K VM (5.8, items 2-6): read plvmjit02.s's calls and returns
-   for the hand-off, then test on MAME's 128K IIe with PLVM.128.
-6. Then the other three programs, if the disk savings are worth it.
-7. Offer option 1 upstream separately, for everyone else's large
-   modules, with fact 5's fixes.
+Moved to [xload.md](xload.md), sections 7 and 8, with the rest of
+XLOAD's design.
