@@ -30,7 +30,7 @@
 //
 // With -x (opt_xload), it writes an XLOAD image instead
 // (../doc/xload.md, section 3): the same body, for load address
-// 0; a table of its functions, in address order, by whose numbers
+// 0, its data segment as runs of literal bytes and zeros; a table of its functions, in address order, by whose numbers
 // every reference to a function is written, so that XLOAD can lay out
 // the def entries each VM wants; and compact fixups in address order,
 // for which step 4 reads the streams twice, for the data's and then
@@ -1130,14 +1130,78 @@ static int next_record(const char *want)
   return t;
 }
 
-// Copy the next n bytes of the stream into the module.
+// With -x, the data segment's bytes waiting to be written (step 2):
+// nlit literal bytes in fbuf (unused until step 3), then nzero zeros.
+static int nlit;
+static unsigned nzero;
+
+#define ZRUN_MIN 3          // the fewest zeros worth a zero run: 2 cost
+                            // no more inside a literal run
+
+// With -x, write the literal bytes waiting in fbuf as one run.
+static void put_lit(void)
+{
+  if (nlit > 0) {
+    bputc(&out, nlit);
+    bwrite(&out, fbuf, nlit);
+    nlit = 0;
+  }
+}
+
+// With -x, write the zeros waiting: as a zero run if there are
+// ZRUN_MIN or more, else in the literal run.
+static void put_zeros(void)
+{
+  if (nzero >= ZRUN_MIN) {
+    put_lit();
+    if (nzero < 0x80) {
+      bputc(&out, 0x80 + (int)nzero);
+    } else {
+      bputc(&out, 0x80);
+      bputw(&out, (int)nzero);
+    }
+  } else {
+    for (; nzero > 0; nzero--) {
+      fbuf[nlit++] = 0;
+      if (nlit == 0x7F)
+        put_lit();
+    }
+  }
+  nzero = 0;
+}
+
+// Write data segment byte c (step 2): as is, or with -x, into the
+// runs of literal bytes and zeros.
+static void dput(int c)
+{
+  if (!opt_xload) {
+    bputc(&out, c);
+  } else if (c == 0) {
+    nzero++;
+  } else {
+    if (nzero > 0)
+      put_zeros();
+    fbuf[nlit++] = (unsigned char)c;
+    if (nlit == 0x7F)
+      put_lit();
+  }
+}
+
+// Write data segment word w (step 2).
+static void dputw(int w)
+{
+  dput(w & 0xFF);
+  dput((w >> 8) & 0xFF);
+}
+
+// Copy the next n bytes of the stream into the data segment.
 static void copy_bytes(int n)
 {
   int c;
   while (n-- > 0) {
     if ((c = bgetc(&in)) == EOF)
       bad_obj();
-    bputc(&out, c);
+    dput(c);
   }
 }
 
@@ -1160,15 +1224,14 @@ static void copy_data(int k)
         bad_obj();
       at += n;
       while (n-- > 0)
-        bputc(&out, 0);
+        dput(0);
     } else {
       kind = bgetc(&in);
       target = bgetw(&in);
       add = kind == REL_DSYM ? bgetw(&in) : 0;
       if (at + 2 > data_size)
         bad_obj();
-      bputw(&out, add_reloc(kind, data_base + obj_data[k] + at, target,
-                            add, 0));
+      dputw(add_reloc(kind, data_base + obj_data[k] + at, target, add, 0));
       if (patch_law)
         bad_obj();              // a moved global's address in data
       at += 2;
@@ -1191,9 +1254,9 @@ static void copy_strings(int k)
     n = bgetw(&in);
     if (n > size - at - 2)
       bad_obj();
-    bputc(&out, n > 255 ? 0 : n);
+    dput(n > 255 ? 0 : n);
     copy_bytes(n);
-    bputc(&out, 0);
+    dput(0);
     at += n + 2;
   }
   bclose(&in);
@@ -1623,7 +1686,7 @@ static void write_header(const char *dep, int init_off, int total)
   if (opt_xload) {
     bputc(&out, 'X');                     // magic
     bputc(&out, 'L');
-    bputc(&out, 2);                       // version
+    bputc(&out, 3);                       // version
     bputc(&out, 0);                       // flags
     bputw(&out, subseg + total);          // the body's length
     bputw(&out, subseg);                  // where its bytecode starts
@@ -1744,10 +1807,12 @@ void link_module(int n, const char **bases, const char *path)
   for (k = 0; k < n; k++)
     copy_data(k);
   for (i = zstay + 2 * nmoved; i > 0; i--)
-    bputc(&out, 0);                       // zero-filled; pointer words
+    dput(0);                              // zero-filled; pointer words
   for (k = 0; k < n; k++)
     copy_strings(k);
-  bputc(&out, 0);                         // pad
+  dput(0);                                // pad
+  put_zeros();                            // with -x, the last runs
+  put_lit();
 
   // Step 3.
   for (k = 0; k < n; k++)

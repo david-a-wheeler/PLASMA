@@ -357,6 +357,10 @@ the framing would cost more than it saves. A free bit in the header's
 `sysflags` word marks a file that uses it, so old files load as they
 do now. ccrel would write it (src/link.c).
 
+**ccish's own programs** get this from XLOAD's images (doc/xload.md,
+section 3), whose data segments are stored as runs (2026-11-12). The
+request stands for REL modules in general.
+
 ## 13. CMD: run `main` after init, so startup code can be freed
 
 **What's there.** CMD frees a module's init function after it runs

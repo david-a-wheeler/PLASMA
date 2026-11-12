@@ -8,6 +8,8 @@ exists, this is what tests the format: it reads both files as their
 loaders would, and requires that they describe the same program:
 
 - the same dependencies, and the same imports, by name;
+- a data segment whose runs (of literal bytes and of zeros) fill it
+  exactly;
 - the same body (data, strings, bytecode), byte for byte, apart from
   the words either one relocates, and the bytecode at the same place;
 - the same words relocated, and each to the same thing: the same
@@ -104,17 +106,37 @@ def read_image(b):
     function table, body, and fixups ({body offset: "add", "def", or
     an import's name}), the fixups' bytes, and any errors."""
     errs = []
-    if b[0:2] != b"XL" or b[2] != 2 or b[3] != 0:
-        sys.exit("xlcheck: %s: not a version 2 XLOAD image" % sys.argv[2])
+    if b[0:2] != b"XL" or b[2] != 3 or b[3] != 0:
+        sys.exit("xlcheck: %s: not a version 3 XLOAD image" % sys.argv[2])
     length, code, nfuncs = word(b, 4), word(b, 6), word(b, 8)
     deps, at = names(b, 10)
     imports, at = names(b, at)
     funcs = [word(b, at + 2 * i) for i in range(nfuncs)]
     at += 2 * nfuncs
-    body = b[at:at + length]
+    # The data segment, as runs: $01-$7F literal bytes; $81-$FF that
+    # many less $80 zeros; $80 and a word, that many zeros.
+    body, dstart = bytearray(), at
+    while len(body) < code:
+        c = b[at]
+        at += 1
+        if c == 0:
+            sys.exit("xlcheck: run byte $00")
+        if c < 0x80:
+            body += b[at:at + c]
+            at += c
+        else:
+            if c == 0x80:
+                c = word(b, at) + 0x80
+                at += 2
+            body += bytes(c - 0x80)
+    dfile = at - dstart
+    if len(body) != code:
+        errs.append("the data segment's runs overrun it, to %d of %d"
+                    % (len(body), code))
+    body += b[at:at + length - code]
+    at += length - code
     if len(body) != length:
         sys.exit("xlcheck: the body is cut short")
-    at += length
     fstart = at
     fixups, cur = {}, 0
     while True:
@@ -141,7 +163,8 @@ def read_image(b):
         cur += 2
     if at != len(b):
         errs.append("%d bytes after the fixups" % (len(b) - at))
-    return deps, imports, code, funcs, body, fixups, at - fstart, errs
+    return (deps, imports, code, funcs, bytes(body), fixups, at - fstart,
+            dfile, errs)
 
 
 def main():
@@ -150,7 +173,8 @@ def main():
     rel = open(sys.argv[1], "rb").read()
     img = open(sys.argv[2], "rb").read()
     rdeps, rimps, rbody, data, subseg, init, rdefs, relocs = read_rel(rel)
-    deps, imps, code, funcs, body, fixups, nfix, errs = read_image(img)
+    deps, imps, code, funcs, body, fixups, nfix, dfile, errs = \
+        read_image(img)
     if deps != rdeps:
         errs.append("dependencies %s, the module's %s" % (deps, rdeps))
     if sorted(imps) != sorted(rimps) or len(imps) != len(rimps):
@@ -199,9 +223,10 @@ def main():
         for e in errs[:20]:
             print("xlcheck: %s: %s" % (sys.argv[2], e))
         sys.exit(1)
-    print("%s: body %d, %d functions, fixups %d bytes for %d words, file"
-          " %d; module %d" % (sys.argv[2], len(body), len(funcs), nfix,
-                              len(fixups), len(img), len(rel)))
+    print("%s: body %d (data segment %d, in %d bytes of runs), %d"
+          " functions, fixups %d bytes for %d words, file %d; module %d"
+          % (sys.argv[2], len(body), code, dfile, len(funcs), nfix,
+             len(fixups), len(img), len(rel)))
 
 
 if __name__ == "__main__":
