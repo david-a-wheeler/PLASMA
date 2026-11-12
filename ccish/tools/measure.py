@@ -72,6 +72,7 @@ IO_BUFFER = 1280        # ProDOS's 1K buffer for each open file but the
 APPLE_LINK = ["-x"]
 XLOAD = os.path.join(CCOMP, "tests", "out", "xload", "xload")
 XLOAD2 = XLOAD + "2"            # XLOAD's second part, an image
+IMAGE_HEADER = 12               # an image's fixed header (doc/xload.md, 3.2)
 FRAME_SPARE = 512               # what XLOAD leaves for frames, as
                                 # HEAP_SPARE does (xload.c, xload2.c)
 # The files each program holds open at once (from its bopen() calls),
@@ -544,16 +545,17 @@ def image_sizes(path):
         b = f.read()
     word = lambda i: b[i] | b[i + 1] << 8
     d, z, c, n = word(4), word(6), word(8), word(10)
-    at = 12
+    at = IMAGE_HEADER
     for _ in range(2):              # the dependencies, then the imports
         while b[at]:
             while b[at] & 0x80:
                 at += 1
             at += 1
         at += 1
+    names = at - IMAGE_HEADER
     at += 2 * n + d + c             # the function table, data, bytecode
     return {"d": d, "z": z, "c": c, "n": n, "fixups": len(b) - at,
-            "file": len(b), "mem": 5 * n + d + z + c}
+            "names": names, "file": len(b), "mem": 5 * n + d + z + c}
 
 
 def xload_sizes():
@@ -677,21 +679,27 @@ def image_summary(rows, xl):
     64K Apple II, and its margin."""
     yes = lambda need: "yes" if need <= APPLE_FREE else "NO"
     build = "full" if FULL else "small"
-    print("\nSummary: the %s build's programs, as XLOAD images:" % build)
-    print("%-7s %5s %6s %6s %5s %6s %6s %6s" % (
-        "Program", "Data", "Zero", "Code", "Funcs", "Fixups", "Image",
-        "REL"))
+    print("\nSummary: the %s build's programs, as XLOAD images, their"
+          " sizes:" % build)
+    print("%-7s %6s %6s  %5s %5s %5s %6s %6s %6s" % (
+        "Program", "(REL)", "(Zero)", "Names", "Table", "Data", "Code",
+        "Fixups", "File"))
     for prog, r in rows:
         if r is None:
             print("%-7s not measured (a file or the link failed)" % prog)
             continue
-        print("%-7s %5d %6d %6d %5d %6d %6d %6d" % (
-            prog, r["d"], r["z"], r["c"], r["n"], r["fixups"], r["file"],
-            r["module"]))
-    print("Image: the file, its header, names and function table, then"
-          " Data, Code and\nFixups; Zero, the zero region, isn't in it."
-          " Funcs counts init. REL: the\nsame program's REL module, for"
-          " comparison.")
+        assert r["file"] == (IMAGE_HEADER + r["names"] + 2 * r["n"]
+                             + r["d"] + r["c"] + r["fixups"])
+        print("%-7s %6d %6d  %5d %5d %5d %6d %6d %6d" % (
+            prog, r["module"], r["z"], r["names"], 2 * r["n"], r["d"],
+            r["c"], r["fixups"], r["file"]))
+    print("The image file's parts, in its order: a %d-byte header (the same"
+          " in every\nimage), Names (the dependencies' and imports'), Table"
+          " (the function\ntable, 2 bytes a function, init too), Data,"
+          " Code and Fixups; File, the\nwhole file's bytes. Not in the"
+          " file: (REL), the same program as a REL\nmodule, for comparison;"
+          " (Zero), the zero region, between Data and Code\nin memory,"
+          " which init clears." % IMAGE_HEADER)
     if xl:
         print("XLOAD (a REL module): file %d bytes; in memory, its first"
               " part %d,\nits second part %d, placed (none of it stays"

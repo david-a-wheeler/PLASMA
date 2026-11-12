@@ -222,15 +222,18 @@ Peaks: each limit, the most ccish's own source uses, and where:
   MAX_TYPES 53 link.c
   MAX_VARS 77 link.c
 
-Summary: the small build's programs, as XLOAD images:
-Program  Data   Zero   Code Funcs Fixups  Image    REL
-ccpp     1440  16916  14835   169   1821  18525  27925
-cccomp    559   6590  26901   297   2857  31002  44216
-ccgen    1915   7492  23204   207   2149  27773  37132
-ccrel     574  12228  10584   100   1192  12641  18279
-Image: the file, its header, names and function table, then Data, Code and
-Fixups; Zero, the zero region, isn't in it. Funcs counts init. REL: the
-same program's REL module, for comparison.
+Summary: the small build's programs, as XLOAD images, their sizes:
+Program  (REL) (Zero)  Names Table  Data   Code Fixups   File
+ccpp     27925  16916     79   338  1440  14835   1821  18525
+cccomp   44216   6590     79   594   559  26901   2857  31002
+ccgen    37132   7492     79   414  1915  23204   2149  27773
+ccrel    18279  12228     79   200   574  10584   1192  12641
+The image file's parts, in its order: a 12-byte header (the same in every
+image), Names (the dependencies' and imports'), Table (the function
+table, 2 bytes a function, init too), Data, Code and Fixups; File, the
+whole file's bytes. Not in the file: (REL), the same program as a REL
+module, for comparison; (Zero), the zero region, between Data and Code
+in memory, which init clears.
 XLOAD (a REL module): file 6010 bytes; in memory, its first part 5128,
 its second part 3136, placed (none of it stays once the program runs).
 
