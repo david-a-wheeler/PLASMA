@@ -223,11 +223,11 @@ Peaks: each limit, the most ccish's own source uses, and where:
   MAX_VARS 77 link.c
 
 Summary: the small build's programs, as XLOAD images, their sizes:
-Program  (REL)  Names Table  Data (Zero)   Code Fixups   File
-ccpp     27925     79   338  1440  16916  14835   1821  18525
-cccomp   44216     79   594   559   6590  26901   2857  31002
-ccgen    37132     79   414  1915   7492  23204   2149  27773
-ccrel    18279     79   200   574  12228  10584   1192  12641
+Program Names Table  Data (Zero)   Code Fixups  (REL)   File
+ccpp       79   338  1440  16916  14835   1821  27925  18525
+cccomp     79   594   559   6590  26901   2857  44216  31002
+ccgen      79   414  1915   7492  23204   2149  37132  27773
+ccrel      79   200   574  12228  10584   1192  18279  12641
 The image file's parts, in its order: a 12-byte header (the same in every
 image), Names (the dependencies' and imports'), Table (the function
 table, 2 bytes a function, init too), Data, Code and Fixups; File, the

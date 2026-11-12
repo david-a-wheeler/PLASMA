@@ -681,18 +681,18 @@ def image_summary(rows, xl):
     build = "full" if FULL else "small"
     print("\nSummary: the %s build's programs, as XLOAD images, their"
           " sizes:" % build)
-    print("%-7s %6s  %5s %5s %5s %6s %6s %6s %6s" % (
-        "Program", "(REL)", "Names", "Table", "Data", "(Zero)", "Code",
-        "Fixups", "File"))
+    print("%-7s %5s %5s %5s %6s %6s %6s %6s %6s" % (
+        "Program", "Names", "Table", "Data", "(Zero)", "Code", "Fixups",
+        "(REL)", "File"))
     for prog, r in rows:
         if r is None:
             print("%-7s not measured (a file or the link failed)" % prog)
             continue
         assert r["file"] == (IMAGE_HEADER + r["names"] + 2 * r["n"]
                              + r["d"] + r["c"] + r["fixups"])
-        print("%-7s %6d  %5d %5d %5d %6d %6d %6d %6d" % (
-            prog, r["module"], r["names"], 2 * r["n"], r["d"], r["z"],
-            r["c"], r["fixups"], r["file"]))
+        print("%-7s %5d %5d %5d %6d %6d %6d %6d %6d" % (
+            prog, r["names"], 2 * r["n"], r["d"], r["z"], r["c"],
+            r["fixups"], r["module"], r["file"]))
     print("The image file's parts, in its order: a %d-byte header (the same"
           " in every\nimage), Names (the dependencies' and imports'), Table"
           " (the function\ntable, 2 bytes a function, init too), Data,"
