@@ -739,10 +739,10 @@ To check once XLOAD runs, on MAME and then a real Apple II:
    outside XLOAD: the passes take their options in either case and a
    source named NAME.C, since CMD's command line is uppercase; and
    ccrel creates its REL modules as ProDOS type $FE, aux type $1000
-   (the library's `__filetype()`), or CMD won't run them. Still to do
-   on the Apple: `exit()` (a pass's error ends in the Monitor, through
-   the plvm-only stand-in), a ProDOS type of its own for images, and
-   timing. Was:
+   (the library's `__filetype()`), or CMD won't run them. `exit()`
+   now unwinds on the Apple (lib/exit.c, 2026-11-12): a pass's error
+   gives `ERR:$01` and CMD's prompt, checked on MAME's 64K IIe. Still
+   to do on the Apple: a ProDOS type of its own for images. Was:
    the small test program first, then cccomp.
 10. **The 128K VM** (4.3-4.5): read plvmjit02.s's calls and returns for
     the hand-off, then test on MAME's 128K IIe with PLVM.128.

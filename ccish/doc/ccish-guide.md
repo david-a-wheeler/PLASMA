@@ -1965,7 +1965,7 @@ defines the two builds' feature macros.
 | `ccish.msg` | The text of every message, by number (section 10.7) |
 | `lib/`, `lib/include/` | The C library's sources (one function each) and headers (section 11.2) |
 | `tests/` | The test suite (section 2.5) |
-| `tools/` | Measuring and running: `measure.py` (`make measure`), `profile.py` and `plvm-profile.patch` (`make profile`), `listings.py`, `opstats.py`, `opcount.py`, `fsize.py` and `loops.py`; `ccrun` and `ccstat.pla`, which run a module under plvm and give `main`'s exit status; `plvmexit.c`, the plvm-only `exit` the passes link (section 11.2); and `a2run`, `a2screen` and `a2time`, which run PLASMA on an emulated 64K Apple IIe in MAME |
+| `tools/` | Measuring and running: `measure.py` (`make measure`), `profile.py` and `plvm-profile.patch` (`make profile`), `listings.py`, `opstats.py`, `opcount.py`, `fsize.py` and `loops.py`; `ccrun` and `ccstat.pla`, which run a module under plvm and give `main`'s exit status; and `a2run`, `a2screen`, `a2time` and `a2cmd`, which run PLASMA on an emulated Apple IIe in MAME |
 | `samples/` | Sample programs for the Apple II, and `make disk`, a ProDOS disk of them |
 
 ### 10.7 Messages in the sources
@@ -2138,15 +2138,15 @@ $ ./ccish -o copy copy.c $L/start $L/fopen $L/path $L/fread $L/fwrite $L/strlen
 * **`memcpy` and `memset`** call CMDSYS's `__memcpy` and `__memset`.
   `memmove` copies a byte at a time, since plvm's `__memcpy` calls the
   host's `memcpy`, which needn't handle an overlap.
-* **`exit` isn't implemented.** It has to unwind the VM back to CMD
-  (the 6502 stack and the VM's frame and evaluation stacks) and close
-  the open files, which takes PLASMA's except/throw or a 6502 routine
-  of ccish's own (doc/bootstrap-test.md, R8). So a call to it is an
-  undefined reference when the module is linked. ccish's own passes
-  call it on their first error, and link `tools/plvmexit.c`'s
-  stand-in, for plvm only: it prints `tools/ccstat.pla`'s status
-  marker and runs a 6502 BRK, which makes plvm exit. Don't use it on
-  an Apple II, where a BRK drops into the monitor.
+* **`exit` (lib/exit.c)** works from anywhere on an Apple II, on the
+  64K VM or the 128K one: it closes the open files and unwinds the VM
+  (the 6502 stack and the VM's frame and evaluation stacks) to the
+  program's init, which returns the status to CMD as main's would
+  (`ERR:$xx` for a nonzero one). It takes 12 bytes more in init, which
+  calls `__exitsave` before main to save what the unwind needs. Under
+  plvm nothing in a module can unwind (doc/bootstrap-test.md, R8), so
+  there it prints `tools/ccstat.pla`'s status marker and runs a 6502
+  BRK, which makes plvm exit.
 
 ## 12. Writing small and fast code
 

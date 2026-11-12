@@ -111,24 +111,15 @@ $(CCSTAT): tools/ccstat.pla ../src/inc/cmdsys.plh $(XPLASM)
 	$(ACME) --setpc 4094 -o $@ $@.a
 
 # The C library (lib/, doc/bootstrap-test.md R4): one object per
-# source, $(OUT)/lib/NAME.obj and .syms, compiled by the host passes;
-# and tools/plvmexit.c's exit, for running ccish's own passes under
-# plvm (not part of the library).
+# source, $(OUT)/lib/NAME.obj and .syms, compiled by the host passes.
 LIBSRC := $(wildcard lib/*.c)
-LIBOBJS:= $(patsubst lib/%.c,$(OUT)/lib/%.obj,$(LIBSRC)) \
-          $(OUT)/lib/plvmexit.obj
-# The library and plvmexit's sources, for the bootstrap and measure.py.
-CCLIB_SRC = $(LIBSRC) tools/plvmexit.c
+LIBOBJS:= $(patsubst lib/%.c,$(OUT)/lib/%.obj,$(LIBSRC))
+# The library's sources, for the bootstrap and measure.py.
+CCLIB_SRC = $(LIBSRC)
 $(OUT)/lib/%.obj: lib/%.c $(wildcard lib/include/*.h) ccpp cccomp ccgen
 	@mkdir -p $(dir $@)
 	@./ccpp -o $(OUT)/lib/$* $< && ./cccomp -o $(OUT)/lib/$* $(OUT)/lib/$* \
 	 && ./ccgen $(OUT)/lib/$*
-$(OUT)/lib/plvmexit.obj: tools/plvmexit.c $(wildcard lib/include/*.h) \
-                         ccpp cccomp ccgen
-	@mkdir -p $(dir $@)
-	@./ccpp -o $(OUT)/lib/plvmexit $< \
-	 && ./cccomp -o $(OUT)/lib/plvmexit $(OUT)/lib/plvmexit \
-	 && ./ccgen $(OUT)/lib/plvmexit
 
 # XLOAD (doc/xload.md), the loader for ccish's images (ccish -x): its
 # second part, an image, held in its first part as data
@@ -353,7 +344,7 @@ limits: doc/limits.md
 # doc/measure.txt: tools/measure.py's report, compiling ccish's own
 # source with ccish (about 4 seconds; needs python3).
 doc/measure.txt: ccpp cccomp ccgen ccrel ccish.msg tools/measure.py \
-                 tools/cclink tools/plvmexit.c $(LIMIT_SRC) $(XLOAD) \
+                 tools/cclink $(LIMIT_SRC) $(XLOAD) \
                  $(wildcard lib/include/*.h)
 	@echo "tools/measure.py > $@"
 	@python3 tools/measure.py > $@.tmp && mv $@.tmp $@ \

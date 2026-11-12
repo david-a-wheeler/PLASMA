@@ -1,9 +1,9 @@
 #!/bin/sh
 # The library checks gcc can't be the oracle for (the xrun tests cover
 # string.h and stdio): main(argc, argv) through lib/start.c, with more
-# words than it keeps; tools/plvmexit.c's exit from inside a call; and
-# the link errors for main(argc, argv) without the start object and
-# for exit without the stand-in.
+# words than it keeps; lib/exit.c's exit from inside a call (under
+# plvm, its marker and BRK: the unwind is for an Apple II); and the link errors for main(argc, argv)
+# without the start object and for exit without lib/exit.
 . "$(dirname "$0")/../lib.sh"
 D=$OUT/libspecial
 L=$OUT/lib
@@ -60,7 +60,7 @@ same "$out" "24 args 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
 src_obj quit '#include <stdlib.h>
 void deep(int n) { if (n) deep(n - 1); else exit(3); }
 int main(void) { __puts(pstr("before")); __putln(); deep(5); return 9; }' || bad=1
-./ccrel -o "$D/quit" "$D/quit" "$L/plvmexit" || bad=1
+./ccrel -o "$D/quit" "$D/quit" "$L/exit" || bad=1
 out=$(run_args quit)
 st=$?
 same "$st" 3 "exit status"
@@ -76,7 +76,7 @@ fi
 grep -qF "undefined reference to '__start'" "$D/nostart.err" \
     || { echo "FAIL lib: wrong message without lib/start:"; cat "$D/nostart.err"; bad=1; }
 if ./ccrel -o "$D/noexit" "$D/quit" 2>"$D/noexit.err"; then
-    echo "FAIL lib: exit linked without tools/plvmexit"; bad=1
+    echo "FAIL lib: exit linked without lib/exit"; bad=1
 fi
 grep -qF "undefined reference to 'exit'" "$D/noexit.err" \
     || { echo "FAIL lib: wrong message without an exit:"; cat "$D/noexit.err"; bad=1; }

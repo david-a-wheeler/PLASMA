@@ -366,15 +366,12 @@ in the zero region; the passes taking options in either case (CMD
 uppercases); make apple's disks. On MAME's 64K IIe, the four passes,
 as images through XLOAD, compiled ccish's own link.c to an object
 byte-identical to the host's (ccpp 34 minutes, cccomp 8.3, ccgen 8.9,
-at 1 MHz).
+at 1 MHz). exit() unwinds on the Apple (lib/exit.c; under plvm it
+still stops plvm with ccstat's marker).
 
 Open, roughly in the order they matter:
 - **Running margin**: ccpp and cccomp have under 1K to spare each
   (doc/measure.txt). Ways to cut cccomp: approach.md issue 24.
-- **`exit()` on the Apple**: a pass that hits an error drops into the
-  Monitor, since exit() there is the plvm-only stand-in. Proposed, not
-  agreed: capture the VM's state when init starts, as XLOAD does, and
-  have exit(n) restore it so init returns -n.
 - **XLOAD's own room**: its second part fits in cccomp's zero region
   with only about 370 bytes to spare (doc/xload.md, section 6).
 - **ccpp's speed**: 34 minutes for link.c at 1 MHz, four times

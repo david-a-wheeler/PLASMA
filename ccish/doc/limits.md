@@ -62,10 +62,10 @@ blank for a limit that isn't measured.
 
 | Limit | Value | Used | Description | Defined in |
 |---|---|---|---|---|
-| `MAX_GSYMS` | 307 | 261 (linking cccomp) | names shared between objects: the first prime about 10% above what linking cccomp, with the library, needs | [src/link.c](../src/link.c) |
-| `MAX_GNAMES` | 3000 | 2540 (linking cccomp) | bytes of those names, with their NULs: about 10% above what linking cccomp needs | [src/link.c](../src/link.c) |
+| `MAX_GSYMS` | 307 | 262 (linking cccomp) | names shared between objects: the first prime about 10% above what linking cccomp, with the library, needs | [src/link.c](../src/link.c) |
+| `MAX_GNAMES` | 3000 | 2551 (linking cccomp) | bytes of those names, with their NULs: about 10% above what linking cccomp needs | [src/link.c](../src/link.c) |
 | `MAX_MOVED` | 32 |  | large globals moved to the heap in one module (OBJECT.md, "Zero-filled globals") | [src/link.c](../src/link.c) |
-| `MAX_DEFS` | 320 | 297 (linking cccomp) | functions in an XLOAD image's table (-x), helpers and init included: about 10% above what cccomp needs | [src/link.c](../src/link.c) |
+| `MAX_DEFS` | 320 | 298 (linking cccomp) | functions in an XLOAD image's table (-x), helpers and init included: about 10% above what cccomp needs | [src/link.c](../src/link.c) |
 | `MAX_MODS` | 8 |  | modules one link imports from | [src/link.c](../src/link.c) |
 | `MAX_OBJS` | 32 |  | objects in one link (ccish's own is MAX_LINK, main.c) | [src/link.h](../src/link.h) |
 

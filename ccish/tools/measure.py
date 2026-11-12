@@ -8,8 +8,8 @@ tools/out/src/ (for the full build, with the one workaround below),
 then compiled with ccpp (whose default
 include directory is the library's, lib/include), cccomp and ccgen, as
 the small build (-DCCISH_SMALL, approach.md decision 21; or the full
-build, with -full). The C library (lib/*.c) and tools/plvmexit.c's
-exit are compiled too, unchanged (the programs' sources and the
+build, with -full). The C library (lib/*.c) is
+compiled too, unchanged (the programs' sources and the
 library's are the Makefile's, from make print-sources). Then each of
 the Apple II programs
 (ccpp, cccomp, ccgen, ccrel) is linked by tools/cclink, which adds

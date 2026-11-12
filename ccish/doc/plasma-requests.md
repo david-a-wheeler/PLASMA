@@ -21,7 +21,7 @@ below would remove one:
 | 3. Unsigned comparison ops | Mainly speed, not size: a CMDSYS call (3 bytes, about 123 cycles) for every unsigned and pointer `<`, `>`, `<=`, `>=`, where an op would be 1 byte and about 44 cycles; counted loops limited to `int` |
 | 4. Reject a bad import | Nothing to drop, but import mistakes found at load, not at run time |
 | 5. Stop on an eval stack error | Nothing to drop, but a compiler bug can't pass a test |
-| 6. A way to unwind | tools/plvmexit.c, the BRK stand-in for `exit()`; the library could then define `exit` |
+| 6. A way to unwind | lib/exit.c's plvm path, its marker and BRK (on the 6502 VMs it unwinds already) |
 | 7. FILEIO fidelity | The library's ignoring of `create` and `destroy` results (lib/fopen.c) |
 | 11. A stderr route | Error messages mixed into stdout under plvm |
 | 12. Zero runs in the data segment | About 12.4K of zeros in ccish's four module files (4.3K in cccomp's) |

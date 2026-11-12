@@ -337,6 +337,15 @@ Done without changing PLASMA (approach.md issue 22 has the options):
    which is why it isn't the library's. **Deferred** (2026-11-08,
    step 14): plvmexit.c stays, since it's enough to tell failure from
    success under plvm, and a real `exit` waits for the Apple II.
+   **Done** (2026-11-12): lib/exit.c replaces tools/plvmexit.c. On an
+   Apple II it closes the files and unwinds, with the 6502 routines
+   step 14 describes, saving just before main (ccrel's init calls
+   `__exitsave` when exit is linked), and init returns the status;
+   under plvm it does what plvmexit.c did. Checked on MAME's 64K IIe:
+   a pass's error prints its message, then `ERR:$01` and CMD's prompt,
+   and the next command runs. It costs each pass 207 bytes (exit.c's
+   94 of code and 123 of data, against plvmexit.c's 37, and 12 in
+   init).
 
 ### R9. No six-argument `printf` (done)
 
@@ -655,7 +664,8 @@ file, so the bootstrap should be quick.
 
 **Before the Apple II.**
 14. `exit()` that unwinds (R8 part 3), in the library, replacing
-    tools/plvmexit.c; and a stderr route. A successful stage never
+    tools/plvmexit.c (**done** 2026-11-12: lib/exit.c, R8); and a
+    stderr route. A successful stage never
     calls `exit`, so the bootstrap under plvm doesn't wait for it, but
     the passes can't run on an Apple II without it. **Deferred**
     (decided in discussion, 2026-11-08): under plvm we only need to
