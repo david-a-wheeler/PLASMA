@@ -334,7 +334,7 @@ files of the sessions so far, before a move to a new computer.)
   tools/a2screen (boot, print the screen), tools/a2time (time a
   program), tools/a2cmd (boot samples/boot.po, a PLASMA disk that
   stops at its prompt, with a second disk, type commands, print the
-  screen; A2CMD_DISK3 adds a third drive). tools/a2disk makes the
+  screen; A2CMD_DISK3 adds a third drive). make apple (tools/a2disk) makes the
   disks that run ccish there: boot.po (with the headers), ccish.po
   (XLOAD, the four passes as images, the messages), cclib.po (the
   library, and room for a program's files). Disks are made with AppleCommander

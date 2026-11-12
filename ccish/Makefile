@@ -145,6 +145,11 @@ $(XLOAD): xload/xload.c xload/xlcore.c $(XLOAD_DIR)/xl2img.h ccish
 	@./ccish -I $(XLOAD_DIR) -o $@ xload/xload.c
 xload: $(XLOAD)
 
+# apple: the disks that run ccish on a 64K Apple II through XLOAD, in
+# tests/out/apple (tools/a2disk says what each holds).
+apple: $(XLOAD) doc/measure.txt $(LIBOBJS) ccrel-small
+	@tools/a2disk
+
 # The passes a test may run; a stamp depends on these, so a rebuilt pass
 # re-runs the tests.
 PASSES := ccish ccpp cccomp ccgen ccrel \
@@ -410,5 +415,5 @@ clean:
 	rm -rf $(OUT) tools/out bootstrap
 	rm -f doc/measure.txt doc/limits.md
 
-.PHONY: all small test testbuild xref measure listings print-sources bootstrap xload \
+.PHONY: all small test testbuild xref measure listings print-sources bootstrap xload apple \
         full-test limits demo-disk demo-run profile clean
