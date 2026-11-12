@@ -29,11 +29,12 @@
 // one object's map is in memory.
 //
 // With -x (opt_xload), it writes an XLOAD image instead
-// (../doc/streaming-options.md, 5.3): the same body for load address
-// 0, after a def table of its own, in address order, at whose entries
-// every reference to a function points; and compact fixups in address
-// order, for which step 4 reads the streams twice, for the data's and
-// then the code's.
+// (../doc/streaming-options.md, 5.3): the same body, for load address
+// 0; a table of its functions, in address order, by whose numbers
+// every reference to a function is written, so that XLOAD can lay out
+// the def entries each VM wants; and compact fixups in address order,
+// for which step 4 reads the streams twice, for the data's and then
+// the code's.
 //
 // A global defined with no data bytes (SYM_BSS: zero-filled, at least
 // BSS_MIN bytes) is placed in step 1 (approach.md, "Large zero-filled
@@ -65,9 +66,9 @@
                             // function waits for at once
 #define MAX_MOVED   32      // limit link: large globals moved to the heap in
                             // one module (OBJECT.md, "Zero-filled globals")
-#define MAX_DEFS    320     // limit link: functions in an XLOAD image (-x),
-                            // helpers and init included: about 10% above
-                            // what cccomp needs
+#define MAX_DEFS    320     // limit link: functions in an XLOAD image's
+                            // table (-x), helpers and init included: about
+                            // 10% above what cccomp needs
 
 // A symbol summary entry of the object being read: a function's, or
 // a global variable's (which has a size and no parameter count).
@@ -204,8 +205,8 @@ static int data_base, strs_base, subseg;
 int opt_xload;              // (link.h)
 
 // With -x: each function's code-segment offset, in address order, as
-// the image's def table holds them; and the fixups' cursor, the image
-// offset of the last word they patched.
+// the image's function table holds them; and the fixups' cursor, the
+// body offset just past the last word they patched.
 static unsigned def_off[MAX_DEFS];
 static int ndefs;
 static unsigned fx_at;
@@ -979,7 +980,7 @@ static void keep_reloc(int kind, int at, int target)
 // ---------- Steps 2-4: the module ----------
 
 // The word that refers to the function at code-segment offset off: its
-// address, or with -x, the address of its def entry, found in
+// address, or with -x, its number in the function table, found in
 // def_off[] by a binary search.
 static int func_word(unsigned off)
 {
@@ -989,7 +990,7 @@ static int func_word(unsigned off)
   while (lo <= hi) {
     mid = (lo + hi) >> 1;
     if (def_off[mid] == off)
-      return 5 * mid;
+      return mid;
     if (def_off[mid] < off)
       lo = mid + 1;
     else
@@ -1306,23 +1307,33 @@ static void copy_helpers(void)
 
 // ---------- Step 4: the RLD, read again from the objects ----------
 
-// With -x, write the fixup of the word at image offset at: to import
-// imp, or (imp -1) the load address added. The fixups must come in
-// address order.
-static void xl_fixup(int imp, int at)
+// The kinds of fixup in an XLOAD image, besides an import's number.
+#define XL_ADD (-1)             // the load address added
+#define XL_DEF (-2)             // a function's number, which becomes its
+                                // def entry's address
+
+// With -x, write the fixup of the word at body offset at, of kind fx
+// (XL_ADD, XL_DEF, or an import's number). The fixups must come in
+// address order, and each is written as the gap from the word before:
+// a byte of kind and gap (k + 0 to most), or the kind's escape (k +
+// most + 1) and the gap as a word.
+static void xl_fixup(int fx, int at)
 {
-  unsigned gap = (unsigned)at - fx_at;
-  if ((unsigned)at <= fx_at)
+  unsigned gap = (unsigned)at - fx_at, most = 0x3E;
+  int k = fx == XL_DEF ? 0x40 : 0;
+  if ((unsigned)at < fx_at)
     fatal0(275 /* "relocations out of order for an XLOAD image" */);
-  if (imp >= 0)
-    bputc(&out, 0x80 + imp);
-  if (gap <= (imp >= 0 ? 0xFFu : 0x7Fu)) {
-    bputc(&out, (int)gap);
+  if (fx >= 0) {
+    bputc(&out, 0x80 + fx);         // and then its gap
+    most = 0xFE;
+  }
+  if (gap <= most) {
+    bputc(&out, k + (int)gap);
   } else {
-    bputc(&out, 0);
+    bputc(&out, k + (int)most + 1);
     bputw(&out, (int)gap);
   }
-  fx_at = (unsigned)at;
+  fx_at = (unsigned)at + 2;
 }
 
 // Write one 4-byte RLD entry: its type, a word, and a byte.
@@ -1369,7 +1380,8 @@ static void reloc_entry(int kind, int target, int at)
     v = -2 - g_off[gsym_find(h_cmdsys[target - NHELPERS])];   // CMDSYS
   }
   if (opt_xload)
-    xl_fixup(v < -1 ? -2 - v : -1, at);
+    xl_fixup(v < -1 ? -2 - v
+             : kind == REL_FUNC || kind == REL_HELPER ? XL_DEF : XL_ADD, at);
   else if (v < -1)
     rld_entry(0x91, at - MODULE_BASE, -2 - v);
   else
@@ -1530,7 +1542,7 @@ static void init_entries(int init_off)
     g = ir_g[i];
     imp = g >= 0 && (g_flags[g] & G_IMPORT) ? g_off[g] : -1;
     if (opt_xload)
-      xl_fixup(imp, at);
+      xl_fixup(imp >= 0 ? imp : g >= 0 ? XL_DEF : XL_ADD, at);
     else if (imp >= 0)
       rld_entry(0x91, at - MODULE_BASE, imp);
     else
@@ -1604,16 +1616,17 @@ static void list_summary(const char *dep)
 // total bytes, init's from init_off, and its dependencies (CMDSYS, as
 // dep, if anything is imported, then each module a used import comes
 // from); with -x, the image's header, dependencies and imports, and its
-// def table.
+// function table.
 static void write_header(const char *dep, int init_off, int total)
 {
   int i;
   if (opt_xload) {
     bputc(&out, 'X');                     // magic
     bputc(&out, 'L');
-    bputc(&out, 1);                       // version
+    bputc(&out, 2);                       // version
     bputc(&out, 0);                       // flags
-    bputw(&out, subseg + total);          // the image's length
+    bputw(&out, subseg + total);          // the body's length
+    bputw(&out, subseg);                  // where its bytecode starts
     bputw(&out, ndefs);
   } else {
     bputw(&out, subseg - MODULE_BASE + total);
@@ -1631,26 +1644,21 @@ static void write_header(const char *dep, int init_off, int total)
   bputc(&out, 0);                         // end of dependencies
   if (opt_xload) {
     write_imports();
-    for (i = 0; i < ndefs; i++) {
-      bputc(&out, 0x20);                  // JSR $03D6
-      bputw(&out, 0x03D6);
+    for (i = 0; i < ndefs; i++)           // the function table
       bputw(&out, subseg + (int)def_off[i]);
-    }
   }
 }
 
 // Step 4 for the n objects, init's code at init_off. The RLD: function
 // entries first (init excluded), then the relocations, both read again
 // from the objects; then init's call to main; then the ESD. Or with
-// -x, the fixups, in address order: the def table's, every object's
-// data's, every object's code's, then init's.
+// -x, the fixups, in address order: every object's data's, every
+// object's code's, then init's.
 static void write_relocs(int n, int init_off)
 {
   int i, k;
   if (opt_xload) {
     fx_at = 0;
-    for (i = 0; i < ndefs; i++)
-      xl_fixup(-1, 5 * i + 3);
     for (k = 0; k < n; k++)
       reloc_entries(k, 1, 0);
     for (k = 0; k < n; k++)
@@ -1721,7 +1729,7 @@ void link_module(int n, const char **bases, const char *path)
   // The data segment holds the globals, then the string pool. One pad
   // byte between it and the bytecode keeps data from ever sharing an
   // address with the first function.
-  data_base = opt_xload ? 5 * ndefs : MODULE_BASE + hdr + deplen;
+  data_base = opt_xload ? 0 : MODULE_BASE + hdr + deplen;
   strs_base = data_base + obj_data[n] + zstay + 2 * nmoved;
   subseg = strs_base + obj_strs[n] + 1;
   total = init_off + init_size();

@@ -9,14 +9,15 @@ loaders would, and requires that they describe the same program:
 
 - the same dependencies, and the same imports, by name;
 - the same body (data, strings, bytecode), byte for byte, apart from
-  the words either one relocates;
+  the words either one relocates, and the bytecode at the same place;
 - the same words relocated, and each to the same thing: the same
   data or string address; the same function (the REL loader sends a
   word that points into the bytecode to the function's def entry,
-  and the image points it at its own def entry for that function);
-  or the same import, with the same addend;
-- a def table with an entry for each function the REL module's RLD
-  defines, and init, in address order, init last, each `JSR $03D6`;
+  and the image's word is a "def" fixup holding the function's
+  number in its function table); or the same import, with the same
+  addend;
+- a function table of each function the REL module's RLD defines,
+  and init, in address order, init last;
 - fixups in address order, ended by $FF, with nothing after.
 
 It prints the image's sizes on success, and each difference (then
@@ -99,24 +100,20 @@ def read_rel(b):
 
 
 def read_image(b):
-    """Read an image: its dependencies, imports, def table (each
-    entry's address word), body, and fixups ({image offset: None for
-    the load address, or an import's name})."""
+    """Read an image: its dependencies, imports, bytecode offset,
+    function table, body, and fixups ({body offset: "add", "def", or
+    an import's name}), the fixups' bytes, and any errors."""
     errs = []
-    if b[0:2] != b"XL" or b[2] != 1 or b[3] != 0:
-        sys.exit("xlcheck: %s: not a version 1 XLOAD image" % sys.argv[2])
-    length, ndefs = word(b, 4), word(b, 6)
-    deps, at = names(b, 8)
+    if b[0:2] != b"XL" or b[2] != 2 or b[3] != 0:
+        sys.exit("xlcheck: %s: not a version 2 XLOAD image" % sys.argv[2])
+    length, code, nfuncs = word(b, 4), word(b, 6), word(b, 8)
+    deps, at = names(b, 10)
     imports, at = names(b, at)
-    image = b[at:at + length]
-    if len(image) != length:
-        sys.exit("xlcheck: the image is cut short")
-    defs = []
-    for i in range(ndefs):
-        e = image[5 * i:5 * i + 5]
-        if e[0:3] != b"\x20\xD6\x03":
-            errs.append("def entry %d isn't JSR $03D6" % i)
-        defs.append(word(e, 3))
+    funcs = [word(b, at + 2 * i) for i in range(nfuncs)]
+    at += 2 * nfuncs
+    body = b[at:at + length]
+    if len(body) != length:
+        sys.exit("xlcheck: the body is cut short")
     at += length
     fstart = at
     fixups, cur = {}, 0
@@ -125,27 +122,26 @@ def read_image(b):
         at += 1
         if c == 0xFF:
             break
-        imp = None
         if c >= 0x80:
             if c - 0x80 >= len(imports):
                 sys.exit("xlcheck: import %d of %d" % (c - 0x80, len(imports)))
-            imp = imports[c - 0x80]
+            kind, esc = imports[c - 0x80], 0xFF
             c = b[at]
             at += 1
-        elif c > 0x7F:
-            sys.exit("xlcheck: fixup byte $%02X" % c)
-        if c == 0:
+        else:
+            kind, esc = ("def", 0x3F) if c & 0x40 else ("add", 0x3F)
+            c &= 0x3F
+        if c == esc:
             c = word(b, at)
             at += 2
-            if c == 0:
-                errs.append("a fixup moves by 0")
         cur += c
         if cur + 2 > length:
-            errs.append("a fixup at %d, past the image" % cur)
-        fixups[cur] = imp
+            errs.append("a fixup at %d, past the body" % cur)
+        fixups[cur] = kind
+        cur += 2
     if at != len(b):
         errs.append("%d bytes after the fixups" % (len(b) - at))
-    return deps, imports, image, defs, fixups, at - fstart, errs
+    return deps, imports, code, funcs, body, fixups, at - fstart, errs
 
 
 def main():
@@ -154,53 +150,42 @@ def main():
     rel = open(sys.argv[1], "rb").read()
     img = open(sys.argv[2], "rb").read()
     rdeps, rimps, rbody, data, subseg, init, rdefs, relocs = read_rel(rel)
-    deps, imps, image, defs, fixups, nfix, errs = read_image(img)
+    deps, imps, code, funcs, body, fixups, nfix, errs = read_image(img)
     if deps != rdeps:
         errs.append("dependencies %s, the module's %s" % (deps, rdeps))
     if sorted(imps) != sorted(rimps) or len(imps) != len(rimps):
         errs.append("imports %s, the module's %s" % (imps, rimps))
-    base = 5 * len(defs)                  # the body's start in the image
-    body = image[base:]
     if len(body) != len(rbody):
         errs.append("body %d bytes, the module's %d" % (len(body),
                                                          len(rbody)))
-    code = subseg - data                  # the bytecode's body offset
-    # The def table: the REL module's functions and init, in address
-    # order, init last, each word fixed up.
+    if code != subseg - data:
+        errs.append("bytecode at %d, the module's at %d" % (code,
+                                                            subseg - data))
+    # The function table: the REL module's functions and init, in
+    # address order, init last.
     want = sorted(d - data for d in rdefs) + [init - data]
-    got = [d - base for d in defs]
-    if got != want:
-        errs.append("the def table's functions differ from the module's")
-    if got != sorted(got):
-        errs.append("the def table isn't in address order")
-    for i in range(len(defs)):
-        if fixups.get(5 * i + 3, "none") is not None:
-            errs.append("def entry %d's word isn't fixed up" % i)
-    entry = {f: 5 * i for i, f in enumerate(got)}   # body offset -> entry
-    # The body's relocated words.
-    bfix = {o - base: v for o, v in fixups.items() if o >= base}
-    if set(bfix) != set(relocs):
-        only = sorted(set(bfix) ^ set(relocs))[:5]
+    if funcs != want:
+        errs.append("the function table differs from the module's functions")
+    if funcs != sorted(funcs):
+        errs.append("the function table isn't in address order")
+    number = {f: i for i, f in enumerate(funcs)}
+    if set(fixups) != set(relocs):
+        only = sorted(set(fixups) ^ set(relocs))[:5]
         errs.append("%d words fixed up, the module's %d (first differing"
-                    " body offsets %s)" % (len(bfix), len(relocs), only))
-    if [o for o in fixups if o < base and (o - 3) % 5]:
-        errs.append("a fixup inside the def table, not on an entry's word")
-    for off in sorted(set(bfix) & set(relocs)):
-        r, v = relocs[off], word(body, off)
+                    " body offsets %s)" % (len(fixups), len(relocs), only))
+    for off in sorted(set(fixups) & set(relocs)):
+        r, v, k = relocs[off], word(body, off), fixups[off]
         if r[0] == "ext":
-            if bfix[off] != r[1] or v != r[2]:
-                errs.append("body %d: import %s+%d, the module's %s+%d"
-                            % (off, bfix[off], v, r[1], r[2]))
-        elif bfix[off] is not None:
-            errs.append("body %d: an import, the module's isn't" % off)
+            if k != r[1] or v != r[2]:
+                errs.append("body %d: %s+%d, the module's import %s+%d"
+                            % (off, k, v, r[1], r[2]))
         elif r[1] >= subseg:              # a function, by its def entry
-            f = r[1] - data
-            if entry.get(f) != v:
-                errs.append("body %d: $%04X, not function %d's entry"
-                            % (off, v, f))
-        elif v != (r[1] - data + base) & 0xFFFF:
-            errs.append("body %d: $%04X, the module's $%04X"
-                        % (off, v, r[1]))
+            if k != "def" or number.get(r[1] - data) != v:
+                errs.append("body %d: %s %d, not function at %d"
+                            % (off, k, v, r[1] - data))
+        elif k != "add" or v != (r[1] - data) & 0xFFFF:
+            errs.append("body %d: %s $%04X, the module's address $%04X"
+                        % (off, k, v, r[1]))
     # Every other byte is the same.
     skip = set()
     for off in relocs:
@@ -210,15 +195,13 @@ def main():
     if diff:
         errs.append("%d bytes differ, the first at body %d" % (len(diff),
                                                                diff[0]))
-    if code < 0 or code > len(body):
-        errs.append("the bytecode starts outside the body")
     if errs:
         for e in errs[:20]:
             print("xlcheck: %s: %s" % (sys.argv[2], e))
         sys.exit(1)
-    print("%s: image %d (defs %d, body %d), fixups %d bytes for %d words,"
-          " file %d; module %d" % (sys.argv[2], len(image), base, len(body),
-                                   nfix, len(fixups), len(img), len(rel)))
+    print("%s: body %d, %d functions, fixups %d bytes for %d words, file"
+          " %d; module %d" % (sys.argv[2], len(body), len(funcs), nfix,
+                              len(fixups), len(img), len(rel)))
 
 
 if __name__ == "__main__":
