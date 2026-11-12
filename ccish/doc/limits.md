@@ -36,11 +36,11 @@ blank for a limit that isn't measured.
 |---|---|---|---|---|
 | `MAX_IDS` | 203 | 199 (irin.c) | enum constants and typedef names visible at once | [src/name.tab.h](../src/name.tab.h) |
 | `MAX_FUNCS` | 242 | 194 (pexpr.c) | functions declared, defined or called | [src/obj.h](../src/obj.h) |
-| `MAX_VARS` | 79 | 75 (link.c) | globals, plus the parameters and locals visible at once | [src/obj.h](../src/obj.h) |
+| `MAX_VARS` | 79 | 79 (link.c) | globals, plus the parameters and locals visible at once | [src/obj.h](../src/obj.h) |
 | `MAX_PARAM_TYPES` | 352 | 304 (pexpr.c) | parameter types of all declared functions | [src/parse.h](../src/parse.h) |
 | `MAX_IMPORTS` | 16 |  | declarations with an asm label, or after #pragma plasma import | [src/ptop.c](../src/ptop.c) |
 | `MAX_DEPS` | 4 |  | modules named by #pragma plasma import | [src/ptop.h](../src/ptop.h) |
-| `MAX_TYPES` | 54 | 51 (link.c) | distinct types; at most 128, since char tables (fn_type[], param_types[]) hold unqualified types, and a host's char may be signed | [src/type.c](../src/type.c) |
+| `MAX_TYPES` | 54 | 53 (link.c) | distinct types; at most 128, since char tables (fn_type[], param_types[]) hold unqualified types, and a host's char may be signed | [src/type.c](../src/type.c) |
 | `MAX_TAGS` | 6 | 4 (link.c) | struct and union tags, counting those in blocks that have ended | [src/type.tag.h](../src/type.tag.h) |
 | `MAX_MEMBERS` | 32 | 27 (irout.c) | struct and union members, in all of them | [src/type.tag.h](../src/type.tag.h) |
 
@@ -51,9 +51,9 @@ blank for a limit that isn't measured.
 | `MAX_RETURNS` | 64 | 47 (pplex.c) | frame-size bytes in one function: one for its ENTER, and one for each return's LEAVE | [src/emit.c](../src/emit.c) |
 | `MAX_TEMP_USES` | 32 | 4 (pp.c) | operands on ccgen's own temporaries in one function: 4 to 6 for each IR_SWAP done when the code runs | [src/emit.c](../src/emit.c) |
 | `MAX_LABELS` | 128 |  | labels in one function, ordinary and goto; at most 128, since case_label[] is char. Each if, loop, &&, \|\| and ?: uses one to four | [src/ir.h](../src/ir.h) |
-| `ENTRY_LABEL` | 103 | 81 (link.c) | ordinary labels in one function: the goto labels are the rest of MAX_LABELS, above this one | [src/ir.h](../src/ir.h) |
+| `ENTRY_LABEL` | 103 | 78 (pplex.c) | ordinary labels in one function: the goto labels are the rest of MAX_LABELS, above this one | [src/ir.h](../src/ir.h) |
 | `MAX_FUNC_CODE` | 1280 | 1022 (peep.c) | bytes of bytecode in one function | [src/obj.h](../src/obj.h) |
-| `MAX_FUNC_RELOCS` | 128 | 111 (link.c) | calls and data references in one function | [src/obj.h](../src/obj.h) |
+| `MAX_FUNC_RELOCS` | 128 | 93 (irloop.c) | calls and data references in one function | [src/obj.h](../src/obj.h) |
 | `MAX_NEST` | 32 | 18 (emit.c) | nesting of parentheses, blocks and loops | [src/parse.body.h](../src/parse.body.h) |
 | `MAX_PARAMS` | 16 |  | parameters of one function | [src/pstmt.c](../src/pstmt.c) |
 | `MAX_CASES` | 36 | 25 (pplex.c) | case labels in all the switches open at once; at most 255, a SEL table's limit | [src/pstmt.c](../src/pstmt.c) |
@@ -65,6 +65,7 @@ blank for a limit that isn't measured.
 | `MAX_GSYMS` | 307 | 257 (linking cccomp) | names shared between objects: the first prime about 10% above what linking cccomp, with the library, needs | [src/link.c](../src/link.c) |
 | `MAX_GNAMES` | 3000 | 2496 (linking cccomp) | bytes of those names, with their NULs: about 10% above what linking cccomp needs | [src/link.c](../src/link.c) |
 | `MAX_MOVED` | 32 |  | large globals moved to the heap in one module (OBJECT.md, "Zero-filled globals") | [src/link.c](../src/link.c) |
+| `MAX_DEFS` | 320 | 292 (linking cccomp) | functions in an XLOAD image (-x), helpers and init included: about 10% above what cccomp needs | [src/link.c](../src/link.c) |
 | `MAX_MODS` | 8 |  | modules one link imports from | [src/link.c](../src/link.c) |
 | `MAX_OBJS` | 32 |  | objects in one link (ccish's own is MAX_LINK, main.c) | [src/link.h](../src/link.h) |
 

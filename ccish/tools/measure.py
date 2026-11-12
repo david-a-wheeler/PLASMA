@@ -767,6 +767,8 @@ def main():
         ldata = sum(sizes[n][0] for n in libs)
         lstrs = sum(sizes[n][1] for n in libs)
         rld, esd, defs = module_rld(module)
+        # An XLOAD image's def table (ccrel -x) has init's entry too.
+        note_peak(limit_peaks, "MAX_DEFS", defs + 1, "linking " + prog)
         last = msg.strip().splitlines()[-1]
         m = re.search(r"shared names: (\d+) of \d+ slots, (\d+) of", last)
         if m:

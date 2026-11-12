@@ -4,7 +4,7 @@
 // them into one module. The objects are kept, so that a changed file
 // needs only itself compiled again.
 //
-// Usage: ccrel [-l] [-o module] output|@file...
+// Usage: ccrel [-l] [-x] [-o module] output|@file...
 //   output  an object's output name, as given to cccomp and ccgen; the
 //           objects are linked in this order. @file reads the names
 //           from file instead, one per line (CR or LF ends a line,
@@ -15,6 +15,8 @@
 //           splitting, which an Apple II's CR lines don't need
 //   -l      print a listing of the module's bytecode
 //   -o      module name (default: output, if there is only one)
+//   -x      write an XLOAD image (../doc/streaming-options.md, 5.3),
+//           not a REL module
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,9 +49,9 @@ void clean_up(void)
 static void usage(void)
 {
 #ifdef CCISH_LISTING
-  fputs("usage: ccrel [-l] [-o module] output|@file...\n", stderr);
+  fputs("usage: ccrel [-l] [-x] [-o module] output|@file...\n", stderr);
 #else
-  fputs("usage: ccrel [-o module] output|@file...\n", stderr);
+  fputs("usage: ccrel [-x] [-o module] output|@file...\n", stderr);
 #endif
   exit(2);
 }
@@ -100,6 +102,8 @@ int main(int argc, char **argv)
 #endif
     if (!strcmp(argv[i], "-o") && i + 1 < argc)
       modname = argv[++i];
+    else if (!strcmp(argv[i], "-x"))
+      opt_xload = 1;
     else if (argv[i][0] == '-')
       usage();
     else if (argv[i][0] == '@')

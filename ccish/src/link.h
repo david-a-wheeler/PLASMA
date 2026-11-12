@@ -5,6 +5,9 @@
 #define MAX_OBJS 32         // limit link: objects in one link (ccish's own is
                             // MAX_LINK, main.c)
 
+extern int opt_xload;       // -x: write an XLOAD image, not a REL module
+                            // (../doc/streaming-options.md, 5.3)
+
 void link_module(int n, const char **bases, const char *path);
 void link_abort(void);                      // after an error
 

@@ -11,9 +11,10 @@ needn't change.
 **Status (2026-11-12).** Decided in discussion: XLOAD (section 5), on
 the `c-compiler` branch with the rest of ccish (no separate branch).
 plvm02.s has been read for the hand-off: section 5.4 gives the VM's
-calling convention and the two native routines. ccish will write
-either a standard REL module or an XLOAD image, chosen by ccrel's
-`-x` (5.7), in 5.3's format: in progress (plan step 2). XLOAD itself isn't written yet, and nothing
+calling convention and the two native routines. ccish writes either
+a standard REL module or an XLOAD image, chosen by `-x` (ccrel's and
+ccish's; 5.7), in 5.3's format, which tools/xlcheck.py checks
+against the REL module (5.6). XLOAD itself isn't written yet, and nothing
 here has run on an Apple II: section 9 lists what to check.
 
 The first version of this document (eef1dd1e) had errors in its
@@ -464,8 +465,21 @@ body 31,506: 32,967), the second part (about 2K, a guess), FILEIO
 **about 37.9K**, leaving about 3.3K of the 41,171. Running, after the
 hand-off, needs exactly what it does today.
 
-On the disk, cccomp's payload would be about 33K of image plus about
-3K of fixups, against its 43.8K module; XLOAD itself perhaps 3K, once.
+On the disk, XLOAD itself perhaps 3K, once, and the images, from
+ccrel -x (2026-11-12, the small build's objects):
+
+| Program | Image | Of it, defs | Fixups | File | REL module |
+|---|---:|---:|---:|---:|---:|
+| ccpp | 20,802 | 835 | 1,978 | 22,885 | 27,814 |
+| cccomp | 32,960 | 1,460 | 3,099 | 36,164 | 43,799 |
+| ccgen | 28,876 | 1,030 | 2,318 | 31,299 | 36,985 |
+| ccrel | 13,209 | 490 | 1,256 | 14,570 | 17,718 |
+
+The fixups average just over a byte each (cccomp: 3,037 words in
+3,099 bytes). They came out in address order with no sorting: ccgen
+writes each function's relocations in address order. `-x` cost ccrel
+718 bytes of code and 640 of heap (the def table's offsets, MAX_DEFS
+of them), leaving it about 13.7K to spare running.
 
 ### 5.6 Testing
 
@@ -488,7 +502,7 @@ from one of its own def entries: `JSR $03D6` on the 64K Apple, `JSR
 $FF0C` on plvm; anything else (the 128K VM, which keeps bytecode in
 auxiliary memory) it should refuse.
 
-**Until XLOAD exists,** tools/xlcheck.py (planned with `-x`) checks ccrel's images
+**Until XLOAD exists,** tools/xlcheck.py checks ccrel's images
 against its REL modules: it relocates both, as their loaders would,
 for the same load address, and requires the same bytes, reading each
 word that points at a def entry as the function the entry calls.
@@ -704,8 +718,8 @@ this has been tried):
 ## 10. Plan
 
 1. ~~Read plvm02.s, and write down the hand-off routine~~ (5.4).
-2. Give ccrel a flag to write a payload (5.7): `-x`, checked by
-   tools/xlcheck.py. In progress, 2026-11-12.
+2. ~~Give ccrel a flag to write a payload (5.7)~~: `-x`, 2026-11-12,
+   checked by tools/xlcheck.py in tests/special/xload.sh.
 3. Write XLOAD in ccish C: the first part, and the second part as an
    image inside it.
 4. Test under plvm with ccish's suite (a plain call in place of the

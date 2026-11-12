@@ -243,6 +243,8 @@ $(OUT)/special/tables.stamp: tests/special/tables.c src/irin.c src/lower.c src/i
                           src/mop.h
 $(OUT)/special/enumvals.stamp: $(SOURCES)
 $(OUT)/special/fit.stamp: doc/measure.txt
+$(OUT)/special/xload.stamp: doc/measure.txt tools/xlcheck.py ccrel-small \
+                         $(patsubst %,tests/run/%.c,hello global_init pointers addr_const c_names)
 
 # The compiler bootstrap test: the seed, this source's $(CC) build,
 # compiles the compiler's source into a VM module (stage 1); stage 1,

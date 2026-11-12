@@ -265,14 +265,14 @@
 265 unsigned
 266 const
 267 volatile
-268 (spare)
-269 (spare)
+268 an XLOAD image needs main
+269 too many functions for an XLOAD image
 270 struct
 271 union
 272 enum
-273 (spare)
+273 too many imports for an XLOAD image (127)
 274 void
-275 (spare)
+275 relocations out of order for an XLOAD image
 276 (spare)
 277 (spare)
 278 static

@@ -146,7 +146,7 @@ A few special quirks:
 ### 2.1 Compiling a file
 
 ```
-ccish [-l] [-d] [-i] [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.c [object...]
+ccish [-l] [-d] [-i] [-k] [-x] [-o output] [-I dir] [-D name[=text]] [-U name] input.c [object...]
 ```
 
 * `-o output`: the module file to write. The default is the input name
@@ -166,6 +166,14 @@ ccish [-l] [-d] [-i] [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.
   (one stream of tagged records: data, strings and functions) and
   `output.syms` (the symbol summary, the back end's). Normally they
   are removed afterward, and after an error.
+* `-x`: write an XLOAD image instead of a REL module: the same
+  program, for a second-stage loader (XLOAD) that loads programs too
+  big for PLASMA's own loader on a 64K Apple II
+  ([streaming-options.md](streaming-options.md), section 5; its format
+  is 5.3). XLOAD isn't written yet, so nothing runs an image so far;
+  `tools/xlcheck.py MODULE IMAGE` checks one against the REL module of
+  the same link. An image needs `main`, at most 127 imports, and at
+  most 320 functions (`MAX_DEFS`).
 * `-I dir`: add a directory to the `#include` search (section 8).
 * `-D name[=text]` and `-U name`: define and undefine a macro before
   the first line of the program.
@@ -197,7 +205,7 @@ own, so that on the Apple II each can run separately:
 ccpp [-E] [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.c
 cccomp [-k] [-o output] input
 ccgen [-i] [-k] output
-ccrel [-l] [-o module] output|@file...
+ccrel [-l] [-x] [-o module] output|@file...
 ```
 
 * `ccpp` (the preprocessor and lexer) reads the source, carries out
@@ -210,7 +218,7 @@ ccrel [-l] [-o module] output|@file...
 * `ccgen` (the code generator) reads the IR file and the name file
   and writes the stream files (both are removed unless `-k`).
 * `ccrel` (the final pass) links one or more objects into a REL
-  module.
+  module (or with `-x`, an XLOAD image, as for `ccish`).
 
 Each pass writes what the next reads, and nothing else. The formats
 are in [CCPP.md](../CCPP.md) (the token stream and name file) and

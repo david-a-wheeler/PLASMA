@@ -28,6 +28,13 @@
 // stream, to map its own symbol numbers to final addresses, so only
 // one object's map is in memory.
 //
+// With -x (opt_xload), it writes an XLOAD image instead
+// (../doc/streaming-options.md, 5.3): the same body for load address
+// 0, after a def table of its own, in address order, at whose entries
+// every reference to a function points; and compact fixups in address
+// order, for which step 4 reads the streams twice, for the data's and
+// then the code's.
+//
 // A global defined with no data bytes (SYM_BSS: zero-filled, at least
 // BSS_MIN bytes) is placed in step 1 (approach.md, "Large zero-filled
 // data on the heap"). If no object's data holds its address
@@ -58,6 +65,9 @@
                             // function waits for at once
 #define MAX_MOVED   32      // limit link: large globals moved to the heap in
                             // one module (OBJECT.md, "Zero-filled globals")
+#define MAX_DEFS    320     // limit link: functions in an XLOAD image (-x),
+                            // helpers and init included: about 10% above
+                            // what cccomp needs
 
 // A symbol summary entry of the object being read: a function's, or
 // a global variable's (which has a size and no parameter count).
@@ -190,6 +200,15 @@ static int lnames_len;
 // after it, and the code segment after that.
 #define MODULE_BASE 0x1000
 static int data_base, strs_base, subseg;
+
+int opt_xload;              // (link.h)
+
+// With -x: each function's code-segment offset, in address order, as
+// the image's def table holds them; and the fixups' cursor, the image
+// offset of the last word they patched.
+static unsigned def_off[MAX_DEFS];
+static int ndefs;
+static unsigned fx_at;
 
 #ifdef CCISH_LISTING
 // The relocations of the function being listed (-l), as parallel
@@ -572,6 +591,20 @@ static int place_zero(const char *name, int size, int indata)
   return nmoved++;
 }
 
+// With -x: add the function at code-segment offset off to def_off[],
+// keeping it in address order. Each object's functions come after the
+// ones before it, but in its summary's order, not its code's.
+static void add_def(unsigned off)
+{
+  int i = ndefs;
+  if (i >= MAX_DEFS)
+    fatal0(269 /* "too many functions for an XLOAD image" */);
+  for (; i > 0 && def_off[i - 1] > off; i--)
+    def_off[i] = def_off[i - 1];
+  def_off[i] = off;
+  ndefs++;
+}
+
 // Step 1 for object k: read its symbol summary, lay it out after the
 // objects before it, place its own zero-filled globals, and add its
 // non-local symbols to the table of shared names. A local symbol that is
@@ -589,8 +622,11 @@ static void read_summary(int k)
   obj_zs[k] = zstay;
   for (i = 0; i < nfsyms + ndsyms; i++) {
     read_sym(&s, i >= nfsyms, name);
-    if ((s.flags & SYM_DEFINED) && i < nfsyms)
+    if ((s.flags & SYM_DEFINED) && i < nfsyms) {
+      if (opt_xload)
+        add_def(obj_code[k] + s.off);
       ndefined++;
+    }
     if (!(s.flags & SYM_LOCAL))
       add_global(&s, i >= nfsyms);
     else if ((s.flags & SYM_CALLED) && !(s.flags & SYM_DEFINED))
@@ -942,6 +978,27 @@ static void keep_reloc(int kind, int at, int target)
 
 // ---------- Steps 2-4: the module ----------
 
+// The word that refers to the function at code-segment offset off: its
+// address, or with -x, the address of its def entry, found in
+// def_off[] by a binary search.
+static int func_word(unsigned off)
+{
+  int lo = 0, hi = ndefs - 1, mid;
+  if (!opt_xload)
+    return subseg + (int)off;
+  while (lo <= hi) {
+    mid = (lo + hi) >> 1;
+    if (def_off[mid] == off)
+      return 5 * mid;
+    if (def_off[mid] < off)
+      lo = mid + 1;
+    else
+      hi = mid - 1;
+  }
+  bad_obj();
+  return 0;
+}
+
 // Write a name in DCI form: uppercase, high bit set on every character
 // but the last. PLASMA keeps 16 significant characters.
 static void out_dci(const char *name)
@@ -1015,9 +1072,9 @@ static int add_reloc(int kind, int at, int target, int add, int list)
   if (kind == REL_STR)
     return strs_base + target;
   if (kind == REL_HELPER)
-    return target >= NHELPERS ? 0 : subseg + h_off[target];
+    return target >= NHELPERS ? 0 : func_word(h_off[target]);
   v = fmap[target];
-  return v < 0 ? 0 : subseg + v;    // an import: the loader fills it in
+  return v < 0 ? 0 : func_word(v);  // an import: the loader fills it in
 }
 
 // The tags each step reads from the stream; it skips the others.
@@ -1249,6 +1306,25 @@ static void copy_helpers(void)
 
 // ---------- Step 4: the RLD, read again from the objects ----------
 
+// With -x, write the fixup of the word at image offset at: to import
+// imp, or (imp -1) the load address added. The fixups must come in
+// address order.
+static void xl_fixup(int imp, int at)
+{
+  unsigned gap = (unsigned)at - fx_at;
+  if ((unsigned)at <= fx_at)
+    fatal0(275 /* "relocations out of order for an XLOAD image" */);
+  if (imp >= 0)
+    bputc(&out, 0x80 + imp);
+  if (gap <= (imp >= 0 ? 0xFFu : 0x7Fu)) {
+    bputc(&out, (int)gap);
+  } else {
+    bputc(&out, 0);
+    bputw(&out, (int)gap);
+  }
+  fx_at = (unsigned)at;
+}
+
 // Write one 4-byte RLD entry: its type, a word, and a byte.
 static void rld_entry(int type, int word, int byte)
 {
@@ -1292,16 +1368,18 @@ static void reloc_entry(int kind, int target, int at)
   } else if (kind == REL_HELPER && target >= NHELPERS) {
     v = -2 - g_off[gsym_find(h_cmdsys[target - NHELPERS])];   // CMDSYS
   }
-  if (v < -1)
+  if (opt_xload)
+    xl_fixup(v < -1 ? -2 - v : -1, at);
+  else if (v < -1)
     rld_entry(0x91, at - MODULE_BASE, -2 - v);
   else
     rld_entry(0x81, at - MODULE_BASE, 0);
 }
 
 // Write the RLD's relocations for object k: read its stream again, for
-// the R records and each F record's relocations, which steps 2 and 3
-// have checked.
-static void reloc_entries(int k)
+// the R records (if data) and each F record's relocations (if code),
+// which steps 2 and 3 have checked.
+static void reloc_entries(int k, int data, int code)
 {
   int at = 0, start = obj_code[k], t, n, kind, target, off, len;
 
@@ -1319,7 +1397,8 @@ static void reloc_entries(int k)
       target = bgetw(&in);
       if (kind == REL_DSYM)
         bskip(&in, 2);                    // its addend
-      reloc_entry(kind, target, data_base + obj_data[k] + at);
+      if (data)
+        reloc_entry(kind, target, data_base + obj_data[k] + at);
       at += 2;
     } else {
       bskip(&in, 2);                      // function symbol index
@@ -1331,7 +1410,8 @@ static void reloc_entries(int k)
         kind = bgetc(&in);
         off = bgetw(&in);
         target = bgetw(&in);
-        reloc_entry(kind, target, subseg + start + off);
+        if (code)
+          reloc_entry(kind, target, subseg + start + off);
       }
       start += len;
     }
@@ -1356,7 +1436,7 @@ static void init_op(int *n, int op, int w, int g)
 {
   if (g >= 0)
     w = g_flags[g] & G_IMPORT ? 0
-        : subseg + obj_code[g_def[g]] + g_off[g];
+        : func_word(obj_code[g_def[g]] + g_off[g]);
   ir_at[nir] = *n + 1;
   ir_g[nir++] = g;
   fbuf[(*n)++] = (unsigned char)op;
@@ -1440,19 +1520,48 @@ static int init_size(void)
   return n;
 }
 
-// Write the RLD entries for the init function at code-segment offset
-// init_off, and keep them for the listing.
+// Write the RLD entries (or with -x, the fixups) for the init function
+// at code-segment offset init_off.
 static void init_entries(int init_off)
 {
-  int i, at, g;
+  int i, at, g, imp;
   for (i = 0; i < nir; i++) {
     at = subseg + init_off + ir_at[i];
     g = ir_g[i];
-    if (g >= 0 && (g_flags[g] & G_IMPORT))
-      rld_entry(0x91, at - MODULE_BASE, g_off[g]);
+    imp = g >= 0 && (g_flags[g] & G_IMPORT) ? g_off[g] : -1;
+    if (opt_xload)
+      xl_fixup(imp, at);
+    else if (imp >= 0)
+      rld_entry(0x91, at - MODULE_BASE, imp);
     else
       rld_entry(0x81, at - MODULE_BASE, 0);
   }
+}
+
+// Write the imports' names, in import order (slot order), each in DCI
+// form, then $00: the ESD, with each one's type and number unless -x.
+// One declared as a PLASMA import has its PLASMA name; the others are
+// CMDSYS functions, whose C name is the PLASMA name with "__" in front
+// (__puts for PUTS), so the "__" goes.
+static void write_imports(void)
+{
+  int i;
+  for (i = 0; i < MAX_GSYMS; i++)
+    if (g_name[i] >= 0 && (g_flags[i] & G_IMPORT)) {
+      const char *name = gnames + (g_lab[i] >= 0 ? g_lab[i] : g_name[i]);
+      if (g_lab[i] < 0 && name[0] == '_' && name[1] == '_')
+        name += 2;
+      out_dci(name);
+#ifdef CCISH_LISTING
+      if (opt_list)
+        printf("; import %s as %s\n", gnames + g_name[i], name);
+#endif
+      if (!opt_xload) {
+        bputc(&out, 0x10);
+        bputw(&out, g_off[i]);
+      }
+    }
+  bputc(&out, 0);
 }
 
 #ifdef CCISH_LISTING
@@ -1491,6 +1600,78 @@ static void list_summary(const char *dep)
 }
 #endif
 
+// Write the module's header, of a module whose code segment holds
+// total bytes, init's from init_off, and its dependencies (CMDSYS, as
+// dep, if anything is imported, then each module a used import comes
+// from); with -x, the image's header, dependencies and imports, and its
+// def table.
+static void write_header(const char *dep, int init_off, int total)
+{
+  int i;
+  if (opt_xload) {
+    bputc(&out, 'X');                     // magic
+    bputc(&out, 'L');
+    bputc(&out, 1);                       // version
+    bputc(&out, 0);                       // flags
+    bputw(&out, subseg + total);          // the image's length
+    bputw(&out, ndefs);
+  } else {
+    bputw(&out, subseg - MODULE_BASE + total);
+    bputw(&out, 0x6502);                  // magic
+    bputw(&out, 0);                       // system flags
+    bputw(&out, subseg);
+    bputw(&out, ndefined + nhelpers + (main_sym >= 0));
+    bputw(&out, main_sym >= 0 ? subseg + init_off : 0);
+  }
+  if (nimports)
+    out_dci(dep);
+  for (i = 0; i < nmods; i++)
+    if (mod_used[i] && strcmp(mod_name[i], dep))
+      out_dci(mod_name[i]);
+  bputc(&out, 0);                         // end of dependencies
+  if (opt_xload) {
+    write_imports();
+    for (i = 0; i < ndefs; i++) {
+      bputc(&out, 0x20);                  // JSR $03D6
+      bputw(&out, 0x03D6);
+      bputw(&out, subseg + (int)def_off[i]);
+    }
+  }
+}
+
+// Step 4 for the n objects, init's code at init_off. The RLD: function
+// entries first (init excluded), then the relocations, both read again
+// from the objects; then init's call to main; then the ESD. Or with
+// -x, the fixups, in address order: the def table's, every object's
+// data's, every object's code's, then init's.
+static void write_relocs(int n, int init_off)
+{
+  int i, k;
+  if (opt_xload) {
+    fx_at = 0;
+    for (i = 0; i < ndefs; i++)
+      xl_fixup(-1, 5 * i + 3);
+    for (k = 0; k < n; k++)
+      reloc_entries(k, 1, 0);
+    for (k = 0; k < n; k++)
+      reloc_entries(k, 0, 1);
+    init_entries(init_off);
+    bputc(&out, 0xFF);
+    return;
+  }
+  for (k = 0; k < n; k++)
+    def_entries(k);
+  for (i = 0; i < NHELPERS; i++)
+    if (h_def[i] != NO_OBJ)
+      rld_entry(0x02, subseg + h_off[i], 0);
+  for (k = 0; k < n; k++)
+    reloc_entries(k, 1, 1);
+  if (main_sym >= 0)
+    init_entries(init_off);
+  bputc(&out, 0);
+  write_imports();
+}
+
 // Run the final pass: link the n objects whose output names (as given
 // to cccomp) are bases, in that order, and write the REL module to
 // path.
@@ -1520,7 +1701,16 @@ void link_module(int n, const char **bases, const char *path)
     if (h_def[i] != NO_OBJ) {
       h_off[i] = init_off;
       init_off += h_size[i];
+      if (opt_xload)
+        add_def(h_off[i]);
     }
+  if (opt_xload) {
+    if (main_sym < 0)
+      fatal0(268 /* "an XLOAD image needs main" */);
+    if (nimports > 127)
+      fatal0(273 /* "too many imports for an XLOAD image (127)" */);
+    add_def(init_off);
+  }
 
   // The dependencies: CMDSYS, if anything is imported, then each
   // module a used import comes from: their names, then $00.
@@ -1531,7 +1721,7 @@ void link_module(int n, const char **bases, const char *path)
   // The data segment holds the globals, then the string pool. One pad
   // byte between it and the bytecode keeps data from ever sharing an
   // address with the first function.
-  data_base = MODULE_BASE + hdr + deplen;
+  data_base = opt_xload ? 5 * ndefs : MODULE_BASE + hdr + deplen;
   strs_base = data_base + obj_data[n] + zstay + 2 * nmoved;
   subseg = strs_base + obj_strs[n] + 1;
   total = init_off + init_size();
@@ -1541,18 +1731,7 @@ void link_module(int n, const char **bases, const char *path)
   // Step 2.
   if (!bopen(&out, path, 1))
     fatal_d(192 /* "cannot create output file" */, path);
-  bputw(&out, subseg - MODULE_BASE + total);
-  bputw(&out, 0x6502);                    // magic
-  bputw(&out, 0);                         // system flags
-  bputw(&out, subseg);
-  bputw(&out, ndefined + nhelpers + (main_sym >= 0));
-  bputw(&out, main_sym >= 0 ? subseg + init_off : 0);
-  if (nimports)
-    out_dci(dep);
-  for (i = 0; i < nmods; i++)
-    if (mod_used[i] && strcmp(mod_name[i], dep))
-      out_dci(mod_name[i]);
-  bputc(&out, 0);                         // end of dependencies
+  write_header(dep, init_off, total);
 
   for (k = 0; k < n; k++)
     copy_data(k);
@@ -1574,38 +1753,8 @@ void link_module(int n, const char **bases, const char *path)
     bwrite(&out, fbuf, len);
   }
 
-  // Step 4. RLD: function entries first (init excluded), then the
-  // relocations, both read again from the objects; then init's call
-  // to main.
-  for (k = 0; k < n; k++)
-    def_entries(k);
-  for (i = 0; i < NHELPERS; i++)
-    if (h_def[i] != NO_OBJ)
-      rld_entry(0x02, subseg + h_off[i], 0);
-  for (k = 0; k < n; k++)
-    reloc_entries(k);
-  if (main_sym >= 0)
-    init_entries(init_off);
-  bputc(&out, 0);
-
-  // ESD: imports, in import order (slot order). One declared as a
-  // PLASMA import has its PLASMA name; the others are CMDSYS
-  // functions, whose C name is the PLASMA name with "__" in front
-  // (__puts for PUTS), so the "__" goes.
-  for (i = 0; i < MAX_GSYMS; i++)
-    if (g_name[i] >= 0 && (g_flags[i] & G_IMPORT)) {
-      const char *name = gnames + (g_lab[i] >= 0 ? g_lab[i] : g_name[i]);
-      if (g_lab[i] < 0 && name[0] == '_' && name[1] == '_')
-        name += 2;
-      out_dci(name);
-#ifdef CCISH_LISTING
-      if (opt_list)
-        printf("; import %s as %s\n", gnames + g_name[i], name);
-#endif
-      bputc(&out, 0x10);
-      bputw(&out, g_off[i]);
-    }
-  bputc(&out, 0);
+  // Step 4.
+  write_relocs(n, init_off);
 
   if (bclose(&out) != 0)
     fatal_d(193 /* "error writing output file" */, path);
