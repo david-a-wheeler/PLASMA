@@ -694,7 +694,7 @@ def image_summary(rows, xl):
             prog, r["names"], 2 * r["n"], r["d"], r["z"], r["c"],
             r["fixups"], r["module"], r["file"]))
     if xl:
-        print("%-7s %55d" % ("XLOAD", xl["file"]))
+        print("%-7s %52d" % ("XLOAD", xl["file"]))  # under File
     print("File: the whole file's bytes. An image file's parts, in its"
           " order: a %d-byte\nheader (the same in every image), Names"
           " (the dependencies' and imports'),\nTable (the function table,"
