@@ -229,12 +229,14 @@ cccomp     79   594   559   6590  26901   2857  44216  31002
 ccgen      79   414  1915   7492  23204   2149  37132  27773
 ccrel      79   200   574  12228  10584   1192  18279  12641
 XLOAD                                                   6010
-File: the whole file's bytes. An image file's parts, in its order: a 12-byte
-header (the same in every image), Names (the dependencies' and imports'),
-Table (the function table, 2 bytes a function, init too), Data, Code and
-Fixups. Not in the file: (Zero), the zero region, the disk space saved,
-shown where it goes in memory, after Data (init clears it); (REL), the
-same program as a REL module, for comparison. XLOAD is a REL module.
+Total                                                  95951
+File: the whole file's bytes; Total, all of them. An image file's parts, in
+its order: a 12-byte header (the same in every image), Names (the
+dependencies' and imports'), Table (the function table, 2 bytes a function,
+init too), Data, Code and Fixups. Not in the file: (Zero), the zero region,
+the disk space saved, shown where it goes in memory, after Data (init
+clears it); (REL), the same program as a REL module, for comparison. XLOAD
+is a REL module.
 XLOAD in memory: its first part 5128, its second part 3136, placed
 (none of it stays once the program runs).
 

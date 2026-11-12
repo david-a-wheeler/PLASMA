@@ -695,14 +695,16 @@ def image_summary(rows, xl):
             r["fixups"], r["module"], r["file"]))
     if xl:
         print("%-7s %52d" % ("XLOAD", xl["file"]))  # under File
-    print("File: the whole file's bytes. An image file's parts, in its"
-          " order: a %d-byte\nheader (the same in every image), Names"
-          " (the dependencies' and imports'),\nTable (the function table,"
-          " 2 bytes a function, init too), Data, Code and\nFixups. Not in"
-          " the file: (Zero), the zero region, the disk space saved,\nshown"
-          " where it goes in memory, after Data (init clears it); (REL), the"
-          "\nsame program as a REL module, for comparison. XLOAD is a REL"
-          " module." % IMAGE_HEADER)
+    print("%-7s %52d" % ("Total", sum(r["file"] for _, r in rows if r)
+                         + (xl["file"] if xl else 0)))
+    print("File: the whole file's bytes; Total, all of them. An image"
+          " file's parts, in\nits order: a %d-byte header (the same in"
+          " every image), Names (the\ndependencies' and imports'), Table"
+          " (the function table, 2 bytes a function,\ninit too), Data,"
+          " Code and Fixups. Not in the file: (Zero), the zero region,\nthe"
+          " disk space saved, shown where it goes in memory, after Data"
+          " (init\nclears it); (REL), the same program as a REL module, for"
+          " comparison. XLOAD\nis a REL module." % IMAGE_HEADER)
     if xl:
         print("XLOAD in memory: its first part %d, its second part %d,"
               " placed\n(none of it stays once the program runs)."
