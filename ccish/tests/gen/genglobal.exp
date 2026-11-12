@@ -2,8 +2,8 @@
     ENTER 0 0
     ; label 103
     CN 5
-    DAW data +0
-    DAW data +2
+    DAW var 0
+    DAW var 1
     LEAVE 0
 
     ; main

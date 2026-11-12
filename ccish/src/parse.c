@@ -917,9 +917,9 @@ static int data_sym_of(int global)
 }
 
 // May the global that global (an Operand's field) names move to the
-// heap? One in this file's zero-filled space may, and so may an extern
-// array or struct that may be one in another file: of unknown size, or
-// of at least BSS_MIN bytes. Its address is then always pushed as
+// heap? One in this file's zero-filled space of at least BSS_MIN bytes
+// may, and so may an extern array or struct that may be one in another
+// file: of unknown size, or of at least BSS_MIN bytes. Its address is then always pushed as
 // IR_HEAPADDR, the one form ccrel can patch, with any offset added
 // after.
 int movable(int global)
@@ -929,7 +929,7 @@ int movable(int global)
     return 0;
   t = var_type[v];
   if (var_link[v] & VL_BSS)
-    return 1;
+    return type_size(t) >= BSS_MIN;
   return (is_array(t) || is_struct(t))
          && (type_size(t) == 0 || type_size(t) >= BSS_MIN);
 }

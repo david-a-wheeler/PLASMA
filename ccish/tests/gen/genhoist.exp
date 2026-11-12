@@ -13,12 +13,12 @@
     DLW 4
     LLW -4
     ADDLW 4
-    LA data +1
+    LA var 0 +1
     ADDLW 4
     SB
     INCBRLE 0
     DROP2
-    LAB data +5
+    LAB var 0 +5
     LEAVE 6
 
     ; odd
@@ -100,7 +100,7 @@
     LLW 4
     BRNCH 1
     ; label 0
-    LA data +12
+    LA data +0
     IDXLW 4
     SLW 8
     LLW 4
@@ -114,7 +114,7 @@
     SW
     LLW 6
     LLW -4
-    LA data +12
+    LA data +0
     IDXLW 4
     LW
     ADD

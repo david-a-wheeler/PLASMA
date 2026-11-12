@@ -6057,6 +6057,16 @@ the heap, through a pointer.* It needs no change to the VM.
   65,023 bytes in all (309). A zero-filled global that stays (its
   address is in data) gets zeros after every object's data, then come
   the pointer words, then the strings.
+- **Later (2026-11-12):** every global with no initializer, of any
+  size, goes in the zero-filled space, for XLOAD's images, which keep
+  zero-filled data out of the file (doc/xload.md, 3.3). Only those of
+  `BSS_MIN` bytes or more may move (cccomp's `movable()`; ccrel marks
+  the smaller ones as staying as it reads them), so a small one's code
+  doesn't change: the peephole stage now folds a constant into the
+  address of any global reached through its symbol (`FIX_DSYM`), as it
+  did into data's. cccomp checks an initializer's address against the
+  zero-filled object it points into (C11 6.5.6p8), as it did against
+  the data written so far.
 - New tests: a run test (zero at the start, constant and variable
   indexes, a char store, a big struct's members, a static, one that
   stays), and link tests of extern ones (one staying), a heap too small

@@ -1,33 +1,33 @@
     ; elem
     ENTER 0 0
     ; label 103
-    LAB.v data +6
+    LAB.v var 2 +2
     ANDI 0
     LEAVE 0
 
     ; member
     ENTER 0 0
     ; label 103
-    LAW.v data +10
+    LAW.v var 3 +2
     DROP
-    LAW.v data +12
+    LAW.v var 4
     ANDI 0
     LEAVE 0
 
     ; times0
     ENTER 0 0
     ; label 103
-    LAW.v data +0
+    LAW.v var 0
     ANDI 0
     LEAVE 0
 
     ; and0
     ENTER 0 0
     ; label 103
-    LAW.v data +0
+    LAW.v var 0
     ANDI 0
-    LAW.v data +0
-    LAW.v data +0
+    LAW.v var 0
+    LAW.v var 0
     SUB
     ADD
     LEAVE 0
@@ -35,20 +35,20 @@
     ; plus0
     ENTER 0 0
     ; label 103
-    LAW.v data +0
+    LAW.v var 0
     LEAVE 0
 
     ; tovoid
     ENTER 0 0
     ; label 103
-    LAW.v data +0
+    LAW.v var 0
     ANDI 0
     LEAVE 0
 
     ; emptyif
     ENTER 0 0
     ; label 103
-    LAW.v data +0
+    LAW.v var 0
     BRFLS 0
     ; label 0
     CN 0
@@ -57,7 +57,7 @@
     ; samearms
     ENTER 0 0
     ; label 103
-    LAW.v data +0
+    LAW.v var 0
     DROP
     CN 1
     LEAVE 0
@@ -65,7 +65,7 @@
     ; uge0
     ENTER 0 0
     ; label 103
-    LAW.v data +2
+    LAW.v var 1
     DROP
     CN 1
     LEAVE 0
@@ -73,7 +73,7 @@
     ; notnot
     ENTER 0 0
     ; label 103
-    LAW.v data +0
+    LAW.v var 0
     NOT
     NOT
     ANDI 1
@@ -82,8 +82,8 @@
     ; selfeq
     ENTER 0 0
     ; label 103
-    LAW.v data +0
-    LAW.v data +0
+    LAW.v var 0
+    LAW.v var 0
     ISEQ
     NEG
     LEAVE 0
@@ -91,8 +91,8 @@
     ; selfset
     ENTER 0 0
     ; label 103
-    LAW.v data +0
-    SAW.v data +0
+    LAW.v var 0
+    SAW.v var 0
     CN 0
     LEAVE 0
 
@@ -132,7 +132,7 @@
     INCR
     DLW 0
     ; label 1
-    LAW data +16
+    LAW var 5
     LW.v
     ISLT
     BRTRU 0
@@ -144,7 +144,7 @@
     ; label 103
     CN 0
     SLW 2
-    LAW.v data +0
+    LAW.v var 0
     SLW 0
     CN 9
     LLW 0
@@ -163,7 +163,7 @@
     ; deadstore
     ENTER 2 0
     ; label 103
-    LAW.v data +0
+    LAW.v var 0
     DROP
     CN 1
     LEAVE 2
@@ -175,7 +175,7 @@
     CN 0
     ; label 0
     DLW 0
-    LAW.v data +0
+    LAW.v var 0
     DROP
     INCBRLE 0
     DROP
@@ -190,7 +190,7 @@
     ; label 0
     DLW 0
     DUP
-    SAW.v data +0
+    SAW.v var 0
     INCBRLE 0
     DROP
     ANDI 0
@@ -205,15 +205,15 @@
     ; ushift
     ENTER 0 0
     ; label 103
-    LAW.v data +2
+    LAW.v var 1
     CN 2
     SHR
     CW 16383
     AND
-    LAW.v data +2
+    LAW.v var 1
     ANDI 3
     ADD
-    LAW.v data +2
+    LAW.v var 1
     CN 1
     SHR
     CW 32767
@@ -224,10 +224,10 @@
     ; twice
     ENTER 0 0
     ; label 103
-    LAW.v data +0
-    SAW data +18
-    LAW.v data +0
-    SAW data +18
+    LAW.v var 0
+    SAW var 6
+    LAW.v var 0
+    SAW var 6
     CN 0
     LEAVE 0
 
@@ -237,7 +237,7 @@
     BRNCH 1
     ; label 0
     ; label 1
-    LAW.v data +0
+    LAW.v var 0
     BRTRU 0
     CN 0
     LEAVE 0
@@ -245,23 +245,23 @@
     ; bumps
     ENTER 0 0
     ; label 103
-    LAW.v data +0
+    LAW.v var 0
     INCR
-    SAW.v data +0
-    LAW.v data +0
+    SAW.v var 0
+    LAW.v var 0
     INCR
-    SAW.v data +0
-    LAW.v data +0
+    SAW.v var 0
+    LAW.v var 0
     DECR
-    SAW.v data +0
+    SAW.v var 0
     CN 0
     LEAVE 0
 
     ; main
     ENTER 0 0
     ; label 103
-    LA data +18
-    SAW data +16
+    LA var 6
+    SAW var 5
     CALL vwait
     DROP
     CALL elem
@@ -357,7 +357,7 @@
     DROP
     CALL bumps
     DROP
-    LAW.v data +0
+    LAW.v var 0
     CN 3
     ISNE
     NEG

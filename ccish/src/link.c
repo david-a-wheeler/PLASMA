@@ -399,11 +399,15 @@ static void read_sym(Lsym *s, int data, const char *name)
     s->mod = n;
     read_name(s->label, name);
   }
+  // A zero-filled global under BSS_MIN bytes stays in the module, as
+  // one whose address an initializer holds does (place_zero()).
+  if ((s->flags & SYM_BSS) && (unsigned)s->size < BSS_MIN)
+    s->flags |= SYM_INDATA;
   // A function has at least one byte of code, so it can't start at
   // the code's end.
   if ((s->flags & SYM_DEFINED)
       && (!data ? s->off >= code_size
-          : s->flags & SYM_BSS ? s->size < BSS_MIN
+          : s->flags & SYM_BSS ? s->size <= 0
                                  || s->off > bss_size - s->size
           : s->off > data_size))
     damaged(name);
@@ -566,12 +570,13 @@ static void add_global(Lsym *s, int data)
 }
 
 // Place zero-filled global name, of size bytes: on the heap unless
-// indata (an initializer holds its address). Returns its place: its
-// moved number, or its offset after every object's data. The listing
+// stays (SYM_INDATA, as read_sym() leaves it: an initializer holds its
+// address, or it's under BSS_MIN bytes). Returns its place: its moved number, or its offset
+// after every object's data. The listing
 // names each moved one, for tools/loops.py.
-static int place_zero(const char *name, int size, int indata)
+static int place_zero(const char *name, int size, int stays)
 {
-  if (indata) {
+  if (stays) {
     zstay += size;
     if (zstay > 0x7FFF)
       fatal0(182 /* "too much data: globals over 32767 bytes" */);
@@ -1749,8 +1754,7 @@ static void write_relocs(int n, int init_off)
 void link_module(int n, const char **bases, const char *path)
 {
   static const char dep[] = "CMDSYS";
-  int hdr = 10;
-  int init_off, deplen, total, i, k;
+  int init_off, deplen, total, i;   // i also counts objects
 
   // Step 1.
   if (n > MAX_OBJS)
@@ -1761,9 +1765,9 @@ void link_module(int n, const char **bases, const char *path)
   for (i = 0; i < NHELPERS; i++)
     h_def[i] = NO_OBJ;
   nhelpers = 0;
-  for (k = 0; k < n; k++) {
-    obj_name[k] = bases[k];
-    read_summary(k);
+  for (i = 0; i < n; i++) {
+    obj_name[i] = bases[i];
+    read_summary(i);
   }
   resolve();
   // The helpers go after every object's code, then init.
@@ -1792,7 +1796,7 @@ void link_module(int n, const char **bases, const char *path)
   // The data segment holds the globals, then the string pool. One pad
   // byte between it and the bytecode keeps data from ever sharing an
   // address with the first function.
-  data_base = opt_xload ? 0 : MODULE_BASE + hdr + deplen;
+  data_base = opt_xload ? 0 : MODULE_BASE + 10 + deplen;  // the header
   strs_base = data_base + obj_data[n] + zstay + 2 * nmoved;
   subseg = strs_base + obj_strs[n] + 1;
   total = init_off + init_size();
@@ -1804,19 +1808,19 @@ void link_module(int n, const char **bases, const char *path)
     fatal_d(192 /* "cannot create output file" */, path);
   write_header(dep, init_off, total);
 
-  for (k = 0; k < n; k++)
-    copy_data(k);
+  for (i = 0; i < n; i++)
+    copy_data(i);
   for (i = zstay + 2 * nmoved; i > 0; i--)
     dput(0);                              // zero-filled; pointer words
-  for (k = 0; k < n; k++)
-    copy_strings(k);
+  for (i = 0; i < n; i++)
+    copy_strings(i);
   dput(0);                                // pad
   put_zeros();                            // with -x, the last runs
   put_lit();
 
   // Step 3.
-  for (k = 0; k < n; k++)
-    copy_code(k);
+  for (i = 0; i < n; i++)
+    copy_code(i);
   copy_helpers();
   if (main_sym >= 0) {
     int len = init_code();

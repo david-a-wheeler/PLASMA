@@ -314,11 +314,15 @@ array count (`[` then the element type), so that `extern int a[];`
 matches `int a[10];`; the size field covers that. A hash that comes
 out 0 is written as 1.
 
-**Zero-filled globals.** A global array or struct with no initializer,
-of at least `BSS_MIN` (256) bytes, isn't in the data: it has flag 64,
-and its offset is in the object's zero-filled space, whose size the
-summary gives. Every reference to it, in code and data, is a kind 4
-relocation, to its symbol. A global declared `extern` may get flag 64
+**Zero-filled globals.** A global with no initializer, of any size,
+isn't in the data: it has flag 64, and its offset is in the object's
+zero-filled space, whose size the summary gives. Every reference to
+it, in code and data, is a kind 4 relocation, to its symbol. ccrel may
+move one of at least `BSS_MIN` (256) bytes to the heap (approach.md,
+"Large zero-filled data on the heap"); a smaller one stays in the
+module, after every object's data (2026-11-12; before that only arrays
+and structs of `BSS_MIN` bytes or more had flag 64; doc/xload.md,
+3.3). Static locals with no initializer are still in the data. A global declared `extern` may get flag 64
 from the object that defines it. Flag 128 says that an initializer in
 this object holds its address (`int *p = big + 3;`), or, for an
 `extern` one, may.

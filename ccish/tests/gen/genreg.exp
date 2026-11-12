@@ -1,9 +1,9 @@
     ; tick
     ENTER 2 1
     ; label 103
-    LAW data +0
+    LAW var 0
     ADDLW 0
-    SAW data +0
+    SAW var 0
     LEAVE 2
 
     ; fill
@@ -229,14 +229,14 @@
     SLW 2
     CN 0
     SLW 4
-    LA data +2
+    LA var 1
     CALL fill
     CN 11
     CN 0
     ; label 0
     DLW 0
     LLW 2
-    LA data +2
+    LA var 1
     ADDLW 0
     LB
     ADD
@@ -244,14 +244,14 @@
     INCBRLE 0
     SLW 0
     DROP
-    LA data +2
+    LA var 1
     CALL fill_plain
     CN 11
     CN 0
     ; label 4
     DLW 0
     LLW 4
-    LA data +2
+    LA var 1
     ADDLW 0
     LB
     ADD
@@ -266,7 +266,7 @@
     LLW 4
     CB 30
     BRNE 8
-    LAW data +0
+    LAW var 0
     CB 20
     BRNE 8
     CN 2

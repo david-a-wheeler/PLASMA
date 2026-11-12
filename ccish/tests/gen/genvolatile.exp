@@ -100,27 +100,27 @@
     ENTER 0 0
     ; label 103
     CN 3
-    SAW.v data +6
-    LAW.v data +6
+    SAW.v var 3
+    LAW.v var 3
     LEAVE 0
 
     ; store
     ENTER 0 0
     ; label 103
     CN 3
-    DAW data +8
+    DAW var 4
     LEAVE 0
 
     ; vbump
     ENTER 0 0
     ; label 103
-    LAW.v data +6
+    LAW.v var 3
     ADDI 2
-    SAW.v data +6
-    LAW.v data +6
+    SAW.v var 3
+    LAW.v var 3
     DUP
     INCR
-    SAW.v data +6
+    SAW.v var 3
     LEAVE 0
 
     ; vlocal
@@ -150,7 +150,7 @@
     INCR
     SLW 0
     ; label 1
-    LAW.v data +6
+    LAW.v var 3
     BRTRU 0
     LLW 0
     LEAVE 2
@@ -166,7 +166,7 @@
     LLA 0
     CN 7
     CALL poke
-    LA data +8
+    LA var 4
     CN 0
     CALL pokew
     CN 3
@@ -191,7 +191,7 @@
     CN 1
     LEAVE 1
     ; label 0
-    LAW data +8
+    LAW var 4
     CN 5
     BREQ 5
     CN 3
@@ -210,7 +210,7 @@
     BRNE 11
     ; join 9 to 11
     ; label 10
-    LAW.v data +6
+    LAW.v var 3
     CN 6
     BREQ 12
     ; join 12 to 6
@@ -219,7 +219,7 @@
     LEAVE 1
     ; label 6
     CN 0
-    SAW.v data +6
+    SAW.v var 3
     CALL vlocal
     CALL local
     ADD

@@ -18,9 +18,9 @@
     LLW 0
     BRTRU 0
     CN 1
-    SAW data +0
+    SAW var 0
     ; label 0
-    LAW data +0
+    LAW var 0
     LEAVE 2
 
     ; shl1
@@ -57,7 +57,7 @@
     ENTER 0 0
     ; label 103
     CN 0
-    SAW data +0
+    SAW var 0
     CN 5
     CALL negneg
     CN 5

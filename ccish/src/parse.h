@@ -184,7 +184,7 @@ extern int var_val[MAX_VARS];     // its known value (V_KNOWN)
 // VL_STATIC if it is local to the file, VL_USED if code or data refers
 // to it, and VL_EXTERN while it is declared extern with no storage in
 // this file (var_off[] is then 0, the base of an addend). VL_BSS if it
-// is defined with no initializer and is at least BSS_MIN bytes, so has
+// is defined with no initializer, so has
 // no data bytes, only an offset (var_off[]) in the file's zero-filled
 // space, and may move to the heap (approach.md, "Large zero-filled data
 // on the heap"); VL_INDATA if an initializer holds its address, which

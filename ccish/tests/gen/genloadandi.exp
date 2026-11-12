@@ -7,7 +7,7 @@
     ; glo
     ENTER 0 0
     ; label 103
-    LAB data +0
+    LAB var 0
     LEAVE 0
 
     ; plain

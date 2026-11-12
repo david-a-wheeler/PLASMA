@@ -80,8 +80,8 @@
     ; main
     ENTER 0 0
     ; label 103
-    LA data +2
-    SAW data +14
+    LA var 1
+    SAW var 4
     CALL delay
     CALL vdelay
     CN 1

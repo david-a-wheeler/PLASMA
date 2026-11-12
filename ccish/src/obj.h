@@ -26,6 +26,7 @@
 #define SUFFIX_SYMS ".syms"
 #define BSS_MIN     256     // bytes: a global with no initializer this big
                             // or bigger may move to the heap (approach.md,
-                            // "Large zero-filled data on the heap")
+                            // "Large zero-filled data on the heap");
+                            // smaller ones stay in the module
 
 #endif

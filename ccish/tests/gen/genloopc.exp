@@ -1,9 +1,9 @@
     ; tick
     ENTER 2 1
     ; label 103
-    LAW data +0
+    LAW var 0
     ADDLW 0
-    SAW data +0
+    SAW var 0
     LEAVE 2
 
     ; up_lt
@@ -294,7 +294,7 @@
     CALL by_int
     CN 6
     BRNE 0
-    LAW data +0
+    LAW var 0
     CN 10
     BRNE 0
     CN 1

@@ -1,9 +1,9 @@
     ; tick
     ENTER 2 1
     ; label 103
-    LAW data +0
+    LAW var 0
     ADDLW 0
-    SAW data +0
+    SAW var 0
     LEAVE 2
 
     ; up_le
@@ -273,7 +273,7 @@
     CN 1
     CALL after_goto
     CALL stale
-    LAW data +0
+    LAW var 0
     CB 100
     ISEQ
     NEG

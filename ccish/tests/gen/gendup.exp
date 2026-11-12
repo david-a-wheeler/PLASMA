@@ -17,7 +17,7 @@
     ; sqg
     ENTER 0 0
     ; label 103
-    LAW data +0
+    LAW var 0
     DUP
     MUL
     LEAVE 0
@@ -41,8 +41,8 @@
     ; sqv
     ENTER 0 0
     ; label 103
-    LAW.v data +2
-    LAW.v data +2
+    LAW.v var 1
+    LAW.v var 1
     MUL
     LEAVE 0
 
@@ -50,7 +50,7 @@
     ENTER 0 0
     ; label 103
     CN 2
-    SAW data +0
+    SAW var 0
     CN 3
     CALL sq
     CN 4

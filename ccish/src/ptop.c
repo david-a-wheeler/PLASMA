@@ -170,9 +170,12 @@ static void parse_scalar_init(int type)
     return;
   }
   // An address must stay within the data written so far (one past the
-  // end is allowed, as in C), or within its string.
+  // end is allowed, as in C), within its string, or within its
+  // zero-filled object (C11 6.5.6p8).
   if ((o.global == 1 && (o.off < 0 || o.off > data_offset()))
-      || (o.global == G_STR && (o.off < o.disp || o.off > o.val)))
+      || (o.global == G_STR && (o.off < o.disp || o.off > o.val))
+      || (o.global >= 2 && (var_link[o.global - 2] & VL_BSS)
+          && (o.off < 0 || o.off > type_size(var_type[o.global - 2]))))
     error0(155 /* "initializer address is out of range" */);
   if (o.global == G_STR) {
     data_addr(REL_STR, o.off, 0);
@@ -716,18 +719,14 @@ static void define_global(int name, int type, int storage)
   } else if (storage != TC_EXTERN) {
     if (is_array(type) && type_count(type) == 0)
       error0(87 /* "array size missing" */);
-    if ((is_array(type) || is_struct(type))
-        && type_size(type) >= BSS_MIN) {
-      // In the zero-filled space, with no data bytes: ccrel places
-      // it, maybe on the heap.
-      if (bss_next > 0x7FFF - type_size(type))
-        error0(182 /* "too much data: globals over 32767 bytes" */);
-      var_link[s] |= VL_BSS;
-      var_off[s] = bss_next;
-      bss_next += type_size(type);
-    } else {
-      data_zero(type_size(type));
-    }
+    // In the zero-filled space, with no data bytes, whatever its
+    // size: ccrel places it, after every object's data, or on the heap
+    // if it's at least BSS_MIN bytes (../doc/xload.md, 3.3).
+    if (bss_next > 0x7FFF - type_size(type))
+      error0(182 /* "too much data: globals over 32767 bytes" */);
+    var_link[s] |= VL_BSS;
+    var_off[s] = bss_next;
+    bss_next += type_size(type);
   }
 }
 

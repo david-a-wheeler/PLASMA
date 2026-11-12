@@ -1,7 +1,7 @@
     ; in4
     ENTER 0 0
     ; label 103
-    LAW data +0
+    LAW var 0
     CFFB 252
     AND
     CW 300
@@ -12,7 +12,7 @@
     ; in64
     ENTER 0 0
     ; label 103
-    LAB data +2
+    LAB var 1
     ANDI 192
     CB 64
     ISEQ
@@ -22,7 +22,7 @@
     ; in2odd
     ENTER 0 0
     ; label 103
-    LAW data +0
+    LAW var 0
     DECR
     CFFB 254
     AND
@@ -34,11 +34,11 @@
     ; vin4
     ENTER 0 0
     ; label 103
-    LAW.v data +3
+    LAW.v var 2
     CW 300
     ISGE
     BRFLS 0
-    LAW.v data +3
+    LAW.v var 2
     CW 303
     ISLE
     BRFLS 0
@@ -55,13 +55,13 @@
     CN 0
     SLW 0
     CW 299
-    SAW data +0
+    SAW var 0
     LLW 0
     CALL in4
     ADD
     SLW 0
     CW 300
-    SAW data +0
+    SAW var 0
     LLW 0
     CALL in4
     NOT
@@ -69,7 +69,7 @@
     ADD
     SLW 0
     CW 303
-    SAW data +0
+    SAW var 0
     LLW 0
     CALL in4
     NOT
@@ -77,19 +77,19 @@
     ADD
     SLW 0
     CW 304
-    SAW data +0
+    SAW var 0
     LLW 0
     CALL in4
     ADD
     SLW 0
     CB 63
-    SAB data +2
+    SAB var 1
     LLW 0
     CALL in64
     ADD
     SLW 0
     CB 64
-    SAB data +2
+    SAB var 1
     LLW 0
     CALL in64
     NOT
@@ -97,7 +97,7 @@
     ADD
     SLW 0
     CB 127
-    SAB data +2
+    SAB var 1
     LLW 0
     CALL in64
     NOT
@@ -105,19 +105,19 @@
     ADD
     SLW 0
     CB 128
-    SAB data +2
+    SAB var 1
     LLW 0
     CALL in64
     ADD
     SLW 0
     CW 300
-    SAW data +0
+    SAW var 0
     LLW 0
     CALL in2odd
     ADD
     SLW 0
     CW 301
-    SAW data +0
+    SAW var 0
     LLW 0
     CALL in2odd
     NOT
@@ -125,7 +125,7 @@
     ADD
     SLW 0
     CW 302
-    SAW data +0
+    SAW var 0
     LLW 0
     CALL in2odd
     NOT
@@ -133,13 +133,13 @@
     ADD
     SLW 0
     CW 303
-    SAW data +0
+    SAW var 0
     LLW 0
     CALL in2odd
     ADD
     SLW 0
     CW 301
-    SAW.v data +3
+    SAW.v var 2
     LLW 0
     CALL vin4
     NOT
@@ -147,7 +147,7 @@
     ADD
     SLW 0
     CW 304
-    SAW.v data +3
+    SAW.v var 2
     LLW 0
     CALL vin4
     ADD

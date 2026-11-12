@@ -78,13 +78,13 @@
     ENTER 0 0
     ; label 103
     CN 1
-    SAW data +4
+    SAW var 2
     CN 2
-    SAW data +6
+    SAW var 2 +2
     CN 3
-    SAW data +8
+    SAW var 3
     CN 4
-    SAW data +10
+    SAW var 3 +2
     CN 1
     CN 2
     CALL f
@@ -100,10 +100,10 @@
     ADD
     ADDAW data +0
     ADDAW data +2
-    LA data +4
+    LA var 2
     CALL si
     ADD
-    LA data +8
+    LA var 3
     CALL ss
     ADD
     CN 3

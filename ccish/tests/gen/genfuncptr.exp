@@ -13,7 +13,7 @@
     ; pick
     ENTER 2 1
     ; label 103
-    LA data +0
+    LA var 0
     IDXLW 0
     LW
     LEAVE 2
@@ -35,7 +35,7 @@
     ; label 103
     LLW 0
     CN 2
-    LA data +0
+    LA var 0
     IDXLW 0
     LW
     ICAL
@@ -90,9 +90,9 @@
     ENTER 0 0
     ; label 103
     LA add
-    SAW data +0
+    SAW var 0
     LA add
-    SAW data +2
+    SAW var 0 +2
     LA nop
     LA add
     CALL stmt

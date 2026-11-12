@@ -83,7 +83,7 @@
     ; orvol
     ENTER 0 0
     ; label 103
-    LAW.v data +0
+    LAW.v var 0
     DROP
     MINUS1 65535
     LEAVE 0
@@ -115,8 +115,8 @@
     ; subvol
     ENTER 0 0
     ; label 103
-    LAW.v data +0
-    LAW.v data +0
+    LAW.v var 0
+    LAW.v var 0
     SUB
     LEAVE 0
 
@@ -171,7 +171,7 @@
     ENTER 0 0
     ; label 103
     CN 0
-    LAW.v data +0
+    LAW.v var 0
     DIV
     LEAVE 0
 

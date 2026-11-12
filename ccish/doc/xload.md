@@ -205,9 +205,10 @@ already zero-filled symbols, and explicit zero initializers (`int x =
 0;`, `= {0}`), not counted. So the zero region takes:
 
 - **every global and static local with no initializer, of any size**
-  (plan step 1: cccomp puts them all in the file's zero-filled space,
-  where today only arrays and structs of `BSS_MIN` bytes or more go);
-- **every one whose initializer is all zeros** (plan step 2), as gcc
+  (plan step 3: cccomp puts them in the file's zero-filled space,
+  where before only arrays and structs of `BSS_MIN` bytes or more
+  went; done for globals, not yet for static locals);
+- **every one whose initializer is all zeros** (plan step 4), as gcc
   does with `.bss`; C can't tell the difference (C11 6.7.9p10).
 
 What's left as zeros in the initialized data is only the zeros inside
@@ -607,12 +608,17 @@ To check once XLOAD runs, on MAME and then a real Apple II:
 1. ~~The hand-off, read from plvm02.s~~ (4.5), 2026-11-11.
 2. ~~ccrel's `-x` and the image format~~ (section 3), 2026-11-12,
    versions 1-3, checked by tools/xlcheck.py; version 4 specified.
-3. **cccomp: no initializer, any size, into the zero-filled space**
-   (3.3): every global and static local with no initializer goes in
-   the file's zero-filled space; `movable()` (heap) stays limited to
-   `BSS_MIN` and up, and ccrel moves only those, for REL modules. REL
-   modules keep their size and code; `make test` and `make bootstrap`
-   test it on its own. One commit.
+3. ~~cccomp: no initializer, any size, into the zero-filled space~~
+   (3.3), 2026-11-12, for globals: `movable()` stays limited to
+   `BSS_MIN` and up, ccrel moves only those, and the peephole stage
+   folds constants into any symbol's address, so the code is the same
+   (the gen tests' ops are unchanged, only their operands' names).
+   **Static locals aren't done:** a zero-filled global is reached
+   through its symbol, and cccomp writes the symbol summary when the
+   file ends, by which time a static local's variable slot has gone
+   with its block (and may have been reused). They need a design of
+   their own (1,799 bytes of zeros in ccish), perhaps a new IR op that
+   declares a static local's zero-filled symbol when its block ends.
 4. **cccomp: all-zero initializers too** (3.3): `int x = 0;`, `= {0}`
    and the like go in the zero-filled space. cccomp writes an
    initializer's bytes to the IR as it parses, so irout.c's data
