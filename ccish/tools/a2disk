@@ -16,7 +16,7 @@
 # Usage: tools/a2disk
 # Then, e.g., with CCLIB the prefix, so that a program's files go there:
 #   A2CMD_DISK3=tests/out/apple/cclib.po tools/a2cmd ../mame \
-#     tests/out/apple/boot.po tests/out/apple/ccish.po 30 "P /CCLIB" \
+#     tests/out/apple/boot.po tests/out/apple/ccish.po "P /CCLIB" \
 #     "+/CCISH/XLOAD /CCISH/CCPP T.C" ...
 # (run by its path, a pass finds CCISH.MSG beside it).
 set -eu

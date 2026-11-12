@@ -32,7 +32,19 @@ into a module byte-identical to the host's, which CMD then runs
 with the headers, CCISH with XLOAD, the passes and the messages, CCLIB
 with the library and a program's files), ccish compiles and links a
 program that includes `<fileio.h>` and uses the library's startup, and
-CMD runs it. Not yet on a real Apple II, nor the 128K VM.
+CMD runs it. And ccish compiles **its own src/link.c** (61K, the file
+with cccomp's `MAX_VARS` peak) there, `-DCCISH_SMALL` as the bootstrap
+does, to LINK.OBJ and LINK.SYMS byte-identical to the host's. The
+emulated IIe's times (1 MHz; tools/a2cmd prints each command's):
+
+| Pass | link.c | XLOAD's share (load) |
+|---|---:|---:|
+| ccpp | 2,031 s (34 min) | about 13 s for a small image |
+| cccomp | 497 s (8.3 min) | |
+| ccgen | 532 s (8.9 min) | |
+
+ccpp is by far the slowest: worth profiling on its own. Not yet on a
+real Apple II, nor the 128K VM.
 
 ## 1. Requirements
 
