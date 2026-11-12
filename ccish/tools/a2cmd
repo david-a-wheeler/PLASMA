@@ -1,13 +1,16 @@
 #!/bin/sh
-# a2cmd: run commands at PLASMA's prompt on an emulated 64K Apple IIe
-# in MAME, and print the 40-column text screen afterwards. It boots
+# a2cmd: run commands at PLASMA's prompt on an emulated Apple IIe in
+# MAME, and print the text screen afterwards. It boots
 # BOOT.po (a PLASMA boot disk that stops at its prompt, showing its
 # "MEM FREE:" line) with DISK2.po in the second drive, types each
 # COMMAND with a Return, each when CMD's prompt is back (or after
 # A2CMD_GAP seconds of emulated time, 3600 if unset), prints how long
 # each took, and prints the screen when the prompt is back after the
 # last. For running ccish's programs and XLOAD (doc/xload.md) on
-# a 64K machine.
+# a 64K machine, or a 128K one.
+#
+# With A2CMD_128K set, the IIe has 128K (an extended 80-column card),
+# so PLASMA runs its 128K VM, with the bytecode in aux memory.
 #
 # With A2CMD_DISK3 set to a disk image, a second Disk II controller
 # goes in slot 5, with that disk in its first drive. (MAME then numbers
@@ -35,6 +38,10 @@ for c in "$@"; do
   cmds="$cmds$c|"
 done
 run_for=$((boot + gap * ($# + 1) + 10))
+# The commands are in $cmds now, so the positional parameters can hold
+# the aux slot's options: 64K, no 80-column card's aux memory; 128K,
+# MAME's default, the extended 80-column card.
+if [ -n "${A2CMD_128K:-}" ]; then set --; else set -- -aux ""; fi
 drives="-flop1 $boot_disk -flop2 $disk2"
 if [ -n "${A2CMD_DISK3:-}" ]; then
   drives="-sl5 diskiing -flop3 $boot_disk -flop4 $disk2 -flop1 $A2CMD_DISK3"
@@ -43,7 +50,7 @@ fi
 A2CMD_CMDS=$cmds A2CMD_GAP=$gap A2CMD_BOOT=$boot \
   SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy \
   timeout $((run_for + 60)) mame apple2ee -rompath "$romdir" \
-  -aux "" $drives \
+  "$@" $drives \
   -video none -sound none -keyboardprovider none -mouseprovider none \
   -joystickprovider none -lightgunprovider none \
   -nothrottle -skip_gameinfo -seconds_to_run "$run_for" \

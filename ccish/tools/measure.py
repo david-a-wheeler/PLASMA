@@ -71,7 +71,7 @@ IO_BUFFER = 1280        # ProDOS's 1K buffer for each open file but the
 # this links (an image starts with "XL"), so they describe what runs.
 APPLE_LINK = ["-x"]
 XLOAD = os.path.join(CCOMP, "tests", "out", "xload", "xload")
-XLOAD2 = XLOAD + "2"            # XLOAD's second part, an image
+XLOAD2 = XLOAD + "2"            # XLOAD's second part, an image beside it
 IMAGE_HEADER = 12               # an image's fixed header (doc/xload.md, 3.2)
 FRAME_SPARE = 512               # what XLOAD leaves for frames, as
                                 # HEAP_SPARE does (xload.c, xload2.c)
@@ -560,12 +560,24 @@ def image_sizes(path):
 
 def xload_sizes():
     """XLOAD's file, what its first part takes in memory once loaded
-    (its body and def table, at the heap's bottom), and its second
-    part's placed size; None if XLOAD isn't built (make xload)."""
+    (its body and def table, at the heap's bottom, and the zero-filled
+    globals its init puts on the heap, which a listing of it gives), and
+    its second part's placed size; None if XLOAD isn't built (make
+    xload)."""
     if not (os.path.exists(XLOAD) and os.path.exists(XLOAD2)):
         return None
     body, deftbl = loader_sizes(XLOAD)
-    return {"file": os.path.getsize(XLOAD), "first": body + deftbl,
+    tmp = os.path.join(OUT, "xload-l")
+    ok, msg = run([os.path.join(CCOMP, "ccish"), "-l", "-o", tmp,
+                   os.path.join(CCOMP, "xload", "xload.c")])
+    if os.path.exists(tmp):
+        os.remove(tmp)
+    if not ok:
+        return None
+    heap = sum(int(m.group(1)) for m in re.finditer(
+        r"^; heap global \d+: \S+, (\d+) bytes$", msg, re.M))
+    return {"file": os.path.getsize(XLOAD), "first": body + deftbl + heap,
+            "file2": os.path.getsize(XLOAD2),
             "second": image_sizes(XLOAD2)["mem"]}
 
 
@@ -695,8 +707,12 @@ def image_summary(rows, xl):
             r["fixups"], r["module"], r["file"]))
     if xl:
         print("%-7s %52d" % ("XLOAD", xl["file"]))  # under File
+        r = image_sizes(XLOAD2)
+        print("%-7s %5d %5d %5d %6d %6d %6d %6s %6d" % (
+            "XLOAD2", r["names"], 2 * r["n"], r["d"], r["z"], r["c"],
+            r["fixups"], "", r["file"]))
     print("%-7s %52d" % ("Total", sum(r["file"] for _, r in rows if r)
-                         + (xl["file"] if xl else 0)))
+                         + (xl["file"] + xl["file2"] if xl else 0)))
     print("File: the whole file's bytes; Total, all of them. An image"
           " file's parts, in\nits order: a %d-byte header (the same in"
           " every image), Names (the\ndependencies' and imports'), Table"
@@ -704,7 +720,8 @@ def image_summary(rows, xl):
           " Code and Fixups. Not in the file: (Zero), the zero region,\nthe"
           " disk space saved, shown where it goes in memory, after Data"
           " (init\nclears it); (REL), the same program as a REL module, for"
-          " comparison. XLOAD\nis a REL module." % IMAGE_HEADER)
+          " comparison. XLOAD\nis a REL module, and XLOAD2, its second"
+          " part, an image." % IMAGE_HEADER)
     if xl:
         print("XLOAD in memory: its first part %d, its second part %d,"
               " placed\n(none of it stays once the program runs)."

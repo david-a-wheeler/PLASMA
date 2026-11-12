@@ -336,15 +336,18 @@ files of the sessions so far; brought up to date 2026-11-12.)
   fails on a nonzero status. Work an expected status out by hand (or
   with gcc), as for outputs; a gen test that returns `x == k` exits 1
   when it's right.
-- MAME emulates a 64K enhanced IIe, with ROMs in ../mame (never
+- MAME emulates an enhanced IIe, 64K or 128K, with ROMs in ../mame (never
   commit them). Run it only through ccish's guarded scripts, which
   never open a window or take the keyboard and always end:
   tools/a2screen (boot, print the screen), tools/a2time (time a
   program), tools/a2cmd (boot samples/boot.po, a PLASMA disk that
   stops at its prompt, with a second disk, type commands, print the
-  screen; A2CMD_DISK3 adds a third drive). make apple (tools/a2disk) makes the
+  screen; A2CMD_DISK3 adds a third drive, A2CMD_128K makes it a 128K
+  IIe, which runs PLASMA's 128K VM with its JIT, in 80 columns; type a
+  throwaway command first there, as keys typed while the JIT loads
+  are lost). make apple (tools/a2disk) makes the
   disks that run ccish there: boot.po (with the headers), ccish.po
-  (XLOAD, the four passes as images, the messages), cclib.po (the
+  (XLOAD and XLOAD2, the four passes as images, the messages), cclib.po (the
   library, and room for a program's files). Disks are made with AppleCommander
   (../bin/ac-linux-aarch64-15.2). Leave a load time to finish before
   the next command (A2CMD_GAP): keys typed meanwhile are lost. CMD
@@ -366,19 +369,20 @@ in the zero region; the passes taking options in either case (CMD
 uppercases); make apple's disks. On MAME's 64K IIe, the four passes,
 as images through XLOAD, compiled ccish's own link.c to an object
 byte-identical to the host's (ccpp 34 minutes, cccomp 8.3, ccgen 8.9,
-at 1 MHz). exit() unwinds on the Apple (lib/exit.c; under plvm it
+at 1 MHz), and on the 128K IIe too, faster with its JIT (ccpp 23
+minutes). exit() unwinds on the Apple (lib/exit.c; under plvm it
 still stops plvm with ccstat's marker).
 
 Open, roughly in the order they matter:
 - **Running margin**: ccpp and cccomp have under 1K to spare each
   (doc/measure.txt). Ways to cut cccomp: approach.md issue 24.
 - **XLOAD's own room**: its second part fits in cccomp's zero region
-  with only about 370 bytes to spare (doc/xload.md, section 6).
+  with about 440 bytes to spare (doc/xload.md, section 6).
 - **ccpp's speed**: 34 minutes for link.c at 1 MHz, four times
   cccomp's.
 - **A ProDOS file type for images** (BIN for now): the user's choice.
-- **The 128K Apple** (doc/xload.md, 4.4) and the other PLASMA
-  platforms (leave the partial C64 work in src/vmsrc alone).
+- **The other PLASMA platforms** (doc/xload.md, R6; leave the partial
+  C64 work in src/vmsrc alone).
 - **A real 64K Apple II**: run ccish there, and measure its free
   memory (E1; MAME's is in doc/measure.txt).
 - **The 6502 stack depth** of cccomp's recursion (approach.md 18.5).

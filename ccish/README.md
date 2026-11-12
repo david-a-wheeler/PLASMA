@@ -40,8 +40,9 @@ itself byte for byte under plvm. Programs it compiles run on an
 emulated 64K Apple IIe (see `samples/`), and so does the compiler
 itself: its four passes, built as images (`-x`) and run through XLOAD,
 ccish's own second-stage loader ([doc/xload.md](doc/xload.md)), compile
-a program on an emulated 64K Apple IIe. (Its heart, a front-end parser
-named `cccomp`, is too big for PLASMA's own loader there.)
+a program on an emulated 64K or 128K Apple IIe. (Its heart, a
+front-end parser named `cccomp`, is too big for PLASMA's own loader
+there.)
 
 ## Using it
 

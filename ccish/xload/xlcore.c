@@ -6,34 +6,26 @@
  * a file (the second part), not only memory (the first). */
 
 /* CMDSYS's table, as far as XLOAD reads it (src/inc/cmdsys.plh; the
- * same offsets on the Apple and under plvm, vmsrc/cmdsys.c). */
+ * same offsets on the Apple and under plvm, vmsrc/cmdsys.c). What XLOAD
+ * doesn't use is padding, since ccish allows a file only 32 struct
+ * members in all (MAX_MEMBERS). */
 struct xl_cmdsys {
-  int sysver;
-  char *syspath;
+  char pad0[4];               /* sysver, syspath */
   char *cmdline;
-  void *modexec;
-  void *sysopen;
-  void *sysclose;
-  void *sysread;
-  void *syswrite;
-  char syserr;
+  char pad1[11];              /* modexec, open, close, read, write,
+                                 syserr */
   unsigned char jitcount;
   unsigned char jitsize;
-  void *execsys;
+  char pad2[2];               /* execsys */
   int (*lookupsym)(char *);
+  int systemflags;            /* the 128K VM's: aux memory reserved */
 };
 extern struct xl_cmdsys xl_sys __asm__("CMDSYS");
 
 /* FILEIO's table, as far as XLOAD uses it (src/inc/fileio.plh). */
 #pragma plasma import FILEIO
 struct xl_fileio {
-  void *getpfx;
-  void *setpfx;
-  void *getfileinfo;
-  void *setfileinfo;
-  void *geteof;
-  void *seteof;
-  void *iobufalloc;
+  char pad[14];               /* getpfx to iobufalloc */
   int (*open)(char *);
   int (*close)(int);
   int (*read)(int, char *, int);
@@ -44,7 +36,10 @@ extern struct xl_fileio xl_fio __asm__("FILEIO");
  * builds. */
 #define XL_PLVM     1
 #define XL_APPLE64  2
-#define XL_VEC_APPLE 0x03D6   /* the 64K Apple's indirect entry */
+#define XL_APPLE128 3
+#define XL_VEC_APPLE 0x03D6   /* the 64K Apple's indirect entry; the
+                                 128K one's for its JIT */
+#define XL_VEC_AUX  0x03DC    /* the 128K Apple's: bytecode in aux */
 #define XL_VEC_PLVMX 0xFF0C   /* plvm's entry for a module's bytecode */
 #define XL_VEC_PLVM  0xFF08   /* plvm's entry for bytecode in 6502 memory */
 
@@ -58,8 +53,11 @@ struct xl_args {
   char *name;                 /* its file, a PLASMA string */
   int verbose;                /* -V */
   int spx;                    /* captured: SP (high) and X (low) */
-  int ifp;                    /* captured: the frame pointer */
+  int ifp, pp;                /* captured: the frame pointers */
   int init;                   /* back: the program's init entry */
+  unsigned aux;               /* the 128K VM: where the bytecode goes in
+                                 aux memory; else 0, after the zeros */
+  int (*call)(int, int, int, int, int); /* the 128K VM: CMD's CALL */
 };
 
 #define XL_MAXIMP 127       /* imports one image may have */
@@ -92,6 +90,19 @@ static unsigned char xl_ff[1] = { 0xFF };
 static int xl_ref;
 static unsigned char xl_buf[XL_BUF];
 #endif
+
+/* On the 128K VM, a window on the bytecode in aux memory: XL_WIN bytes
+ * at most, xl_wn of them, from bytecode offset xl_ws. Loading moves the
+ * bytecode through it to aux, and the fixups patch it there. */
+#define XL_WIN 128
+static unsigned char xl_win[XL_WIN];
+static unsigned xl_ws, xl_wn;
+
+/* Set to give the def entries xl_defs() builds the 128K VM's JIT
+ * countdown: the program's, never XLOAD's own. The JIT compiles in
+ * scratch memory at the heap's mark (src/libsrc/jitcore.pla), which
+ * while XLOAD runs is inside the program being loaded. */
+static int xl_jit;
 
 /* Print XLOAD's prefix for a message. */
 static void xl_say(void)
@@ -236,32 +247,104 @@ static int xl_names(int verbose)
   return !xl_err;
 }
 
+/* Copy n bytes from main memory at m to aux memory at x, or the other
+ * way if !to_aux: the ROM's XMOVE ($C311), through CMD's CALL, as CMD's
+ * loader does (cmdjit.pla). */
+static void xl_xmove(struct xl_args *a, unsigned char *m, unsigned x,
+                     unsigned n, int to_aux)
+{
+  unsigned from = to_aux ? (unsigned)m : x;
+  *(unsigned *)0x3C = from;     /* A1, A2: the first and last bytes */
+  *(unsigned *)0x3E = from + n - 1;
+  *(unsigned *)0x42 = to_aux ? x : (unsigned)m;   /* A4: where to */
+  a->call(0xC311, 0, 0, 0, to_aux ? 5 : 4);       /* carry: to aux */
+}
+
 /* Build the image's def entries at defs, of a->esize bytes each with
- * vector a->vec, from its function table, for a body at body. */
+ * vector a->vec, from its function table, for a body at body (or on
+ * the 128K VM, bytecode at a->aux). The 128K VM's 7-byte entries also
+ * get the JIT's countdown with xl_jit, for a function no bigger than
+ * its jitsize, as CMD's loader gives them (cmdjit.pla, adddef(); never
+ * init's, the last). */
 static void xl_defs(struct xl_args *a, unsigned char *defs,
                     unsigned char *body)
 {
-  int i, off, v;
-  unsigned size = (unsigned)xl_d + xl_z + xl_c;
+  int i, off, v, last = 0;
+  unsigned dz = (unsigned)xl_d + xl_z, size = dz + xl_c;
   for (i = 0; i < xl_n; i++) {
     off = xl_getw();
-    if ((unsigned)off >= size)
+    if ((unsigned)off >= size || (a->aux && (unsigned)off < dz))
       xl_fail(pstr("a function outside the image"));
-    v = (int)(body + off);
+    v = a->aux ? (int)(a->aux + off - dz) : (int)(body + off);
     defs[0] = 0x20;             /* JSR vector, then the address */
     defs[1] = (unsigned char)a->vec;
     defs[2] = (unsigned char)(a->vec >> 8);
     defs[3] = (unsigned char)v;
     defs[4] = (unsigned char)(v >> 8);
+    if (a->esize == 7) {
+      defs[5] = defs[6] = 0;
+      v = off - last;           /* the entry before: its size */
+      if (xl_jit && i && (unsigned)v <= xl_sys.jitsize) {
+        defs[-6] = (unsigned char)XL_VEC_APPLE;
+        defs[-5] = (unsigned char)(XL_VEC_APPLE >> 8);
+        defs[-2] = xl_sys.jitcount;
+        defs[-1] = (unsigned char)v;
+      }
+    }
+    last = off;
     defs += a->esize;
   }
 }
 
-/* Apply the image's fixups to its body at body, its def entries at
- * defs, of esize bytes each. */
-static void xl_fixups(unsigned char *body, unsigned char *defs, int esize)
+/* Move the bytecode out of the window, back to aux memory. */
+static void xl_flush(struct xl_args *a)
 {
-  unsigned char *p = body, *end = body + xl_d + xl_z + xl_c - 1;
+  if (xl_wn)
+    xl_xmove(a, xl_win, a->aux + xl_ws, xl_wn, 1);
+  xl_wn = 0;
+}
+
+/* Where the word at body offset off is, in main memory: in the body,
+ * or on the 128K VM, for bytecode, in the window, which moves to it
+ * (the fixups come in address order). */
+static unsigned char *xl_at(struct xl_args *a, unsigned char *body,
+                            unsigned off)
+{
+  unsigned c = off - xl_d - xl_z;
+  if (!a->aux || off < (unsigned)xl_d + xl_z)
+    return body + off;
+  if (c + 2 > xl_ws + xl_wn) {
+    xl_flush(a);
+    xl_ws = c;
+    xl_wn = xl_c - c < XL_WIN ? xl_c - c : XL_WIN;
+    xl_xmove(a, xl_win, a->aux + c, xl_wn, 0);
+  }
+  return xl_win + (c - xl_ws);
+}
+
+/* Read the bytecode to at, or on the 128K VM, through the window to
+ * aux memory. */
+static void xl_code(struct xl_args *a, unsigned char *at)
+{
+  unsigned o, k;
+  if (!a->aux) {
+    xl_read(at, (unsigned)xl_c);
+    return;
+  }
+  for (o = 0; o < (unsigned)xl_c && !xl_err; o += k) {
+    k = xl_c - o < XL_WIN ? xl_c - o : XL_WIN;
+    xl_read(xl_win, k);
+    xl_xmove(a, xl_win, a->aux + o, k, 1);
+  }
+}
+
+/* Apply the image's fixups to its body at body (its bytecode at a->aux
+ * on the 128K VM), its def entries at defs. */
+static void xl_fixups(struct xl_args *a, unsigned char *body,
+                      unsigned char *defs)
+{
+  unsigned char *p;
+  unsigned off = 0, end = (unsigned)xl_d + xl_z + xl_c - 1;
   int b, k, v;
   unsigned gap;
   xl_nadd = xl_ndef = xl_nimpfix = 0;
@@ -275,13 +358,18 @@ static void xl_fixups(unsigned char *body, unsigned char *defs, int esize)
       b &= 0x3F;
       gap = b == 0x3F ? (unsigned)xl_getw() : (unsigned)b;
     }
-    if (gap >= (unsigned)(end - p) || k >= xl_nimp) {
+    if (off >= end || gap >= end - off || k >= xl_nimp) {
       xl_fail(pstr("a bad fixup"));
       return;
     }
-    p += gap;
+    off += gap;
+    p = xl_at(a, body, off);
     v = p[0] | (p[1] << 8);
     if (k == -1) {
+      /* Never an address in the bytecode, which on the 128K VM isn't
+       * in main memory: ccrel reaches functions through their def
+       * entries. (The word may look like one: an address before the
+       * data, such as arr - 58, wraps around.) */
       v += (int)body;
       xl_nadd++;
     } else if (k == -2) {
@@ -289,7 +377,7 @@ static void xl_fixups(unsigned char *body, unsigned char *defs, int esize)
         xl_fail(pstr("a bad function number"));
         return;
       }
-      v = (int)defs + v * esize;
+      v = (int)defs + v * a->esize;
       xl_ndef++;
     } else {
       v += xl_imp[k];
@@ -297,19 +385,21 @@ static void xl_fixups(unsigned char *body, unsigned char *defs, int esize)
     }
     p[0] = (unsigned char)v;
     p[1] = (unsigned char)(v >> 8);
-    p += 2;
+    off += 2;
   }
+  if (a->aux)
+    xl_flush(a);
 }
 
 /* Load the image from the source, its header already read: its def
  * entries at defs, its body after them (the zero region left as it
- * is). Returns its init entry's address (the last function's). */
+ * is; on the 128K VM, the bytecode in aux memory at a->aux). Returns its init entry's address (the last function's). */
 static int xl_load(struct xl_args *a, unsigned char *defs)
 {
   unsigned char *body = defs + xl_n * a->esize;
   xl_defs(a, defs, body);
   xl_read(body, (unsigned)xl_d);
-  xl_read(body + xl_d + xl_z, (unsigned)xl_c);
-  xl_fixups(body, defs, a->esize);
+  xl_code(a, body + xl_d + xl_z);
+  xl_fixups(a, body, defs);
   return (int)(defs + (xl_n - 1) * a->esize);
 }

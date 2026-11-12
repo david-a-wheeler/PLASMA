@@ -6,7 +6,8 @@
 -- time) or A2CMD_GAP seconds after the one before (3600 if unset),
 -- whichever comes first, and prints how long each took; then, when
 -- the prompt is back after the last (or that long after it), it prints
--- the 40-column text page 1, one line per row, and makes MAME exit. Subscriptions are globals: a local one would be garbage-
+-- the text page 1 (in 40 or 80 columns), one line per row, and makes
+-- MAME exit. Subscriptions are globals: a local one would be garbage-
 -- collected once this chunk ends, which cancels it.
 local cmds = {}
 local sep = os.getenv("A2CMD_SEP") or "|"
@@ -19,12 +20,46 @@ local boot = tonumber(os.getenv("A2CMD_BOOT") or "60")
 local machine = manager.machine
 local mem = machine.devices[":maincpu"].spaces["program"]
 
+-- The extended 80-column card's aux memory, on a 128K IIe (nil on a
+-- 64K one): in 80 columns, each row's even columns are there, at the
+-- same addresses as the odd ones in main memory.
+local aux = nil
+local ext80 = machine.devices[":aux:ext80"]
+if ext80 then
+  for name, id in pairs(ext80.items) do
+    if name:find("m_ram") then
+      aux = emu.item(id)
+    end
+  end
+end
+
+-- The screen's width: 80 when the 80-column display is on (RD80VID,
+-- $C01F, bit 7), else 40.
+local function width()
+  if aux and mem:read_u8(0xC01F) >= 0x80 then
+    return 80
+  end
+  return 40
+end
+
+-- The byte in text row r, column c of page 1, for a screen w wide.
+local function cell(r, c, w)
+  local base = 0x400 + (r % 8) * 128 + math.floor(r / 8) * 40
+  if w == 80 then
+    if c % 2 == 0 then
+      return aux:read(base + c // 2)
+    end
+    return mem:read_u8(base + c // 2)
+  end
+  return mem:read_u8(base + c)
+end
+
 -- Text row r of page 1, as a string.
 local function row(r)
-  local base = 0x400 + (r % 8) * 128 + math.floor(r / 8) * 40
+  local w = width()
   local line = ""
-  for c = 0, 39 do
-    local ch = mem:read_u8(base + c) & 0x7f
+  for c = 0, w - 1 do
+    local ch = cell(r, c, w) & 0x7f
     if ch < 32 then
       ch = ch + 64               -- inverse and flashing letters
     end
@@ -53,11 +88,11 @@ local prompt_since = nil  -- since when the prompt has been back
 -- spaces and inverse or flashing bytes (below $80; the Monitor's input
 -- cursor flashes the byte under it) don't count.
 local function last_line()
+  local w = width()
   for r = 23, 0, -1 do
-    local base = 0x400 + (r % 8) * 128 + math.floor(r / 8) * 40
-    local n = 40
+    local n = w
     while n > 0 do
-      local b = mem:read_u8(base + n - 1)
+      local b = cell(r, n - 1, w)
       if b >= 0x80 and b ~= 0xA0 then
         break
       end
@@ -87,7 +122,6 @@ end
 -- prompt test sees it.
 local debug_at = 0
 local debug = os.getenv("A2CMD_DEBUG") ~= nil
-
 a2cmd_sub = emu.add_machine_frame_notifier(function()
   local t = machine.time:as_double()
   if debug and t >= debug_at then

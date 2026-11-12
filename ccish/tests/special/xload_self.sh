@@ -17,7 +17,7 @@ bad=0
 rm -rf "$D"
 mkdir -p "$W/src" "$W/sys" "$D/rel" "$D/img" "$D/obj"
 cp -r lib/include "$W/sys/ccinc"
-cp ccish.msg "$OUT/xload/xload" "$W/"
+cp ccish.msg "$OUT/xload/xload" "$OUT/xload/xload2" "$W/"
 for f in name bio parse link peep; do
     cp "src/$f.c" "$W/src/"
 done

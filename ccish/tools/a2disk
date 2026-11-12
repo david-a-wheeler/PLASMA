@@ -1,7 +1,8 @@
 #!/bin/sh
 # a2disk: make the Apple II disks that run ccish on a 64K Apple II,
 # through XLOAD (doc/xload.md), in tests/out/apple:
-#   ccish.po  volume CCISH: XLOAD (a REL module), ccish's four passes as
+#   ccish.po  volume CCISH: XLOAD (a REL module, and its second part,
+#             XLOAD2, an image), ccish's four passes as
 #             XLOAD images (ccrel -x, from tools/measure.py's objects,
 #             the small build's), and CCISH.MSG: about 108K of the 140K
 #   cclib.po  volume CCLIB: the C library's objects in LIB/ (link a
@@ -42,6 +43,7 @@ done
 [ ! -e "$out/ccish.po" ] || mv -f "$out/ccish.po" "$out/ccish.po.old"
 $AC -pro140 "$out/ccish.po" CCISH
 $AC -p "$out/ccish.po" XLOAD REL <tests/out/xload/xload
+$AC -p "$out/ccish.po" XLOAD2 BIN <tests/out/xload/xload2
 for p in ccpp cccomp ccgen ccrel; do
     $AC -p "$out/ccish.po" "$(echo $p | tr a-z A-Z)" BIN <"$out/$p"
 done

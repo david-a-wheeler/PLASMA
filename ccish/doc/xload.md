@@ -1,6 +1,6 @@
 # XLOAD: a second-stage loader for programs too big to load
 
-XLOAD lets a 64K Apple II run a PLASMA program that fits in memory
+XLOAD lets an Apple II run a PLASMA program that fits in memory
 while running but can't be loaded, because PLASMA's loader reads the
 whole module file, relocation data included, before anything runs.
 ccish's front end, cccomp, is such a program. CMD loads XLOAD, a small
@@ -15,8 +15,9 @@ options we set aside, and how PLASMA's own loader works are in
 plus its fact or section number).
 
 **Status (2026-11-12).** XLOAD is written (xload/: xload.c, the first
-part; xload2.c, the second; xlcore.c, what they share) and works under
-plvm, for the 64K Apple VM and plvm, with `-V` diagnostics (4.6).
+part; xload2.c, the second; xlcore.c, what they share) and works on
+the 64K Apple VM, the 128K one (4.4) and plvm, with `-V` diagnostics
+(4.6).
 ccrel and ccish write version 4 images with `-x` (section 3). Under
 plvm, `make test` runs every run test again as an image through XLOAD
 (the img tests), XLOAD's own test program and its errors
@@ -43,8 +44,15 @@ emulated IIe's times (1 MHz; tools/a2cmd prints each command's):
 | cccomp | 497 s (8.3 min) | |
 | ccgen | 532 s (8.9 min) | |
 
-ccpp is by far the slowest: worth profiling on its own. Not yet on a
-real Apple II, nor the 128K VM.
+ccpp is by far the slowest: worth profiling on its own.
+
+**On MAME's 128K enhanced IIe** (tools/a2cmd with A2CMD_128K, so
+PLASMA runs PLVM.128 and CMDJIT, with the JIT), the same: hello.c's
+module byte-identical to the host's, XLOAD's test program with its
+arguments and status, a pass's error ending in `ERR:$01`, and link.c
+to LINK.OBJ and LINK.SYMS byte-identical to the host's, faster, with
+the JIT: ccpp 1,387 s (23 min), cccomp 444 s, ccgen 507 s. Not yet on
+a real Apple II.
 
 ## 1. Requirements
 
@@ -266,20 +274,24 @@ independent reader of the format, against XLOAD's `-V`.
 
 ## 4. What XLOAD must do
 
-XLOAD's file is an ordinary $6502 module in two parts:
+XLOAD is two files:
 
-1. **The first part** (xload.c) is all loadmod runs: a relocator for
-   the second part, plus what must happen before it (4.2, 4.5). Its
-   module takes 4,871 bytes of memory, 2,452 of them the second part.
-2. **The second part** (xload2.c), the real loader, is carried inside
-   the first part's data as an image in section 3's format
-   (tools/img2h.py makes it a C array, xl2img.h). loadmod sees only
-   bytes. Once relocated, it's ordinary ccish C: globals, strings,
-   helpers and calls all work. Placed, it takes 2,933 bytes (18
-   functions, 409 of data, 807 of zero region, 1,627 of code).
+1. **The first part** (xload.c, the file XLOAD) is an ordinary $6502
+   module, and all loadmod runs: a relocator for the second part, plus
+   what must happen before it (4.2, 4.5). It reads the second part
+   from XLOAD2, the file beside it (its own path, as the command line
+   gives it, with a "2" on the end). Its module takes 4,402 bytes of
+   memory on the 64K VM, its 512-byte read buffer included.
+2. **The second part** (xload2.c, the file XLOAD2), the real loader,
+   is an image in section 3's format. Once relocated, it's ordinary
+   ccish C: globals, strings, helpers and calls all work. Placed, it
+   takes 3,925 bytes on the 64K VM (22 functions, 540 of data, 939 of
+   zero region, 2,336 of code). It was once carried inside the first
+   part's data, but that made the first part 3.5K bigger while it ran,
+   and with the 128K VM's code (4.4) the second part no longer fit in
+   cccomp's zero region (section 6).
 3. **xlcore.c,** included by both, reads an image from a byte source
-   (memory for the first part, the file for the second), builds its
-   def entries, and applies its fixups.
+   (memory or a file), builds its def entries, and applies its fixups.
 
 ### 4.1 The steps
 
@@ -289,14 +301,14 @@ XLOAD's file is an ordinary $6502 module in two parts:
    state for the hand-off on the Apple (4.5), takes `XLOAD` and any
    `-V` off the command line, and opens the program to read its
    header (12 bytes) for its sizes.
-3. It places the second part (below), builds its def entries (4.3),
-   applies its fixups, looks up its imports with `lookupsym`, clears
+3. It places the second part (below), reads it from XLOAD2, builds its
+   def entries (4.3), applies its fixups, looks up its imports with `lookupsym`, clears
    its zero region, and calls it at its first function (`xl2_entry()`,
    the first in xload2.c, so number 0 in its function table), with a
    struct in its own frame (`struct xl_args`, xlcore.c) that says the
    VM, the def entries to build, where the program goes, its file, -V,
-   and the captured state. On the 128K VM it would also move the second
-   part's bytecode to aux (4.4).
+   and the captured state. On the 128K VM the second part's bytecode
+   goes to aux (4.4).
 4. The second part checks the dependencies, looks up the imports, and
    checks that the program fits: its body (D + Z + C), its def table,
    and 512 bytes for its frames (as `HEAP_SPARE` does today), below
@@ -322,7 +334,8 @@ XLOAD's file is an ordinary $6502 module in two parts:
 **Errors** before step 5 return to the first part, which returns an
 error status (1; 2 for the usage). After step 5 has begun, on the
 Apple, the first part is gone: the second part hands off instead to a
-stub init (a def entry and `MINUS1 RET`, in its data), so that CMD
+stub init (`JSR $03D0`, the direct entry, then `MINUS1 RET`, in its
+data), so that CMD
 reports an error as for any program.
 
 **Why load in place:** the alternative, reading and fixing up the
@@ -340,14 +353,14 @@ needs no memory beyond the program's own, so the load peak is lower
 than the running need. It must also stay clear of the first part,
 which is running while it's copied: so it goes at the higher of the
 zero region's start and the first part's end (the heap's mark). The
-zero regions (section 6): ccpp 16,914, ccrel 12,226, ccgen 7,490,
-cccomp 6,588 bytes, against the second part's 2,933. For cccomp on the
-Apple, the region runs from 2,045 to 8,633 bytes above the heap's
-bottom, and the first part ends at 4,871, so the second part ends at
-7,804: inside, with 829 to spare. Under plvm, whose loader keeps a
-module's bytecode out of 6502 memory, the first part ends lower. On
-the 128K VM the second part's bytecode would go to aux (4.4), and only
-its data need a place.
+zero regions (doc/measure.txt): ccpp 16,918, ccrel 12,230, ccgen
+7,494, cccomp 6,592 bytes, against the second part's 3,925. For
+cccomp on the 64K Apple, the region runs from 2,172 to 8,764 bytes
+above the heap's bottom, and the first part ends at 4,402, so the
+second part ends at 8,327: inside, with 437 to spare (section 6).
+Under plvm, whose loader keeps a module's bytecode out of 6502
+memory, the first part ends lower. On the 128K VM both parts' bytecode
+is in aux (4.4), and only their def tables and data need a place.
 
 ### 4.2 Which VM is running
 
@@ -415,23 +428,42 @@ CMDJIT's loadmod reads and relocates a module in main memory, then
 copies its bytecode to aux with the ROM's XMOVE (`call($C311, ...)`,
 with $3C, $3E and $42 set, cmdjit.pla:1229-1235) and frees it in
 main. Data, strings and the def table stay in main. XLOAD does the
-same:
+same, but a piece at a time (done 2026-11-12):
 
-- **Move after the fixups,** which patch bytecode words too, and
-  before the hand-off. Then the heap goes back to the body's bytecode
-  offset (the header's), not its end: the program needs about 25K
-  less main memory than on the 64K machine (cccomp's bytecode).
-- **Find free aux memory without `xheap`,** CMDJIT's aux heap pointer
-  (from $0200, below `xheaptop`, $A000; the JIT's compiled code goes
-  above), which CMDSYS doesn't export. execmod saves and restores it
-  around a program, so XLOAD needn't move it, only avoid what's there:
-  FILEIO's bytecode and its own, XLOAD's being the last loaded. The
-  highest address in XLOAD's own def entries (scanned from 4.2's first
-  entry to the zero byte that ends the table), plus init's size, is
-  where free aux starts. Aux has about 37K free ($0C00-$A000, if the
-  text pages are reserved), so cccomp's 25K fits with room.
-- **The second part's bytecode** goes in aux too, above where the
-  program's will go.
+- **The bytecode never all sits in main memory:** the 128K machine
+  has less main memory free (36,715 bytes at the prompt, $8F6B, the
+  frames starting at $A800, under the JIT's code at $AF00), not enough
+  for cccomp's bytecode, data and zero region at once. So XLOAD reads
+  the bytecode through a 128-byte window and XMOVEs each piece to aux,
+  and then applies the fixups that fall in the bytecode through the
+  same window: they come in address order, so it moves the window
+  along, out of aux and back. XMOVE is reached through CMD's `CALL`,
+  which CMDSYS doesn't export, so XLOAD asks `lookupsym` for it.
+  The program then needs only its def table, data and zero region in
+  main memory (cccomp's 9.2K, not its 36K).
+- **Free aux memory without `xheap`,** CMDJIT's aux heap pointer,
+  which CMDSYS doesn't export: the program's bytecode goes where
+  XLOAD's own begins (its first def entry's address), over XLOAD's,
+  skipping what CMD reserves as its allocxheap() does (the 80-column
+  text page by the system flags, at CMDSYS+23); the second part's at
+  the top, below $A000, where CMD's aux memory ends. execmod restores
+  `xheap` after the program, so XLOAD needn't move it. So a program
+  XLOAD loads on the 128K VM mustn't load modules of its own: CMD would
+  put their bytecode over the program's.
+- **The JIT** (libsrc/jitcore.pla) compiles a function in scratch
+  memory at the heap's mark, which while XLOAD runs is inside the
+  program being loaded. So XLOAD's own functions must never be
+  compiled: the first part changes its own def entries from the JIT's
+  vector to $03DC first thing, and the second part's get no
+  countdown. Others' functions can still be compiled (FILEIO's read,
+  which loading calls dozens of times), so the first part moves the
+  heap's mark above the program and the second part before the load.
+  The program's def entries get the countdown, as CMD's would.
+- **An address fixup** can't point into the bytecode, which isn't in
+  main memory. ccrel never makes one (functions are reached through
+  their def entries), but XLOAD can't check: a data address with a
+  negative offset folded in, such as `arr - 58`, wraps around and
+  looks like one.
 
 ### 4.5 The hand-off
 
@@ -526,13 +558,20 @@ its locals.
 **Also on plvm:** FILEIO's GETFILEINFO prints "unimplemented!"
 (vmsrc/sysio.c), so XLOAD skips the ProDOS file type check there.
 
-**On the 128K VM** the routines need adjusting, after a reading of
-plvmjit02.s's calls and returns: its indirect entry into aux bytecode
-(IINTRPX, :241-257) pushes the status register (`PHP`, `SEI`, then
-`STA ALTRDON`), so a call into aux code holds 5 bytes, not 4, and runs
-with interrupts off and aux memory read. The capture's offset is
-then 9, not 8, if init and main run from aux; and the hand-off must
-leave the state that init's return into CMDJIT's loadmod expects.
+**On the 128K VM** (plvmjit02.s, read 2026-11-12) the same routines
+work, with PP restored too. Its entry into aux bytecode (IINTRPX,
+:241-257) pushes the status register (`PHP`, `SEI`, then `STA
+ALTRDON`), and a call from aux code (CALLX, ICALX) first pulls the
+caller's (`PLP`) and turns aux reads off, so the 6502 stack still
+holds 4 bytes a call when the next function begins, plus the status
+byte while it runs: the capture is 8 bytes below where init's def
+entry is entered, as on the 64K VM. ENTER there saves IFP on the 6502
+stack and allocates frames from PP ($E2), so the hand-off sets PP to
+its captured value too (the 64K VM doesn't use PP). CMD itself runs
+from main memory, so loadmod calls init with a plain ICAL, and the
+hand-off jumps to init's def entry with aux reads off, as ICAL would.
+The error stub is `JSR $03D0` (the direct entry, on both VMs, its
+bytecode after it in main memory), then MINUS1 RET.
 
 ### 4.6 Diagnostics
 
@@ -625,17 +664,19 @@ globals, and every zero-filled global is reached with an LA, never an
 LAW of a pointer word. cccomp's 296 functions are against `MAX_DEFS`,
 320.
 
-**XLOAD itself:** the first part's module takes 5,128 bytes of memory
-(2,709 of them the second part's image); the second part, placed,
-3,136 (18 functions, 483 of data, 807 of zero region, 1,756 of code).
-For cccomp on the Apple, the second part lands inside its zero region
-(2,045 to 8,633 bytes above the heap's bottom), from 5,128 to 8,264:
-**only 369 bytes to spare**. If XLOAD grows past that, the second part
-goes above cccomp instead, and the load peak rises to about 41K, about
-all of the 41,171 free. Ways to win room back, if needed: a smaller
-read buffer (512 bytes now, 256 would do), or the second part's image
-in a file of its own (XLOAD2), so that it isn't in the first part's
-module (about 2.7K lower).
+**XLOAD itself** (doc/measure.txt has the current figures): XLOAD,
+the first part, a 5,209-byte file, takes 4,402 bytes of memory on the
+64K VM (its 512-byte read buffer, which its init puts on the heap,
+included); XLOAD2, the second part, a 3,423-byte image, takes 3,925
+placed. For cccomp on the 64K Apple, the second part lands inside its
+zero region (2,172 to 8,764 bytes above the heap's bottom), from
+4,402 to 8,327: 437 bytes to spare. With the 128K VM's code (4.4) the
+second part grew by about 800 bytes, and while it was carried in the
+first part's data, the first part took 7,040 bytes, the second part
+no longer fit, and cccomp's load peak went 1,006 bytes over the free
+memory. So the second part moved to a file of its own, XLOAD2. If
+XLOAD grows again: a smaller read buffer (512 bytes now, 256 would
+do), in either part.
 
 `-x` cost ccrel 951 bytes of code and 640 of heap (the function
 table's offsets), leaving it about 13.4K to spare running.
@@ -744,8 +785,8 @@ To check once XLOAD runs, on MAME and then a real Apple II:
    gives `ERR:$01` and CMD's prompt, checked on MAME's 64K IIe. Still
    to do on the Apple: a ProDOS type of its own for images. Was:
    the small test program first, then cccomp.
-10. **The 128K VM** (4.3-4.5): read plvmjit02.s's calls and returns for
-    the hand-off, then test on MAME's 128K IIe with PLVM.128.
+10. ~~The 128K VM~~ (4.3-4.5; 2026-11-12, MAME's 128K IIe: the
+    status above).
 11. **The other platforms** (R6), as far as reasonable.
 12. Separately, offer upstream a streaming loader in CMD for everyone
     else's large modules (options, option 1), with fixes for loadmod's

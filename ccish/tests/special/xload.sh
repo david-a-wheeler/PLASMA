@@ -17,7 +17,7 @@ D=$OUT/xltest
 bad=0
 rm -rf "$D"
 mkdir -p "$D"
-cp "$OUT/xload/xload" "$D/"
+cp "$OUT/xload/xload" "$OUT/xload/xload2" "$D/"
 
 # Run XLOAD in $D with args $@: its output, CRs and plvm's LOOKUPSYM
 # traces out, in $D/out, and its status in $st.
@@ -77,7 +77,7 @@ awk -v info="$D/info" '
 # ENTER), and the capture routine called with nothing on the
 # evaluation stack: its address pushed (LA) right after a branch or at
 # the start, then ICAL.
-./ccish -l -I "$OUT/xload" -o "$D/xlfirst" xload/xload.c >"$D/xlfirst.lst"
+./ccish -l -o "$D/xlfirst" xload/xload.c >"$D/xlfirst.lst"
 sed -n '/^main:$/,/^[^ ]/p' "$D/xlfirst.lst" | awk '
     / ENTER / { bad = 1 }
     / ICAL/ && prev !~ / LA / { bad = 1 }

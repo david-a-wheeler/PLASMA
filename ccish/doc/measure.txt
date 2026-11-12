@@ -110,7 +110,7 @@ ccpp: 9 files, and 19 library objects:
     running, needs 40568 of 41171: 603 to spare
     (a lower bound: the frame stack takes more with the unbounded recursion above)
     loading, needs 36753 of 41171: 4418 to spare (XLOAD's second part in its zero region,
-    at 5128 to 8264 above the heap's bottom, the zero region 2413 to 19331; 512 for frames)
+    at 4451 to 8330 above the heap's bottom, the zero region 2413 to 19331; 512 for frames)
 
 cccomp: 12 files, and 16 library objects:
   its own code 25943, data 246, strings 302: 26491 in all
@@ -142,7 +142,7 @@ cccomp: 12 files, and 16 library objects:
     running, needs 40584 of 41171: 587 to spare
     (a lower bound: the frame stack takes more with the unbounded recursion above)
     loading, needs 38252 of 41171: 2919 to spare (XLOAD's second part in its zero region,
-    at 5128 to 8264 above the heap's bottom, the zero region 2172 to 8764; 512 for frames)
+    at 4451 to 8330 above the heap's bottom, the zero region 2172 to 8764; 512 for frames)
 
 ccgen: 10 files, and 17 library objects:
   its own code 22154, data 938, strings 966: 24058 in all
@@ -168,7 +168,7 @@ ccgen: 10 files, and 17 library objects:
     running, needs 38931 of 41171: 2240 to spare
     (a lower bound: the frame stack takes more with the unbounded recursion above)
     loading, needs 36363 of 41171: 4808 to spare (XLOAD's second part in its zero region,
-    at 5128 to 8264 above the heap's bottom, the zero region 3078 to 10572; 512 for frames)
+    at 4451 to 8330 above the heap's bottom, the zero region 3078 to 10572; 512 for frames)
 
 ccrel: 4 files, and 19 library objects:
   its own code 9740, data 181, strings 394: 10315 in all
@@ -192,7 +192,7 @@ ccrel: 4 files, and 19 library objects:
     I/O buffers 1 x 1280 at most: 2 files open (an object and the module)
     running, needs 28034 of 41171: 13137 to spare
     loading, needs 26774 of 41171: 14397 to spare (XLOAD's second part in its zero region,
-    at 5128 to 8264 above the heap's bottom, the zero region 1219 to 13449; 512 for frames)
+    at 4451 to 8330 above the heap's bottom, the zero region 1219 to 13449; 512 for frames)
 
 Peaks: each limit, the most ccish's own source uses, and where:
   ENTRY_LABEL 78 pplex.c
@@ -228,22 +228,23 @@ ccpp       79   340  1563  16918  14912   1831  28167  18737
 cccomp     79   596   682   6592  26978   2867  44458  31214
 ccgen      79   416  2038   7494  23281   2159  37374  27985
 ccrel      79   204   709  12230  10815   1215  18743  13034
-XLOAD                                                   6010
-Total                                                  96980
+XLOAD                                                   5270
+XLOAD2    107    44   512    941   2316    382          3373
+Total                                                  99613
 File: the whole file's bytes; Total, all of them. An image file's parts, in
 its order: a 12-byte header (the same in every image), Names (the
 dependencies' and imports'), Table (the function table, 2 bytes a function,
 init too), Data, Code and Fixups. Not in the file: (Zero), the zero region,
 the disk space saved, shown where it goes in memory, after Data (init
 clears it); (REL), the same program as a REL module, for comparison. XLOAD
-is a REL module.
-XLOAD in memory: its first part 5128, its second part 3136, placed
+is a REL module, and XLOAD2, its second part, an image.
+XLOAD in memory: its first part 4451, its second part 3879, placed
 (none of it stays once the program runs).
 
 And their fit on a 64K Apple II (41171 bytes free), through XLOAD:
         ----- Loading ----- ----- Running -----
 Program   Need  Spare  OK?   Need  Spare  OK?
-XLOAD     8084  33087  yes
+XLOAD     7891  33280  yes
 ccpp     36753   4418  yes  40568    603  yes*
 cccomp   38252   2919  yes  40584    587  yes*
 ccgen    36363   4808  yes  38931   2240  yes*

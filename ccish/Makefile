@@ -122,18 +122,16 @@ $(OUT)/lib/%.obj: lib/%.c $(wildcard lib/include/*.h) ccpp cccomp ccgen
 	 && ./ccgen $(OUT)/lib/$*
 
 # XLOAD (doc/xload.md), the loader for ccish's images (ccish -x): its
-# second part, an image, held in its first part as data
-# (tools/img2h.py), both built with the host's ccish, for plvm and the
+# first part, xload, a REL module, and its second part, xload2, an
+# image beside it, both built with the host's ccish, for plvm and the
 # Apple II alike.
 XLOAD_DIR := $(OUT)/xload
 XLOAD     := $(XLOAD_DIR)/xload
 $(XLOAD_DIR)/xload2: xload/xload2.c xload/xlcore.c ccish
 	@mkdir -p $(dir $@)
 	@./ccish -x -o $@ xload/xload2.c
-$(XLOAD_DIR)/xl2img.h: $(XLOAD_DIR)/xload2 tools/img2h.py
-	@python3 tools/img2h.py $< xl2_image > $@
-$(XLOAD): xload/xload.c xload/xlcore.c $(XLOAD_DIR)/xl2img.h ccish
-	@./ccish -I $(XLOAD_DIR) -o $@ xload/xload.c
+$(XLOAD): xload/xload.c xload/xlcore.c $(XLOAD_DIR)/xload2 ccish
+	@./ccish -o $@ xload/xload.c
 xload: $(XLOAD)
 
 # apple: the disks that run ccish on a 64K Apple II through XLOAD, in
@@ -175,7 +173,7 @@ $(OUT)/run/%.stamp: tests/run/%.c tests/run/%.expected \
 # exit status as for run (tests/imgrun.sh; its listing and compile-time
 # stderr are run's to check).
 $(OUT)/img/xload: $(XLOAD)
-	@mkdir -p $(dir $@) && cp $< $@
+	@mkdir -p $(dir $@) && cp $< $@ && cp $<2 $@2
 $(OUT)/img/%.stamp: tests/run/%.c tests/run/%.expected tests/imgrun.sh \
                     $(wildcard tests/run/*.status) $(PASSES) $(OUT)/img/xload
 	@sh tests/imgrun.sh $* && touch $@
