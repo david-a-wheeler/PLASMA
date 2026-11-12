@@ -419,3 +419,15 @@ available heap after CMD starts, and what lies in the language card),
 and record it in PLASMA's docs. ccish will need an emulator for this
 anyway, once streaming exists.
 
+## 16. plvm: lookupsym traces every lookup
+
+**What's there.** plvm's CMDSYS `lookupsym` (vmsrc/cmdsys.c,
+`syslookuptbl`) prints `LOOKUPSYM: name => $addr` on stdout for every
+call: its `if (trace)` is commented out.
+
+**Why it's a problem.** A program's output gets a line per lookup.
+ccish's XLOAD (doc/xload.md) looks up each import of the program it
+loads, so its tests must filter those lines out (tests/imgrun.sh).
+
+**The fix.** Restore the `if (trace)`.
+

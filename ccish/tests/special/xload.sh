@@ -73,6 +73,20 @@ awk -v info="$D/info" '
     }' "$D/out" || { echo "FAIL xload: -V's places don't add up:"
                      grep '^XLOAD: \(defs\|init\)' "$D/out"; bad=1; }
 
+# The hand-off rests on the first part's main (4.5): no frame (no
+# ENTER), and the capture routine called with nothing on the
+# evaluation stack: its address pushed (LA) right after a branch or at
+# the start, then ICAL.
+./ccish -l -I "$OUT/xload" -o "$D/xlfirst" xload/xload.c >"$D/xlfirst.lst"
+sed -n '/^main:$/,/^[^ ]/p' "$D/xlfirst.lst" | awk '
+    / ENTER / { bad = 1 }
+    / ICAL/ && prev !~ / LA / { bad = 1 }
+    / ICAL/ { icals++ }
+    { prev = $0 }
+    END { exit bad || icals != 1 }' \
+    || { echo "FAIL xload: the first part'\''s main has a frame, or its capture call isn'\''t LA ICAL"
+         bad=1; }
+
 # The errors.
 want() {    # want STATUS TEXT: XLOAD's last run
     if [ $st != "$1" ] || ! grep -qF "$2" "$D/out"; then

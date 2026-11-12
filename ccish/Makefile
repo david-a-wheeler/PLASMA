@@ -271,7 +271,7 @@ $(OUT)/special/fit.stamp: doc/measure.txt
 $(OUT)/special/xload_self.stamp: doc/measure.txt ccrel-small $(XLOAD) \
                          tests/run/hello.c $(wildcard src/*.c src/*.h)
 $(OUT)/special/xload.stamp: ccrel-small $(XLOAD) tools/xlinfo.py \
-                         tests/xload/xltest.c tests/xload/xltest.expected \
+                         tests/xload/xltest.c tests/xload/xltest.expected xload/xload.c \
                          $(patsubst %,tests/run/%.c,hello global_init pointers addr_const c_names)
 
 # The compiler bootstrap test: the seed, this source's $(CC) build,

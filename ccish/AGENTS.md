@@ -177,7 +177,9 @@ files of the sessions so far, before a move to a new computer.)
   same: the strongest correctness check, so run it after a change to
   any pass; `make full-test` is the regular suite plus the bootstrap.
 - **The kinds:** run (compile and run: stdout, stderr, the exit
-  status, listing directives), gen (the machine ops after the
+  status, listing directives), img (each run test again as an XLOAD
+  image, run through XLOAD under plvm, tests/imgrun.sh; a test that
+  can't apply says `// img-skip:` and why), gen (the machine ops after the
   peepholes, and a run), link (several files into one program),
   errors (must fail with the message), xrun (the same source run
   under ccish and a host compiler, against the .ref that make xref

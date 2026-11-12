@@ -169,10 +169,14 @@ ccish [-l] [-d] [-i] [-k] [-x] [-o output] [-I dir] [-D name[=text]] [-U name] i
 * `-x`: write an XLOAD image instead of a REL module: the same
   program, for a second-stage loader (XLOAD) that loads programs too
   big for PLASMA's own loader on a 64K Apple II
-  ([xload.md](xload.md); its format is section 3). XLOAD isn't written yet, so nothing runs an image so far;
-  `tools/xlcheck.py MODULE IMAGE` checks one against the REL module of
-  the same link. An image needs `main`, at most 127 imports, and at
-  most 320 functions (`MAX_DEFS`).
+  ([xload.md](xload.md); its format is section 3). Run one with
+  `+XLOAD [-V] PROGRAM ARGS` (on the host, `tools/ccrun xload PROGRAM
+  ARGS`, with XLOAD's module, built in tests/out/xload, in the
+  directory); `-V` prints what XLOAD does. An image is smaller than the
+  REL module (no zero-filled data in the file, about a byte per fixup),
+  and a little faster (no global moves to the heap). It needs `main`,
+  at most 127 imports, and at most 320 functions (`MAX_DEFS`).
+  `tools/xlinfo.py IMAGE` describes one.
 * `-I dir`: add a directory to the `#include` search (section 8).
 * `-D name[=text]` and `-U name`: define and undefine a macro before
   the first line of the program.

@@ -643,8 +643,9 @@ Still to learn:
 To check once XLOAD runs, on MAME and then a real Apple II:
 
 - The capture routine's results, against 4.5's arithmetic.
-- That the first part's `main` has no frame and calls the capture
-  routine with an empty evaluation stack (a listing test).
+- ~~That the first part's `main` has no frame and calls the capture
+  routine with an empty evaluation stack~~: a listing check in
+  tests/special/xload.sh.
 - That the program's init returns into loadmod, and execmod puts back
   the heap and symbol table: `MEM FREE` after a run equals the one
   before.
