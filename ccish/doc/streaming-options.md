@@ -8,12 +8,13 @@ the options for getting past that, and the one we chose: **XLOAD**, a
 second-stage loader that ccish ships, so that PLASMA's own loader
 needn't change.
 
-**Status (2026-11-11).** Decided in discussion: XLOAD (section 5), on
+**Status (2026-11-12).** Decided in discussion: XLOAD (section 5), on
 the `c-compiler` branch with the rest of ccish (no separate branch).
-Not yet implemented. plvm02.s has been read for the hand-off: section
-5.4 gives the VM's calling convention and the two native routines.
-Eventually ccish should write either a standard REL module or an XLOAD
-image, chosen by a flag (5.7).
+plvm02.s has been read for the hand-off: section 5.4 gives the VM's
+calling convention and the two native routines. ccish will write
+either a standard REL module or an XLOAD image, chosen by ccrel's
+`-x` (5.7), in 5.3's format: in progress (plan step 2). XLOAD itself isn't written yet, and nothing
+here has run on an Apple II: section 9 lists what to check.
 
 The first version of this document (eef1dd1e) had errors in its
 memory map and missed options; section 8 lists the corrections, so
@@ -284,8 +285,12 @@ The steps:
    over the first part and the original XLOAD module. It reads in
    chunks through a small buffer, then applies the sorted fixups and
    resolves the imports.
-4. The hand-off (5.4) jumps to the payload's init. Nothing of XLOAD
-   stays.
+4. XLOAD closes its files, sets the heap to the image's end
+   (`heaprelease`), and the hand-off (5.4) jumps to the payload's
+   init. Nothing of XLOAD stays. The heap must end at the image, since
+   the payload's init takes its moved globals from `heapalloc` (link.c,
+   init_code), as it does after loadmod; and nothing may allocate after
+   that, since the second part's code is above the image, now free.
 
 **Where the second part goes:** just above where the payload will
 end, which the first part knows from the payload's header. Its frames
@@ -313,18 +318,50 @@ what they do.
 ### 5.3 The payload's format, ours to choose
 
 Both ends are ccish's, so the payload needn't be PLASMA's RLD
-format. ccrel writes:
+format. The format ccrel writes with `-x` (version 1, 2026-11-12;
+words are little-endian, and every address in it is an offset from
+the image's start, where XLOAD loads it):
 
-- **The image:** the program's def table, then its body, as one block
-  correct for address 0. ccrel lays out the def entries itself (5
-  bytes each, `JSR $03D6` and the address, in order), so references to
-  functions are references to entries in the image.
-- **The internal fixups,** then all one kind: add the load address.
-  Sorted, and written as the gaps between offsets, mostly one byte
-  each: about 3K for cccomp, where its RLD is 12.1K.
-- **The imports:** each name (15 for cccomp) with its spots (51 in
-  all), resolved with `lookupsym`.
-- Possibly item 12's zero runs in the data (doc/plasma-requests.md).
+| Bytes | What |
+|---|---|
+| 2 | Magic: `X` `L` ($58 $4C) |
+| 1 | Version: 1 |
+| 1 | Flags: 0 (none yet) |
+| 2 | The image's length: the def table and the body |
+| 2 | The def table's entries, init's included (the last) |
+| any | Dependencies: module names in DCI form, as a REL module's, then $00 |
+| any | Imports: names in DCI form, numbered from 0, then $00 |
+| length | The image |
+| any | The fixups, then $FF |
+
+- **The image** is the def table, then the body exactly as in the REL
+  module (data, strings, a pad byte, bytecode, helpers, init). The
+  entries are 5 bytes each, `JSR $03D6` and the function's address,
+  **in address order**, with the helpers and then init last. ccrel
+  points every reference to a function (calls, function pointers in
+  code and data) at its entry, so the loader needn't search the table
+  (CMD's lookupdef is a linear search for each such fixup). So the
+  image's words differ from the REL module's only in that.
+- **The fixups,** in address order, each moving a cursor (from 0) to
+  the next word to patch:
+  - $01-$7F: move that many bytes; add the load address.
+  - $00 lo hi: move by the word; add the load address.
+  - $80-$FE: import number b - $80 (so at most 127 imports), then a
+    move ($01-$FF, or $00 lo hi); add the import's address, which
+    XLOAD looked up with `lookupsym`. The word holds an addend, as in
+    a REL module.
+  - $FF: the end.
+  The def table's words come first (at 3, then every 5), then the
+  data's, then the code's, object by object, then init's. ccrel stops
+  with an error if they're ever out of order.
+- A program with no `main` can't be an image (there's nothing to
+  run); one with more than 127 imports, or more functions than
+  `MAX_DEFS` (link.c), can't either.
+- **The dependencies** are only checked: XLOAD can't load a module
+  itself (it would load where the payload goes), so each must already
+  be in the symbol table, as FILEIO is, being XLOAD's own dependency.
+- Possibly item 12's zero runs in the data (doc/plasma-requests.md), a
+  later version.
 
 ### 5.4 The hand-off
 
@@ -341,8 +378,10 @@ init returns straight to loadmod, as if loadmod had called it.
   pushed (a pop is INX); `IFP`, the frame pointer, at $E0-$E1;
   `JMPTMP` at $E6 (a JMP opcode) with `TMP` at $E7-$E8; the IP at
   $F2-$F3. (The C64's layout differs: ESTK at $50. The untracked
-  src/vmsrc/plvmzp.inc left by the first version's CMD build is the
-  C64's, which the makefile copies only for C64 builds.)
+  src/vmsrc/plvmzp.inc, left by the first version's CMD build, is the
+  C64's, which the makefile copies before assembling CMD. There's
+  partial work to make PLASMA run on the C64, outside ccish: the user
+  said to leave all of it alone, that file included, 2026-11-12.)
 - **CALL and ICAL** (:1380-1423) push the return IP (2 bytes) on the
   6502 stack, then `JSR JMPTMP`, which jumps to the target (2 more).
   ICAL takes the target from the evaluation stack (one INX). The
@@ -437,12 +476,30 @@ the relocation, the imports and the in-place load with ccish's suite
 on the host. Only the two native routines need MAME (tools/a2screen,
 with its guards).
 
+**plvm's def entries differ** (read 2026-11-12, src/vmsrc/cmdsys.c
+add_def, load_mod, and plvm.c): its loader copies each module's
+bytecode out to host memory, and its def entries are `JSR $FF0C`
+(VM_EXT_ENTRY) with a handle, not an address. But its `JSR $FF08`
+(VM_INDIRECT_ENTRY, vm_iidef) runs bytecode in the 6502 memory at the
+entry's address word, as the Apple's $03D6 does. So an image runs
+under plvm if XLOAD rewrites each entry's vector from $03D6 to $FF08,
+which the header's entry count allows. XLOAD can tell which VM it's on
+from one of its own def entries: `JSR $03D6` on the 64K Apple, `JSR
+$FF0C` on plvm; anything else (the 128K VM, which keeps bytecode in
+auxiliary memory) it should refuse.
+
+**Until XLOAD exists,** tools/xlcheck.py (planned with `-x`) checks ccrel's images
+against its REL modules: it relocates both, as their loaders would,
+for the same load address, and requires the same bytes, reading each
+word that points at a def entry as the function the entry calls.
+tests/special/xload.sh runs it in `make test`.
+
 ### 5.7 REL modules or XLOAD images: a flag
 
 The user wants the finished compiler able to write either a standard
-REL module or an XLOAD image, likely chosen by a flag. Only ccrel
+REL module or an XLOAD image, chosen by a flag: `-x`. Only ccrel
 writes modules, so the flag is ccrel's (and the `ccish` driver's,
-passed through): ccpp, cccomp and ccgen, and the objects, are the same
+which runs the same link code): ccpp, cccomp and ccgen, and the objects, are the same
 either way. A REL module runs anywhere PLASMA runs; an XLOAD image
 loads programs too big for the stock loader, but needs XLOAD on the
 disk. ccish's own build would use the image for cccomp (and perhaps
@@ -613,7 +670,7 @@ The cost: a CMD for each PLASMA release supported.
    that ccish's disk is its own (option 9), and that a loader ccish
    ships can use a format of ccish's own (5.3).
 
-## 9. Still to learn
+## 9. Still to learn, and to check
 
 1. ~~The VM's state at init entry~~: read 2026-11-11 (5.4).
 2. The ProDOS file type for payloads.
@@ -625,12 +682,30 @@ The cost: a CMD for each PLASMA release supported.
 6. ~~Whether CMDSYS's functions are in the symbol table~~: they are.
    CMD adds every entry of its export table, `CMDSYS` itself
    first, at startup (cmd.pla:1442-1447), so `lookupsym` finds them.
+7. How `lookupsym` reports a missing name (0, presumably), so XLOAD
+   can say which import or dependency is missing.
+
+To check once XLOAD runs, on MAME and then a real Apple II (none of
+this has been tried):
+
+- The capture routine's results, against 5.4's arithmetic (stack
+  pointer less 8 at its first instruction).
+- That the first part's `main` has no frame and calls the capture
+  routine with an empty evaluation stack (a listing test).
+- That the payload's init returns into loadmod, and that execmod puts
+  back the heap and symbol table: `MEM FREE` after a run should equal
+  the one before.
+- That an error in the payload (init's negative return) is reported as
+  CMD reports one today (`ERR:$xx`).
+- That `heaprelease` to the image's end leaves FILEIO's state sane:
+  every file XLOAD opened is closed first.
+- The load time against today's for ccgen (which loads either way).
 
 ## 10. Plan
 
 1. ~~Read plvm02.s, and write down the hand-off routine~~ (5.4).
-2. Give ccrel a flag to write a payload (5.7): the image, the sorted
-   fixups, the imports.
+2. Give ccrel a flag to write a payload (5.7): `-x`, checked by
+   tools/xlcheck.py. In progress, 2026-11-12.
 3. Write XLOAD in ccish C: the first part, and the second part as an
    image inside it.
 4. Test under plvm with ccish's suite (a plain call in place of the
