@@ -5,7 +5,7 @@ it has been worked on: the goal, the user's working rules, how to test
 and measure, verified VM facts, and where things stand. The design
 itself, and the reasons for it, are in approach.md; this file points
 there rather than repeating it. (Written 2026-10-31, from the memory
-files of the sessions so far, before a move to a new computer.)
+files of the sessions so far; brought up to date 2026-11-12.)
 
 ## The goal
 
@@ -30,8 +30,9 @@ files of the sessions so far, before a move to a new computer.)
   doc/measure.txt give its need as an image, loading and running, and
   tests/special/fit.sh (in make test) fails if one doesn't fit either
   way; the summary at the report's end has both, and XLOAD's own.
-  ccpp's zero-filled tables are its heap too, so raising its limits
-  costs that margin.
+  Running is the tight one: ccpp and cccomp have under 1K to spare
+  each, as lower bounds. ccpp's zero-filled tables are in its zero
+  region, so raising its limits costs that margin.
 
   ccgen has headroom; it is a streaming filter with fixed tables, so
   making it bigger doesn't reduce what it can compile.
@@ -41,9 +42,11 @@ files of the sessions so far, before a move to a new computer.)
 - `approach.md`: the design, every decision and why ("Decisions so
   far", numbered issues, milestone notes, "X design" and "X is done"
   sections with measurements). Read the relevant section before
-  changing anything. Recent work: "Large zero-filled data on the heap",
-  "Loop design" (steps 1 and 2, the DLW fix, "Possible improvements to
-  the loop forms"), issue 20 "Writing fast C-ish".
+  changing anything. Issue 24, "Putting cccomp on a diet", lists the
+  ways to cut its running memory. Earlier work: "Large zero-filled
+  data on the heap" (REL modules only), "Loop design" (steps 1 and 2,
+  the DLW fix, "Possible improvements to the loop forms"), issue 20
+  "Writing fast C-ish".
 - `doc/xload.md`: XLOAD and its image format, what's left to do, and
   the plan; `doc/streaming-options.md`: why XLOAD, and the options
   set aside.
@@ -226,10 +229,13 @@ files of the sessions so far, before a move to a new computer.)
 - `make measure` (`tools/measure.py`, about 4 seconds) compiles
   ccish's own sources with ccish (small build) and reports each file's
   code, data and strings, each program's totals and module file, table
-  peaks, stack depth, and its fit on a 64K Apple II. The report is doc/measure.txt, checked in; `make
-  test` refreshes it (and doc/limits.md) after a change, so commit it
-  with the change. It writes `tools/out/PROGRAM.lst`, ccrel's listings, and
-  `tools/out/PROGRAM.objs`, the objects tools/cclink linked.
+  peaks, stack depth, and its fit on a 64K Apple II, as the XLOAD
+  image that runs there (its `APPLE_LINK`). The report is
+  doc/measure.txt, checked in; `make test` refreshes it (and
+  doc/limits.md) after a change, so commit it with the change. It
+  writes `tools/out/PROGRAM` (the REL module), `PROGRAM.lst` (ccrel's
+  listing of it), `PROGRAM.apple` (the image), and `PROGRAM.objs`, the
+  objects tools/cclink linked.
 - `python3 tools/listings.py` (or `make listings`; after `make`)
   writes tools/out/lst/NAME.lst for every source file of the programs
   and the library: each function's comment and C, then the machine ops
@@ -239,7 +245,8 @@ files of the sessions so far, before a move to a new computer.)
   never across a label: where a peephole pattern or better code
   generation would pay most.
 - `python3 tools/loops.py` (after measure.py): accesses to globals moved
-  to the heap, in loops, by global and function.
+  to the heap, in loops, by global and function (REL modules only:
+  an image moves nothing to the heap).
 - **Compare against the previous commit** with a git worktree at a
   short path (ccish's output names are limited to 128 characters, and
   the scratchpad path is too long): `git worktree add --detach
@@ -347,26 +354,36 @@ files of the sessions so far, before a move to a new computer.)
   `git -C` and `make -C` rather than `cd` chains; files written with
   the editor tools).
 
-## Where things stand, and what's open (2026-10-31)
+## Where things stand, and what's open (2026-11-12)
 
 A snapshot as of the date in the heading; the numbers that change
 with every commit (sizes, fits, test counts) are in doc/measure.txt
 and make's output, and recent work in git log and approach.md.
 
-Done recently (see git log and approach.md): the ccpp preprocessor;
-the header split; C6 (address constants from the expression parser);
-large zero-filled globals moved to the heap (option 1); loops with the
-test at the bottom; counted loops on the eval stack; the DLW fix (for
-any step that stores the variable); global and expression limits;
-`return` in a counted loop; pure-expression init folding; dead stores
-before a return.
+Done recently (see git log, approach.md and doc/xload.md): XLOAD and
+ccrel -x; zero-filled globals, static locals and all-zero initializers
+in the zero region; the passes taking options in either case (CMD
+uppercases); make apple's disks. On MAME's 64K IIe, the four passes,
+as images through XLOAD, compiled ccish's own link.c to an object
+byte-identical to the host's (ccpp 34 minutes, cccomp 8.3, ccgen 8.9,
+at 1 MHz).
 
 Open, roughly in the order they matter:
-- **cccomp doesn't fit**. Size work recorded but
-  not done: approach.md's "last 2K" candidates (NAME.i/.ir via stdio,
-  enums to #defines), option 3 for zero-filled data (a BSS segment in
-  the REL format, preferred once the VM may change).
-- **Measure free memory on a real 64K Apple II** (E1).
+- **Running margin**: ccpp and cccomp have under 1K to spare each
+  (doc/measure.txt). Ways to cut cccomp: approach.md issue 24.
+- **`exit()` on the Apple**: a pass that hits an error drops into the
+  Monitor, since exit() there is the plvm-only stand-in. Proposed, not
+  agreed: capture the VM's state when init starts, as XLOAD does, and
+  have exit(n) restore it so init returns -n.
+- **XLOAD's own room**: its second part fits in cccomp's zero region
+  with only about 370 bytes to spare (doc/xload.md, section 6).
+- **ccpp's speed**: 34 minutes for link.c at 1 MHz, four times
+  cccomp's.
+- **A ProDOS file type for images** (BIN for now): the user's choice.
+- **The 128K Apple** (doc/xload.md, 4.4) and the other PLASMA
+  platforms (leave the partial C64 work in src/vmsrc alone).
+- **A real 64K Apple II**: run ccish there, and measure its free
+  memory (E1; MAME's is in doc/measure.txt).
 - **The 6502 stack depth** of cccomp's recursion (approach.md 18.5).
 - Loop improvement 3: calls that can't recurse in a counted loop's
   body (CMDSYS functions, helpers, earlier leaf functions): **the
@@ -382,6 +399,6 @@ Open, roughly in the order they matter:
 - A dead store before a call is kept (the scan stops at calls); frames
   aren't shrunk when a local's stores all go.
 - `HEAP_SPARE` (the bytes the init function leaves main's frames)
-  was a guess.
+  was a guess; XLOAD's 512 for frames is the same guess.
 - `CCISH_FAST`: a faster `find_func()` waits behind it for when size
   matters less.
