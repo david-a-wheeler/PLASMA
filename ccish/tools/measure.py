@@ -681,8 +681,8 @@ def image_summary(rows, xl):
     build = "full" if FULL else "small"
     print("\nSummary: the %s build's programs, as XLOAD images, their"
           " sizes:" % build)
-    print("%-7s %6s %6s  %5s %5s %5s %6s %6s %6s" % (
-        "Program", "(REL)", "(Zero)", "Names", "Table", "Data", "Code",
+    print("%-7s %6s  %5s %5s %5s %6s %6s %6s %6s" % (
+        "Program", "(REL)", "Names", "Table", "Data", "(Zero)", "Code",
         "Fixups", "File"))
     for prog, r in rows:
         if r is None:
@@ -690,16 +690,16 @@ def image_summary(rows, xl):
             continue
         assert r["file"] == (IMAGE_HEADER + r["names"] + 2 * r["n"]
                              + r["d"] + r["c"] + r["fixups"])
-        print("%-7s %6d %6d  %5d %5d %5d %6d %6d %6d" % (
-            prog, r["module"], r["z"], r["names"], 2 * r["n"], r["d"],
+        print("%-7s %6d  %5d %5d %5d %6d %6d %6d %6d" % (
+            prog, r["module"], r["names"], 2 * r["n"], r["d"], r["z"],
             r["c"], r["fixups"], r["file"]))
     print("The image file's parts, in its order: a %d-byte header (the same"
           " in every\nimage), Names (the dependencies' and imports'), Table"
           " (the function\ntable, 2 bytes a function, init too), Data,"
           " Code and Fixups; File, the\nwhole file's bytes. Not in the"
           " file: (REL), the same program as a REL\nmodule, for comparison;"
-          " (Zero), the zero region, between Data and Code\nin memory,"
-          " which init clears." % IMAGE_HEADER)
+          " (Zero), the zero region, shown where it goes in\nmemory, after"
+          " Data, which init clears." % IMAGE_HEADER)
     if xl:
         print("XLOAD (a REL module): file %d bytes; in memory, its first"
               " part %d,\nits second part %d, placed (none of it stays"
