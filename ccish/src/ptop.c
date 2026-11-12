@@ -87,10 +87,7 @@
 #include "pstmt.h"
 #include "pexpr.h"
 
-int bss_next;                       // the zero-filled space so far
-                                    // (ptop.h)
-int zarea_next;                     // the zero area so far: static
-                                    // locals with no initializer
+int zero_next[2];                   // (ptop.h)
 
 // Set by parse_scalar_init(): whether the initializer it parsed was an
 // integer constant (not an address), and its value. A const variable
@@ -187,7 +184,8 @@ static void parse_scalar_init(int type)
     var_link[o.global - 2] |= VL_USED | VL_INDATA;
     data_addr(REL_DSYM, o.global - 2, o.off);
   } else {
-    if (o.off < 0 || o.off > (o.global == 1 ? data_offset() : zarea_next))
+    if (o.off < 0
+        || o.off > (o.global == 1 ? data_offset() : zero_next[ZERO_AREA]))
       error0(155 /* "initializer address is out of range" */);
     data_addr(o.global == 1 ? REL_DATA : REL_ZERO, o.off, 0);
   }
@@ -720,26 +718,33 @@ static void define_global(int name, int type, int storage)
     var_type[s] = parse_global_init(type, name);
     if (init_known)
       set_known(s, init_val);
+    // All zeros (var_off[] is where its data began): in the zero-filled
+    // space instead, as if it had no initializer, which C makes the
+    // same (C11 6.7.9p10).
+    if (data_drop_zeros(var_off[s]))
+      zero_var(s, ZERO_GLOBALS);
   } else if (storage != TC_EXTERN) {
     if (is_array(type) && type_count(type) == 0)
       error0(87 /* "array size missing" */);
     // In the zero-filled space, with no data bytes, whatever its
     // size: ccrel places it, after every object's data, or on the heap
     // if it's at least BSS_MIN bytes (../doc/xload.md, 3.3).
-    var_link[s] |= VL_BSS;
-    var_off[s] = zero_alloc(&bss_next, type_size(type));
+    zero_var(s, ZERO_GLOBALS);
   }
 }
 
-// Reserve n bytes in a zero-filled space whose size so far is *next
-// (bss_next or zarea_next), and return their offset.
-int zero_alloc(int *next, int n)
+// Put static variable s, of its type's size, in a zero-filled space:
+// a static local (local, ZERO_AREA) in the file's zero area, a global
+// (ZERO_GLOBALS) in its zero-filled globals' space (../doc/xload.md,
+// 3.3).
+void zero_var(int s, int local)
 {
-  int at = *next;
+  int at = zero_next[local], n = type_size(var_type[s]);
   if (at > 0x7FFF - n)
     error0(182 /* "too much data: globals over 32767 bytes" */);
-  *next = at + n;
-  return at;
+  var_link[s] |= local ? VL_ZAREA : VL_BSS;
+  var_off[s] = at;
+  zero_next[local] = at + n;
 }
 
 // Parse global declarations, after the base type base and the first

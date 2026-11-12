@@ -6067,6 +6067,11 @@ the heap, through a pointer.* It needs no change to the VM.
   did into data's. cccomp checks an initializer's address against the
   zero-filled object it points into (C11 6.5.6p8), as it did against
   the data written so far.
+- **And (2026-11-12):** a static local with no initializer is in its
+  object's zero area, at an offset, with no symbol (object version 9,
+  relocation kind 6); and an object whose initializer is all zeros
+  goes where one with none would, since cccomp's data writer holds
+  zeros back until it knows (doc/xload.md, plan steps 3 and 4).
 - New tests: a run test (zero at the start, constant and variable
   indexes, a char store, a big struct's members, a static, one that
   stays), and link tests of extern ones (one staying), a heap too small

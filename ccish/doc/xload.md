@@ -208,7 +208,7 @@ already zero-filled symbols, and explicit zero initializers (`int x =
   (plan step 3: cccomp puts them in the file's zero-filled space,
   where before only arrays and structs of `BSS_MIN` bytes or more
   went; static locals go in each object's zero area, plan step 3);
-- **every one whose initializer is all zeros** (plan step 4), as gcc
+- **every one whose initializer is all zeros** (plan step 4, done), as gcc
   does with `.bss`; C can't tell the difference (C11 6.7.9p10).
 
 What's left as zeros in the initialized data is only the zeros inside
@@ -625,13 +625,16 @@ To check once XLOAD runs, on MAME and then a real Apple II:
    that stay. Cost: 74 bytes of cccomp's code (891 to spare running).
    Tests: tests/run/static_zero.c, tests/link/static_zero,
    tests/errors/init_range_zero.c.
-4. **cccomp: all-zero initializers too** (3.3): `int x = 0;`, `= {0}`
-   and the like go in the zero-filled space. cccomp writes an
-   initializer's bytes to the IR as it parses, so irout.c's data
-   writer will hold back zeros until a nonzero byte or address comes
-   (writing them as a Z record), and drop them if the whole initializer
-   was zeros. A step of its own, since that's more than step 3's
-   change. One commit.
+4. ~~cccomp: all-zero initializers too~~ (3.3), 2026-11-12: `int x =
+   0;`, `= {0}` and the like go in the zero-filled space (a static
+   local in the zero area). irout.c's data writer holds zeros back
+   until a nonzero byte or an address comes (then writes them as a Z
+   record, or bytes if fewer than 4), so that the parser can take back
+   an initializer of only zeros (`data_drop_zeros()`). It costs
+   cccomp 132 bytes of code (744 to spare running) and saves nothing
+   in ccish's own programs, whose sources have no such initializers;
+   it's for the programs ccish compiles. Tests:
+   tests/run/zero_init.c, tests/run/zero_init_place.c.
 5. **ccrel's version 4, and XLOAD, together** (3.4 says why): under
    `-x`, nothing moves to the heap; the zero region; init clears it.
    XLOAD in ccish C, the first part and the second part as an image

@@ -38,9 +38,13 @@ static int ndata;               // bytes in the data so far
 static int nstrs;               // bytes in the string pool so far
 
 // Data bytes not yet written: the current run, written as one D record
-// when it is full, or before an R record or the end of the stream.
+// when it is full, or before an R record or the end of the stream; and
+// after it, zpend zeros, held back until something else comes, so that
+// an initializer of only zeros can be taken back (data_drop_zeros())
+// and its object put in a zero-filled space instead.
 static unsigned char drun[DATA_RUN];
 static int ndrun;
+static int zpend;
 
 static int nops;                // IR ops written so far
 
@@ -137,6 +141,28 @@ static void flush_data(void)
   ndrun = 0;
 }
 
+// Append byte c to the pending data run, writing the run first if full.
+static void run_byte(int c)
+{
+  if (ndrun == DATA_RUN)
+    flush_data();
+  drun[ndrun++] = (unsigned char)c;
+}
+
+// Write the zeros held back: a Z record of them, after the pending
+// run, unless they're so few (under 4) that the bytes are shorter.
+static void put_zeros(void)
+{
+  if (zpend >= 4) {
+    flush_data();
+    bputc(&out, IR_REC(REC_ZERO));
+    bputw(&out, zpend);
+    zpend = 0;
+  }
+  for (; zpend > 0; zpend--)
+    run_byte(0);
+}
+
 // The number of bytes written to the data stream so far: the data
 // offset of the next byte.
 int data_offset(void)
@@ -144,15 +170,29 @@ int data_offset(void)
   return ndata;
 }
 
-// Append one byte (the low byte of v) to the data.
+// Append one byte (the low byte of v) to the data: a zero is held back.
 void data_byte(int v)
 {
   if (ndata >= 0x7FFF)
     error0(182 /* "too much data: globals over 32767 bytes" */);
-  if (ndrun == DATA_RUN)
-    flush_data();
-  drun[ndrun++] = (unsigned char)v;
   ndata++;
+  if ((v & 0xFF) == 0) {
+    zpend++;
+    return;
+  }
+  put_zeros();
+  run_byte(v);
+}
+
+// If the data from offset mark on is all zeros held back, take them
+// back (the data ends at mark again) and return 1; else return 0.
+int data_drop_zeros(int mark)
+{
+  if (ndata - zpend > mark)
+    return 0;
+  zpend -= ndata - mark;
+  ndata = mark;
+  return 1;
 }
 
 // Append a word to the data that holds an address, plus add bytes: of
@@ -165,6 +205,7 @@ void data_addr(int kind, int target, int add)
 {
   if (ndata > 0x7FFF - 2)
     error0(182 /* "too much data: globals over 32767 bytes" */);
+  put_zeros();
   flush_data();
   bputc(&out, IR_REC(REC_DREL));
   bputc(&out, kind);
@@ -177,23 +218,15 @@ void data_addr(int kind, int target, int add)
   ndata += 2;
 }
 
-// Reserve n zero bytes in the data, for a global variable: a Z record
-// of n, unless n is so small that the bytes are shorter. Returns their
-// data offset.
+// Reserve n zero bytes in the data, held back (put_zeros() writes them
+// as a Z record, or bytes if fewer than 4). Returns their data offset.
 int data_zero(int n)
 {
   int first = ndata;
   if (ndata > 0x7FFF - n)
     error0(182 /* "too much data: globals over 32767 bytes" */);
-  if (n < 4) {
-    while (n-- > 0)
-      data_byte(0);             // shorter than a Z record
-    return first;
-  }
-  flush_data();
-  bputc(&out, IR_REC(REC_ZERO));
-  bputw(&out, n);
   ndata += n;
+  zpend += n;                   // held back, as data_byte()'s
   return first;
 }
 
@@ -211,6 +244,7 @@ void ir_finish(void)
   int i, flags, off, size, hash, name, dep, label;
   int nsyms = nglobals;           // the data symbols
 
+  put_zeros();
   flush_data();
   bputc(&out, IR_REC(REC_SUMMARY));
   bputw(&out, nam_ids);           // the stamp of the name file the ids
@@ -218,8 +252,8 @@ void ir_finish(void)
   bputw(&out, ndata);
   bputw(&out, nstrs);
   bputw(&out, 0);
-  bputw(&out, bss_next);
-  bputw(&out, zarea_next);
+  bputw(&out, zero_next[ZERO_GLOBALS]);
+  bputw(&out, zero_next[ZERO_AREA]);
   bputw(&out, nfuncs);
   bputw(&out, nsyms);
   bputc(&out, dep_count());       // the modules pragmas named
@@ -260,7 +294,9 @@ void ir_finish(void)
 // so that ProDOS can remove it.
 void ir_abort(void)
 {
-  if (out.f)
+  if (out.f) {
+    put_zeros();
     flush_data();
+  }
   bclose(&out);
 }

@@ -3,14 +3,17 @@
 #ifndef PTOP_H
 #define PTOP_H
 
-// For the symbol summary (irout.c): the file's zero-filled space so far
-// (its VL_BSS globals), and the modules #pragma plasma import named,
-// each one's name an id. Only ptop.c changes them.
+// For the symbol summary (irout.c): the sizes so far of the file's two
+// zero-filled spaces, zero_next[ZERO_GLOBALS] (its VL_BSS globals) and
+// zero_next[ZERO_AREA] (its zero area, VL_ZAREA static locals), and the
+// modules #pragma plasma import named, each one's name an id. Only
+// ptop.c changes them.
 #define MAX_DEPS     4      // limit file: modules named by #pragma plasma
                             // import
-extern int bss_next;
-extern int zarea_next;
-int zero_alloc(int *next, int n);
+#define ZERO_GLOBALS 0
+#define ZERO_AREA    1      // zero_var()'s local is the index
+extern int zero_next[2];
+void zero_var(int s, int local);
 extern int dep_id[MAX_DEPS];
 
 // Set by parse_scalar_init(): whether the initializer it parsed was

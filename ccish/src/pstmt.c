@@ -586,11 +586,12 @@ static void parse_declaration(int is_static)
         var_type[s] = parse_global_init(type, name);
         if (init_known)
           set_known(s, init_val);
+        // All zeros: in the zero area instead (as for a global).
+        if (data_drop_zeros(var_off[s]))
+          zero_var(s, ZERO_AREA);
       } else {
         // Zero-filled: no data bytes, an offset in the zero area.
-        s = push_var(name, type, zero_alloc(&zarea_next, type_size(type)),
-                     V_DATA);
-        var_link[s] |= VL_ZAREA;
+        zero_var(push_var(name, type, 0, V_DATA), ZERO_AREA);
       }
       if (tok != ',')
         break;
