@@ -2139,14 +2139,18 @@ $ ./ccish -o copy copy.c $L/start $L/fopen $L/path $L/fread $L/fwrite $L/strlen
   `memmove` copies a byte at a time, since plvm's `__memcpy` calls the
   host's `memcpy`, which needn't handle an overlap.
 * **`exit` (lib/exit.c)** works from anywhere on an Apple II, on the
-  64K VM or the 128K one: it closes the open files and unwinds the VM
-  (the 6502 stack and the VM's frame and evaluation stacks) to the
-  program's init, which returns the status to CMD as main's would
-  (`ERR:$xx` for a nonzero one). It takes 12 bytes more in init, which
-  calls `__exitsave` before main to save what the unwind needs. Under
-  plvm nothing in a module can unwind (doc/bootstrap-test.md, R8), so
-  there it prints `tools/ccstat.pla`'s status marker and runs a 6502
-  BRK, which makes plvm exit.
+  64K VM or the 128K one: it makes main return the status, by putting
+  back the 6502 stack pointer and the VM's frame pointers and
+  evaluation stack index as they were at main's call, so init returns
+  the status to CMD as main's would (`ERR:$xx` for a nonzero one). It
+  takes 4 bytes more in init (5 for a void main), which runs a 6502
+  routine just before main to save them; 69 bytes of data hold the two
+  routines. It doesn't close the files: CMD closes them all after each
+  command it runs with `+`. Under plvm nothing in a module can unwind
+  (doc/bootstrap-test.md, R8), so programs run there link
+  `tools/plvmexit.c`'s exit instead (tools/cclink does, unless `-a`),
+  which prints `tools/ccstat.pla`'s status marker and runs a 6502 BRK,
+  which makes plvm exit.
 
 ## 12. Writing small and fast code
 

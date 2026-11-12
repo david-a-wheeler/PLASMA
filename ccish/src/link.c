@@ -1486,11 +1486,11 @@ static void init_word(int *n, int op, int w)
   fbuf[(*n)++] = (unsigned char)(w >> 8);
 }
 
-// The slot of __exitsave (lib/exit.c), which init calls when exit is
-// linked, or -1.
-static int exit_save(void)
+// The slot of __exitcap (lib/exit.c), whose routine init runs just
+// before main when exit is linked, or -1.
+static int exit_cap(void)
 {
-  int g = gsym_find("__exitsave");
+  int g = gsym_find("__exitcap");
   return g >= 0 && g_def[g] != NO_OBJ ? g : -1;
 }
 
@@ -1501,10 +1501,12 @@ static int exit_save(void)
 // its global. (It asks heapavail first: plvm's heapalloc stops the VM
 // when the heap is full, and the Apple's can wrap past $FFFF.) In an
 // image (-x), nothing moved, and init clears the zero region, which
-// isn't in the file. When exit is linked, it calls __exitsave
-// (lib/exit.c), to which exit unwinds. Then it calls main and returns
-// -(status & 255), main's exit status (or exit's) as a PLASMA error
-// (0 for success, or for a void main), never positive: a positive
+// isn't in the file. When exit is linked, it runs __exitcap's routine
+// (lib/exit.c), which saves what exit needs to make main return. Then
+// it calls main and returns -(status & 255), main's exit status (or
+// exit's) as a PLASMA error (0 for success, or for a void main, for
+// which it pushes the 0 before the call when exit may replace it with
+// a status), never positive: a positive
 // init result would be read as "keep the module" flags. CMD reports a
 // negative one as ERR:$xx, and tools/ccstat.pla hands it to the host
 // (approach.md issue 22). Init must be the last bytecode.
@@ -1547,20 +1549,16 @@ static int init_code(void)
     init_word(&n, OP_CW, zstay);
     init_op(&n, OP_CALL, 0, gsym_find("__memset"));
   }
-  if ((i = exit_save()) >= 0) {
-    // exit unwinds to here: __exitsave() returns again, nonzero, and
-    // init returns -(status & 255).
-    init_op(&n, OP_CALL, 0, i);
-    fbuf[n++] = OP_DUP;
-    init_word(&n, OP_BRFLS, 2 + 4);   // to the DROP: past ANDI, NEG, RET
-    fbuf[n++] = OP_ANDI;
-    fbuf[n++] = 255;
-    fbuf[n++] = OP_NEG;
-    fbuf[n++] = OP_RET;
-    fbuf[n++] = OP_DROP;
+  if ((i = exit_cap()) >= 0) {
+    // Right before main's call, with nothing pushed: exit makes that
+    // call return its status, one value, so a void main gets a 0.
+    init_op(&n, OP_LA, data_base + obj_data[g_def[i]] + g_off[i], -1);
+    fbuf[n++] = OP_ICAL;
+    if (!(g_flags[main_sym] & G_RETURNS))
+      fbuf[n++] = OP_CN;
   }
   init_op(&n, OP_CALL, 0, main_sym);
-  if (g_flags[main_sym] & G_RETURNS) {
+  if ((g_flags[main_sym] & G_RETURNS) || i >= 0) {
     fbuf[n++] = OP_ANDI;
     fbuf[n++] = 255;
     fbuf[n++] = OP_NEG;
@@ -1578,8 +1576,8 @@ static int init_size(void)
   if (main_sym < 0)
     return 0;
   n = g_flags[main_sym] & G_RETURNS ? 7 : 5;
-  if (exit_save() >= 0)
-    n += 3 + 1 + 3 + 2 + 1 + 1 + 1;
+  if (exit_cap() >= 0)
+    n += 3 + 1 + (g_flags[main_sym] & G_RETURNS ? 0 : 1 + 2);
   if (opt_xload && zstay > 0)
     n += 3 + 1 + 3 + 3;
   if (nmoved > 0)

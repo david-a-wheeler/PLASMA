@@ -1,9 +1,10 @@
 #!/bin/sh
 # The library checks gcc can't be the oracle for (the xrun tests cover
 # string.h and stdio): main(argc, argv) through lib/start.c, with more
-# words than it keeps; lib/exit.c's exit from inside a call (under
-# plvm, its marker and BRK: the unwind is for an Apple II); and the link errors for main(argc, argv)
-# without the start object and for exit without lib/exit.
+# words than it keeps; tools/plvmexit.c's exit from inside a call;
+# the init lib/exit.c's exit gets (it runs only on an Apple II); and
+# the link errors for main(argc, argv) without the start object and
+# for exit without an exit object.
 . "$(dirname "$0")/../lib.sh"
 D=$OUT/libspecial
 L=$OUT/lib
@@ -60,7 +61,7 @@ same "$out" "24 args 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
 src_obj quit '#include <stdlib.h>
 void deep(int n) { if (n) deep(n - 1); else exit(3); }
 int main(void) { __puts(pstr("before")); __putln(); deep(5); return 9; }' || bad=1
-./ccrel -o "$D/quit" "$D/quit" "$L/exit" || bad=1
+./ccrel -o "$D/quit" "$D/quit" "$L/plvmexit" || bad=1
 out=$(run_args quit)
 st=$?
 same "$st" 3 "exit status"
@@ -69,6 +70,20 @@ case "$out" in
     *) echo "FAIL lib exit: output '$out'"; bad=1 ;;
 esac
 
+# With lib/exit.c's exit, init runs __exitcap's first routine (at
+# data+0, the module's only data) right before main's call, and for a
+# void main pushes the 0 that exit may replace.
+init_has() {
+    ./ccrel -l -o "$D/$1" "$D/$1" "$L/exit" >"$D/$1.lst" || bad=1
+    sed -n '/^(init):/,/RET/p' "$D/$1.lst" | sed '1d; s/^  [0-9A-F]*  //' \
+        | cut -c10- | sed 's/ \$[0-9A-F]* *; / /' | tr '\n' '|' >"$D/$1.init"
+    same "$(cat "$D/$1.init")" "$2" "lib/exit's init for $1"
+}
+init_has quit 'LA data+0|ICAL|CALL main|ANDI 255|NEG|RET|'
+src_obj vquit '#include <stdlib.h>
+void main(void) { exit(4); }' || bad=1
+init_has vquit 'LA data+0|ICAL|CN 0|CALL main|ANDI 255|NEG|RET|'
+
 # The link errors: no start object, and no exit.
 if ./ccrel -o "$D/nostart" "$D/args" "$L/putc" "$L/fputs" "$L/strlen" 2>"$D/nostart.err"; then
     echo "FAIL lib: main(argc, argv) linked without lib/start"; bad=1
@@ -76,7 +91,7 @@ fi
 grep -qF "undefined reference to '__start'" "$D/nostart.err" \
     || { echo "FAIL lib: wrong message without lib/start:"; cat "$D/nostart.err"; bad=1; }
 if ./ccrel -o "$D/noexit" "$D/quit" 2>"$D/noexit.err"; then
-    echo "FAIL lib: exit linked without lib/exit"; bad=1
+    echo "FAIL lib: exit linked without an exit object"; bad=1
 fi
 grep -qF "undefined reference to 'exit'" "$D/noexit.err" \
     || { echo "FAIL lib: wrong message without an exit:"; cat "$D/noexit.err"; bad=1; }

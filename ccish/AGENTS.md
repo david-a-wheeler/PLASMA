@@ -370,8 +370,9 @@ uppercases); make apple's disks. On MAME's 64K IIe, the four passes,
 as images through XLOAD, compiled ccish's own link.c to an object
 byte-identical to the host's (ccpp 34 minutes, cccomp 8.3, ccgen 8.9,
 at 1 MHz), and on the 128K IIe too, faster with its JIT (ccpp 23
-minutes). exit() unwinds on the Apple (lib/exit.c; under plvm it
-still stops plvm with ccstat's marker).
+minutes). exit() unwinds on the Apple (lib/exit.c; programs run
+under plvm link tools/plvmexit.c's, which stops plvm with ccstat's
+marker: tools/cclink picks it, unless -a, as measure.py gives).
 
 Open, roughly in the order they matter:
 - **Running margin**: ccpp and cccomp have under 1K to spare each

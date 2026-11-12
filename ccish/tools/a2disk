@@ -49,10 +49,11 @@ for p in ccpp cccomp ccgen ccrel; do
 done
 $AC -p "$out/ccish.po" CCISH.MSG TXT <ccish.msg
 
-# The library's disk.
+# The library's disk (not plvmexit, plvm's exit).
 [ ! -e "$out/cclib.po" ] || mv -f "$out/cclib.po" "$out/cclib.po.old"
 $AC -pro140 "$out/cclib.po" CCLIB
 for o in tests/out/lib/*.obj; do
+    [ "$o" != tests/out/lib/plvmexit.obj ] || continue
     n=$(basename "$o" .obj | tr a-z A-Z)
     $AC -p "$out/cclib.po" "LIB/$n.OBJ" BIN <"$o"
     $AC -p "$out/cclib.po" "LIB/$n.SYMS" BIN <"${o%.obj}.syms"

@@ -1,122 +1,73 @@
-/* exit.c: C's exit (doc/bootstrap-test.md, R8 and step 14). On an Apple II (the 64K VM or the 128K one), it
- * closes the open files and unwinds to the program's init, which
- * returns -(status & 255) to CMD, as if main had returned status.
- * ccrel's init calls __exitsave() just before main, when exit is
- * linked; __exitsave() runs a native routine that saves what the
- * unwind needs: the 6502 stack pointer, the evaluation stack index
- * (X), the frame pointers IFP and PP ($E0-$E3, the same on both VMs),
- * and the 16 stack bytes above the stack pointer, which hold its own
- * return into the VM and init's call of it, and which main's call
- * overwrites. exit's native routine puts them back and returns, so
- * that __exitsave() returns a second time, with (status & 255) | 256.
+/* exit.c: C's exit, on an Apple II, the 64K VM or the 128K one
+ * (doc/bootstrap-test.md, R8 and step 14). It makes main return
+ * status, from wherever exit was called, so that init returns
+ * -(status & 255) to CMD. When exit is linked, ccrel's init runs
+ * __exitcap's first routine (cap) just before it calls main. On both
+ * VMs, ICAL (or ICALX) and CALL (or CALLX) push the same frame, the
+ * caller's IP and a JSR's return, so cap runs at the very stack pointer
+ * main runs at, and main's call frame stays intact above it until main
+ * returns. cap saves that stack pointer, the evaluation stack index (X)
+ * and the frame pointers IFP and PP ($E0-$E3, the same on both VMs).
+ * exit runs the second routine (rst), which puts them back, with
+ * status on the evaluation stack, and runs an RTS, which returns from
+ * main's call, as main's RET would. (The 128K VM's CALLX and ICALX
+ * both put the caller's status register back before they call, so
+ * rst's RTS has the flags RETX would have given it.)
  *
- * Under plvm the VM's stacks are C variables, out of a native
- * routine's reach, so there exit prints tools/ccstat.pla's marker with
- * the status (tools/ccrun reports it) and runs a 6502 BRK, which stops
- * plvm. */
+ * exit closes no files: CMD closes them all after each command it runs
+ * with "+", as XLOAD is run. Under plvm, whose stacks are C variables,
+ * out of a native routine's reach, and whose ICAL doesn't set TMP, link
+ * tools/plvmexit.c's exit instead (tools/cclink does, unless -a). */
 #include <stdlib.h>
-#include <fileio.h>
 
-/* The two routines, and the save area after them. Each is called
- * through ICAL, which leaves its address in TMP ($E7), so each reaches
- * the area through (TMP),Y, at its own offset: RST_AREA for rst, at 0,
- * and CAP_AREA for cap, at CAP. The area holds the stack pointer, X,
- * IFP and PP, the 16 stack bytes, and the value __exitsave() returns
- * after exit. */
-#define CAP       51
-#define CAP_AREA  48
-#define RST_AREA  (CAP + CAP_AREA)
+/* cap, then rst, then their save area. Each routine is called through
+ * ICAL, which leaves its address in TMP ($E7), so each reaches the area
+ * through (TMP),Y, at its own offset: AREA for cap, at 0, and AREA - RST
+ * for rst. The area holds the stack pointer, X, and IFP and PP. */
+#define RST       25
+#define AREA      63
+#define RST_AREA  (AREA - RST)
+#define SV_SP     0
 #define SV_X      1
 #define SV_FP     2
-#define SV_STACK  6
-#define SV_VALUE  22
-static unsigned char xr[RST_AREA + 24] = {
-  /* rst, exit's: put back what cap saved and push the value, so that
-   * it returns as cap did, into __exitsave(). */
-  0xA0, RST_AREA,               /* LDY #SP */
-  0xB1, 0xE7,                   /* LDA (TMP),Y */
-  0xAA, 0x9A,                   /* TAX, TXS */
-  0xA0, RST_AREA + SV_STACK,    /* LDY #STACK */
-  0xE8,                         /* loop: INX */
-  0xF0, 0x0A,                   /* BEQ fp (the stack's top) */
-  0xB1, 0xE7,                   /* LDA (TMP),Y */
-  0x9D, 0x00, 0x01,             /* STA $0100,X */
-  0xC8,                         /* INY */
-  0xC0, RST_AREA + SV_VALUE,    /* CPY #VALUE */
-  0xD0, 0xF3,                   /* BNE loop */
-  0xA0, RST_AREA + SV_FP,       /* fp: LDY #FP */
-  0xB1, 0xE7,                   /* fpl: LDA (TMP),Y */
-  0x99, 0xE0 - (RST_AREA + SV_FP), 0x00, /* STA $E0-FP,Y: IFP, PP */
-  0xC8,                         /* INY */
-  0xC0, RST_AREA + SV_STACK,    /* CPY #STACK */
-  0xD0, 0xF6,                   /* BNE fpl */
-  0xA0, RST_AREA + SV_X,        /* LDY #X */
-  0xB1, 0xE7, 0xAA, 0xCA,       /* LDA (TMP),Y, TAX, DEX */
-  0xA0, RST_AREA + SV_VALUE,    /* LDY #VALUE */
-  0xB1, 0xE7, 0x95, 0xC0,       /* LDA (TMP),Y, STA ESTKL,X */
-  0xC8,                         /* INY */
-  0xB1, 0xE7, 0x95, 0xA0,       /* LDA (TMP),Y, STA ESTKH,X */
-  0x60,                         /* RTS */
-  /* cap, at CAP: save, and push 0. */
-  0x8A,                         /* TXA */
-  0xA0, CAP_AREA + SV_X,        /* LDY #X */
-  0x91, 0xE7,                   /* STA (TMP),Y */
-  0xBA, 0x8A,                   /* TSX, TXA */
-  0x88,                         /* DEY: SP */
-  0x91, 0xE7,                   /* STA (TMP),Y */
-  0xA0, CAP_AREA + SV_FP,       /* LDY #FP */
-  0xB9, 0xE0 - (CAP_AREA + SV_FP), 0x00, /* fpl: LDA $E0-FP,Y */
-  0x91, 0xE7,                   /* STA (TMP),Y */
-  0xC8,                         /* INY */
-  0xC0, CAP_AREA + SV_STACK,    /* CPY #STACK */
-  0xD0, 0xF6,                   /* BNE fpl */
-  0xE8,                         /* loop: INX */
-  0xF0, 0x0A,                   /* BEQ done (the stack's top) */
-  0xBD, 0x00, 0x01,             /* LDA $0100,X */
-  0x91, 0xE7,                   /* STA (TMP),Y */
-  0xC8,                         /* INY */
-  0xC0, CAP_AREA + SV_VALUE,    /* CPY #VALUE */
-  0xD0, 0xF3,                   /* BNE loop */
-  0xA0, CAP_AREA + SV_X,        /* done: LDY #X */
-  0xB1, 0xE7, 0xAA, 0xCA,       /* LDA (TMP),Y, TAX, DEX */
-  0xA9, 0x00,                   /* LDA #0 */
-  0x95, 0xC0, 0x95, 0xA0,       /* STA ESTKL,X, STA ESTKH,X */
-  0x60                          /* RTS */
+#define SV_END    6
+unsigned char __exitcap[AREA + SV_END] = {
+  /* cap: save IFP, PP, X and the stack pointer. */
+  0xA0, AREA + SV_END - 1,         /* LDY #FP+3 */
+  0xB9, 0xE0 - (AREA + SV_FP), 0x00, /* fp: LDA $E0-FP,Y */
+  0x91, 0xE7,                      /* STA (TMP),Y */
+  0x88,                            /* DEY */
+  0xC0, AREA + SV_X,               /* CPY #X */
+  0xD0, 0xF6,                      /* BNE fp */
+  0x8A, 0x91, 0xE7,                /* TXA, STA (TMP),Y: X */
+  0x88,                            /* DEY: SP */
+  0xBA, 0x8A, 0x91, 0xE7,          /* TSX, TXA, STA (TMP),Y */
+  0xC8,                            /* INY: X */
+  0xB1, 0xE7, 0xAA,                /* LDA (TMP),Y, TAX */
+  0x60,                            /* RTS */
+  /* rst, at RST: take the status from the evaluation stack, put back
+   * what cap saved, with the status on top, and return from main. */
+  0xB5, 0xC0, 0x48,                /* LDA ESTKL,X, PHA */
+  0xB5, 0xA0, 0x48,                /* LDA ESTKH,X, PHA */
+  0xA0, RST_AREA + SV_END - 1,     /* LDY #FP+3 */
+  0xB1, 0xE7,                      /* fp: LDA (TMP),Y */
+  0x99, 0xE0 - (RST_AREA + SV_FP), 0x00, /* STA $E0-FP,Y */
+  0x88,                            /* DEY */
+  0xC0, RST_AREA + SV_X,           /* CPY #X */
+  0xD0, 0xF6,                      /* BNE fp */
+  0xB1, 0xE7, 0xAA, 0xCA,          /* LDA (TMP),Y, TAX, DEX */
+  0x68, 0x95, 0xA0,                /* PLA, STA ESTKH,X */
+  0x68, 0x95, 0xC0,                /* PLA, STA ESTKL,X */
+  0x88,                            /* DEY: SP */
+  0xB1, 0xE7,                      /* LDA (TMP),Y */
+  0x86, 0xE7,                      /* STX TMPL (done with TMP) */
+  0xAA, 0x9A,                      /* TAX, TXS */
+  0xA6, 0xE7,                      /* LDX TMPL */
+  0x60                             /* RTS, from main's call */
 };
 
-/* Set once __exitsave() has saved, on an Apple II. */
-static int saved;
-
-/* Called by init just before main: 0, or after exit, its status & 255
- * with 256 added. On an Apple II only: a function's address is its def
- * entry, a JSR to the VM, $03xx there and $FFxx under plvm. It has no
- * frame, so that nothing of its own is in memory that main reuses, but
- * the stack bytes cap saves. */
-int __exitsave(void)
-{
-  if (((unsigned char *)exit)[2] != 0x03)
-    return 0;
-  saved = 1;
-  return ((int (*)(void))(void *)(xr + CAP))();
-}
-
-/* A BRK instruction: its opcode is 0. */
-static char brk[1];
-
-/* End the program with status. */
+/* End the program with status, as if main had returned it. */
 void exit(int status)
 {
-  int r;
-  if (saved) {
-    for (r = 1; r <= 8; r++)    /* ProDOS's reference numbers */
-      fileio.close(r);
-    xr[RST_AREA + SV_VALUE] = (unsigned char)status;
-    xr[RST_AREA + SV_VALUE + 1] = 1;
-    ((void (*)(void))(void *)xr)();
-  }
-  __putc(1);
-  __puts(pstr("exit "));
-  __puti(status & 255);
-  __putln();
-  ((void (*)(void))brk)();
+  ((void (*)(int))(void *)(__exitcap + RST))(status);
 }

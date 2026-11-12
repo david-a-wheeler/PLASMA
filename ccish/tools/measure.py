@@ -930,7 +930,7 @@ def main():
         # tools/cclink adds the library objects the program needs, and
         # writes the list of the objects it linked.
         def link(ccrel):
-            return run([CCLINK, "-r", ccrel, "-l", "-L", OUT, "-o", module,
+            return run([CCLINK, "-a", "-r", ccrel, "-l", "-L", OUT, "-o", module,
                         "-w", module + ".objs"]
                        + [os.path.join(OUT, n) for n in files])
         ok, msg = link(ccrel)

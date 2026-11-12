@@ -346,6 +346,18 @@ Done without changing PLASMA (approach.md issue 22 has the options):
    and the next command runs. It costs each pass 207 bytes (exit.c's
    94 of code and 123 of data, against plvmexit.c's 37, and 12 in
    init).
+   **Smaller** (2026-11-12, decided in discussion): init runs the save
+   routine itself, right before main's call. ICAL and CALL push the
+   same frame on both Apple VMs (CALLX and ICALX too), so the save
+   routine sees the stack pointer main runs at, and main's call frame
+   stays intact while main runs; exit's routine puts back the stack
+   pointer, X, IFP and PP, with the status on the evaluation stack,
+   and its RTS returns from main's call. No stack bytes are copied, and
+   `__exitsave` is gone. exit no longer closes files (CMD closes them
+   all after a `+` command), and its plvm path is back in
+   tools/plvmexit.c, which tools/cclink links for plvm runs (`-a`, as
+   measure.py uses, links lib/exit.c's). exit.c is now 11 bytes of code
+   and 69 of data, and init 4 more: 160 bytes less in each pass.
 
 ### R9. No six-argument `printf` (done)
 

@@ -111,15 +111,24 @@ $(CCSTAT): tools/ccstat.pla ../src/inc/cmdsys.plh $(XPLASM)
 	$(ACME) --setpc 4094 -o $@ $@.a
 
 # The C library (lib/, doc/bootstrap-test.md R4): one object per
-# source, $(OUT)/lib/NAME.obj and .syms, compiled by the host passes.
+# source, $(OUT)/lib/NAME.obj and .syms, compiled by the host passes;
+# and tools/plvmexit.c's exit, which programs run under plvm link in
+# place of lib/exit.c's (tools/cclink; not part of the library).
 LIBSRC := $(wildcard lib/*.c)
-LIBOBJS:= $(patsubst lib/%.c,$(OUT)/lib/%.obj,$(LIBSRC))
-# The library's sources, for the bootstrap and measure.py.
+LIBOBJS:= $(patsubst lib/%.c,$(OUT)/lib/%.obj,$(LIBSRC)) \
+          $(OUT)/lib/plvmexit.obj
+# The library's sources, for measure.py; the bootstrap adds plvmexit's.
 CCLIB_SRC = $(LIBSRC)
 $(OUT)/lib/%.obj: lib/%.c $(wildcard lib/include/*.h) ccpp cccomp ccgen
 	@mkdir -p $(dir $@)
 	@./ccpp -o $(OUT)/lib/$* $< && ./cccomp -o $(OUT)/lib/$* $(OUT)/lib/$* \
 	 && ./ccgen $(OUT)/lib/$*
+$(OUT)/lib/plvmexit.obj: tools/plvmexit.c $(wildcard lib/include/*.h) \
+                         ccpp cccomp ccgen
+	@mkdir -p $(dir $@)
+	@./ccpp -o $(OUT)/lib/plvmexit $< \
+	 && ./cccomp -o $(OUT)/lib/plvmexit $(OUT)/lib/plvmexit \
+	 && ./ccgen $(OUT)/lib/plvmexit
 
 # XLOAD (doc/xload.md), the loader for ccish's images (ccish -x): its
 # first part, xload, a REL module, and its second part, xload2, an
@@ -262,7 +271,8 @@ $(OUT)/special/tables.stamp: tests/special/tables.c src/irin.c src/lower.c src/i
                           src/mop.h
 $(OUT)/special/enumvals.stamp: $(SOURCES)
 $(OUT)/special/fit.stamp: doc/measure.txt
-$(OUT)/special/xload_self.stamp: doc/measure.txt ccrel-small $(XLOAD) \
+$(OUT)/special/xload_self.stamp: doc/measure.txt ccrel ccrel-small $(XLOAD) \
+                         $(OUT)/lib/plvmexit.obj \
                          tests/run/hello.c $(wildcard src/*.c src/*.h)
 $(OUT)/special/xload.stamp: ccrel-small $(XLOAD) tools/xlinfo.py \
                          tests/xload/xltest.c tests/xload/xltest.expected xload/xload.c \
@@ -276,11 +286,12 @@ $(OUT)/special/xload.stamp: ccrel-small $(XLOAD) tools/xlinfo.py \
 # in the regular suite (full-test runs both), because it's slow. The
 # sources come from here: each program's, and the library's.
 $(OUT)/special/bootstrap.stamp: tests/special/bootstrap.sh $(PASSES) tests/lib.sh \
-                             tools/cclink ccish.msg $(wildcard lib/include/*.h)
+                             tools/cclink tools/plvmexit.c ccish.msg \
+                             $(wildcard lib/include/*.h)
 	@mkdir -p $(dir $@) && BOOTSTRAP_VM="$(BOOTSTRAP_VM)" \
 	 BOOT_ccpp="$(CCPP_SRC)" BOOT_cccomp="$(CCCOMP_SRC)" \
 	 BOOT_ccgen="$(CCGEN_SRC)" BOOT_ccrel="$(CCREL_SRC)" \
-	 BOOT_LIB="$(CCLIB_SRC)" sh $< && touch $@
+	 BOOT_LIB="$(CCLIB_SRC) tools/plvmexit.c" sh $< && touch $@
 
 # Run bootstrap test. This takes ~30 seconds on Linux
 bootstrap: $(OUT)/special/bootstrap.stamp
