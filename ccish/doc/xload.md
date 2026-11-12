@@ -14,11 +14,13 @@ options we set aside, and how PLASMA's own loader works are in
 [streaming-options.md](streaming-options.md) (cited below as "options"
 plus its fact or section number).
 
-**Status (2026-11-12).** The image format (section 3) is done: ccrel
-and ccish write it with `-x`, and tools/xlcheck.py checks each image
-against the REL module of the same link (tests/special/xload.sh, in
-`make test`). XLOAD itself isn't written. Nothing here has run on an
-Apple II.
+**Status (2026-11-12).** ccrel and ccish write images with `-x`, in
+version 3 of the format, which tools/xlcheck.py checks against the REL
+module of the same link (tests/special/xload.sh, in `make test`).
+Section 3 specifies version 4, the one XLOAD will read: ccrel moves to
+it together with XLOAD (section 8), and running images through XLOAD
+under plvm then replaces xlcheck.py. XLOAD itself isn't written.
+Nothing here has run on an Apple II.
 
 ## 1. Requirements
 
@@ -34,6 +36,16 @@ Apple II.
 - R5. **ccish writes either a REL module or an image**, by a flag
   (`-x`). REL stays the default, for everything but the programs that
   need XLOAD.
+- R6. **Eventually, every platform PLASMA supports**, to the extent
+  that's reasonable (the user, 2026-11-12): in this tree, the Apple 1
+  with CFFA1 (plvm01.s, a1cmd.pla), the 64K Apple II (plvm02.s), the
+  128K Apple II (plvmjit02.s), the 65802/65816 Apple II (plvm802.s),
+  the Apple /// under SOS (plvm03.s, plvmjit03.s, soscmd.pla), the C64
+  (vmsrc/c64, partial), and plvm on the host. The image format is
+  VM-neutral, and what's machine-specific in XLOAD is kept to a few
+  places (4.2's table, 4.3's def entries, 4.4's memory model, 4.5's
+  hand-off), so that each platform is mostly a new row. Order: plvm
+  and the 64K Apple II first, then the 128K, then the rest.
 
 ## 2. What the user sees
 
@@ -60,7 +72,7 @@ and FETCH; "RUN" is BASIC's, and "GO" is common elsewhere.)
   load. ccpp, ccgen and ccrel load today, and can stay REL modules
   until XLOAD works on MAME; as images they'd save disk (section 6).
 
-## 3. The image format (version 3)
+## 3. The image format (version 4)
 
 ### 3.1 Why it differs from PLASMA's REL format
 
@@ -82,10 +94,26 @@ not to match a REL module:
   5 bytes on the 64K Apple and plvm, 7 on the 128K Apple, whose
   bytecode also moves to aux memory (R2; section 4.3).
 - **It's small, so it loads fast and fits on the disk.** About one
-  byte per fixup instead of four; a 2-byte table entry per function
-  instead of a 4-byte RLD record; and the data segment's zeros stored
-  as counts (PLASMA request 12, doc/plasma-requests.md). cccomp's
-  image file is 30,683 bytes against its 43,799-byte REL module.
+  byte per fixup instead of four (cccomp: 2,745 words in 2,833 bytes).
+  A REL entry is always a type byte, a full 16-bit address, and a byte
+  that only an import uses, since PLASMA's loaders take entries in any
+  order. The image's fixups come in address order (ccgen writes them
+  so, at no cost), so each gives only the gap from the word before,
+  which in code with a relocated word every ten bytes or so nearly
+  always fits in 6 bits; the other 2 bits give its kind, of the three
+  an image needs; and only imports (51 of cccomp's 2,745) add an index
+  byte. Also a 2-byte table entry per function instead of a 4-byte RLD
+  record; and no bytes at all for zero-filled
+  data, which goes in a zero region of which the file gives only the
+  size (the traditional `.bss`; this does PLASMA request 12,
+  doc/plasma-requests.md, for images). cccomp's image file was 30,683
+  bytes in version 3, against its 43,799-byte REL module; version 4's
+  is still to measure.
+- **It's faster.** A REL module moves its large zero-filled globals to
+  the heap to keep its file small, at the cost of an LAW of a pointer
+  word for each access; an image keeps every one in its zero region,
+  reached with an LA, about 24 cycles less on the 6502, in the same
+  memory.
 - **It holds only what ccish's programs use.** No exports (ccish
   modules export nothing), no 8-bit fixups, and one kind of body.
 
@@ -93,45 +121,42 @@ not to match a REL module:
 
 ccrel writes it with `-x` (link.c; the `ccish` driver passes `-x` to
 the same code). Words are little-endian, and every address in it is
-an offset from the body's start, where XLOAD loads it.
+an offset from the body's start, where XLOAD loads it. The body is
+three parts, in this order:
+
+1. **The initialized data:** every object's data, then the strings.
+2. **The zero region:** every zero-filled global (section 3.3), of any
+   size. Not in the file.
+3. **The bytecode:** every function, the helpers, and init last.
 
 | Bytes | What |
 |---|---|
 | 2 | Magic: `X` `L` ($58 $4C) |
-| 1 | Version: 3 |
+| 1 | Version: 4 |
 | 1 | Flags: 0 (none yet; a "no JIT" bit, as a REL header's, could go here) |
-| 2 | The body's length |
-| 2 | Where its bytecode starts: everything before is data and strings |
+| 2 | The initialized data's length, D |
+| 2 | The zero region's length, Z: it's at D |
+| 2 | The bytecode's length, C: it's at D + Z |
 | 2 | The functions, init's included (the last) |
 | any | Dependencies: module names in DCI form, as a REL module's, then $00 |
 | any | Imports: names in DCI form, numbered from 0, then $00 |
 | 2 each | The function table: each function's offset, in address order, init last |
-| any | The body's data segment (data, strings, pad), as runs: below |
-| length less that | The body's bytecode, as is |
+| D | The initialized data |
+| C | The bytecode |
 | any | The fixups, then $FF |
 
-- **The body** is exactly the REL module's (data, strings, a pad byte,
-  bytecode, helpers, init), relocated for address 0, except that every
-  reference to a function (a call, or a function pointer in code or
-  data) holds the function's number in the function table. **The
+- **References to functions** (a call, or a function pointer in code
+  or data) hold the function's number in the function table. **The
   image holds no def entries:** XLOAD builds them, in the form the VM
   it's running on wants (section 4.3), and each such word becomes its
   entry's address. So one image serves every VM whose bytecode is the
   same (R2).
-- **The data segment is stored as runs,** which XLOAD expands as it
-  reads them, until they fill the data segment (the header's bytecode
-  offset):
-  - $01-$7F: that many literal bytes follow.
-  - $81-$FF: that many, less $80, zero bytes (1-127).
-  - $80 lo hi: the word's count of zero bytes.
-  - $00 isn't used.
-
-  ccrel writes a zero run for 3 or more zeros; 2 cost no more inside a
-  literal run. This is PLASMA request 12 (doc/plasma-requests.md),
-  done in the image: most of each program's data is zeros, the
-  zero-filled tables too small to move to the heap. The bytecode
-  isn't run-coded: its zero runs are short, so the framing would cost
-  more than it saves (request 12 measured this).
+- **The zero region is cleared by the program's init,** with CMDSYS's
+  `memset`, before it calls `main`, as C's startup code clears `.bss`.
+  Not by XLOAD, which uses the region for its own second part while it
+  loads (4.1). It comes before the bytecode so that, on the 128K Apple,
+  where the bytecode moves to aux memory, data and zeros stay one block
+  in main memory.
 - **The function table is in address order,** so that each function's
   size is the distance to the next one's start, as the 128K loader
   uses to decide which functions the JIT may compile; and so that
@@ -150,8 +175,8 @@ an offset from the body's start, where XLOAD loads it.
   - $FF: the end.
 
   The data's come first, then the code's, object by object, then
-  init's. They come out of ccgen in order with no sorting; ccrel stops
-  with an error if they ever don't.
+  init's (none falls in the zero region). They come out of ccgen in
+  order with no sorting; ccrel stops with an error if they ever don't.
 - **No absolute bytecode addresses in the body.** Branches are
   relative, ccgen never emits JUMP (options, fact 15), and functions
   are reached only through def entries. So the bytecode can run at any
@@ -162,29 +187,58 @@ an offset from the body's start, where XLOAD loads it.
 - **Dependencies** are only checked: XLOAD can't load a module itself
   (it would load where the program goes), so each must already be in
   the symbol table, as FILEIO is, being XLOAD's own dependency.
-- **Possible later:** the "no JIT" flag. And since zeros now cost the
-  image almost nothing, ccrel could leave zero-filled globals in the
-  image rather than moving them to the heap (approach.md, "Large
-  zero-filled data on the heap"): each access would be an LA, not an
-  LAW of a pointer word (about 24 cycles less on the 6502), and the
-  pointer words and init's allocation code would go. The memory used
-  is the same either way. Not decided.
+- **Possible later:** the "no JIT" flag.
 
-**Earlier versions,** both 2026-11-12 and never used: version 1
-(bc34918a) put a table of 5-byte `JSR $03D6` def entries in the image,
-which fit only the 64K VM, so version 2 (8e3006d3) replaced it with
-the function table, for R2; version 3 added the data segment's runs.
+### 3.3 What goes in the zero region
 
-**Checking it.** tools/xlcheck.py reads an image and the REL module of
-the same link as their loaders would, for the same load address, and
-requires that they describe the same program: the same bytes (the
-data segment's runs expanded), the same words relocated, each to the same thing (a REL word pointing into
-the bytecode, and an image word with a "def" fixup, must name the same
-function). It was written from this description, not from ccrel's
-code, so it doesn't share ccrel's mistakes. tests/special/xload.sh
-runs it on five run tests and ccish's four programs, checks that
-ccrel-small writes the same images, and checks the no-main and
-`MAX_DEFS` errors.
+Measured over ccish's own sources and library (2026-11-12, an
+instrumented scratch cccomp), the zeros in the data segment are:
+
+| From | Bytes | Objects |
+|---|---:|---:|
+| Globals with no initializer, under `BSS_MIN` (256 bytes) | 9,432 | 333 |
+| Static locals with no initializer | 1,799 | 14 |
+| Zero tails inside initializers (`int t[8] = {1};`) | 168 | 2 |
+
+plus the large zero-filled globals (`BSS_MIN` or more), which are
+already zero-filled symbols, and explicit zero initializers (`int x =
+0;`, `= {0}`), not counted. So the zero region takes:
+
+- **every global and static local with no initializer, of any size**
+  (plan step 1: cccomp puts them all in the file's zero-filled space,
+  where today only arrays and structs of `BSS_MIN` bytes or more go);
+- **every one whose initializer is all zeros** (plan step 2), as gcc
+  does with `.bss`; C can't tell the difference (C11 6.7.9p10).
+
+What's left as zeros in the initialized data is only the zeros inside
+initializers that aren't all zero: 168 bytes in all of ccish, not
+worth an encoding. (Version 3 stored the data as runs of literal bytes
+and zeros; version 4 drops that.)
+
+A REL module still moves its zero-filled globals of `BSS_MIN` or more
+to the heap, and only those: cccomp's `movable()` (parse.c), which
+makes their accesses take the one form ccrel can patch into an LAW,
+gets the same size test, so a small one keeps its ordinary code. The
+rest go in ccrel's block of zeros after every object's data, as large
+ones that stay do now, so a REL module's file keeps its size.
+
+### 3.4 Earlier versions, and checking
+
+All 2026-11-12, never used by any loader: version 1 (bc34918a) put a
+table of 5-byte `JSR $03D6` def entries in the image, which fit only
+the 64K VM; version 2 (8e3006d3) replaced it with the function table,
+for R2; version 3 (81251c4a) stored the data segment as runs of
+literal bytes and zeros; version 4 replaces the runs with the zero
+region.
+
+**Checking it, until XLOAD runs.** tools/xlcheck.py reads a version 3
+image and the REL module of the same link as their loaders would, for
+the same load address, and requires that they describe the same
+program. It can't do that for version 4, whose layout and accesses
+differ from the REL module's by design (LA, not LAW; no pointer words;
+init clears the zero region instead of allocating it). So version 4
+lands together with XLOAD, and tests that run images through XLOAD
+under plvm replace xlcheck.py (section 8).
 
 ## 4. What XLOAD must do
 
@@ -204,26 +258,29 @@ XLOAD's file is an ordinary $6502 module in two parts:
 2. The first part captures the VM's state for the hand-off (4.5),
    tells which VM it's on (4.2), and reads the program's header for
    its size.
-3. It places the second part just above where the program will end,
-   builds its def entries (4.3), applies its fixups, looks up its
-   imports with `lookupsym`, and calls it. On the 128K VM it also moves
-   the second part's bytecode to aux (4.4).
+3. It places the second part (below), builds its def entries (4.3),
+   applies its fixups, looks up its imports with `lookupsym`, and calls
+   it. On the 128K VM it also moves the second part's bytecode to aux
+   (4.4).
 4. The second part checks the dependencies, looks up the imports, and
-   reads the program's body straight to its final place: the bottom of
-   the heap, where XLOAD's own module starts, over the first part. It
-   reads in chunks through a small buffer, expanding the data
-   segment's runs into place and copying the bytecode, then streams
-   the fixups, applying each as it comes.
-5. It builds the program's def entries (4.3), and on the 128K VM moves
+   checks that the program fits: its body (D + Z + C), its def table,
+   and 512 bytes for its frames (as `HEAP_SPARE` does today), below
+   the frame stack; if not, it prints "not enough memory" and fails,
+   as a REL program's init would.
+5. It reads the program's initialized data and bytecode straight to
+   their final places: the bottom of the heap, where XLOAD's own module
+   starts, over the first part, leaving the zero region's Z bytes
+   between them unwritten. It reads in chunks through a small buffer,
+   then streams the fixups, applying each as it comes.
+6. It builds the program's def entries (4.3), and on the 128K VM moves
    its bytecode to aux (4.4).
-6. It closes its files and sets the heap to the end of the program's
-   memory (`heaprelease`): the body's end, or on the 128K VM, the
-   body's bytecode offset. The program's init takes its moved globals
-   from `heapalloc` (link.c, init_code), as after loadmod, and nothing
-   may allocate after this, since the second part's code is above,
-   now free.
-7. The hand-off (4.5) jumps to the program's init. Nothing of XLOAD
-   stays (R4).
+7. It closes its files and sets the heap to the end of the program's
+   memory (`heaprelease`): the body's end, or on the 128K VM, the zero
+   region's end (D + Z). Nothing may allocate after this, since the
+   second part is in freed memory.
+8. The hand-off (4.5) jumps to the program's init, which clears the
+   zero region (over the second part, if it was there) and calls
+   `main`. Nothing of XLOAD stays (R4).
 
 **Why load in place:** the alternative, reading and fixing up the
 program higher up and block-moving it down, would add about 16 cycles
@@ -231,11 +288,17 @@ a byte, about half a second for cccomp's 31.5K at 1 MHz. "Apples
 aren't fast." Loading in place avoids it, and keeps the hand-off to
 restoring state and a jump.
 
-**Where the second part goes:** above the program's end, so that its
-frames grow from the current frame pointer as usual. The program's
-heap tables are later allocated over it. If memory is tighter than
-expected, the fallback is just below the frame stack, which needs the
-frame pointer lowered first, another piece of native code.
+**Where the second part goes:** inside the program's zero region, if
+it fits there (its image, its own zero region, and its read buffer);
+otherwise just above the program's end. Either way its frames grow
+from the current frame pointer as usual, and it's in memory the
+program will clear or allocate over. Inside the zero region, loading
+needs no memory beyond the program's own, so the load peak is lower
+than the running need. The zero regions, by today's figures (the
+zero-filled data, plus the large globals a REL module moves to the
+heap): ccpp about 17K, ccrel 12K, ccgen 7.8K, cccomp 6.8K, against a
+second part of about 2K (a guess). On the 128K VM the second part's
+bytecode goes to aux anyway (4.4), and only its data needs a place.
 
 ### 4.2 Which VM is running
 
@@ -257,9 +320,19 @@ difference of their addresses is the entry size:
 | 5 | `JSR $03D6` | the 64K Apple VM |
 | 5 | `JSR $FF0C` | plvm |
 | 7 | `JSR $03DC` or `JSR $03D6` | the 128K Apple VM |
-| anything else | | refuse, with a message (the 65816 VM, the Apple ///) |
+| anything else | | refuse, with a message, for now (R6) |
 
 A listing test can pin that the two entries are consecutive.
+
+**For R6, still to read:** the def entries and memory models of the
+65802/65816 VM (plvm802.s), the Apple /// (plvm03.s, soscmd.pla,
+plvmjit03.s, soscmdjit.pla, which uses SOS, not ProDOS), the Apple 1
+(plvm01.s, a1cmd.pla), and the C64 (vmsrc/c64). Each needs a row
+here and in 4.3, and its own answers to 4.4 (where bytecode lives)
+and 4.5 (the hand-off), and a FILEIO (libsrc/c64/fileio.pla exists;
+the Apple 1's and Apple ///'s are to check). Reading the C64 port is
+fine; changing it isn't (the user, 2026-11-12: leave the C64 work
+alone).
 
 ### 4.3 Building def entries
 
@@ -391,7 +464,18 @@ and the 6502 stack above the restored pointer, were never touched.
 
 **On plvm** the VM is C, with its stacks in C variables, so neither
 routine can run there. XLOAD ends with a plain call of the program's
-init instead, which still tests everything else.
+init instead, which still tests everything else. **The first part
+makes that call,** not the second: the second part returns the init
+entry's address to it. The second part is an image in 6502 memory,
+where the program's zero region or heap may overwrite it, so the call
+would return into whatever overwrote it. The first part is a REL
+module, whose bytecode plvm keeps in host memory, out of the
+program's reach. Its globals aren't (they're at the heap's bottom,
+under the program), so after the second part returns it uses only
+its locals.
+
+**Also on plvm:** FILEIO's GETFILEINFO prints "unimplemented!"
+(vmsrc/sysio.c), so XLOAD skips the ProDOS file type check there.
 
 **On the 128K VM** the routines need adjusting, after a reading of
 plvmjit02.s's calls and returns: its indirect entry into aux bytecode
@@ -400,6 +484,26 @@ plvmjit02.s's calls and returns: its indirect entry into aux bytecode
 with interrupts off and aux memory read. The capture's offset is
 then 9, not 8, if init and main run from aux; and the hand-off must
 leave the state that init's return into CMDJIT's loadmod expects.
+
+### 4.6 Diagnostics
+
+`+XLOAD -V PROGRAM ARGS` prints what XLOAD finds and does, so that
+the tests (and anyone on an Apple II) can see that it's doing the
+right thing, not only that the program happened to run:
+
+- the VM it found (4.2): the def entry spacing and vector;
+- the image's header: D, Z, C, the functions, imports and
+  dependencies;
+- where it put things: the body, the zero region, the bytecode (main
+  or aux), the def table, the second part, and the free memory left;
+- each import's name and address, and each dependency found;
+- the fixups applied, of each kind, against the image's count;
+- the state captured for the hand-off (stack pointer, evaluation
+  stack index, frame pointer), and the init entry it jumps to.
+
+Without `-V` it prints nothing but errors (each naming what's wrong:
+a missing dependency or import, a bad image, not enough memory, an
+unknown VM).
 
 ## 5. Key factors
 
@@ -410,10 +514,11 @@ tree (v2.21):
   (`MEM FREE:$A0D3`, MAME's 64K IIe). cccomp needs 40,191 running, a
   lower bound (doc/measure.txt), and about 310 more for CMD's frames,
   which stay on the stack while a program runs (options, fact 11):
-  about 670 to spare. At XLOAD's load peak: the def table (1,460) and
-  body (31,500), the second part (about 2K, a guess), FILEIO (1,998),
-  a 512-byte buffer, and frames (about 400): **about 37.9K, leaving
-  about 3.3K**.
+  about 670 to spare. Loading, with the second part in the zero region
+  (4.1), needs no more than the program's own body and def table,
+  FILEIO, and frames: under the running need. With the second part
+  above the body instead, the load peak would be about 40.3K, so the
+  zero region matters.
 - **There's no other memory.** The heap runs from CMD's end to the
   frame stack; the low pages are all in use (options, section 2 and
   correction 1-3); hi-res page 1 is part of the heap.
@@ -435,13 +540,15 @@ tree (v2.21):
   the Apple, the zero page.
 - **The C64** has a partial PLASMA port outside ccish; leave all of it
   alone (the user, 2026-11-12), including the untracked
-  src/vmsrc/plvmzp.inc, which is the C64's. A C64 row in 4.2's table
-  would be possible later.
+  src/vmsrc/plvmzp.inc, which is the C64's. XLOAD should support it
+  eventually (R6), as a row in 4.2's table.
 
 ## 6. Sizes on the disk
 
-From ccrel -x (2026-11-12, the small build's objects); XLOAD itself
-perhaps 3K, once:
+In format version 3 (ccrel -x, 2026-11-12, the small build's
+objects); XLOAD itself perhaps 3K, once. Version 4 (the zero region)
+and step 1's change should make the images a little smaller still, and
+the code a little faster; to measure when they land:
 
 | Program | Body | Data segment (as runs) | Functions | Fixups (words) | Image file | REL module |
 |---|---:|---:|---:|---:|---:|---:|
@@ -476,6 +583,8 @@ Still to learn:
 7. Whether CMDJIT has enough free main memory to load cccomp as a
    plain REL module (its loader still reads the whole file into main
    memory first). Not needed for R2, but worth knowing.
+8. For R6: each other platform's def entries, memory model, hand-off
+   and FILEIO (4.2).
 
 To check once XLOAD runs, on MAME and then a real Apple II:
 
@@ -497,17 +606,46 @@ To check once XLOAD runs, on MAME and then a real Apple II:
 
 1. ~~The hand-off, read from plvm02.s~~ (4.5), 2026-11-11.
 2. ~~ccrel's `-x` and the image format~~ (section 3), 2026-11-12,
-   checked by tools/xlcheck.py; version 2 the same day, for R2, and
-   version 3, for the data segment's zero runs.
-3. Write XLOAD in ccish C: the first part, and the second part as an
-   image inside it, for the 64K VM and plvm, with 4.2's test refusing
-   the rest.
-4. Test under plvm with ccish's suite (a plain call in place of the
-   hand-off), then on MAME with tools/a2screen (with its guards),
-   booting a disk with XLOAD and cccomp's image.
-5. The 128K VM (4.3-4.5): read plvmjit02.s's calls and returns for the
-   hand-off, then test on MAME's 128K IIe with PLVM.128.
-6. Then the other three programs, if the disk savings are worth it.
-7. Separately, offer upstream a streaming loader in CMD for everyone
-   else's large modules (options, option 1), with fixes for loadmod's
-   two latent bugs (options, fact 5).
+   versions 1-3, checked by tools/xlcheck.py; version 4 specified.
+3. **cccomp: no initializer, any size, into the zero-filled space**
+   (3.3): every global and static local with no initializer goes in
+   the file's zero-filled space; `movable()` (heap) stays limited to
+   `BSS_MIN` and up, and ccrel moves only those, for REL modules. REL
+   modules keep their size and code; `make test` and `make bootstrap`
+   test it on its own. One commit.
+4. **cccomp: all-zero initializers too** (3.3): `int x = 0;`, `= {0}`
+   and the like go in the zero-filled space. cccomp writes an
+   initializer's bytes to the IR as it parses, so irout.c's data
+   writer will hold back zeros until a nonzero byte or address comes
+   (writing them as a Z record), and drop them if the whole initializer
+   was zeros. A step of its own, since that's more than step 3's
+   change. One commit.
+5. **ccrel's version 4, and XLOAD, together** (3.4 says why): under
+   `-x`, nothing moves to the heap; the zero region; init clears it.
+   XLOAD in ccish C, the first part and the second part as an image
+   inside it, for plvm and the 64K VM, refusing the rest (4.2), with
+   `-V` (4.6).
+6. **A small test program first,** before any of ccish's own: run
+   under plvm through XLOAD with `-V`, its output and status checked,
+   and its diagnostics checked against what ccrel's listing says (the
+   VM, sizes, where things went, the fixup counts, the imports). It
+   uses everything an image can hold: initialized data with addresses
+   (of data, strings and functions) in it, a zero region (small and
+   large globals, a static local, read before written, to see they're
+   zero), calls through function pointers, helpers, CMDSYS and FILEIO
+   imports, `argv`, and an exit status. Plus error cases: a missing
+   image, a bad magic or version, a missing dependency.
+7. **Then ccish's run tests as images** under plvm through XLOAD, with
+   their expected outputs and statuses (in `make test`); xlcheck.py
+   goes.
+8. **Then ccish's four programs as images:** compile with them under
+   plvm through XLOAD, and require the same output, byte for byte, as
+   the REL programs' (a bootstrap-like check).
+9. **MAME, the 64K Apple II,** with tools/a2screen (with its guards):
+   the small test program first, then cccomp.
+10. **The 128K VM** (4.3-4.5): read plvmjit02.s's calls and returns for
+    the hand-off, then test on MAME's 128K IIe with PLVM.128.
+11. **The other platforms** (R6), as far as reasonable.
+12. Separately, offer upstream a streaming loader in CMD for everyone
+    else's large modules (options, option 1), with fixes for loadmod's
+    two latent bugs (options, fact 5).
