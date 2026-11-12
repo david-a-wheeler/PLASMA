@@ -1,513 +1,563 @@
-# Streaming the RLD: options for discussion
+# Loading cccomp on a 64K Apple II: options, and XLOAD
 
-cccomp, ccish's front end, cannot load on a 64K Apple II. Its module
-file is 43,799 bytes, and every loader reads the whole file into the
-heap before anything runs. Free memory at the PLASMA 2.20 prompt
-measures 41,171 bytes (doc/plasma-requests.md:400, measured 2026-11-09
-on MAME's enhanced IIe; approach.md, "Free memory, measured"). The
-load needs 47,233 (doc/measure.txt:137), which is 6,062 short. With a
-streaming load the need is 34,959, which leaves 6,212 to spare
-(measure.txt:137). Running needs 40,191, which leaves 980 to spare, a
-lower bound (measure.txt:135).
+cccomp, ccish's front end, can't load on a 64K Apple II. It would fit
+while running, but every PLASMA loader reads the whole module file,
+relocation data included, before anything runs, and the whole file
+doesn't fit. This document records how the 64K system loads a module,
+the options for getting past that, and the one we chose: **XLOAD**, a
+second-stage loader that ccish ships, so that PLASMA's own loader
+needn't change.
 
-This document puts the ways to get the streaming load on the table,
-with costs, for discussion. It complements the issue draft
-(,streaming.md at the repository root) and
-https://github.com/dschmenk/PLASMA/issues/78, where the maintainer
-replied "So this would be a pretty significant update" and asked
-whether a 128K machine would be the baseline (issue #78, dschmenk,
-2026-11-11). The answer on the record: ccish already runs and
-bootstraps under the portable VM, and the goal is a 64K machine
-(issue #78, david-a-wheeler, 2026-11-11, with the fit table).
+**Status (2026-11-11).** Decided in discussion: XLOAD (section 5), on
+the `c-compiler` branch with the rest of ccish (no separate branch).
+Not yet implemented. **Still to come, first: reading plvm02.s** for
+the VM's state when a module's init is called (the 6502 stack, the
+evaluation stack index in X, and the frame pointer `IFP`), which
+XLOAD's hand-off depends on (section 5.4); and its ENTER handler, for
+any per-frame overhead in the loader-frame figure of fact 11.
 
-## Requirements, in order of importance
+The first version of this document (eef1dd1e) had errors in its
+memory map and missed options; section 8 lists the corrections, so
+nothing from it is lost.
 
-- R1. Load *existing* $6502 files (the issue's "option 1"): every
-  current module keeps working, and ideally every current module
-  gets the streaming load.
-- R2. Not reduce the space available to programs, or not by much:
-  bytes resident while a program runs.
+## 1. The problem, in numbers
+
+From doc/measure.txt (the summary at its end, 2026-11-11), against the
+41,171 bytes free at the PLASMA 2.20 prompt (`MEM FREE:$A0D3`,
+measured on MAME's 64K enhanced IIe, 2026-11-09; approach.md, "Free
+memory, measured"):
+
+| cccomp | Need | Spare |
+|---|---:|---:|
+| Loading today (the whole file) | 47,233 | -6,062 |
+| Loading, the RLD streamed | 34,959 | 6,212 |
+| Running (a lower bound) | 40,191 | 980 |
+
+Running, the real margin is smaller: about **670 bytes**, since CMD's
+own frames (about 310 bytes) stay on the frame stack while cccomp
+runs and aren't in measure.txt (fact 11). So loading is the blocker,
+and running is the tight figure.
+
+The maintainer's reply on https://github.com/dschmenk/PLASMA/issues/78
+("So this would be a pretty significant update", and whether a 128K
+machine would be the baseline; dschmenk, 2026-11-11) is one reason to
+prefer an option that needs no change to PLASMA. The answer on the
+record: ccish already runs and bootstraps under the portable VM, and
+the goal is a 64K machine (david-a-wheeler, 2026-11-11, with the fit
+table). The draft issue is ,streaming.md at the repository root.
+
+## 2. How the 64K system loads a module
+
+Read from this tree's sources (v2.21): src/vmsrc/apple/plvm02.s,
+cmdstub.s and cmd.pla, and src/libsrc/apple/fileio.pla.
+
+### Memory map
+
+| Where | What |
+|---|---|
+| $0000-$01FF | Zero page (the VM's registers and evaluation stack) and the 6502 stack |
+| $0200-$02FF | The input line buffer (CMD's `getlnbuf` is $01FF; `execsys` uses $0280) |
+| $0300-$03FF | `STRBUF` at $0300 (the prefix and system path), and the VM's entry vectors at $03D0 (direct) and $03D6 (indirect) (plvm02.s:41-42, :296-301) |
+| $0400-$07FF | **The 40-column text screen**, page 1 |
+| $0800-$0BFF | ProDOS's 1K I/O buffer for the first open file (`iobuffer`, cmd.pla:4): CMD's own reads, then a program's first file |
+| $0C00 to about $1B45 | CMD (bytecode, run by the VM): the command loop, the loader, the heap allocator, and the CMDSYS functions programs import. `_CMDEND` is $1B45 in this tree's build |
+| From `@lastdef` up | The heap: modules, their def tables, their heap data (cmd.pla:1426, `heap = @lastdef`) |
+| Down from $BF00 | The frame stack (cmdstub.s sets `IFP` to $BF00) |
+| $BF00-$BFFF | ProDOS's global page |
+| Language card bank 2, $D000 up | The VM, copied there at boot (plvm02.s:65-83); its BYE handler sits at $D100 |
+| Language card, $DA00 | The symbol table (cmd.pla:5): module names, CMDSYS's exports, each module's exports |
+| The rest of the language card | ProDOS (general Apple II knowledge, not checked here) |
+
+Not checked: where the VM ends. The committed plvm02.sym says
+`VMEND = $DB2D`, past the symbol table's $DA00, but that file is from
+2023-12-15 and plvm02.s changed on 2024-01-03, so it's stale; acme
+0.97 here can't assemble plvm02.s (section 7) to settle it.
+
+### Boot
+
+1. ProDOS runs the PLASMA system file at $2000. It copies the VM into
+   language-card bank 2 ($D000-$DFFF; plvm02.s:65-83), with its BYE
+   handler at $D100, the page from which ProDOS runs BYE (QUIT) code,
+   so BYE reloads CMD (plvm02.s:84-90, :176-253).
+2. It installs the zero-page fetch loop and the page-3 vectors, then
+   reads the file `CMD` into $2000 through the buffer at $0800
+   (plvm02.s:226-253, READPARMS :268-272), and jumps there.
+3. cmdstub.s copies CMD down to $0C00. Its loop copies 17 pages
+   ($0C00-$1CFF: X counts down from $10 and stops when it goes
+   negative), sets `IFP` to $BF00, and jumps to $0C00.
+4. CMD sets `heap = @lastdef`, the end of its own image, enters
+   CMDSYS's exports in the symbol table, and prints `HEAP START` and
+   `MEM FREE` (cmd.pla:1442-1468). `MEM FREE` is `availheap`, the
+   frame pointer less the heap, measured from CMD's top level: with no
+   loader frames on the stack (fact 11).
+
+### loadmod (cmd.pla:1005-1180), run by `+NAME` through execmod
+
+1. Open the file (through $0800), check that its ProDOS type is $FE,
+   and read its first 128 bytes into `header`, a local array on the
+   frame stack.
+2. Load each dependency not already in the symbol table: close the
+   file, call loadmod recursively (FILEIO, for ccish), reopen it, and
+   re-read the header.
+3. Allocate the def table on the heap, `defcnt * 5 + 1` bytes (the
+   header's count, init's entry included).
+4. Allocate the body on the heap: the module's size less its header
+   and dependency list. Copy in the part already read.
+5. Read the rest of the file, the rest of the body and then the RLD
+   and ESD, in 4K reads until EOF, into the memory after the body
+   (:1083-1088). The RLD and ESD get no heap allocation, and nothing
+   checks that they fit below the frame stack.
+6. Add the module's name to the symbol table.
+7. For each $02 entry, add a 5-byte def entry: `JSR $03D6` and the
+   function's address. Calls go through these.
+8. Apply each fixup: an internal one adds the load offset, or gives
+   the def entry's address if the target is in the bytecode; an
+   external one adds the address of the ESD name's symbol.
+9. Add the ESD's exports to the symbol table.
+10. `releaseheap(modend)`: the RLD and ESD go.
+11. Call init through a new def entry. If it returns below
+    `modinitkeep`, free init's code (the tail of the bytecode).
+
+execmod (:1329-1350) then puts back the heap and the symbol table,
+unless the module asked to stay. The 128K VM (`PLVM.128`) puts
+bytecode in auxiliary memory; everything here is the 64K VM.
+
+## 3. Requirements, in order of importance
+
+- R1. Load *existing* $6502 files: every current module keeps
+  working, and ideally every one gets a streaming load.
+- R2. Don't reduce the space programs have, or not by much: bytes
+  resident while a program runs.
 - R3. A modest, reviewable change; the maintainer has flagged the
   effort.
-- R4. ccish must not presume which specific loader change lands:
-  ccish's own artifacts (measure.txt's "streamed" column, the launch
-  scripts) stay loader-agnostic.
+- R4. ccish mustn't presume which loader change lands: its own
+  artifacts (measure.txt's "streamed" column, the launch scripts)
+  stay loader-agnostic.
 
-## Facts the options rest on (verified in this tree)
+XLOAD meets R2, R3 (nothing in PLASMA changes) and R4; it meets R1
+only for programs ccrel writes in its image format, which is all ccish
+needs. R1 for everyone else is what option 1, proposed upstream, would
+add later.
+
+## 4. Facts the options rest on (checked in this tree)
 
 1. **Definitions precede fixups in every writer.** xplasm's emit_rld
-   writes all $02 entries first ("First emit the bytecode
-   definition entrypoint information", src/toolsrc/codegen.c:398),
-   then the fixups (:417, "Now emit the fixup table"), then the $00
-   terminator (:434), and emit_esd after that (:436-456). ccrel does
-   the same: "Write the RLD (function entries in code order, the
-   helpers' included, then the kept relocations, those in the data
-   first) and the ESD" (OBJECT.md:541-543; the $02 entries are
-   src/link.c:1273 and :1584).
+   writes all $02 entries first ("First emit the bytecode definition
+   entrypoint information", src/toolsrc/codegen.c:398), then the
+   fixups (:417, "Now emit the fixup table"), then the $00 terminator
+   (:434), and emit_esd after that (:436-456). ccrel does the same
+   (OBJECT.md:541-543; the $02 entries are src/link.c:1273 and :1584).
 2. **The current loader is already two-phase for this reason.**
-   loadmod runs a loop over the $02 entries (src/vmsrc/apple/cmd.pla:
-   1111), then a loop over the fixups (:1121-1128), then the ESD
-   (:1131-1156). A streaming loader that applies entries in file
-   order is therefore semantically identical to the current
-   in-memory loader: same entries, same order, same patches. That
-   equivalence is the review story.
-3. **The heap is stack-like.** allocheap bumps a pointer and returns
-   0 on overflow (cmd.pla:904-926); releaseheap pops back to a level
-   (:943-945). A side table allocated above the module body is
-   released by the same `releaseheap(modend)` (:1158) that today
-   releases the RLD region: transient, never resident.
-4. **External fixups are few.** Scanning the four built modules
-   (ccish/tools/out/{ccpp,cccomp,ccgen,ccrel}, 2026-11-11; parse the
-   header, count 4-byte RLD entries by type byte to the $00, then
-   the ESD to its $00): cccomp has 51 of 3,036 entries, ccgen 50 of
-   2,246, ccpp 47 of 1,923, ccrel 35 of 1,115; the ESDs are 120 to
-   129 bytes. A deferred list of 4 bytes per external fixup (the
-   spot, 2 bytes; the ESD index, 1; the entry type, 1) is 204 bytes
-   or less for anything ccish builds. It grows with a module's
-   imported call sites, not its size.
+   loadmod loops over the $02 entries (cmd.pla:1111), then the fixups
+   (:1121-1128), then the ESD (:1131-1156). A streaming loader that
+   applies entries in file order makes the same patches in the same
+   order.
+3. **The heap is stack-like.** allocheap bumps a pointer and returns 0
+   when the heap would reach the frame stack (cmd.pla:904-926);
+   releaseheap pops back to a level (:943-946). Anything allocated
+   above the body is released by the same `releaseheap(modend)`
+   (:1158).
+4. **External fixups are few.** In the four built modules (2026-11-11;
+   counting RLD entries by type byte to the $00, then the ESD to its
+   $00): cccomp has 51 of 3,036 entries, ccgen 50 of 2,246, ccpp 47 of
+   1,923, ccrel 35 of 1,115; the ESDs are 120 to 129 bytes. A deferred
+   list of 4 bytes per external fixup is 204 bytes or less for
+   anything ccish builds.
 5. **loadmod has two latent bugs.** It never checks allocheap's 0
    return before the memcpy (cmd.pla:1079-1080), and it never checks
-   that the RLD+ESD it reads 4,096 bytes at a time into memory after
-   the body (:1085-1088) fits below the frame stack: a file whose
-   body fits but whose whole file does not overwrites the stack
-   instead of failing. Both are small fixes to include with any
-   change here.
+   that the RLD and ESD it reads after the body (:1085-1088) fit below
+   the frame stack: a file whose body fits but whose whole file
+   doesn't overwrites the stack instead of failing. (Also in
+   doc/plasma-requests.md, item 1.)
 6. **The external patch is an addition.** The word at the spot holds
-   an addend (0 for a plain reference; OBJECT.md:296-298: "For a
-   global, the word holds the addend"), and the loader writes
-   `*addr = *addr + lookupextern(esd, rld->3)` (cmd.pla:1124;
-   src/vmsrc/cmdsys.c:521). Internal fixups get the word plus
-   modofst, or the def-table entry's address when the target is in
-   the bytecode region (cmd.pla:1124, lookupdef at :707-751; the
-   per-entry core is the reloc asm at :753-833). A deferred entry
-   must therefore carry enough to replay the same patch after the
-   ESD has been read.
-7. **CMD's layout, for the options that depend on it.** The VM's
-   boot reads the CMD file into $2000 (src/vmsrc/apple/plvm02.s:
-   237-253, "READ CMD INTO MEMORY"; READPARMS at :261-265 reads into
-   $2000); CMD then moves itself to $0C00-$1BFF (src/vmsrc/apple/
-   cmdstub.s:16-18, "MOVE CMD DOWN TO $0C00-$1C00", final jump at
-   :45). `heap` is `@lastdef`, right after CMD's image (cmd.pla:
-   1426), which is why "every byte added to the loader comes out of
-   free memory" (,streaming.md, "Either way"). The symbol table is
-   $DA00 (cmd.pla:5) with `lastsym` in CMD's data (:147). Def-table
-   entries are 5-byte `JSR $03D6` records (cmd.pla:995-1004); $03D6
-   is the VM's "INDIRECT INTERP ENTRY" with language-card bank 2
-   (plvm02.s:299). ProDOS MLI is $BF00 (plvm02.s:17); CMD's own file
-   I/O is raw MLI through its buffer at $0800 (cmd.pla:4, :868-902).
-8. **CMD has a raw-binary path.** The `-NAME` command (execsys,
-   cmd.pla:1304-1327; dispatched at :1392) reads a file unmodified
-   into $2000 (:1313) and then `exec()`s it, which is `BIT ROMEN;
-   JMP $2000` (:217-220): a one-way door. A file beginning `JMP
-   $EEEE` gets its name copied to $2006 (:1317-1322). $2000-$3FFF
-   is below the heap, so a program there costs no heap; it does
-   overwrite the 40-column text screen, which starts at $2000 in
-   the standard Apple II map.
-9. **`+NAME` does not execute a non-$6502 file.** loadmod dispatches
-   on the magic at :1036; the non-extended path leaves init at 0 and
-   returns modkeep (:1162-1166; execmod at :1329-1350), so the file
-   is loaded and kept, nothing is called. A file with an unknown
-   magic handed to `+NAME` is thus silently loaded and kept, and
-   with the bug in fact 5 that is a heap overwrite on a 64K machine,
-   not an error. Relevant to any new-magic option below.
-10. **The cost is measurable before it is proposed.** xplasm is
-    built (src/xplasm, an aarch64 ELF binary); CMD builds with
-    `./xplasm -AOW vmsrc/apple/cmd.pla` and `acme --setpc 8192`
-    (src/makefile:101, :241-243). A scratch build of a modified
-    cmd.pla gives the code cost as a number, not an estimate.
+   an addend (OBJECT.md:296-298), and the loader writes `*addr = *addr
+   + lookupextern(esd, rld->3)` (cmd.pla:1124; src/vmsrc/cmdsys.c:521).
+   Internal fixups get the word plus `modofst`, or the def entry's
+   address when the target is in the bytecode (cmd.pla:1124; lookupdef
+   :716; reloc :769).
+7. **CMD's layout** is section 2's map and boot. Def entries are
+   5-byte `JSR $03D6` records (adddef, cmd.pla:995-1004); $03D6 is the
+   VM's indirect entry, with language-card bank 2 (plvm02.s:299).
+   ProDOS's MLI is at $BF00; CMD's own file I/O is raw MLI through its
+   buffer at $0800 (cmd.pla:4, :868-902).
+8. **CMD has a raw-binary path.** `-NAME` (execsys, cmd.pla:1304-1327)
+   reads a file into $2000 and `exec()`s it (`BIT ROMEN; JMP $2000`,
+   :217-220): a one-way door. A file beginning `JMP $EEEE` gets its
+   name copied to $2006 (:1317-1322). $2000-$3FFF is hi-res page 1,
+   and part of the heap.
+9. **`+NAME` doesn't run a non-$6502 file.** loadmod dispatches on the
+   magic (:1036); without it, init stays 0 and the file is loaded and
+   kept (:1162-1166). Since loadmod first checks the ProDOS type is
+   $FE (:1025-1029), a file of another type is refused ("incompatible
+   type", $4A) before any of that.
+10. **The cost of a CMD change is measurable.** xplasm is built
+    (src/xplasm); CMD builds with `./xplasm -AOW vmsrc/apple/cmd.pla`
+    and `acme --setpc 8192` (src/makefile:101, :241-243).
+11. **CMD's frames stay on the stack while a program runs.** ccish's
+    programs run `main` inside init, so the whole run happens inside
+    loadmod's call to init, with loadmod's locals (about 233 bytes:
+    the 128-byte `header`, the 64-byte `filename`, and 20 words),
+    execmod's (about 73: a 63-byte name), and docmds' (3) on the
+    frame stack: about 310 bytes, plus any per-frame overhead
+    (plvm02.s's ENTER, still to read). `MEM FREE` was measured without
+    them, and measure.py counts frames only from the program's init,
+    so measure.txt's running margins are about 310 bytes too high.
+12. **loadmod reads to EOF.** Its read loop (cmd.pla:1083-1088) runs
+    until a read returns nothing, so anything appended to a module's
+    file is read into memory too. A second-stage loader can't carry
+    its payload in its own file.
+13. **FILEIO's I/O buffers are page-aligned.** Each file beyond the
+    first opens into a 1K buffer that `iobufalloc` takes from the heap
+    with `heapallocalign(1024 * n, 8, ...)` (fileio.pla:208-237),
+    which skips 1 to 256 bytes; ccish's fopen asks for one at a time
+    (lib/fopen.c). measure.py counts each as 1,280 bytes, the worst.
+14. **What CMDSYS exports** (cmd.pla:88-145 and the t_cmdsys table,
+    :60-72; inc/cmdsys.plh): the heap functions (`heapmark`,
+    `heapalloc`, `heapallocalign`, `heaprelease`, `heapavail`),
+    `memcpy`, `memset`, `strcpy`, `strcat`, `call` (run native code),
+    `syscall`, the console functions, and, through the table,
+    `modexec`, `sysopen`, `sysread`, `sysclose`, `sysexec` and
+    `lookupsym`. Not exported: `reloc`, `lookupdef`, `adddef`,
+    `lookupidx`, `addsym` and loadmod itself.
+15. **Bytecode branches are relative.** BRNCH and the conditional
+    branches add a 16-bit offset to the IP (plvm02.s:1298-1313); JUMP,
+    added for PLFORTH, is absolute.
 
-## Option 1: stream the current format, inside the loader
+## 5. The chosen option: XLOAD
 
-The change in loadmod (cmd.pla, and the same shape in plvm's load_mod
-at src/vmsrc/cmdsys.c:336, whose whole-file read is at :433): after
-the body is allocated and the first 128 bytes copied, do not read
-the rest of the file into memory. Read the RLD in chunks (a fixed
-1K scratch buffer; 4 bytes at a time is the minimal variant) and
-apply each entry as it arrives:
+Decided in discussion, 2026-11-11. The user's idea: a second-stage
+loader. PLASMA's loader loads XLOAD, a small ordinary module; XLOAD
+gets itself out of the way, loads the real program in place, streams
+its relocation data, does the final fixups, and jumps to the program.
+PLASMA's loader needn't change, since it only ever loads XLOAD.
 
-- $02: record the def (today's first loop, cmd.pla:1111-1118).
-- $8x: apply the internal fixup now (the def table is complete by
-  construction, fact 1).
-- $9x: push (spot, ESD index, type) on the deferred list (fact 4).
-- $00: the RLD terminator (a single byte, after the last 4-byte
-  entry; codegen.c:434). The stream is now at the ESD. Scan it entry
-  by entry: an import whose index is deferred resolves and patches
-  those spots (lookupextern, cmd.pla:980-994; the ESD entry is a DCI
-  name, a flags byte, a word: lookupidx at :662-699); an export is
-  added to the symbol table (today's last loop, :1131-1156).
+### 5.1 What the user sees
 
-Then releaseheap(modend) as today, and enter init as today
-(:1162-1176).
+```
++XLOAD CCCOMP FOO
+```
 
-- Pro: no format change, no writer change; every existing module
-  streams (R1), including the whole PLASMA system.
-- Pro: the semantics are the current loader's (fact 2): the diff is
-  "same loop, input from the file instead of a buffer, one small
-  side list for the one case the file order inverts".
-- Pro: the smallest permanent cost of any option. The 4K read loop
-  (:1085-1088) becomes a 1K-buffer loop, the three in-memory loops
-  become the streaming loop; net perhaps 150-300 bytes of CMD code
-  (the issue draft's 150-250 estimate, ,streaming.md), to be
-  replaced by a measured number in the prototype (fact 10).
-- Pro: the deferred list is transient (fact 3) and under 1K for
-  realistic modules; its worst case (every fixup external) still
-  costs less than the 12K of RLD it replaces.
-- Pro: fixes both latent bugs of fact 5 for free.
-- Con: it changes CMD, a system file: maintainer review, merge,
-  re-cut system disk. The other loaders (cmdjit.pla, sossys.pla,
-  a1cmd.pla, c64/cmd.pla) can follow later; cmd.pla plus plvm's
-  cmdsys.c are enough for ccish, and plvm's copy is what makes the
-  logic testable under ccish's whole suite and the bootstrap test
-  before any 6502 byte is written.
-- Con: 150-300 bytes resident in CMD forever (R2), taken from
-  everyone's 41,171: 0.4-0.7%.
-- Con: load time. cccomp's RLD+ESD region is 12.3K: 3,036 MLI reads
-  of 4 bytes, or about 12 of 1K, instead of 3 of 4K today. The 1K
-  form adds a fraction of a second (the region is about 12 ProDOS
-  blocks, read in order); the 4-byte form, a few seconds.
+where today it's `+CCCOMP FOO`. XLOAD is a prefix, the loader for
+all four programs: one copy on the disk, one thing to test. ("RUN" is
+BASIC's, and "GO" is common elsewhere; the name was chosen from
+PRELOAD, GO, LAUNCH, XLOAD, STREAM and FETCH.)
 
-## Option 2: a new format with the ESD first, inside the loader
+- **Arguments.** lib/start.c builds `argv` by splitting CMDSYS's
+  command line in place, so XLOAD takes its own word off the front of
+  that buffer before the hand-off: the program sees `CCCOMP FOO`, and
+  its `argv[0]` is `CCCOMP`, as now.
+- **Files.** The payload is a file of its own (fact 12). It can keep
+  the plain name `CCCOMP`, with a ProDOS type other than $FE, so that
+  `+CCCOMP` without the prefix gets CMD's "incompatible type" error
+  (fact 9) rather than a load that overwrites memory; XLOAD checks
+  the type too. Which type, still to choose.
+- **One program, or all four.** cccomp first, since it's the one that
+  can't load; ccpp, ccgen and ccrel load today and can stay ordinary
+  modules until XLOAD works on MAME. All four as images would save
+  most of their RLDs on the disk (section 5.3).
 
-ESD before RLD, under a new magic word (the loaders dispatch on the
-magic today, cmd.pla:1036; the value is arbitrary, $6503 was only a
-placeholder). The streaming loop is the simplest possible: read the
-small ESD, then apply every RLD entry as it arrives, no deferred
-list. Old files load exactly as today.
+### 5.2 How it works
 
-- Pro: the simplest streaming code of any option.
-- Con: the loader must keep the old path forever in addition to the
-  new one: more resident code than option 1, not less (R2).
-- Con: every writer changes (xplasm's codegen, ccrel, the acme step),
-  and a new-format file handed to an old loader is the silent heap
-  overwrite of fact 9: the format change has to ship with the loader
-  everywhere the file might be loaded.
-- Con: existing files still load the old way: R1 is met only for new
-  files.
-- Net: option 2 is option 1's streaming loop plus a format migration,
-  for a saving of the deferred list (about 200 bytes transient,
-  about 50 bytes of code). It earns its keep only bundled with other
-  format work (doc/plasma-requests.md, item 12, zero runs in the
-  data segment) as a separate future step, not as the streaming
-  vehicle.
+XLOAD's file is an ordinary $6502 module in two parts:
 
-## Option 3: a load shim, a separate loader module
+1. **The first part**, a few hundred bytes, is all loadmod runs. It's
+   a small relocator.
+2. **The second part**, the real loader, is carried inside XLOAD's
+   data as an image in the payloads' own format (5.3). loadmod sees
+   only bytes and doesn't touch them.
 
-A standalone loader shipped by ccish, run by CMD by the normal
-mechanism. It opens the target file itself, streams it (option 1's
-loop, or option 2's simpler loop), and enters the target's init
-through a def entry exactly as loadmod does (cmd.pla:1162-1166:
-`adddef(init, @deflast)()`); when the target returns, the shim
-returns the status to CMD. Two delivery forms:
+The steps:
 
-- **3a: a VM module shim** (`+ccload cccomp`). Written in PLA:
-  reviewable, and portable, since the same source runs under plvm.
-  That means ccish's full test suite and the bootstrap test
-  exercise the streaming logic on the host. It declares FILEIO as a
-  dependency, so CMD loads it first (the dependency load at
-  cmd.pla:1044-1056); its own file is a few KB and loads fine by the
-  old mechanism.
-- **3b: a native 6502 shim** (`-ccload cccomp`), a raw binary read
-  by execsys into $2000 (fact 8). It costs no heap: cccomp keeps its
-  full 980-byte margin. It is self-contained: MLI through $BF00, the
-  heap pointer at @lastdef, the symbol table at $DA00 with lastsym,
-  the VM's indirect entry $03D6 with bank 2 (fact 7): all fixed
-  addresses of the shipped system. **As written it does not work**:
-  the shim runs from $2000 while cccomp's body allocation grows up
-  through $2000-$3FFF (the heap is contiguous from the end of CMD's
-  image to the frame top, and the body crosses $2000 about 1.6K into
-  the read), overwriting the running shim. The fix is to relocate the
-  shim into the low-RAM holes below CMD as its first act (the largest
-  is $0400-$07FF, 1K; appendix), which requires the shim to fit in
-  about 1K.
+1. loadmod loads XLOAD (and FILEIO, its dependency) and calls its
+   init.
+2. The first part reads the payload's header for its size, then
+   copies the second part's image to its new home, adds that address
+   at each of its fixups, and looks up its imports with `lookupsym`.
+   Since it's properly relocated, the second part is ordinary ccish C:
+   globals, strings, helpers and calls all work. The first part then
+   calls it, and isn't needed again.
+3. The second part reads the payload's image straight into its final
+   place, the bottom of the heap where XLOAD's own def table starts,
+   over the first part and the original XLOAD module. It reads in
+   chunks through a small buffer, then applies the sorted fixups and
+   resolves the imports.
+4. The hand-off (5.4) jumps to the payload's init. Nothing of XLOAD
+   stays.
 
-A format sub-choice for either form: **F1**, stream the current
-$6502 format (the deferred list; loads existing files; no writer
-change; no footgun) versus **F2**, a new-magic ESD-first format
-(the simplest loop; ccrel writes it; `+ccomp` on such a file is the
-silent overwrite of fact 9).
+**Where the second part goes:** just above where the payload will
+end, which the first part knows from the payload's header. Its frames
+then grow from the current frame pointer as usual, with no change to
+`IFP`. The payload's heap tables are later allocated over the dead
+second part. The other place considered, just below the frame stack
+(the user's first form), needs `IFP` lowered below it first, another
+piece of native code; it's the fallback if memory is tighter than
+expected.
 
-- Pro: zero changes to the maintainer's code (R3 at maximum): the
-  maintainer need not review or merge anything; the shim is a file
-  on ccish's disk. This sidesteps the "pretty significant update"
-  objection entirely.
-- Pro: a sandbox for loader R&D: the missing fits check (fact 5),
-  item 13 of doc/plasma-requests.md (run main after init and free
-  the startup code), and the zero-run format can be prototyped in
-  the shim before any is proposed upstream. The shim's code is the
-  future PR's draft.
-- Pro (3a): testable under plvm with ccish's suite before it runs on
-  a real machine.
-- Pro (3b): the full running margin; no shrinkage of cccomp needed.
-- Con (3a): the shim's init runs the target and cannot return until
-  it is done, so the shim's body and def table stay resident for the
-  whole run. The body is comparable to loadmod (the largest function
-  in cmd.pla, :1005-1180), plus argument parsing and the error
-  paths, and the def table is 5 bytes per function of the shim, kept
-  (cmd.pla:1061, defcnt*5+1): 1.5-2.5K estimated, to be measured.
-  That spends the 980-byte margin and then some. 3a fits only if
-  cccomp shrinks another 1-2K (it has been shrinking: 28,321 to
-  25,854 bytes of code in two days, doc/plasma-requests.md:83-85) or
-  items 13/14 land.
-- Con (3b): 6502 assembly to review (the PLA form is the readable
-  one); not portable to plvm, so the 6502 port is verified only on
-  MAME or a real II; the execsys path is a one-way door (fact 8), so
-  a return-to-prompt mechanism is needed: the $EEEE marker
-  convention or a jump to CMD's $0C00 re-entry (cmdstub.s:45), to be
-  settled in the prototype; and it encodes CMD/VM internal layout as
-  fixed addresses, so it is version-coupled to the PLASMA release it
-  ships with. The low-RAM home is unverified (appendix): the holes
-  are undocumented, and a ProDOS second-drive buffer may occupy
-  $0400-$07FF on a multi-drive machine.
-- Con (both): a second artifact on the ccish disk, which is already
-  133.4K of the ~136K usable (the four module files are 122.2K,
-  ccish.msg is 11,457 bytes; 140K = 143,360 bytes, minus 4,096 for
-  directory blocks). A 2-4K shim fits only by squeezing, with item
-  12's ~12K saving (doc/plasma-requests.md:336-352), or on a second
-  drive, which the stated 2-to-4-drive setup makes tolerable.
-- Con (F2): the footgun of fact 9. Con (F1): the deferred list.
-- Con (both): only ccish's modules get the streaming load; R1 for
-  other programs is unmet, and cccomp's launch must always go
-  through the shim (a driver script can make that the only way,
-  which is what R4 asks for anyway).
+**Why load in place:** the alternative (leave XLOAD at the bottom,
+read and fix up the payload higher up for its final address, then
+block-move it down) would let XLOAD stay unmoved, but adds the move:
+about 16 cycles a byte, so about half a second for cccomp's 31.5K at
+1 MHz, against several seconds of disk reads. "Apples aren't fast";
+loading in place avoids it, and keeps the hand-off to restoring state
+and a jump.
 
-## Option 4: ccish fixes itself, table in the body
+**Reusing CMD.** XLOAD uses only what CMDSYS exports (fact 14): the
+heap functions, `memcpy`, `memset`, `call`, `lookupsym`, and file
+reads through FILEIO. It needs none of CMD's internals (`reloc`,
+`lookupdef`, `adddef`, `addsym`), since the payload's format avoids
+what they do.
 
-No PLASMA change, no shim: ccrel emits the fixups as a table inside
-the data segment; the module's init finds its own load address in
-the symbol table (loadmod adds the module's name before init runs,
-cmd.pla:1093, the definition at :950-961), walks the table and patches
-its own words, and registers its exports. The RLD keeps only the $02 defs
-(291 in cccomp, 1,165 bytes): the def table is the VM's call
-dispatch (fact 7), and it cannot go away without a VM change
-(doc/plasma-requests.md, item 14).
+### 5.3 The payload's format, ours to choose
 
-- Numbers: the table needs at least 2 bytes per fixup (the spot):
-  cccomp has 2,745 fixups (fact 4: 3,036 entries minus 291 defs
-  minus 51 externals, the external ones in the table too), so 5,490
-  bytes minimum, in the body. Budget for the body: 41,171 free,
-  minus 31,500 (body, measure.txt:132), minus 1,461 (def table,
-  :132), minus 1,998 (FILEIO, :133), minus 1,165 (def-only RLD),
-  minus 129 (ESD) = 4,918. **572 bytes short of fitting.**
-  Delta-encoding the spots (they are monotonically ordered) might
-  close it, at the cost of more init code and time.
-- Pro: no PLASMA change, no extra disk, no resident shim.
-- Con: does not fit today; it also costs 1-2 seconds of
-  self-patching per load (2,745 patch iterations at init),
-  duplicates the symbol-table mechanics in ccish, loses the
-  loader's error checking, and helps no other PLASMA program.
-- Verdict: revisitable if the RLD-reduction projects land (the
-  base-plus-index references and the relative call op, ccish-rld.md,
-  "Can it come down?").
+Both ends are ccish's, so the payload needn't be PLASMA's RLD
+format. ccrel writes:
 
-## Option 5: ccish fixes itself, sidecar fixup file
+- **The image:** the program's def table, then its body, as one block
+  correct for address 0. ccrel lays out the def entries itself (5
+  bytes each, `JSR $03D6` and the address, in order), so references to
+  functions are references to entries in the image.
+- **The internal fixups,** then all one kind: add the load address.
+  Sorted, and written as the gaps between offsets, mostly one byte
+  each: about 3K for cccomp, where its RLD is 12.1K.
+- **The imports:** each name (15 for cccomp) with its spots (51 in
+  all), resolved with `lookupsym`.
+- Possibly item 12's zero runs in the data (doc/plasma-requests.md).
 
-As option 4, but the table lives in a NAME.fx file that init opens
-and applies as it streams it. The .mod file is then body plus
-def-only RLD plus ESD, about 32.8K, which loads today with about
-4.9K spare, and the fixups cost no memory at all.
+### 5.4 The hand-off
 
-- Pro: no PLASMA change; the most memory margin of the
-  self-contained options (load peak about 37.5K, the fixups read 4
-  bytes at a time into scratch).
-- Con: 17-19K on the ccish disk (one table per module: at least 2
-  bytes per fixup of each, about 6.8K for cccomp and 12.5K for the
-  other three): 152K of 136K usable. **It does not fit on one 140K
-  disk**, and not on one even with item 12's 12K saving (140K).
-  It needs a second drive.
-- Con: two files per program; a missing .fx is a dead compiler (the
-  ccish.msg precedent, diag.c's msg_text, handles a missing
-  optional file, but this one is essential); 1-2 more seconds of
-  disk time at init; the same self-patching and symbol-table
-  duplication as option 4.
-- Verdict: a fallback of last resort, and only with two drives.
+With under 1K to spare while running, XLOAD can't stay resident, and
+the payload can't return into XLOAD's code (its heap tables are
+allocated over it). So the last step is a tail call: the payload's
+init returns straight to loadmod, as if loadmod had called it.
 
-## Option 6: split cccomp into two modules
+That takes a small native routine, about 20 to 30 bytes of 6502 code,
+kept as bytes in a data array and run through CMDSYS's `call`:
 
-ccomp part 1 runs, loads part 2 over it (modexec, the mechanism
-tools/ccstat.pla uses today), part 2 finishes the job, both return
-and are freed.
+1. Restore the 6502 stack pointer, the evaluation stack index (X) and
+   `IFP` to their values when XLOAD's init was entered.
+2. `JMP` to the payload's init def entry, `JSR $03D6`, so the VM's
+   indirect entry takes over.
 
-- Numbers: with a = part 1's body in K, the load peak when part 2
-  loads is part 1 resident (its body a, its proportional share of
-  the def table and heap globals, 1.46K and 2.39K, FILEIO at 2K,
-  one I/O buffer at 1.3K; measure.txt:132-134) plus part 2's whole
-  file (its body, its proportional share of the 12.1K RLD, the ESD)
-  plus part 2's def table and heap: 50.9 - 0.38a K. That is under
-  41.171 only for a at least about 25.3: part 2 must hold under
-  about 6K of the 31.5K body (under 20%), a tail split, for a margin
-  that goes to zero at the break-even point (a = 27 gives 0.7K). The
-  running peak is unchanged by the split (both halves resident
-  either way).
-- Con: the two halves must share the type, name, and IR state across
-  a module boundary: a restructuring of the front end's
-  architecture. No AST exists to hand off; the state is the tables
-  themselves (issue #78, david-a-wheeler, 2026-11-11: "It never
-  generates an AST; ASTs are conventional but space killers").
-- Verdict: tighter than streaming and much more work. Rejected.
+When the payload's init returns, it lands in loadmod, which frees
+XLOAD's (stale) init address; execmod then puts the heap back as
+usual.
 
-## Option 7: shrink cccomp's file instead of streaming
+This rests on the VM's calling convention: the zero-page layout and
+what the 6502 stack holds when init is called. **Reading plvm02.s's
+CALL, ICAL, ENTER, LEAVE and RET handlers is the next step**, before
+writing the routine. The first version's appendix inferred the
+indirect entry's behavior (IINTRP pops the def entry's address and
+loads the IP from it, plvm02.s:161-174; a function returns with a
+bare RTS, :1458) but didn't read the CALL handler.
 
-- Item 12 (zero runs in the data segment, doc/plasma-requests.md:
-  336-352; it is a loader and writer change anyway): -4.3K in
-  cccomp's file. 47,233 - 4,300 = 42,933. Still over.
-- Plus item 14 (call bytecode directly: drops the 291 $02 entries
-  from the file and the def table from memory): the file comes to
-  about 41.8K, still 0.6K over, and item 14 is a VM change in every
-  VM and JIT.
-- A relative call op (ccish-rld.md, "Can it come down?": "a VM
-  opcode change in every VM (plvm.c, the 6502 ROMs, the loaders)")
-  would remove the call fixups outright (about 6.9K, to about 36K:
-  fits), but that is the largest change on this list: 7 VMs and 3
-  JITs (doc/plasma-requests.md, item 3).
-- Verdict: zero runs is worth doing on its own (12.4K of disk
-  across the four modules), but shrinking alone cannot get cccomp
-  under 41,171 without VM changes larger than the loader change.
+### 5.5 Memory and disk
 
-## Summary
+At the load peak, for cccomp: the payload's image (def table 1,461 and
+body 31,506: 32,967), the second part (about 2K, a guess), FILEIO
+(1,998), a 512-byte buffer, and frames, CMD's included (about 400):
+**about 37.9K**, leaving about 3.3K of the 41,171. Running, after the
+hand-off, needs exactly what it does today.
 
-| Option | PLASMA change | cccomp margin (running) | Disk | New resident code |
-|---|---|---|---|---|
-| 1. Stream $6502 in the loader | cmd.pla, cmdsys.c | 6,212 | 0 | ~150-300 B in CMD (measured first) |
-| 2. New format in the loader | cmd.pla, writers | 6,212 | 0 | more than 1 (two paths kept) |
-| 3a. VM shim, F1 | none | ~0 to -1,500 | +2-4K (tight) | shim ~1.5-2.5K while target runs |
-| 3b. 6502 shim, F1, relocate first | none | 980 (if the low-RAM home verifies) | +2-4K (tight) | 0 heap; shim must fit in ~1K low RAM |
-| 4. Self-patch, in-body table | none | n/a: 572 B short | 0 | init ~0.3K |
-| 5. Self-patch, sidecar file | none | ~3,600 at load | +17-19K: does not fit one disk | init ~0.3K |
-| 6. Split cccomp | none | ~0 at best; part 2 under 6K | 0 | restructuring |
-| 7. Shrink the file | item 12; VM for 14 | n/a: 1.7K short alone | -12K | loader and writer for 12 |
+On the disk, cccomp's payload would be about 33K of image plus about
+3K of fixups, against its 43.8K module; XLOAD itself perhaps 3K, once.
 
-## Recommendation
+### 5.6 Testing
 
-Option 1 with F1's mechanics: stream the current format, deferred
-external fixups, a 1K chunk buffer. It is the only option that meets
-R1-R4 together; its permanent cost is the smallest and is measurable
-before it is proposed (fact 10); and its review story is the
-invariant "entries applied in the same order as today, input from
-the file instead of a buffer" (fact 2).
+plvm's VM is C, so the native hand-off can't run there as written.
+Under plvm, XLOAD would end with a plain call instead, which still
+tests the format, the relocation, the imports and the in-place load
+with ccish's suite on the host. Only the hand-off routine needs MAME
+(tools/a2screen, with its guards).
 
-Option 3 is the fallback if the maintainer declines option 1, and
-the natural staging ground either way: build the streaming loop
-once (it is the same loop), prove it under plvm with ccish's suite
-and the bootstrap test, run the 6502 form on MAME (tools/a2screen),
-and only then either propose the small CMD diff (option 1) or ship
-the shim (3b for the margin, 3a once cccomp has shed another kilo).
+## 6. The other options
 
-Rejected with numbers: 4 (572 B short), 5 (16K short of disk), 6
-(break-even at zero margin with a front-end restructure), 7
-(1.7K short without larger VM changes).
+### Option 1: stream the current format, inside CMD's loader
 
-## Appendix: what the 2026-11-11 discussion settled, and what is still open
+After the body is allocated, don't read the rest of the file into
+memory: read the RLD in chunks (a 1K buffer, or 4 bytes at a time)
+and apply each entry as it arrives. $02 entries make def entries;
+$8x fixups apply at once (the def table is complete, fact 1); $9x
+fixups go on a deferred list (fact 4); at the $00, the stream is at
+the ESD, whose imports resolve the deferred spots and whose exports go
+in the symbol table. The same in plvm's load_mod (cmdsys.c:336, whole-
+file read at :433).
 
-### Learned
+- Pro: no format or writer change; every existing module streams (R1).
+- Pro: the same patches in the same order as today (fact 2).
+- Pro: small resident cost, perhaps 150-300 bytes of CMD (an estimate,
+  to measure: fact 10); fixes both bugs of fact 5.
+- Con: it changes CMD, a system file: the maintainer's review, merge,
+  and a new system disk. 150-300 bytes resident for everyone.
+- Con: load time: 12 reads of 1K instead of 3 of 4K for cccomp's RLD,
+  a fraction of a second; 4 bytes at a time, a few seconds.
+- **Now:** the right fix for PLASMA in general, worth offering
+  upstream, but not needed by ccish once XLOAD works. Option 9 is a
+  way to run it before it's merged.
 
-1. **The relocation mechanism works.** Answer to whether a shim can
-   move itself out of the heap and continue as the module's init:
-   yes. The VM's indirect entry reads the function address only at
-   entry (IINTRP pops a pointer V and sets IP to the word at V+1,
-   plvm02.s:161-174), and a function's return is a bare RTS
-   (plvm02.s:1458). So an init can copy its body to a safe home,
-   rewrite its def entries to point there, release its body from the
-   heap (keeping its def table), push a pointer at the relocated
-   address word, and JMP $03D6: the relocated code runs under the
-   original 6502 frame, and its return lands in loadmod
-   (cmd.pla:1166) as if it never moved. No initkeep is needed: a
-   plain status return makes execmod (cmd.pla:1338-1348) restore the
-   heap and symbol table to the pre-shim level, and loadmod's
-   releaseheap(init) at the stale address (cmd.pla:1169) is a pointer
-   move that gets overwritten. It is the same pattern as CMD's own
-   boot (cmdstub.s:16-45, CMDMOVE).
-2. **The 64K map leaves no hole for a resident loader.** Measured by
-   assembling the current tree (xplasm, acme 0.97): CMD's image is
-   $0C00-$1B44 (3,909 bytes), copied into the fixed 4K region
-   $0C00-$1BFF (cmdstub.s:18-37, 16 pages; the comment "STOP WHEN
-   DST=$2000 REACHED" is stale). The heap starts at `lastdef`, a
-   dummy function at the end of the image (cmd.pla:1419-1426, "Dummy
-   definition to get free heap"), so the heap is contiguous from
-   about $1B44 to @fp $BF00: the measured 41,171 free is the whole
-   program budget, with nothing left over. (MEM FREE:$A0D3 on the
-   v2.20 disk implies heap start $1E2D; this tree's image ends 745
-   bytes earlier, so the current tree has about 41.9K free:
-   unverified.) No allocation sequence can leave $2000-$3FFF free:
-   cccomp's def table alone (1,461 bytes) crosses $2000, and the
-   body crosses it about 1.6K into the read.
-3. **The one hole the system knows costs more than it gives.** The
-   reshgr1 heap reshape (cmd.pla:908-913) moves allocations that
-   straddle $2000-$4000 to $4000 and above: it would free
-   $2000-$3FFF for a relocated shim but removes 8K of heap capacity,
-   leaving 33,792 bytes for a program that needs 40,191: about 6.4K
-   short. Dead end.
-4. **The remaining candidates are the low-RAM holes below CMD**,
-   about 2K in all, fragmented: $0200-$02FF (256 bytes), $0400-$07FF
-   (1K), $0900-$0BFF (768 bytes). Known occupants around them: the
-   zero page, the 6502 stack $0100-$01FF, STRBUF $0300 and the
-   INTERP vectors $03D0-$03DF (plvm02.s:33, :42), the ProDOS
-   iobuffer $0800 (cmd.pla:4, active during every MLI read, so a
-   shim living there dies on its own first read), CSW $36/$37 and
-   PROMPT $33. None of it is documented; it needs the item 15
-   measurement on MAME.
-5. **Toolchain.** xplasm (src/xplasm) builds CMD fine. /usr/bin/acme
-   0.97 assembles cmdstub.s plus cmd.a but fails on plvm02.s (Target
-   out of range at :1355-1358, the dispatch's backward branches), so
-   building the VM with the available tools is blocked; the CMD
-   measurement stands on its own. The makefile copies
-   vmsrc/c64/plvmzp.inc to vmsrc/plvmzp.inc before assembling CMD.
-   bin/ac-linux-aarch64-15.2 is AppleCommander (a disk image tool),
-   not an assembler. Untracked build artifacts left by the
-   measurement: src/vmsrc/apple/cmd.a, cmd.sym, cmd_test.bin, and
-   src/vmsrc/plvmzp.inc.
+### Option 2: a new format with the ESD first, inside CMD's loader
 
-### Still to learn
+ESD before RLD, under a new magic word: the simplest streaming loop,
+no deferred list; old files load as today.
 
-1. **The low-RAM map on the target** (item 15, MAME 64K IIe, with 1
-   and 2 drives): is $0400-$07FF free, and does it stay free (ProDOS
-   may place drive 2's buffer there)? This decides every
-   relocate-first shim variant.
-2. **How small the streaming shim can be**: loadmod's 6502 size as a
-   benchmark (the assembled symbol table does not carry per-function
-   names; needs an xplasm listing or a measurement pass). The
-   low-RAM home fits about 1K.
-3. **The return-to-prompt mechanism of the `-` path** (fact 8's
-   one-way door): what $EEEE is (the marker at cmd.pla:1317 points
-   into the VM bank; not found in source here), or whether a jump to
-   CMD's $0C00 re-entry (cmdstub.s:45) cleanly restarts the prompt.
-4. **The exact 6502 frame of a VM CALL** (how many words the CALL
-   handler pushes, what the RTS return value is): inferred from
-   IINTRP and RET, not read directly (the CALL handler is in the
-   dispatch page, plvm02.s near :140). The relocation mechanism of
-   appendix item 1 should be confirmed by a prototype on MAME.
-5. **Which disk is the test target**: the 41,171 figure is from the
-   v2.20 disk (mame/ setup); this tree is v2.21 with a 745-byte
-   smaller CMD image. The margin figures shift by that much.
-6. **The target's dependencies under a shim**: cccomp declares
-   cmdsys and fileio. FILEIO loads as the shim's own dependency
-   (cmd.pla:1044-1056), but whether the VM itself (cmdsys) is in the
-   $DA00 symbol table that the dependency check queries is
-   unverified.
+- Con: the loader keeps both paths, more resident code than option 1
+  (R2); every writer changes (xplasm, ccrel, the acme step); a new
+  file on an old loader misbehaves (fact 9); old files still load the
+  old way (R1 only for new files).
+- **Now:** only worth it bundled with other format work (item 12).
 
-### Net effect on the options
+### Option 3: a load shim, a separate loader module
 
-3b as first written is broken (it overwrites itself); the viable
-shim forms are the relocate-first variants (3b-v2 native, or a
-relocated 3a), all conditional on "still to learn" 1-2. Option 1 is
-unaffected by any of this and remains the recommendation: it needs
-no hole at all, because the streaming buffer is transient (fact 3)
-and the deferred list is a few hundred bytes.
+The first version's name for what became XLOAD.
 
-## If the decision is "go ahead"
+- **3a, a VM module that stays resident while the program runs:** its
+  body and def table, perhaps 1.5-2.5K, stay for the whole run, more
+  than the margin. XLOAD avoids this with the tail call (5.4).
+- **3b, a native shim** run by `-NAME` into $2000 (fact 8), moved into
+  a "low-RAM hole" below CMD. **There is no such hole** (section 8,
+  corrections 1-3): $0200-$02FF, $0400-$07FF and $0800-$0BFF are all
+  in use. Rejected.
+- Its good points carry over to XLOAD: no change to the maintainer's
+  code; a place to try loader ideas (the fits check of fact 5, item
+  13, zero runs) before proposing any upstream; testable under plvm.
 
-1. Branch `c-compiler-streaming` off `c-compiler`; the loader work
-   lives only there, so nothing outside ccish/ lands in master or
-   c-compiler, and the loader commit stands alone for cherry-pick or
-   PR.
-2. Measure first: a scratch build of the modified cmd.pla (fact 10)
-   replaces the 150-300 estimate with a number.
-3. Implement in plvm's load_mod (C) first, the identical algorithm,
-   and run ccish's full suite and `make bootstrap` under it: that is
-   the host-side proof of the in-order-application invariant,
-   thousands of loads.
-4. Port to cmd.pla (PLA, reusing reloc's per-entry core, fact 6),
-   build, and verify on the MAME IIe booting a PLASMA system disk:
-   the stock system modules (regression: old files load and run)
-   and the ccish passes (streaming).
-5. Draft the PR for issue #78: the diff, the measurement, the
-   invariant, and the two latent-bug fixes of fact 5.
+### Option 4: ccish fixes itself, table in the body
+
+ccrel puts the fixups in the data segment; the module's init patches
+its own words. The RLD keeps only the 291 $02 defs (1,165 bytes).
+
+- At least 2 bytes per fixup: 2,745 fixups, 5,490 bytes, in the body.
+  Budget: 41,171 - 31,500 (body) - 1,461 (def table) - 1,998
+  (FILEIO) - 1,165 (def-only RLD) - 129 (ESD) = 4,918: **572 bytes
+  short**, and the table stays resident. Rejected.
+
+### Option 5: ccish fixes itself, sidecar fixup file
+
+As option 4, with the table in a NAME.fx file that init streams.
+
+- The first version rejected it for disk space (17-19K more: "152K
+  of 136K usable"). XLOAD's format (5.3) is in effect this idea done
+  properly: the fixups in a file of their own, compact, applied by a
+  loader that then leaves.
+
+### Option 6: split cccomp into two modules
+
+Part 1 runs and loads part 2. The load peak is under 41,171 only if
+part 2 holds under about 6K of the 31.5K body, for a margin that goes
+to zero, and the halves must share all of the front end's tables.
+Rejected.
+
+### Option 7: shrink cccomp's file instead of streaming
+
+Item 12 (zero runs): -4.3K, 42,933, still over. Plus item 14 (call
+bytecode directly): about 41.8K, still over, and a VM change. A
+relative call op would fit but is the largest change of all (7 VMs, 3
+JITs). Rejected as the way to load; still worth doing for disk and for
+the running margin.
+
+### Option 8: pre-relocate the module (missed by the first version)
+
+On a given disk, a module started from a fresh prompt loads at the
+same place every time. So ccrel could apply the internal fixups itself
+for that address, keeping in the RLD only the $02 entries and the
+external fixups. cccomp's file would drop to about 33K and load with
+today's loader with about 4.7K to spare, and the four programs would
+save about 29.5K of disk.
+
+- **Rejected by the user:** it breaks whenever anything before it
+  changes size: CMD (2.20's ends 745 bytes after 2.21's), FILEIO, or
+  a module someone ran and kept. A check at init (one kept fixup on a
+  word holding the expected address) would make that fail cleanly,
+  but it would still fail.
+
+### Option 9: a patched CMD on ccish's own disk (missed by the first version)
+
+The first version treated any loader change as needing the
+maintainer's merge. But ccish's Apple II disk is ccish's to build, and
+it can carry a CMD built from a cmd.pla with option 1's change: proof
+on a real machine before asking upstream, and the fact 5 fix at once.
+The cost: a CMD for each PLASMA release supported.
+
+- **Now:** a fallback if XLOAD's hand-off proves unworkable.
+
+## 7. What earlier work settled (from the first version's appendix)
+
+1. **A function can be moved and still return normally.** The VM's
+   indirect entry reads the function's address only at entry (IINTRP
+   pops a pointer V and sets the IP to the word at V+1,
+   plvm02.s:161-174), and a function returns with a bare RTS
+   (:1458). So copying a function, rewriting its def entry and
+   calling it works, the same pattern as CMD's own boot (cmdstub.s,
+   CMDMOVE). Inferred from IINTRP and RET, not from the CALL handler:
+   5.4's reading will confirm.
+2. **The heap is the whole budget.** CMD's image ends at $1B45 in this
+   tree (3,909 bytes from $0C00), and the heap runs from there to the
+   frame stack: the 41,171 free is all there is. The 2.20 disk's
+   `MEM FREE` implies a heap start of $1E2D, 745 bytes later than this
+   tree's, so this tree's CMD would give about 41.9K free (not
+   measured).
+3. **The system's one memory hole costs more than it gives.** The
+   `reshgr1` flag (cmd.pla:908-913) moves allocations that straddle
+   $2000-$3FFF up to $4000: it frees hi-res page 1, but takes 8K from
+   the heap, leaving 33,792 bytes for a program that needs 40,191.
+4. **Toolchain.** xplasm (src/xplasm) builds CMD; /usr/bin/acme 0.97
+   assembles cmdstub.s and cmd.a but not plvm02.s ("Target out of
+   range" at :1355-1358), so the VM can't be rebuilt here. The
+   makefile copies vmsrc/c64/plvmzp.inc to vmsrc/plvmzp.inc before
+   assembling CMD. bin/ac-linux-aarch64-15.2 is AppleCommander (a disk
+   image tool). Untracked files from that measurement remain:
+   src/vmsrc/apple/cmd.a, cmd.sym and cmd_test.bin, and
+   src/vmsrc/plvmzp.inc. A later check (2026-11-11) assembled FILEIO
+   in a scratch directory: 1,998 bytes resident by loadmod's own
+   accounting (body without header, def table with init's entry and
+   end byte).
+
+## 8. Corrections to the first version
+
+1. **The 40-column text screen is at $0400-$07FF, not $2000** (its
+   fact 8). $2000-$3FFF is hi-res page 1. So its "largest low-RAM
+   hole", $0400-$07FF, is the visible screen, which ccish writes its
+   messages to.
+2. **$0900-$0BFF isn't a hole:** it's the last 768 bytes of the 1K
+   ProDOS buffer at $0800, in use during every read, CMD's included.
+3. **$0200-$02FF isn't free:** it's the input line buffer, and execsys
+   uses $0280. So there are no low-RAM holes, and option 3b had no
+   home.
+4. **cmdstub.s copies 17 pages ($0C00-$1CFF), not 16.** Harmless,
+   since the heap starts at `lastdef`, inside that copy.
+5. **Its running margins were about 310 bytes too high** (fact 11):
+   cccomp's is about 670, not 980.
+6. **It missed options 8 and 9**, and the two-stage loader the user
+   proposed (section 5).
+7. **Its view that every loader option needs the maintainer** missed
+   that ccish's disk is its own (option 9), and that a loader ccish
+   ships can use a format of ccish's own (5.3).
+
+## 9. Still to learn
+
+1. **The VM's state at init entry** (plvm02.s: CALL, ICAL, ENTER,
+   LEAVE, RET, IINTRP): the 6502 stack's contents, X, and `IFP`, for
+   the hand-off (5.4); and ENTER's per-frame overhead, for fact 11.
+   **Next.**
+2. The ProDOS file type for payloads.
+3. Whether FILEIO's init allocates anything on the heap (it would sit
+   between CMD and XLOAD).
+4. How small the first part can be, and the second part's real size.
+5. Which disk is the target: the 41,171 is from the 2.20 disk; this
+   tree is 2.21, whose CMD is 745 bytes smaller.
+6. Whether cmdsys itself is in the $DA00 symbol table that
+   `lookupsym` searches (the first version's open item 6), since the
+   payload imports CMDSYS's functions by name.
+
+## 10. Plan
+
+1. Read plvm02.s (9.1), and write down the hand-off routine.
+2. Give ccrel a way to write a payload: the image, the sorted fixups,
+   the imports.
+3. Write XLOAD in ccish C: the first part, and the second part as an
+   image inside it.
+4. Test under plvm with ccish's suite (a plain call in place of the
+   hand-off), then on MAME with tools/a2screen, booting a disk with
+   XLOAD and cccomp's payload.
+5. Then the other three programs, if the disk savings are worth it.
+6. Offer option 1 upstream separately, for everyone else's large
+   modules, with fact 5's fixes.
