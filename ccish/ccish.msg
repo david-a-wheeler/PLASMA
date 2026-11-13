@@ -299,6 +299,10 @@
 299 (spare)
 300 (spare)
 301 (spare)
+302 the library map says
+303 the library map has a name over 31 characters:
+304 a -L path is too long (128 characters)
+305 the library's names are too long (128 bytes in all)
 310 too many large globals to move to the heap
 311 too much data to move to the heap
 312 too many goto labels in

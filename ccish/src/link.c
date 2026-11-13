@@ -128,6 +128,20 @@ static int nobjs;
 static int obj_data[MAX_OBJS + 1], obj_strs[MAX_OBJS + 1];
 static int obj_code[MAX_OBJS + 1];
 
+// The library's directory (-L), if any: the bases of the objects it
+// adds, without the directory, in lib_names[], each with its NUL;
+// an object is the library's when its name is in lib_names (obj_file()
+// and the listing say so), and it is opened as libdir/base.
+// find_library() keeps lib_names's bytes in use in its own len, and
+// reads dir's lib.map, one pass at a time, closed before the pass's
+// objects are read, so the link never has two files open
+// (doc/linking.md, section 5.3).
+static const char *libdir;
+#define LIB_NAMES 128         // limit link: bytes of the bases of the
+                              // objects -L adds, each with its NUL: the
+                              // peak (126) links cccomp
+static char lib_names[LIB_NAMES];
+
 // The names shared between objects (non-local functions and globals),
 // as parallel arrays, MAX_GSYMS slots each, with open addressing: a name
 // is in the slot gsym_start() picks or a later one, wrapping around
@@ -233,6 +247,30 @@ static int nlr;
 
 static unsigned char fbuf[MAX_FUNC_CODE];
 
+// libdir with / and name, in a static buffer: the map's path, or an
+// added object's file name, built when opened.
+static const char *lib_path(const char *name)
+{
+  static char buf[MAX_PATH];
+  int d = (int)strlen(libdir), n = d + 1 + (int)strlen(name);
+  if (n >= (int)sizeof(buf))
+    fatal0(304 /* "a -L path is too long (128 characters)" */);
+  memcpy(buf, libdir, (size_t)d);
+  buf[d] = '/';
+  strcpy(buf + d + 1, name);
+  return buf;
+}
+
+// Object k's file with suffix, in a static buffer: its name, or
+// libdir/name for an object -L added (its base, in lib_names).
+static const char *obj_file(int k, const char *suffix)
+{
+  const char *n = obj_name[k];
+  if (n >= lib_names && n < lib_names + LIB_NAMES)
+    return lib_path(stream_name(n, suffix));
+  return stream_name(n, suffix);
+}
+
 // Stop with an error: stream file what is cut short or disagrees with
 // the others.
 static void damaged(const char *what)
@@ -243,7 +281,7 @@ static void damaged(const char *what)
 // Stop with an error: the current object's stream file is damaged.
 static void bad_obj(void)
 {
-  damaged(stream_name(obj_name[cur], SUFFIX_OBJ));
+  damaged(obj_file(cur, SUFFIX_OBJ));
 }
 
 // ---------- Reading the objects (bio.c's, for ccrel only) ----------
@@ -361,7 +399,7 @@ static void between(int msg, const char *name, int a, int b)
 // name, for messages.
 static const char *open_syms(int k)
 {
-  const char *name = stream_name(obj_name[k], SUFFIX_SYMS);
+  const char *name = obj_file(k, SUFFIX_SYMS);
   cur = k;
   if (!bopen(&in, name, 0))
     fatal_d(171 /* "cannot open" */, name);
@@ -651,6 +689,192 @@ static void read_summary(int k)
       place_zero(s.name, s.size, s.flags & SYM_INDATA);
   }
   close_syms(name, 1);
+}
+
+// ---------- -L: the library's objects (doc/linking.md, section 5) ----------
+
+// The slot of name, if the link wants it: a plain name (a global or a
+// function, not a CMDSYS function, which is imported) that is used and
+// no object defines, with no PLASMA label (a declared import is not
+// looked up): exactly the names that would be error 172; or -1.
+static int name_wanted(const char *name)
+{
+  int g = gsym_find(name);
+  if (g < 0 || g_def[g] != NO_OBJ || !(g_flags[g] & G_USED))
+    return -1;
+  if (g_lab[g] >= 0 || (g_flags[g] & G_BADCMDSYS)
+      || !(g_flags[g] & (G_DATA | G_PLAIN)))
+    return -1;
+  return g;
+}
+
+// Does the link want __start: main has two parameters, and no object
+// defines it. No object references it (resolve() asks for it only
+// because of main's count), so the map must offer it by its own
+// spelling.
+static int start_wanted(void)
+{
+  int m = gsym_find("main"), g;
+  if (m < 0 || g_def[m] == NO_OBJ || (g_flags[m] & G_DATA)
+      || g_count[m] != 2)
+    return 0;
+  g = gsym_find("__start");
+  return !(g >= 0 && g_def[g] != NO_OBJ);
+}
+
+// Is base the base of an object already linked, named or added: the
+// last component of its name.
+static int lib_base_linked(const char *base)
+{
+  int i;
+  const char *p, *q;
+  for (i = 0; i < nobjs; i++) {
+    p = q = obj_name[i];
+    while (*p) {
+      if (*p == '/')
+        q = p + 1;                  // the start of the next component
+      p++;
+    }
+    if (!strcmp(q, base))           // compare the last component
+      return 1;
+  }
+  return 0;
+}
+
+// The next token of the map, into buf (at most MAX_NAME characters,
+// with its NUL): 1, with *how the terminator (0 a space, 1 CR or LF,
+// 2 the end of the file); 0 at the end of the file; -1 if the token is
+// over MAX_NAME characters, a broken map: stop. Whitespace between
+// tokens is skipped, CR or LF ending a line, blank lines skipped, as
+// read_list() does.
+static int map_tok(Bfile *map, char *buf, int *how)
+{
+  int c, n;
+  for (;;) {
+    c = bgetc(map);
+    if (c == EOF) {
+      *how = 2;
+      return 0;
+    }
+    if (c != ' ' && c != '\n' && c != '\r')
+      break;
+  }
+  buf[n = 0] = (char)c;
+  for (n = 1;;) {
+    c = bgetc(map);
+    if (c == EOF || c == ' ' || c == '\n' || c == '\r') {
+      *how = c == EOF ? 2 : c == ' ' ? 0 : 1;
+      break;
+    }
+    if (n == MAX_NAME) {
+      buf[n] = 0;
+      error_d(303 /* "the library map has a name over 31"
+                  " characters:" */, buf);
+      return -1;
+    }
+    buf[n++] = (char)c;
+  }
+  buf[n] = 0;
+  return 1;
+}
+
+// Add the library object base to the objects, after the ones linked so
+// far: base, without the directory, in lib_names, from len; the bytes
+// in use after.
+static int lib_add(const char *base, int len)
+{
+  int n = (int)strlen(base) + 1;
+  if (nobjs >= MAX_OBJS)
+    fatal0(223 /* "too many objects to link" */);
+  if (len + n > LIB_NAMES)
+    fatal0(305 /* "the library's names are too long (128 bytes in all)" */);
+  memcpy(lib_names + len, base, (size_t)n);
+  obj_name[nobjs++] = lib_names + len;
+  return len + n;
+}
+
+// The map's line for base, which defines name, a name the link wants:
+// the map is wrong if base is already linked (it doesn't define the
+// name), an error naming both, 'base' defines 'name', but it doesn't;
+// else add base. len, the bytes in use, goes on to the next add.
+static int map_line(const char *base, const char *name, int len)
+{
+  static char buf[MAX_NAME * 2 + 34];
+  if (!lib_base_linked(base))
+    return lib_add(base, len);
+  strcpy(buf, "'");
+  strncat(buf, base, MAX_NAME);
+  strcat(buf, "' defines '");
+  strncat(buf, name, MAX_NAME);
+  strcat(buf, "', but it doesn't");
+  error_d(302 /* "the library map says" */, buf);
+  return len;
+}
+
+// Read the map, and add the objects for the lines whose names the link
+// wants: each line is an object's base, then the names it defines; CR
+// or LF ends a line, blank lines are skipped, as read_list() does. A
+// line is judged when its first wanted name comes, with its base, and
+// its rest is skipped until the line ends (a judged line's names are
+// still wanted to the end of the pass). len, the bytes in use, goes on.
+static int map_pass(Bfile *map, int len)
+{
+  char tok[MAX_NAME + 1], base[MAX_NAME + 1];
+  int how, state = 0;             // 0 no line; 1 in one, not judged yet;
+                                  // 2 in a judged one, skipping its rest
+
+  for (;;) {
+    if (map_tok(map, tok, &how) <= 0)
+      break;                      // -1 stops too: its error is in map_tok
+    if (state == 0) {
+      // The line's base.
+      state = 1;
+      strcpy(base, tok);
+    } else if (state == 1 && (!strcmp(tok, "__start") ? start_wanted()
+                                                       : name_wanted(tok) >= 0)) {
+      // A name the link wants: judge the line, and skip its rest.
+      len = map_line(base, tok, len);
+      state = 2;
+    }
+    if (how == 2)
+      break;
+    if (how == 1)
+      state = 0;                  // the line ended, judged or not
+  }
+  return len;
+}
+
+// The map's path must exist before any object is read: -L can't do
+// anything without it.
+static void lib_check(void)
+{
+  Bfile map;
+  const char *p = lib_path("lib.map");
+  if (!bopen(&map, p, 0))
+    fatal_d(171 /* "cannot open" */, p);
+  bclose(&map);
+}
+
+// Add the library's objects that define the names the link still wants,
+// until a pass adds none: one pass per level of the library's
+// dependencies. The map is read a pass at a time, closed before the
+// pass's objects' summaries are read (section 5.3).
+static void find_library(void)
+{
+  Bfile map;                      // the map, one pass at a time
+  int first, i, len;
+  len = 0;                        // lib_names's bytes in use
+  for (;;) {
+    first = nobjs;
+    if (!bopen(&map, lib_path("lib.map"), 0))
+      fatal_d(171 /* "cannot open" */, lib_path("lib.map"));
+    len = map_pass(&map, len);
+    bclose(&map);
+    if (nobjs == first)
+      return;
+    for (i = first; i < nobjs; i++)
+      read_summary(i);
+  }
 }
 
 // Make CMDSYS function name, which the init function calls, used (an
@@ -1108,7 +1332,7 @@ static const char rld_tags[] = { REC_DATA, REC_DREL, REC_ZERO, REC_FUNC, 0 };
 // Open object k's stream file for reading, from its start.
 static void open_obj(int k)
 {
-  const char *name = stream_name(obj_name[k], SUFFIX_OBJ);
+  const char *name = obj_file(k, SUFFIX_OBJ);
   if (!bopen(&in, name, 0))
     fatal_d(171 /* "cannot open" */, name);
 }
@@ -1669,6 +1893,11 @@ static void list_summary(const char *dep)
     if (mod_used[i] && strcmp(mod_name[i], dep))
       printf(" %s", mod_name[i]);
   printf("\n");
+  for (i = 0; i < nobjs; i++) {
+    const char *n = obj_name[i];
+    if (n >= lib_names && n < lib_names + LIB_NAMES)
+      printf("; library object: %s\n", n);
+  }
   printf("; shared names: %d of %d slots, %d of %d name bytes\n",
          ngsyms, MAX_GSYMS, gnames_len, MAX_GNAMES);
 }
@@ -1744,25 +1973,31 @@ static void write_relocs(int n, int init_off)
 }
 
 // Run the final pass: link the n objects whose output names (as given
-// to cccomp) are bases, in that order, and write the REL module to
-// path.
-void link_module(int n, const char **bases, const char *path)
+// to cccomp) are bases, in that order, with the library's objects from
+// dir (-L) if it is not NULL, and write the REL module to path.
+void link_module(int n, const char **bases, const char *path, const char *dir)
 {
-  static const char dep[] = "CMDSYS";
   int init_off, total, i;   // i also counts objects
 
   // Step 1.
   if (n > MAX_OBJS)
     fatal0(223 /* "too many objects to link" */);
   nobjs = n;
+  libdir = dir;
   for (i = 0; i < MAX_GSYMS; i++)
     g_name[i] = -1;
   for (i = 0; i < NHELPERS; i++)
     h_def[i] = NO_OBJ;
   nhelpers = 0;
+  if (dir)
+    lib_check();            // the map must exist, before any object
   for (i = 0; i < n; i++) {
     obj_name[i] = bases[i];
     read_summary(i);
+  }
+  if (dir) {
+    find_library();         // the library's objects, after the named
+    n = nobjs;              // ones (steps 2 to 4 use n)
   }
   resolve();
   // The helpers go after every object's code, then init.
@@ -1788,9 +2023,9 @@ void link_module(int n, const char **bases, const char *path)
   // header, 10 bytes, and the dependencies: CMDSYS, if anything is
   // imported, then each module a used import comes from: their names,
   // then $00.
-  data_base = MODULE_BASE + 10 + (nimports ? (int)sizeof(dep) : 1);
+  data_base = MODULE_BASE + 10 + (nimports ? sizeof("CMDSYS") : 1);
   for (i = 0; i < nmods; i++)
-    if (mod_used[i] && strcmp(mod_name[i], dep))
+    if (mod_used[i] && strcmp(mod_name[i], "CMDSYS"))
       data_base += strlen(mod_name[i]) > 16 ? 16 : (int)strlen(mod_name[i]);
   if (opt_xload)
     data_base = 0;
@@ -1817,7 +2052,7 @@ void link_module(int n, const char **bases, const char *path)
 #endif
   if (!bopen(&out, path, 1))
     fatal_d(192 /* "cannot create output file" */, path);
-  write_header(dep, init_off, total);
+  write_header("CMDSYS", init_off, total);
 
   for (i = 0; i < n; i++)
     copy_data(i);
@@ -1850,6 +2085,6 @@ void link_module(int n, const char **bases, const char *path)
   if (bclose(&out) != 0)
     fatal_d(193 /* "error writing output file" */, path);
 #ifdef CCISH_LISTING
-  list_summary(dep);
+  list_summary("CMDSYS");
 #endif
 }

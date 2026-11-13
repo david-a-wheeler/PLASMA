@@ -36,11 +36,11 @@ blank for a limit that isn't measured.
 |---|---|---|---|---|
 | `MAX_IDS` | 203 | 201 (irin.c) | enum constants and typedef names visible at once | [src/name.tab.h](../src/name.tab.h) |
 | `MAX_FUNCS` | 242 | 195 (pexpr.c) | functions declared, defined or called | [src/obj.h](../src/obj.h) |
-| `MAX_VARS` | 79 | 77 (link.c) | globals, plus the parameters and locals visible at once | [src/obj.h](../src/obj.h) |
+| `MAX_VARS` | 79 | 79 (link.c) | globals, plus the parameters and locals visible at once | [src/obj.h](../src/obj.h) |
 | `MAX_PARAM_TYPES` | 352 | 305 (pexpr.c) | parameter types of all declared functions | [src/parse.h](../src/parse.h) |
 | `MAX_IMPORTS` | 16 |  | declarations with an asm label, or after #pragma plasma import | [src/ptop.c](../src/ptop.c) |
 | `MAX_DEPS` | 4 |  | modules named by #pragma plasma import | [src/ptop.h](../src/ptop.h) |
-| `MAX_TYPES` | 54 | 53 (link.c) | distinct types; at most 128, since char tables (fn_type[], param_types[]) hold unqualified types, and a host's char may be signed | [src/type.c](../src/type.c) |
+| `MAX_TYPES` | 54 | 54 (link.c) | distinct types; at most 128, since char tables (fn_type[], param_types[]) hold unqualified types, and a host's char may be signed | [src/type.c](../src/type.c) |
 | `MAX_TAGS` | 6 | 4 (link.c) | struct and union tags, counting those in blocks that have ended | [src/type.tag.h](../src/type.tag.h) |
 | `MAX_MEMBERS` | 32 | 27 (irout.c) | struct and union members, in all of them | [src/type.tag.h](../src/type.tag.h) |
 
@@ -67,6 +67,7 @@ blank for a limit that isn't measured.
 | `MAX_MOVED` | 32 |  | large globals moved to the heap in one module (OBJECT.md, "Zero-filled globals") | [src/link.c](../src/link.c) |
 | `MAX_DEFS` | 320 | 297 (linking cccomp) | functions in an XLOAD image's table (-x), helpers and init included: about 10% above what cccomp needs | [src/link.c](../src/link.c) |
 | `MAX_MODS` | 8 |  | modules one link imports from | [src/link.c](../src/link.c) |
+| `LIB_NAMES` | 128 | 126 (linking ccpp) | bytes of the bases of the objects -L adds, each with its NUL: the peak (126) links cccomp | [src/link.c](../src/link.c) |
 | `MAX_OBJS` | 32 |  | objects in one link (ccish's own is MAX_LINK, main.c) | [src/link.h](../src/link.h) |
 
 ## Other limits

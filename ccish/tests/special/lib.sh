@@ -57,6 +57,17 @@ same "$out" "01 args NULL" "no args"
 out=$(run_args args 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29) || bad=1
 same "$out" "24 args 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 NULL" "many args"
 
+# The same link through -L: the map offers the objects. __start is
+# wanted only because main has two parameters (no object names it),
+# and the map's line for start offers it; the listing names the
+# objects added.
+./ccrel -v -o "$D/argsl" "$D/args" -L "$L" >"$D/argsl.lst" || bad=1
+out=$(run_args argsl x yy zzz) || { echo "FAIL lib argsl: status $?"; bad=1; }
+same "$out" "04 argsl x yy zzz NULL" "args through -L"
+grep -qF "; library object: start" "$D/argsl.lst" \
+    || { echo "FAIL lib argsl: the map's start isn't in the listing:"; cat "$D/argsl.lst"; bad=1; }
+rm -f "$D/argsl"
+
 # exit from inside a call stops with its status, after what was printed;
 # under plvm, through exit's marker, then the BRK, whose message plvm
 # prints on stderr. Statuses: 3; -1, which is 255; and 0. The second

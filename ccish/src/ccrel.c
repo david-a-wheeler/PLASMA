@@ -4,7 +4,7 @@
 // them into one module. The objects are kept, so that a changed file
 // needs only itself compiled again.
 //
-// Usage: ccrel [-v] [-x] [-o module] output|@file...
+// Usage: ccrel [-v] [-x] [-L dir] [-o module] output|@file...
 //   output  an object's output name, as given to cccomp and ccgen; the
 //           objects are linked in this order. @file reads the names
 //           from file instead, one per line (CR or LF ends a line,
@@ -14,6 +14,11 @@
 //           but not its format: no options, quoting or white-space
 //           splitting, which an Apple II's CR lines don't need
 //   -v      print a listing of the module's bytecode
+//   -L      a directory of the library's objects, which must have a
+//           lib.map that says which object defines each name: the
+//           objects that define the names the link wants, until none
+//           remain, are added after the named ones (doc/linking.md,
+//           section 5)
 //   -o      module name (default: output, if there is only one)
 //   -x      write an XLOAD image (../doc/xload.md, section 3),
 //           not a REL module
@@ -49,9 +54,11 @@ void clean_up(void)
 static void usage(void)
 {
 #ifdef CCISH_LISTING
-  fputs("usage: ccrel [-v] [-x] [-o module] output|@file...\n", stderr);
+  fputs("usage: ccrel [-v] [-x] [-L dir] [-o module] output|@file...\n",
+        stderr);
 #else
-  fputs("usage: ccrel [-x] [-o module] output|@file...\n", stderr);
+  fputs("usage: ccrel [-x] [-L dir] [-o module] output|@file...\n",
+        stderr);
 #endif
   exit(2);
 }
@@ -90,7 +97,7 @@ static void read_list(const char *path)
 // Link the objects into a module.
 int main(int argc, char **argv)
 {
-  const char *modname = NULL;
+  const char *modname = NULL, *libdir = NULL;
   int i;
 
   msg_init(argv[0]);
@@ -104,6 +111,8 @@ int main(int argc, char **argv)
       modname = argv[++i];
     else if (is_opt(argv[i], 'x'))
       opt_xload = 1;
+    else if (is_opt(argv[i], 'L') && i + 1 < argc)
+      libdir = argv[++i];
     else if (argv[i][0] == '-')
       usage();
     else if (argv[i][0] == '@')
@@ -116,7 +125,7 @@ int main(int argc, char **argv)
   if (!modname)
     modname = bases[0];
   module_name = modname;
-  link_module(nbases, bases, modname);
+  link_module(nbases, bases, modname, libdir);
   module_name = NULL;
   return 0;
 }

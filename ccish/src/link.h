@@ -8,7 +8,9 @@
 extern int opt_xload;       // -x: write an XLOAD image, not a REL module
                             // (../doc/xload.md, section 3)
 
-void link_module(int n, const char **bases, const char *path);
+void link_module(int n, const char **bases, const char *path,
+                 const char *dir);          // -L: the library's directory,
+                                            // or NULL
 void link_abort(void);                      // after an error
 
 #endif

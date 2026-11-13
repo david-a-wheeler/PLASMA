@@ -120,6 +120,10 @@ $(OUT)/lib/%.obj: lib/%.c $(wildcard lib/include/*.h) ccpp cccomp ccgen
 	@mkdir -p $(dir $@)
 	@./ccpp -o $(OUT)/lib/$* $< && ./cccomp -o $(OUT)/lib/$* $(OUT)/lib/$* \
 	 && ./ccgen $(OUT)/lib/$*
+# The library's map (doc/linking.md, 5.2): which object defines each
+# name, generated from the summaries, for the linker's -L.
+$(OUT)/lib/lib.map: $(LIBOBJS) tools/libmap.py
+	@python3 tools/libmap.py $(OUT)/lib
 
 # XLOAD (doc/xload.md), the loader for ccish's images (ccish -x): its
 # first part, xload, a REL module, and its second part, xload2, an
@@ -255,7 +259,9 @@ $(OUT)/special/small.stamp: $(wildcard tests/run/*.c tests/xrun/*.c tests/xrun/*
 $(OUT)/special/front.stamp: tests/run/hello.c tests/errors/const_assign.c
 $(OUT)/special/back.stamp: tests/run/hello.c tests/run/global_init.c src/ir.h
 $(OUT)/special/ccrel.stamp: tests/run/hello.c tests/run/global_init.c \
-                         tests/link/helpers/a.c tests/link/helpers/b.c
+                         tests/link/helpers/a.c tests/link/helpers/b.c \
+                         $(OUT)/lib/lib.map
+$(OUT)/special/lib.stamp: $(OUT)/lib/lib.map
 $(OUT)/special/msgs.stamp: ccish.msg
 $(OUT)/special/smalldiag.stamp: tests/run/const.c
 $(OUT)/special/tables.stamp: tests/special/tables.c src/irin.c src/lower.c src/ir.h \

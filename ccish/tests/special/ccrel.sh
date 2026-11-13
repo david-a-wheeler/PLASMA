@@ -296,4 +296,162 @@ else
     echo "FAIL ccrel: wanted its usage for several objects without -o, got:"
     sed 's/^/    /' "$OUT/link/noname.err"; bad=1
 fi
+
+# ---------- -L: the library's objects (doc/linking.md, section 5) ----------
+LB=$OUT/lib
+
+# A program that needs objects two levels deep: fopen, then path
+# (which it calls for the FILEIO name), which needs strlen. The
+# listing names the objects added, and linking twice is the same
+# module (the passes in order, the map in file order).
+cat >"$OUT/link/lmap.c" <<'EOF'
+#include <stdio.h>
+int main(void)
+{
+  FILE *f = fopen("lmap.dat", "w");
+  int ok = f != 0;
+  if (f)
+    fclose(f);
+  __puti(ok);
+  __putln();
+  return ok ? 0 : 1;
+}
+EOF
+if cc_obj "" "$OUT/link/lmap" "$OUT/link/lmap.c" \
+   && ./ccrel -v -L "$LB" -o "$OUT/link/lmap" "$OUT/link/lmap" \
+      >"$OUT/link/lmap.lst" 2>"$OUT/link/lmap.err" \
+   && out=$(run_module "$OUT/link" lmap) \
+   && [ "$out" = "1" ] \
+   && grep -qF "; library object: fopen" "$OUT/link/lmap.lst" \
+   && grep -qF "; library object: path" "$OUT/link/lmap.lst" \
+   && grep -qF "; library object: strlen" "$OUT/link/lmap.lst" \
+   && ./ccrel -L "$LB" -o "$OUT/link/lmap2" "$OUT/link/lmap" \
+      2>>"$OUT/link/lmap.err" \
+   && cmp -s "$OUT/link/lmap" "$OUT/link/lmap2"; then
+    :
+else
+    echo "FAIL ccrel: -L didn't add the library's objects (fopen, path, strlen)"
+    sed 's/^/    /' "$OUT/link/lmap.err"; bad=1
+fi
+rm -f "$OUT/link/lmap2" "$OUT/link/lmap.dat"
+
+# The driver's -L does the same, compiling and linking in one.
+if ./ccish -L "$LB" -o "$OUT/link/lmapd" "$OUT/link/lmap.c" \
+      2>"$OUT/link/lmapd.err" \
+   && out=$(run_module "$OUT/link" lmapd) \
+   && [ "$out" = "1" ]; then
+    :
+else
+    echo "FAIL ccrel: ccish -L didn't compile and link"
+    sed 's/^/    /' "$OUT/link/lmapd.err"; bad=1
+fi
+rm -f "$OUT/link/lmapd" "$OUT/link/lmap.dat"
+
+# One line naming two names the link wants (the one object defines
+# both), with a third name in between: the line is judged at the
+# first, and the rest of it is skipped, not read as a new line's base
+# (which would add the name as an object).
+cat >"$OUT/link/mw.c" <<'EOF'
+int mw_a(void) { return 1; }
+int mw_b(void) { return 2; }
+int mw_c(void) { return 3; }
+EOF
+cat >"$OUT/link/mwp.c" <<'EOF'
+int mw_a(void); int mw_c(void);
+int main(void)
+{
+  __puti(mw_a() + mw_c()); __putln();
+  return 0;
+}
+EOF
+if cc_obj "" "$OUT/link/mw" "$OUT/link/mw.c" \
+   && cc_obj "" "$OUT/link/mwp" "$OUT/link/mwp.c" \
+   && mkdir -p "$OUT/link/mwlib" \
+   && cp "$OUT/link/mw.obj" "$OUT/link/mw.syms" "$OUT/link/mwlib/" \
+   && echo "mw mw_a mw_b mw_c" > "$OUT/link/mwlib/lib.map" \
+   && ./ccrel -L "$OUT/link/mwlib" -o "$OUT/link/mwp" "$OUT/link/mwp" \
+      2>"$OUT/link/mwp.err" \
+   && out=$(run_module "$OUT/link" mwp) \
+   && [ "$out" = "4" ]; then
+    :
+else
+    echo "FAIL ccrel: a line with two wanted names added a second object"
+    sed 's/^/    /' "$OUT/link/mwp.err"; bad=1
+fi
+rm -f "$OUT"/link/mw "$OUT"/link/mw.c "$OUT"/link/mw.obj \
+      "$OUT"/link/mw.syms "$OUT"/link/mwp "$OUT"/link/mwp.c \
+      "$OUT"/link/mwp.err
+rm -rf "$OUT"/link/mwlib
+
+# -L with no map: the 171 for the map's path, before any object is
+# read (the named object is missing, too: the map's error wins).
+want_fail "a missing map" "cannot open $OUT/link/nomap/lib.map" \
+    -L "$OUT/link/nomap" -o "$OUT/link/x" "$OUT/link/nomissing"
+
+# A map naming an object that isn't there: the 171 for its summary.
+mkdir -p "$OUT/link/lmisslib"
+echo 'int libmiss(void); int main(void) { __puti(libmiss()); __putln(); return 0; }' \
+    >"$OUT/link/lmiss.c"
+cc_obj "" "$OUT/link/lmiss" "$OUT/link/lmiss.c"
+echo "nosuch libmiss" > "$OUT/link/lmisslib/lib.map"
+want_fail "a map naming a missing object" \
+    "cannot open $OUT/link/lmisslib/nosuch.syms" \
+    -L "$OUT/link/lmisslib" -o "$OUT/link/x" "$OUT/link/lmiss"
+
+# A map saying an object defines a name it doesn't: the drift error,
+# naming both. First, for an object already named:
+echo 'int driftname(void); int main(void) { __puti(driftname()); __putln(); return 0; }' \
+    >"$OUT/link/drift.c"
+cc_obj "" "$OUT/link/drift" "$OUT/link/drift.c"
+mkdir -p "$OUT/link/driftlib"
+echo "drift driftname" > "$OUT/link/driftlib/lib.map"
+want_fail "a map line for a named object that doesn't define the name" \
+    "the library map says 'drift' defines 'driftname', but it doesn't" \
+    -L "$OUT/link/driftlib" -o "$OUT/link/x" "$OUT/link/drift"
+
+# And, for one the map itself added: it defines a wanted name on its
+# line, and claims another it doesn't have. The pass after its summary
+# finds the name still wanted and the base already linked.
+echo 'int driftother(void); int driftmiss(void);
+int main(void)
+{
+  __puti(driftother()); __puti(driftmiss()); __putln();
+  return 0;
+}' >"$OUT/link/drift2.c"
+cc_obj "" "$OUT/link/drift2" "$OUT/link/drift2.c"
+mkdir -p "$OUT/link/driftlib2"
+echo 'int driftother(void) { return 3; }' >"$OUT/link/driftlib2/other.c"
+cc_obj "" "$OUT/link/driftlib2/other" "$OUT/link/driftlib2/other.c"
+echo "other driftother driftmiss" > "$OUT/link/driftlib2/lib.map"
+want_fail "a map line for an added object that doesn't define the name" \
+    "the library map says 'other' defines 'driftmiss', but it doesn't" \
+    -L "$OUT/link/driftlib2" -o "$OUT/link/x" "$OUT/link/drift2"
+
+# A name on no line of the real map: the 172 text, as without -L.
+echo 'int notinthemap(void); int main(void) { __puti(notinthemap()); __putln(); return 0; }' \
+    >"$OUT/link/notline.c"
+cc_obj "" "$OUT/link/notline" "$OUT/link/notline.c"
+want_fail "a name on no line" "undefined reference to 'notinthemap'" \
+    -L "$LB" -o "$OUT/link/x" "$OUT/link/notline"
+
+# libmap.py fails if two objects define the same name, so a map can't
+# be ambiguous.
+mkdir -p "$OUT/link/mapdup"
+cp "$LB/exit.syms" "$OUT/link/mapdup/a.syms"
+cp "$LB/exit.syms" "$OUT/link/mapdup/b.syms"
+if python3 tools/libmap.py "$OUT/link/mapdup" 2>"$OUT/link/mapdup.err"; then
+    echo "FAIL libmap: two objects defining one name made a map"; bad=1
+elif grep -qF "two objects define exit" "$OUT/link/mapdup.err"; then
+    :
+else
+    echo "FAIL libmap: wrong message for two objects, one name:"
+    sed 's/^/    /' "$OUT/link/mapdup.err"; bad=1
+fi
+rm -rf "$OUT/link/mapdup"
+rm -f "$OUT/link/lmiss.obj" "$OUT/link/lmiss.syms" \
+    "$OUT/link/drift.obj" "$OUT/link/drift.syms" \
+    "$OUT/link/drift2.obj" "$OUT/link/drift2.syms" \
+    "$OUT/link/notline.obj" "$OUT/link/notline.syms" \
+    "$OUT/link/driftlib2/other.obj" "$OUT/link/driftlib2/other.syms"
+rm -rf "$OUT/link/lmisslib" "$OUT/link/driftlib" "$OUT/link/driftlib2"
 exit $bad

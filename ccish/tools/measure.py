@@ -951,6 +951,10 @@ def main():
         with open(module + ".objs") as f:
             objs = f.read().split("\n")[:-1]
         libs = [os.path.basename(o) for o in objs[len(files):]]
+        # The bases the linker's -L adds, each with its NUL, in
+        # link.c's LIB_NAMES.
+        note_peak(limit_peaks, "LIB_NAMES",
+                  sum(len(o) + 1 for o in libs), "linking " + prog)
         code = sum(sizes[n][2] for n in files)
         data = sum(sizes[n][0] for n in files)
         strs = sum(sizes[n][1] for n in files)

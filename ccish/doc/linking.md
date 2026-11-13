@@ -11,10 +11,10 @@ with file and line references for checking (as of 2026-11-13; check
 them again, since they move). Section 8 is the list of verified facts
 the decisions rest on.
 
-**Status (2026-11-13).** Steps 1 and 2 of section 9 are done: the one
-exit (section 5.5), and the option letters (section 2, with `-m` and
-`-r` as proposed). Steps 3 to 7 aren't. Work through them in order, as
-section 10 says.
+**Status (2026-11-13).** Steps 1 to 3 of section 9 are done: the one
+exit (section 5.5), the option letters (section 2, with `-m` and `-r`
+as proposed), and the library search, `-L dir` (section 5). Steps 4 to
+7 aren't. Work through them in order, as section 10 says.
 
 ## 1. The final pass is renamed `ccrel` to `cclink`
 
@@ -289,7 +289,7 @@ user-visible API change), src/link.c (`exit_cap()`'s
 src/link.c:712-716), tests/special/lib.sh, doc/ccish-guide.md,
 doc/bootstrap-test.md.
 
-## 5. `-L dir`: the linker adds the objects it needs
+## 5. `-L dir`: the linker adds the objects it needs (done, 2026-11-13)
 
 **Decision.** `cclink [-v] [-x] [-L dir] [-o module] output|@file...`
 gains `-L`, with its directory a **required** parameter. With `-L`,
