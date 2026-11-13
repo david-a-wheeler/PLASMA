@@ -5212,6 +5212,49 @@ issue. In summary:
     checking assert would need abort()). The host builds, compiled by
     gcc without NDEBUG, check every assert in each test run. Same
     code size; it costs ptop.c one macro of ccpp's MAX_MACROS.
+46. **Linking: the name cclink, the -v flag, the __cmd_ spellings,
+    and -L library resolution** (decided in discussion, 2026-11-12;
+    the full record, options, rationale and implementation notes in
+    doc/linking.md). The final pass is renamed ccrel to cclink: a
+    role name, as the other three are (it now writes a REL module or
+    an XLOAD image, xload.md R5, and "linker" promises no library
+    pulling, which stays driver policy). Its listing flag -l becomes
+    -v, under a new rule: options of one program must not differ
+    only in case. CMDSYS functions are spelled __cmd_ + the PLASMA
+    name (__cmd_puts): bare __ is confusing (three meanings in one
+    fixed-id table, ppname.c; and the C world's __x is the library's
+    internal x), uniqueness needs C's reserved namespaces (7.1.3),
+    meaning needs a word. The fixed ids and token streams are
+    unchanged; the C library's own __ names move to one underscore
+    (_start, _path, _filetype, _exitcap; __filetype is a library
+    function, fopen.c, not a CMDSYS one). With -L dir (required
+    argument, no implicit search), cclink resolves the plain
+    undefined names by adding the library objects that define them:
+    lib.map (one line per object: the base, then the names, exact C
+    spellings) is authoritative, with no fall-through when it names
+    a missing file; then the identity probe (no underscore
+    stripping); then one alias (fclose to fopen). Zero new memory:
+    fixed-point re-reads of the map; a 512-byte buffer was rejected
+    as a limit on a user-owned file. The tools/cclink wrapper is
+    renamed first (cclibs recommended; pending). Lands after XLOAD
+    (xload.md section 8), in doc/linking.md's commit order.
+    **Revised in review (2026-11-13):** the rule's reason is is_opt(),
+    which ignores case because CMD uppercases (so -L would read as
+    -l), and it covers every program: the driver's -d and -i go too
+    (ccgen's with them). lib.map is generated from the .syms files
+    and required with -L, with no identity probe and no alias table;
+    one library directory per platform settles which exit a program
+    gets. _start is looked up when main has parameters. Each pass
+    reads the map, closes it, then reads the summaries it named, so
+    one file is open at a time. tools/cclink is deleted, not renamed.
+    And ccpp keeps the 25 CMDSYS ids out of its name pool, so the
+    longer spellings save it about 250 bytes instead of costing 200,
+    with ids 1-40 for CMDSYS (15 spare), so a new CMDSYS function
+    renumbers nothing. One link sequence must work on plvm and the
+    Apple: one library, and lib/exit.c's exit works on both (init sets
+    TMP, $E7, itself; under plvm exit prints a shorter ccstat marker,
+    ^A and the number, then a BRK), about 28 bytes a pass, and
+    tools/plvmexit.c goes.
 
 
 ## Milestones
