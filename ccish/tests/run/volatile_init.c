@@ -13,7 +13,7 @@
 // pmember stores nothing; pinit keeps only its first SLW (the dead
 // stores pass misses it, as before volatile). So 1 SLB and 10 SLWs. vtake(gv)
 // pushes gv's words with volatile loads (push_struct_words), which
-// ccgen -d shows as LAW.v; the linked listing can't tell them from
+// ccgen -m shows as LAW.v; the linked listing can't tell them from
 // plain LAWs, so this only checks that the call works.
 // listing-count: 1 SLB
 // listing-count: 10 SLW

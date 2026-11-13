@@ -12,11 +12,11 @@
 # time (ccrel reports only the first), until none is left. A library
 # object is named for the function it defines, less any leading
 # underscores (__start is start), but fclose is fopen's. On success,
-# writes list (the objects linked, one per line) and prints ccrel's output (its listing, with -l). If the link
+# writes list (the objects linked, one per line) and prints ccrel's output (its listing, with -v). If the link
 # fails for another reason, or wants an object libdir doesn't have,
 # prints ccrel's messages to stderr and fails.
 #   -r ccrel   the ccrel to run (default: this script's ../ccrel)
-#   -l         pass -l to ccrel, for its listing
+#   -l         pass -v to ccrel, for its listing
 #   -L libdir  where the library objects are (default: the current
 #              directory, whose objects are named bare: start, not
 #              ./start)
@@ -31,7 +31,7 @@ usage() {
 while [ $# -gt 0 ]; do
   case $1 in
   -r) [ $# -ge 2 ] || usage; ccrel=$2; shift 2 ;;
-  -l) listing=-l; shift ;;
+  -l) listing=-v; shift ;;
   -L) [ $# -ge 2 ] || usage; libdir=$2; shift 2 ;;
   -o) [ $# -ge 2 ] || usage; module=$2; shift 2 ;;
   -w) [ $# -ge 2 ] || usage; list=$2; shift 2 ;;

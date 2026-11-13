@@ -4,7 +4,7 @@
 // them into one module. The objects are kept, so that a changed file
 // needs only itself compiled again.
 //
-// Usage: ccrel [-l] [-x] [-o module] output|@file...
+// Usage: ccrel [-v] [-x] [-o module] output|@file...
 //   output  an object's output name, as given to cccomp and ccgen; the
 //           objects are linked in this order. @file reads the names
 //           from file instead, one per line (CR or LF ends a line,
@@ -13,7 +13,7 @@
 //           (doc/bootstrap-test.md, R10). It's GCC's @file syntax,
 //           but not its format: no options, quoting or white-space
 //           splitting, which an Apple II's CR lines don't need
-//   -l      print a listing of the module's bytecode
+//   -v      print a listing of the module's bytecode
 //   -o      module name (default: output, if there is only one)
 //   -x      write an XLOAD image (../doc/xload.md, section 3),
 //           not a REL module
@@ -49,7 +49,7 @@ void clean_up(void)
 static void usage(void)
 {
 #ifdef CCISH_LISTING
-  fputs("usage: ccrel [-l] [-x] [-o module] output|@file...\n", stderr);
+  fputs("usage: ccrel [-v] [-x] [-o module] output|@file...\n", stderr);
 #else
   fputs("usage: ccrel [-x] [-o module] output|@file...\n", stderr);
 #endif
@@ -96,7 +96,7 @@ int main(int argc, char **argv)
   msg_init(argv[0]);
   for (i = 1; i < argc; i++) {
 #ifdef CCISH_LISTING
-    if (is_opt(argv[i], 'l'))
+    if (is_opt(argv[i], 'v'))
       opt_list = 1;
     else
 #endif

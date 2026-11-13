@@ -77,7 +77,7 @@ awk -v info="$D/info" '
 # ENTER), and the capture routine called with nothing on the
 # evaluation stack: its address pushed (LA) right after a branch or at
 # the start, then ICAL.
-./ccish -l -o "$D/xlfirst" xload/xload.c >"$D/xlfirst.lst"
+./ccish -v -o "$D/xlfirst" xload/xload.c >"$D/xlfirst.lst"
 sed -n '/^main:$/,/^[^ ]/p' "$D/xlfirst.lst" | awk '
     / ENTER / { bad = 1 }
     / ICAL/ && prev !~ / LA / { bad = 1 }

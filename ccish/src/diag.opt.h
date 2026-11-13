@@ -8,20 +8,20 @@
 #define DIAG_OPT_H
 
 #ifdef CCISH_LISTING
-extern int opt_list;        // -l: print a listing of the generated code
+extern int opt_list;        // -v: print a listing of the generated code
 #else
 #define opt_list 0          // no listing in the small build
 #endif
-extern int opt_ir;          // -i: print the IR as ccgen reads it
+extern int opt_ir;          // -r: print the IR as ccgen reads it
 #ifdef CCISH_LISTING
-extern int opt_dump;        // -d: print the machine ops after peephole
+extern int opt_dump;        // -m: print the machine ops after peephole
                             // (full build only)
 #endif
 extern int opt_keep;        // -k: keep the stream files
 
-// Is arg option -c (c lowercase), in either case? For the passes, whose
-// options are one letter and never differ only in case; not for ccish,
-// whose -i and -I do.
+// Is arg option -c (c lowercase), in either case? No two options of
+// one program differ only in case (doc/linking.md, section 2), but
+// CMD uppercases the command line on an Apple II.
 int is_opt(const char *arg, int c);
 
 #endif

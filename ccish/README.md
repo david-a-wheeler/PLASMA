@@ -55,7 +55,7 @@ make
 Then compile and run a program:
 
 ```
-ccish [-l] [-d] [-i] [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.c [object...]
+ccish [-v] [-m] [-r] [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.c [object...]
 ```
 
 ```
@@ -69,7 +69,7 @@ Hello5
 `__puts` is PLASMA's CMDSYS `puts`, which takes a PLASMA
 (length-prefixed) string, so `pstr()` turns the C string literal into
 one. `-o` names the module (by default, the input's name without
-`.c`), `-l` prints a listing of the bytecode, and the `object...`
+`.c`), `-v` prints a listing of the bytecode, and the `object...`
 arguments are more objects to link, such as the C library's. On the
 Apple II, the four passes (`ccpp`, `cccomp`, `ccgen` and `ccrel`) run
 as separate programs.

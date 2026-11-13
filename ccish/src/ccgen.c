@@ -6,11 +6,11 @@
 // removed afterward, unless -k; after an error, they are kept (for -i),
 // and partial output removed.
 //
-// Usage: ccgen [-d] [-i] [-k] output
+// Usage: ccgen [-m] [-r] [-k] output
 //   output  the output name given to cccomp
-//   -d      print the machine ops after the peephole stage (full
+//   -m      print the machine ops after the peephole stage (full
 //           build only: the listing needs a 12K buffer)
-//   -i      print the IR as it is read
+//   -r      print the IR as it is read
 //   -k      keep the IR file and name file, and the stream files even
 //           after an error
 #include <stdio.h>
@@ -38,9 +38,9 @@ void clean_up(void)
 static void usage(void)
 {
 #ifdef CCISH_LISTING
-  fputs("usage: ccgen [-d] [-i] [-k] output\n", stderr);
+  fputs("usage: ccgen [-m] [-r] [-k] output\n", stderr);
 #else
-  fputs("usage: ccgen [-i] [-k] output\n", stderr);
+  fputs("usage: ccgen [-r] [-k] output\n", stderr);
 #endif
   exit(2);
 }
@@ -53,11 +53,11 @@ int main(int argc, char **argv)
   msg_init(argv[0]);
   for (i = 1; i < argc; i++) {
 #ifdef CCISH_LISTING
-    if (is_opt(argv[i], 'd'))
+    if (is_opt(argv[i], 'm'))
       opt_dump = 1;
     else
 #endif
-    if (is_opt(argv[i], 'i'))
+    if (is_opt(argv[i], 'r'))
       opt_ir = 1;
     else if (is_opt(argv[i], 'k'))
       opt_keep = 1;

@@ -84,7 +84,7 @@ echo 'void g0(void); void use(void) { g0(); }' >>"$OUT/link/full_b.c"
 gen_decls "$OUT/link/full_c.c" 154 307
 if cc_obj "" "$OUT/link/full_a" "$OUT/link/full_a.c" \
    && cc_obj "" "$OUT/link/full_b" "$OUT/link/full_b.c" \
-   && ./ccrel -l -o "$OUT/link/full" "$OUT/link/full_a" "$OUT/link/full_b" \
+   && ./ccrel -v -o "$OUT/link/full" "$OUT/link/full_a" "$OUT/link/full_b" \
       >"$OUT/link/full.lst" 2>"$OUT/link/full.err" \
    && grep -qF "; shared names: 307 of 307 slots" "$OUT/link/full.lst"; then
     :
@@ -249,7 +249,7 @@ if cc_obj "" "$OUT/link/nofit_a" "$OUT/link/nofit_a.c" \
       2>"$OUT/link/nofit.err" \
    && cc_obj "" "$OUT/link/nofit_b" "$OUT/link/nofit_b.c" \
       2>>"$OUT/link/nofit.err" \
-   && ./ccrel -l -o "$OUT/link/nofit" "$OUT/link/nofit_a" \
+   && ./ccrel -v -o "$OUT/link/nofit" "$OUT/link/nofit_a" \
       "$OUT/link/nofit_b" >"$OUT/link/nofit.lst" 2>>"$OUT/link/nofit.err" \
    && grep -qF "; shared names: 96 of 307 slots, 2991 of 3000" \
         "$OUT/link/nofit.lst" \

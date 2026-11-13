@@ -159,7 +159,7 @@ $(OUT)/run/%.stamp: tests/run/%.c tests/run/%.expected \
                     $(wildcard tests/run/*.status) \
                     $(PASSES) tests/check_listing.sh
 	@mkdir -p $(dir $@)
-	@./ccish -l -o $(dir $@)$* tests/run/$*.c >$(dir $@)$*.lst 2>$(dir $@)$*.stderr
+	@./ccish -v -o $(dir $@)$* tests/run/$*.c >$(dir $@)$*.lst 2>$(dir $@)$*.stderr
 	@(cd $(dir $@) && { $(CCRUN) -t 10 $(notdir $*) 2>&1; echo $$? > $(notdir $*).status; } | tr -d '\r' > $*.actual)
 	@diff -u tests/run/$*.expected $(dir $@)$*.actual
 	@want=$$(cat tests/run/$*.status 2>/dev/null || echo 0); got=$$(cat $(dir $@)$*.status); \
@@ -178,14 +178,14 @@ $(OUT)/img/%.stamp: tests/run/%.c tests/run/%.expected tests/imgrun.sh \
                     $(wildcard tests/run/*.status) $(PASSES) $(OUT)/img/xload
 	@sh tests/imgrun.sh $* && touch $@
 
-# gen: ccish -d (machine ops after the peephole stage) must equal the
+# gen: ccish -m (machine ops after the peephole stage) must equal the
 # .exp, and the module must run under plvm (through tools/ccrun) and
 # exit with the status in .status (or 0 if there is none).
 GEN := $(wildcard tests/gen/*.c)
 $(OUT)/gen/%.stamp: tests/gen/%.c tests/gen/%.exp \
                     $(wildcard tests/gen/*.status) $(PASSES)
 	@mkdir -p $(dir $@)
-	@./ccish -d -o $(dir $@)$* tests/gen/$*.c >$@.actual 2>$@.err
+	@./ccish -m -o $(dir $@)$* tests/gen/$*.c >$@.actual 2>$@.err
 	@test ! -s $@.err || { echo "gen: unexpected messages"; cat $@.err; exit 1; }
 	@diff -u tests/gen/$*.exp $@.actual
 	@(cd $(dir $@) && $(CCRUN) -t 10 $(notdir $*) >/dev/null 2>&1; echo $$? > $(notdir $*).status)

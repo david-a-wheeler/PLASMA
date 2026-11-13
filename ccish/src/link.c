@@ -1,7 +1,7 @@
 // The final pass, a static linker: turn the stream files and symbol
 // summaries of one or more compiled files, its objects (../OBJECT.md),
 // into one PLASMA REL module (../../doc/Bytecodes.md), and print the
-// listing (-l), since only this pass knows the final addresses.
+// listing (-v), since only this pass knows the final addresses.
 //
 // It uses none of the compiler's tables (fn_name[] and so on), only the
 // files, so it is a program of its own, ccrel (approach.md, "B3").
@@ -194,7 +194,7 @@ static int fmap[MAX_FUNCS];
 static int dmap[MAX_VARS];
 
 #ifdef CCISH_LISTING
-// For the listing (-l), each function symbol's name as an offset in
+// For the listing (-v), each function symbol's name as an offset in
 // gnames[], or -1 if it has none there. A shared name is already in
 // the table; a static function's name is added after the shared names,
 // from lnames_len on, until the next object's replace it. One that
@@ -219,7 +219,7 @@ static int ndefs;
 static unsigned fx_at;
 
 #ifdef CCISH_LISTING
-// The relocations of the function being listed (-l), as parallel
+// The relocations of the function being listed (-v), as parallel
 // arrays: each word's load address; its kind, REL_DATA, REL_STR or
 // REL_FUNC (a REL_DSYM is kept as the REL_DATA it resolves to); and
 // its target, a data or string pool offset in the module, or a function

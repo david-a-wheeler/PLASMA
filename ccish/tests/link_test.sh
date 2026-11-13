@@ -28,7 +28,7 @@ if [ -f "$dir/expect-error" ]; then
         echo "FAIL $dir: a failed link left its module"; exit 1
     fi
 else
-    if ! ./ccrel -l -o "$OUT/link/$mod" $objs >"$OUT/link/$name.lst" 2>"$lerr"; then
+    if ! ./ccrel -v -o "$OUT/link/$mod" $objs >"$OUT/link/$name.lst" 2>"$lerr"; then
         echo "FAIL $dir: link error:"; sed 's/^/    /' "$lerr"; exit 1
     fi
     run_module "$OUT/link" "$mod" >"$OUT/link/$name.actual"

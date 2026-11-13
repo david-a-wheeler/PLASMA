@@ -296,7 +296,7 @@ FRAME_OPS = {"LLB", "LLW", "SLB", "SLW", "DLB", "DLW", "LLA", "ADDLB",
 
 
 def parse_listing(text):
-    """The functions in a ccrel -l listing: name -> dict with frame
+    """The functions in a ccrel -v listing: name -> dict with frame
     (bytes, 0 if no ENTER), params, calls (set of names), indirect
     (ICAL count), frame_ops (accesses to the frame) and leaves."""
     funcs, cur = {}, None
@@ -568,7 +568,7 @@ def xload_sizes():
         return None
     body, deftbl = loader_sizes(XLOAD)
     tmp = os.path.join(OUT, "xload-l")
-    ok, msg = run([os.path.join(CCOMP, "ccish"), "-l", "-o", tmp,
+    ok, msg = run([os.path.join(CCOMP, "ccish"), "-v", "-o", tmp,
                    os.path.join(CCOMP, "xload", "xload.c")])
     if os.path.exists(tmp):
         os.remove(tmp)
@@ -988,7 +988,7 @@ def main():
         # for the call graph.
         big = big or build_big()
         named = os.path.join(OUT, prog + "-named")
-        ok, msg = run([os.path.join(big, "ccrel"), "-l", "-o", named]
+        ok, msg = run([os.path.join(big, "ccrel"), "-v", "-o", named]
                       + objs)
         if os.path.exists(named):
             os.remove(named)

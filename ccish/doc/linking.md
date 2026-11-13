@@ -11,9 +11,10 @@ with file and line references for checking (as of 2026-11-13; check
 them again, since they move). Section 8 is the list of verified facts
 the decisions rest on.
 
-**Status (2026-11-13).** Step 1 of section 9 (one exit, section 5.5)
-is done; steps 2 to 7 aren't. Work through them in order, as section
-10 says.
+**Status (2026-11-13).** Steps 1 and 2 of section 9 are done: the one
+exit (section 5.5), and the option letters (section 2, with `-m` and
+`-r` as proposed). Steps 3 to 7 aren't. Work through them in order, as
+section 10 says.
 
 ## 1. The final pass is renamed `ccrel` to `cclink`
 

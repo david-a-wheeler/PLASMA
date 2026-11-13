@@ -656,7 +656,7 @@ ANDI when the mask is 0 to 255 (only the whole-word case), the compare's
 BRFALSE meets the ISEQ as a BRNE (the fused compare-branch, so no separate
 ISEQ is emitted), and a zero aligned base (the [10, 25] and whole-word
 rows) meets it as a zero test, BRTRU or BRFLS, that drops the constant
-entirely. These are the verified listings (ccish -d, the page's byte
+entirely. These are the verified listings (ccish -m, the page's byte
 convention: every op at full size, the final branch counted as 2), against
 the obvious two-comparison form:
 

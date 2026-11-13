@@ -3,7 +3,7 @@
 The IR is the stream of ops that the parser (stage 1, `src/parse.c`)
 sends to the lowering stage (stage 2, `src/lower.c`) by calling
 `ir_put(op, a, sym)`. See [approach.md](approach.md), section 4A, for
-the pipeline as a whole. `ccgen -i` (and `ccish -i`) prints the
+the pipeline as a whole. `ccgen -r` (and `ccish -r`) prints the
 stream.
 
 **Since 18.7 step 1** (approach.md), stages 2 to 4 are a program of
@@ -76,7 +76,7 @@ ops is safe because each one lowers on its own, and branches name
 labels by number. When the buffer is full, its older half is lowered,
 so the last 64 ops are always held; at the end of a function, all of
 it. A `SWAP` whose blocks have already been lowered (in part), or that
-must not move code, is done in other ways (see `IR_SWAP`). `ccgen -i`
+must not move code, is done in other ways (see `IR_SWAP`). `ccgen -r`
 prints each op as it reads it, with the `SWAP`s, so it shows the
 parser's order, not the final one.
 
@@ -161,7 +161,7 @@ global variable (`&g`), or a global array used as a value.
 - **An `extern` global** with no storage in this file yet has no data
   offset. Then the op's function operand is the global's variable
   index *v*, and *a* is the addend: `&ext[3]` is `DATAADDR sym`*v*`+6`
-  in the `-i` listing. It is lowered with a data symbol fixup
+  in the `-r` listing. It is lowered with a data symbol fixup
   (`FIX_DSYM`), which the emitter writes as a kind 4 relocation, with
   the addend in the word (OBJECT.md). This applies to `IR_GLOBAL` and
   the rest too.

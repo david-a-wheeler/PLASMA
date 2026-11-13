@@ -1,5 +1,5 @@
 #!/bin/sh
-# The back-end checks: ccgen -i prints the IR as it reads it (IR.md),
+# The back-end checks: ccgen -r prints the IR as it reads it (IR.md),
 # ccgen finds a damaged IR file or name file (OBJECT.md, CCPP.md), and a
 # back-end error names the source file and the line where the function
 # starts.
@@ -8,7 +8,7 @@ OUT=tests/out
 bad=0
 mkdir -p "$OUT"
 
-# ccgen -i prints the IR as it reads it (IR.md; written by hand): the
+# ccgen -r prints the IR as it reads it (IR.md; written by hand): the
 # function's line record, then each op. main's body starts at line 2;
 # puti returns nothing; falling off main's end returns 0, which the
 # peephole stage drops later.
@@ -17,11 +17,11 @@ printf '%s\n' '; line 2' 'IR FUNC     main' 'IR CONST    7' \
     'IR CALL     __puti nargs=1' 'IR CONST    0' 'IR RETURN  ' \
     'IR CONST    0' 'IR RETURN  ' 'IR ENDFUNC  frame=0' >"$OUT/ir_dump.want"
 if cc_ir "$OUT/ir_dump" "$OUT/ir_dump.c" \
-   && ./ccgen -i "$OUT/ir_dump" >"$OUT/ir_dump.got" \
+   && ./ccgen -r "$OUT/ir_dump" >"$OUT/ir_dump.got" \
    && cmp -s "$OUT/ir_dump.want" "$OUT/ir_dump.got"; then
     :
 else
-    echo "FAIL ccgen -i: wanted, then got:"
+    echo "FAIL ccgen -r: wanted, then got:"
     sed 's/^/    /' "$OUT/ir_dump.want"
     echo "    ---"
     sed 's/^/    /' "$OUT/ir_dump.got"

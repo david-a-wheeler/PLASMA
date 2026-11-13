@@ -6,9 +6,9 @@ Usage: tools/listings.py [NAME...]   (after `make`; or `make listings`)
 For each source file (each program's, and the library's, from the
 Makefile through measure.py), writes tools/out/lst/NAME.lst: for each
 function, its comment and C source, then the machine ops ccgen writes
-for it after the peephole stage (ccgen -d). The code is the small
+for it after the peephole stage (ccgen -m). The code is the small
 build's (-DCCISH_SMALL, as measure.py compiles it); the full build's
-passes, used here because only they have -d, write the same code,
+passes, used here because only they have -m, write the same code,
 which the tests check. NAMEs limit it to those files (parse, irin).
 
 The ops are before linking, so calls and data are by name, and a
@@ -44,11 +44,11 @@ def sources():
 
 
 def dump(name, path):
-    """ccgen -d's listing of path, as [(function, [op lines])], in the
+    """ccgen -m's listing of path, as [(function, [op lines])], in the
     order written; or None, with the message, if a pass failed."""
     base = os.path.join(WORK, name)
     for args in (["ccpp", "-DCCISH_SMALL", "-o", base, path],
-                 ["cccomp", base], ["ccgen", "-d", base]):
+                 ["cccomp", base], ["ccgen", "-m", base]):
         r = subprocess.run([os.path.join(CCOMP, args[0])] + args[1:],
                            capture_output=True, text=True)
         if r.returncode != 0:
@@ -124,7 +124,7 @@ def write_listing(name, path):
     nops = sum(sum(1 for l in ops if not l.lstrip().startswith(";"))
                for _, ops in funcs)
     with open(os.path.join(LST, name + ".lst"), "w") as out:
-        out.write("; %s: %d functions, %d ops (ccgen -d, small build)\n"
+        out.write("; %s: %d functions, %d ops (ccgen -m, small build)\n"
                   % (rel, len(funcs), nops))
         for fname, ops in funcs:
             n = sum(1 for l in ops if not l.lstrip().startswith(";"))

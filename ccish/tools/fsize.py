@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Each function's code size, and its op count, from ccrel -l listings.
+"""Each function's code size, and its op count, from ccrel -v listings.
 
 Usage: tools/fsize.py LISTING [FUNCTION...]
        tools/fsize.py -c OLD NEW

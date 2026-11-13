@@ -554,7 +554,7 @@ module. It has at most one input file open at a time, and the module.
 4. Write the RLD (function entries in code order, the helpers'
    included, then the kept
    relocations, those in the data first) and the ESD (imports). With
-   `-l`, end the listing with how full the shared-name table is:
+   `-v`, end the listing with how full the shared-name table is:
    `; shared names: N of M slots, B of C name bytes`. (The listing
    also begins with a `; heap global N: NAME, SIZE bytes` line for
    each global moved to the heap, numbered as their pointer words;

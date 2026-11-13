@@ -377,7 +377,7 @@ That's a nonstandard `printf` that's hard to keep honest, and
 approach.md already decided that until varargs, "the runtime use[s]
 fixed-argument output functions instead of `printf`". The compiler
 already had the pattern (`num_text()` in diag.c, `out_num()` in
-lower.c for `-i`), so emit.c's 24 calls (the `-d` dump) now use
+lower.c for `-r`), so emit.c's 24 calls (the `-m` dump) now use
 lower.c's `out_num()` and `fputs()`; the gen tests confirm the output
 is unchanged. link.c's 23 calls stay: they're all under
 `CCISH_LISTING`, which the small build (the one the bootstrap
@@ -496,8 +496,8 @@ data 608, strings 641), and ccgen links for the first time: code
 20,571, data 2,911, strings 1,444, a 34,076-byte module file (8,747 of
 it RLD and ESD), 199 functions (995 bytes of def table), and 18,292
 bytes of zero-filled tables on the heap. 12,288 of those are emit.c's
-`lbuf[]`, kept only for `-d`'s listing, in both builds. So `-d` is now
-in the full build only (CCISH_LISTING, as ccrel's `-l` is; decided
+`lbuf[]`, kept only for `-m`'s listing, in both builds. So `-m` is now
+in the full build only (CCISH_LISTING, as ccrel's `-v` is; decided
 2026-11-07). The small ccgen: code 19,590 (-981), data 2,745 (-166),
 strings 820 (-624), a 31,496-byte module file (-2,580), and 6,004 bytes
 of heap tables (-12,288). Its body, def table and heap tables come to
@@ -614,7 +614,7 @@ decision 35).**
     for R1 and R2, sharing measure.py's preparation.
 12. B2 to B5, each measured against B7.
 13. Run the stages; diagnose a stage 2 versus stage 3 difference with
-    the kept directories, file by file (`-i` and `-d` dumps line up).
+    the kept directories, file by file (`-r` and `-m` dumps line up).
 
 The order agreed on 2026-11-08, as five steps:
 
