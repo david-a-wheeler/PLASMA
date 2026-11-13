@@ -2143,14 +2143,16 @@ $ ./ccish -o copy copy.c $L/start $L/fopen $L/path $L/fread $L/fwrite $L/strlen
   back the 6502 stack pointer and the VM's frame pointers and
   evaluation stack index as they were at main's call, so init returns
   the status to CMD as main's would (`ERR:$xx` for a nonzero one). It
-  takes 4 bytes more in init (5 for a void main), which runs a 6502
+  takes 8 bytes more in init (11 for a void main), which runs a 6502
   routine just before main to save them; 69 bytes of data hold the two
   routines. It doesn't close the files: CMD closes them all after each
-  command it runs with `+`. Under plvm nothing in a module can unwind
-  (doc/bootstrap-test.md, R8), so programs run there link
-  `tools/plvmexit.c`'s exit instead (tools/cclink does, unless `-a`),
-  which prints `tools/ccstat.pla`'s status marker and runs a 6502 BRK,
-  which makes plvm exit.
+  command it runs with `+`. The same module runs under plvm, where
+  nothing in a module can unwind (doc/bootstrap-test.md, R8): there
+  exit prints `tools/ccstat.pla`'s status marker, ^A and the status,
+  and runs a 6502 BRK, which makes plvm exit, and `tools/ccrun` gives
+  the status. That costs each program about 23 bytes, a stopgap until
+  plvm can unwind or exit with a status (doc/plasma-requests.md, items
+  2 and 6).
 
 ## 12. Writing small and fast code
 

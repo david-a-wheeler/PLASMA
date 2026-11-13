@@ -20,8 +20,7 @@
 #
 # The Makefile gives the sources: BOOT_ccpp, BOOT_cccomp, BOOT_ccgen and
 # BOOT_ccrel (each program's, as it builds them), and BOOT_LIB (the
-# library's, and tools/plvmexit.c's exit, which plvm runs link).
-# BOOTSTRAP_VM is the VM.
+# library's). BOOTSTRAP_VM is the VM.
 . "$(dirname "$0")/../lib.sh"
 PLVM=${BOOTSTRAP_VM:-$PLVM}
 CCSTAT=$(pwd)/$OUT/ccstat

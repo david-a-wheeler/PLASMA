@@ -50,6 +50,12 @@ files of the sessions so far; brought up to date 2026-11-12.)
 - `doc/xload.md`: XLOAD and its image format, what's left to do, and
   the plan; `doc/streaming-options.md`: why XLOAD, and the options
   set aside.
+- `doc/linking.md`: the linking decisions (approach.md decision 46):
+  the ccrel-to-cclink rename, the -v flag, the __cmd_ spellings, the
+  C library's one-underscore private names, and the -L/lib.map
+  library resolution, with the options, rationale, implementation
+  notes and the verified facts. Read it before touching the final
+  pass's options or the __ names.
 - `OBJECT.md` (object, IR file and module formats, versions), `IR.md`
   (each IR op), `CCPP.md` (the preprocessor and its files), `README.md`
   (the language as users see it), `../doc/Bytecodes.md` (the VM).
@@ -370,9 +376,9 @@ uppercases); make apple's disks. On MAME's 64K IIe, the four passes,
 as images through XLOAD, compiled ccish's own link.c to an object
 byte-identical to the host's (ccpp 34 minutes, cccomp 8.3, ccgen 8.9,
 at 1 MHz), and on the 128K IIe too, faster with its JIT (ccpp 23
-minutes). exit() unwinds on the Apple (lib/exit.c; programs run
-under plvm link tools/plvmexit.c's, which stops plvm with ccstat's
-marker: tools/cclink picks it, unless -a, as measure.py gives).
+minutes). exit() unwinds on the Apple (lib/exit.c); the same module
+under plvm prints ccstat's marker and stops plvm (doc/linking.md
+5.5).
 
 Open, roughly in the order they matter:
 - **Running margin**: ccpp and cccomp have under 1K to spare each
@@ -381,6 +387,9 @@ Open, roughly in the order they matter:
   with about 440 bytes to spare (doc/xload.md, section 6).
 - **ccpp's speed**: 34 minutes for link.c at 1 MHz, four times
   cccomp's.
+- **The cclink package** (doc/linking.md, decision 46): its section 9
+  is the commit plan, step by step, and its section 10 says how to
+  work through it. Step 1 (one exit) is done; next, the options.
 - **A ProDOS file type for images** (BIN for now): the user's choice.
 - **The other PLASMA platforms** (doc/xload.md, R6; leave the partial
   C64 work in src/vmsrc alone).

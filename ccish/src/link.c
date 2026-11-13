@@ -1486,6 +1486,10 @@ static void init_word(int *n, int op, int w)
   fbuf[(*n)++] = (unsigned char)(w >> 8);
 }
 
+// TMP, the VMs' zero-page pointer that ICAL leaves the called address
+// in on the Apple VMs (lib/exit.c).
+#define ZP_TMP 0xE7
+
 // The slot of __exitcap (lib/exit.c), whose routine init runs just
 // before main when exit is linked, or -1.
 static int exit_cap(void)
@@ -1551,8 +1555,12 @@ static int init_code(void)
   }
   if ((i = exit_cap()) >= 0) {
     // Right before main's call, with nothing pushed: exit makes that
-    // call return its status, one value, so a void main gets a 0.
+    // call return its status, one value, so a void main gets a 0. The
+    // routine finds its save area through TMP, which the Apple VMs'
+    // ICAL sets and plvm's doesn't, so init sets it first.
     init_op(&n, OP_LA, data_base + obj_data[g_def[i]] + g_off[i], -1);
+    fbuf[n++] = OP_DUP;
+    init_word(&n, OP_SAW, ZP_TMP);
     fbuf[n++] = OP_ICAL;
     if (!(g_flags[main_sym] & G_RETURNS))
       fbuf[n++] = OP_CN;
@@ -1577,7 +1585,7 @@ static int init_size(void)
     return 0;
   n = g_flags[main_sym] & G_RETURNS ? 7 : 5;
   if (exit_cap() >= 0)
-    n += 3 + 1 + (g_flags[main_sym] & G_RETURNS ? 0 : 1 + 2);
+    n += 3 + 1 + 3 + 1 + (g_flags[main_sym] & G_RETURNS ? 0 : 1 + 2);
   if (opt_xload && zstay > 0)
     n += 3 + 1 + 3 + 3;
   if (nmoved > 0)

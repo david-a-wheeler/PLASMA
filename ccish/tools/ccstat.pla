@@ -3,8 +3,9 @@
 //
 // plvm ccstat prog args... runs prog with "prog args..." as its command
 // line, exactly as plvm prog args... would, then prints a marker line,
-// ^A (1), "exit", a space and the status, which ccrun strips and turns
-// into its own exit status. plvm itself always exits 0, and a module
+// ^A (1) and the status, which ccrun strips and turns into its own exit
+// status. (lib/exit.c's exit prints the same marker under plvm, without
+// the newline, before it stops plvm.) plvm itself always exits 0, and a module
 // run directly prints no marker, so this is the per-run switch.
 //
 // The status is the negation of the program's init result: CMDSYS's
@@ -51,5 +52,5 @@ while i <= ^cl and ^(cl + i) <> ' ' and i < 64
 loop
 name[0] = i - 1
 r = cmdsys:modexec(@name)
-putc(1); puts("exit "); puti(-r); putln
+putc(1); puti(-r); putln
 done

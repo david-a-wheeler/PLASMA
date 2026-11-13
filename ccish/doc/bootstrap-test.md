@@ -358,6 +358,16 @@ Done without changing PLASMA (approach.md issue 22 has the options):
    tools/plvmexit.c, which tools/cclink links for plvm runs (`-a`, as
    measure.py uses, links lib/exit.c's). exit.c is now 11 bytes of code
    and 69 of data, and init 4 more: 160 bytes less in each pass.
+   **One exit** (2026-11-13, doc/linking.md 5.5): one link must give a
+   module that runs on plvm and the Apple, so lib/exit.c's exit works
+   under plvm too, and tools/plvmexit.c and cclink's `-a` are gone.
+   Init sets TMP ($E7) itself before running the save routine, which
+   plvm's ICAL doesn't, so the routine runs harmlessly on plvm's
+   emulated 6502. exit tells plvm apart by $F1, the opcode of the Apple
+   VMs' zero-page fetch loop (0 under plvm), and there prints ccstat's
+   marker, now ^A and the number (no "exit ", no newline), and runs a
+   BRK, a 0 byte in the save routine. 23 bytes more in each pass:
+   ccpp and cccomp have 740 and 724 to spare running.
 
 ### R9. No six-argument `printf` (done)
 

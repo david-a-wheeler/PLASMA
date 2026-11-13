@@ -11,9 +11,9 @@ with file and line references for checking (as of 2026-11-13; check
 them again, since they move). Section 8 is the list of verified facts
 the decisions rest on.
 
-**Status.** Nothing here is implemented. XLOAD, the 128K Apple and
-the smaller exit have landed (commits `1eb52f60` and `06e23b19`), so
-nothing blocks this. The commit order is section 9's.
+**Status (2026-11-13).** Step 1 of section 9 (one exit, section 5.5)
+is done; steps 2 to 7 aren't. Work through them in order, as section
+10 says.
 
 ## 1. The final pass is renamed `ccrel` to `cclink`
 
@@ -128,13 +128,13 @@ bare `__` (the status quo).
 ### 3.1 ccpp: the CMDSYS ids leave the name pool (fewer bytes, not more)
 
 **The problem.** Done naively, the longer spellings cost ccpp, the
-program with the least room after cccomp (763 bytes to spare
+program with the least room after cccomp (740 bytes to spare
 running, doc/measure.txt). The 25 CMDSYS spellings sit in ccpp's
 `fixed[]` table (src/ppname.c:64), and `pp_names_init()`
 (src/ppname.c:133) interns them into the name pool, where
 `MAX_PP_POOL` (8,432) peaks at 8,130. Four more characters each
 would add about 100 bytes to the table and 100 to the pool: 200 of
-ccpp's 763. (cccomp and ccgen don't pay: src/nam.c streams the name
+ccpp's 740. (cccomp and ccgen don't pay: src/nam.c streams the name
 file and looks spellings up by id, keeping none.)
 
 **The decision: make ids 1 to `NCMDSYS` virtual in ccpp.** They're
@@ -459,72 +459,55 @@ two objects define; and linking twice gives a byte-identical module.
 The lib.sh nostart and noexit cases keep passing unchanged (no `-L`,
 no search).
 
-### 5.5 One exit for plvm and the Apple
+### 5.5 One exit for plvm and the Apple (done, 2026-11-13)
 
 **Decision (2026-11-13).** lib/exit.c's `exit` works under plvm as
-well as on both Apple VMs, so that one library serves both, and
-tools/plvmexit.c, tools/cclink's `-a`, xload_self.sh's substitution
-of plvmexit, and tools/a2disk's leaving it off the CCLIB disk all go.
-It lands first (section 9, step 1), since it leaves `-L` one `exit`
-to find.
+well as on both Apple VMs, so that one link gives a module that runs
+on both, and one library serves both. tools/plvmexit.c, tools/cclink's
+`-a`, xload_self.sh's substitution of plvmexit, and tools/a2disk's
+leaving it off the CCLIB disk are gone. It's a stopgap, about 23
+bytes in every program that links exit, until plvm can unwind or
+exit with a status (doc/plasma-requests.md, items 2 and 6); then the
+plvm path and init's setting TMP can go.
 
-**Two things stop lib/exit.c under plvm today.**
+**What was done** (section 9, step 1):
 
-1. **Init's save routine finds its area through TMP** ($E7, a
-   zero-page pointer), which the Apple VMs' ICAL sets to the routine's
-   address and plvm's doesn't (src/vmsrc/plvm.c:418-427): there, it
-   would write through whatever $E7 holds. **Fix:** init sets the
-   pointer itself, `LA __exitcap; DUP; SAW $00E7; ICAL` (`_exitcap`
-   after step 7; src/link.c's
-   `init_code()`; 4 bytes more, `init_size()` with it). On the Apple,
-   ICAL sets the same value again; under plvm nothing touches $E7
-   before the call. The routine then runs on plvm's emulated 6502,
-   harmlessly: it writes only its own area, and puts X back. (A
-   native test of page 3 can't tell the two apart instead: plvm's heap
+1. **Init sets TMP itself.** The save routine finds its area through
+   TMP ($E7, a zero-page pointer), which the Apple VMs' ICAL sets to
+   the routine's address and plvm's doesn't
+   (src/vmsrc/plvm.c:418-427). So init runs `LA __exitcap; DUP;
+   SAW $00E7; ICAL` (src/link.c's `init_code()`, `ZP_TMP`; 4 bytes
+   more). The routine then runs on plvm's emulated 6502, harmlessly:
+   it writes only its own area, and puts X back.
+2. **exit tells plvm apart by $F1** (`ON_APPLE` in lib/exit.c:
+   `LAB $00F1; BRTRU`, 6 bytes, against 10 for a test of exit's def
+   entry). On both Apple VMs, $F1 holds the opcode of the zero-page
+   fetch loop's `LDA IP,Y` ($B9; plvm02.s and plvmjit02.s copy the loop
+   to $EF); plvm's zero page is 0 there, since its IP is a C variable
+   and it uses only $A0-$E5. (A test of page 3 can't work: plvm's heap
    starts at $0300, src/vmsrc/cmdsys.c:35.)
-2. **exit's restore routine can't unwind plvm**, whose callers' IPs
-   are in C frames (doc/plasma-requests.md, item 6). **Fix:** exit
-   checks its own def entry first, as its first version did: byte 2
-   is $03 (the VM's entry, `JSR $03xx`) on an Apple and $FF under plvm
-   (`JSR $FF08`). Under plvm it prints ccstat's marker with the status
-   and runs a BRK, which stops plvm (plvm reports only the BRK's
-   address, src/vmsrc/plvm.c:39-62, so the status must go out as text
-   first).
+3. **Under plvm, exit prints a shorter marker and runs a BRK.** The
+   marker is `^A` and the number (`__putc(1); __puti(status)`), with
+   no string, no newline and no `& 255`. The BRK is a 0 byte already in
+   the save routine (`BRK_AT`, the high byte of its `LDA $009F,Y`), so
+   it needs no byte of its own. plvm reports only the BRK's address
+   (src/vmsrc/plvm.c:39-62), which is why the status goes out as text
+   first. tools/ccstat.pla prints the same marker after a normal return
+   (with its newline). tools/ccrun's awk splits each line at every
+   `^A`: a marker that's a number (it may be negative) is the status,
+   mod 256; `plvm N` is plvm's own; text before the first `^A` is
+   output.
 
-**A shorter marker.** Most of the plvm path's bytes would be the
-marker, today `^A exit N` and a newline (tools/ccstat.pla:54). It
-becomes `^A` followed by the number: exit's plvm path is then
-`__putc(1); __puti(status);` and the BRK, with no string, no
-newline and no `& 255`. tools/ccstat.pla prints the same after a
-normal return (it can keep its newline). tools/ccrun's awk changes to
-match:
+**Cost, measured:** 23 bytes in each pass (19 in exit, 4 in init).
+Running spare: ccpp 740 and cccomp 724 (they were 763 and 747).
 
-- An exit marker is `^A` followed by a number (it may be negative:
-  `exit(-1)`), which ccrun reduces mod 256, as `& 255` did. Its own
-  marker, `^A plvm N`, starts with a letter, so the two can't be
-  confused.
-- Since exit's marker has no newline, ccrun's own marker follows it on
-  the same line: the awk splits each line at every `^A` (today it
-  handles one), keeping text before the first, as now.
-
-**Cost.** About 28 bytes per pass, against today's Apple-only
-lib/exit.c: 4 in init, and about 24 in exit (the def-entry check 10,
-the two calls 9, the BRK's ICAL 4, and a zero byte in the zero region
-for the BRK). Estimated running spare: ccpp about 735, cccomp about
-719 (today 763 and 747). Measure it. (Testing TMP in the restore
-routine instead of the def entry would save 2 to 4 bytes more; the
-def-entry check is simpler, and runs in bytecode where it can be
-read.)
-
-**Tests.** lib.sh's quit test links lib/exit.c's `exit` and runs it
-under plvm (exit from five calls deep gives status 3, after the
-output), so every plvm run that links exit now also runs the save
-routine on plvm's emulated 6502; add `exit(-1)` (status 255) and
-`exit(0)` from a nested call; keep lib.sh's check of init's code (now
-with the `DUP; SAW $00E7`). ccrun's parsing: output that doesn't end
-its line before the marker. On MAME's 64K and 128K IIe, again: a
-pass's error gives `ERR:$01`, and a program compiled there that calls
-`exit(3)` deep gives `ERR:$03`, twice, with the next commands working.
+**Tests:** lib.sh runs `exit` from five calls deep under plvm with
+statuses 3, -1 (255) and 0, one of them after output that doesn't end
+its line, and checks plvm's BRK message; and checks init's code,
+`LA data+0|DUP|SAW $00E7|ICAL|...`. On MAME's 64K and 128K IIe: a
+pass's error gives `ERR:$01`, and a program compiled there by the
+passes that calls `exit(3)` deep gives `ERR:$03`, twice, with the
+next commands working. `make test` and `make bootstrap` pass.
 
 ## 6. Other modules: decision 35 stands, recorded
 
@@ -593,17 +576,14 @@ its name pool (3.1), with 15 spare CMDSYS ids after the 25 (3.1a).
   lib/fopen.c (`__filetype`), lib/exit.c (`__exitcap`, which init runs
   just before main, `exit_cap()` in src/link.c). No `filetype` in
   CMDSYS or FILEIO.
-- **Two objects define `exit` today:** lib/exit.c (the Apple's) and
-  tools/plvmexit.c (plvm's). tools/cclink picks plvmexit's unless
-  `-a`, and both objects are in `$(OUT)/lib`; xload_self.sh
-  substitutes plvmexit's into measure.py's lists, and tools/a2disk
-  leaves plvmexit off the CCLIB disk. Section 5.5 removes all that.
+- **One object defines `exit`:** lib/exit.c, for plvm and the Apple
+  (section 5.5).
 - **plvm and native code:** plvm's ICAL runs the address as 6502 code
   on its emulator without setting TMP (src/vmsrc/plvm.c:418-427); a
   BRK makes it print the BRK's address and exit
   (src/vmsrc/plvm.c:39-62); its heap starts at $0300
   (src/vmsrc/cmdsys.c:35); a def entry is `JSR $FF08` there and
-  `JSR $03xx` on the Apple VMs. ccstat's marker: tools/ccstat.pla:54;
+  `JSR $03xx` on the Apple VMs. ccstat's marker: tools/ccstat.pla;
   ccrun's parser: tools/ccrun's awk.
 - **The link's routing of names:** `read_summary()` src/link.c:627;
   `resolve()` src/link.c:669-720 (173 at :698-700, 172 at :701,
@@ -618,7 +598,7 @@ its name pool (3.1), with 15 spare CMDSYS ids after the 25 (3.1a).
   (src/libsrc/apple/fileio.pla:241; lib/fopen.c's accounting);
   `sysgetfileinfo` is unimplemented on plvm
   (src/vmsrc/sysio.c:251-253).
-- **The fits:** ccpp 763 and cccomp 747 bytes to spare running; the
+- **The fits:** ccpp 740 and cccomp 724 bytes to spare running; the
   linker about 13K (doc/measure.txt).
 
 ## 9. Commit plan
@@ -628,7 +608,7 @@ any size-affecting one, committing doc/measure.txt (and
 doc/limits.md) with it. Stage files by explicit path (the
 leading-comma temp-file convention, AGENTS.md).
 
-1. **One exit** (section 5.5): init sets TMP; lib/exit.c's plvm path;
+1. **Done** (2026-11-13). **One exit** (section 5.5): init sets TMP; lib/exit.c's plvm path;
    the shorter marker in tools/ccstat.pla and tools/ccrun; delete
    tools/plvmexit.c and its Makefile rules (and `BOOT_LIB`'s mention),
    tools/cclink's `-a` (and measure.py's use of it), xload_self.sh's
@@ -658,3 +638,98 @@ leading-comma temp-file convention, AGENTS.md).
    `NAM_VERSION` raised and the regenerated pp `.nam`
    expectations and inc/ptest.h. With step 6 done, the prefix itself
    is one string in ccpp.
+
+## 10. For the implementer: how to work through steps 2 to 7
+
+Read AGENTS.md first: its rules apply to every step. These are the
+ones that matter most here, and what each step must show before it's
+committed.
+
+**Before you start a step:**
+
+- **Ask the user the step's pending choice, and wait for the answer.**
+  Step 2 needs the letters for the driver's and ccgen's `-d` and `-i`
+  (section 7, item 1: proposed `-m` and `-r`). Step 7 needs the
+  answer on the "not a CMDSYS function" diagnostic (section 7, item
+  2). Don't guess.
+- **Check the step's facts against the source.** The line numbers here
+  are from 2026-11-13 and move; find each place by the function or
+  name given, not the number alone. If the code doesn't match what
+  this plan says (a function works differently, a name isn't where it
+  should be), stop and tell the user what differs, before changing
+  anything.
+- **Do one step per commit**, in order. Don't start the next step
+  until the last is committed. Don't combine steps, and don't do work
+  from a later step early.
+
+**While you work:**
+
+- **Size matters most.** ccpp and cccomp have about 740 and 724 bytes
+  to spare running, on a 64K Apple II. Any change to code that's in
+  ccpp, cccomp or ccgen (src/, lib/) costs or saves bytes there:
+  measure it (`make measure`, or `make test`, which runs it) and
+  report the change in each program's running spare, from
+  doc/measure.txt's summary at its end, in the commit message. If a
+  step grows ccpp or cccomp more than this plan estimates, stop and
+  tell the user before committing.
+- **Expected outputs are worked out by hand, never copied from the
+  compiler's output** (AGENTS.md, Testing). The one exception: a
+  name file's checksum, which the test scripts compute. When a step
+  regenerates expectations (step 7's `.nam` files), check a few by
+  hand, and say which.
+- **Every function has a comment directly above it**, every message's
+  text is in ccish.msg, and every new limit's `#define` gets a
+  `limit GROUP:` comment (AGENTS.md, Code style). `make test` checks
+  the first two.
+- **Stage files by explicit path** (`git add FILE...`), never a
+  directory or `-A`: files whose names start with a comma are the
+  user's temporary files and must never be committed. Never push.
+- **Run MAME only through tools/a2cmd** (or tools/a2screen and
+  tools/a2time), never directly.
+
+**Before each commit, all of these must pass:**
+
+1. `make test` (it prints `passed: N tests`; N must not drop, and
+   should grow by the step's new tests).
+2. `make bootstrap` (it must end `stages 1, 2 and 3 are the same`).
+3. The step's own checks, below.
+4. The docs the step's section names are updated, and doc/measure.txt
+   and doc/limits.md (which `make test` regenerates) are committed with
+   the change.
+
+The commit message says what changed and why, the measured size
+change, and ends with the two trailer lines AGENTS.md gives.
+
+**Each step's own checks:**
+
+- **Step 2 (options):** each program's usage line matches section 2's
+  usage (as the user approved the letters); no program has two options
+  that differ only in case; `grep -rn "ccish -l\|ccrel -l\|ccgen -d\|ccgen -i\|ccish -d\|ccish -i"` over
+  the Makefile, tools/, tests/ and doc/ finds nothing left.
+- **Step 3 (`-L`):** section 5.4's tests, each one; tools/libmap.py
+  fails on a name two objects define (test it); lib.sh's nostart and
+  noexit cases still pass unchanged.
+- **Step 4 (use `-L`, delete tools/cclink):** `tools/out/*.objs` lists
+  the same objects as before (the order may differ); `make apple`
+  writes `LIB/LIB.MAP` on the CCLIB disk; then, on MAME's 64K IIe
+  (tools/a2disk's header shows the commands; give the passes a scratch
+  copy of cclib.po, deleted after), compile and link a small program
+  that calls `exit(3)` from a nested call, with `-L LIB`, and check it
+  prints its output and `ERR:$03`.
+- **Step 5 (rename):** `grep -rn "ccrel\|CCREL"` outside `tests/out`,
+  approach.md (history stays) and comma files finds nothing; MAME's
+  64K IIe check from step 4 again, with CCLINK.
+- **Step 6 (ccpp's pool):** ccpp's running spare grows (section 3.1
+  estimates about 250 bytes); `MAX_PP_POOL` is lowered by the pool
+  bytes saved, and doc/limits.md shows the new peak; every pp test's
+  `.i` and `.nam` are unchanged (this step changes no output).
+- **Step 7 (`__cmd_` and the rest):** no `__put`, `__memcpy` or other
+  old CMDSYS spelling is left outside `tests/out`, approach.md and
+  comma files (`grep -rn "__\(put\|get\|call\|syscall\|heap\|mem\|str\|toupper\|sext\|isu\)"`, then check
+  each hit); `NAM_VERSION` is raised; the two new checks each have an
+  errors test; README.md's hello example compiles and runs.
+
+**When something goes wrong:** don't revert or drop tested, working
+work on your own judgment, and don't weaken a test to make it pass.
+Stop and tell the user what failed, with the output.
+

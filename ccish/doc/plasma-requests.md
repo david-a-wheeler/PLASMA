@@ -21,7 +21,7 @@ below would remove one:
 | 3. Unsigned comparison ops | Mainly speed, not size: a CMDSYS call (3 bytes, about 123 cycles) for every unsigned and pointer `<`, `>`, `<=`, `>=`, where an op would be 1 byte and about 44 cycles; counted loops limited to `int` |
 | 4. Reject a bad import | Nothing to drop, but import mistakes found at load, not at run time |
 | 5. Stop on an eval stack error | Nothing to drop, but a compiler bug can't pass a test |
-| 6. A way to unwind | tools/plvmexit.c, its marker and BRK, and tools/cclink's choosing it for plvm (on the 6502 VMs, lib/exit.c unwinds already) |
+| 6. A way to unwind | lib/exit.c's plvm path, its marker and BRK, and init's setting TMP: about 23 bytes in every program (on the 6502 VMs, lib/exit.c unwinds already) |
 | 7. FILEIO fidelity | The library's ignoring of `create` and `destroy` results (lib/fopen.c) |
 | 11. A stderr route | Error messages mixed into stdout under plvm |
 | 12. Zero runs in the data segment | About 12.4K of zeros in ccish's four module files (4.3K in cccomp's) |
@@ -229,7 +229,7 @@ smashing detected").
 later `longjmp`) needs to unwind. ccish's passes call `exit` on every
 fatal error, from deep in the call tree (diag.c's `stop()`). On plvm,
 ccish can only stop the VM with a 6502 `BRK`, which plvm reports as an
-error and exits 255; tools/plvmexit.c does that, after printing
+error and exits 255; lib/exit.c does that under plvm, after printing
 ccstat's marker so the status still gets out. Nothing written in a
 module can do better: each caller's IP is a local of a C frame
 (`vm_interp`), out of the program's reach (checked 2026-11-08).
@@ -238,7 +238,8 @@ module can do better: each caller's IP is a local of a C frame
 `setjmp`/`longjmp` around `vm_interp`), or add a native exit that
 flushes output and exits with a status. The first is more general and
 keeps PLASMA programs portable between plvm and the 6502 VMs. With 2
-and a native exit, plvmexit.c would shrink to one call.
+and a native exit, exit's plvm path would shrink to one call; with
+except/throw working, to nothing.
 
 The 6502 VMs don't need a change: there the return IPs are on the
 6502 stack, the eval stack is in zero page (X), and the frames are
