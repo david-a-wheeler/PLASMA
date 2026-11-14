@@ -19,7 +19,7 @@ Apple II"). Make all of the code ccish generates more efficient:
    **cccomp matters most**, since it has the least room; ccpp next.
    ccgen and cclink have more room, but every byte saved still helps.
 2. **Speed, when it costs no size.** The passes are already slow on a
-   1 MHz Apple II (ccpp takes about 34 minutes for link.c), so never
+   1 MHz Apple II (ccpp, the slowest, most of all), so never
    make them slower; a change that makes them faster at no cost in
    size is very welcome.
 3. **Don't make the code much harder to understand.** Comments and
@@ -129,30 +129,33 @@ Each of these is in git history, with its measurements:
   floating point. Its library has no `memcmp` or `strncmp`. A host
   build that compiles is not enough: make test also has measure.py
   compile the source with ccish, and fails if it can't.
-- **Limits in self-compilation:** link.c is at 79 of 79 `MAX_VARS`
-  and 54 of 54 `MAX_TYPES` (doc/limits.md). A new global, or a new
-  array type, may not fit. Raising a limit costs cccomp memory.
+- **Limits in self-compilation:** when ccish compiles its own source,
+  a file may be at a limit, such as `MAX_VARS` or `MAX_TYPES`:
+  doc/limits.md gives each limit's peak and the file that reaches it.
+  In a file at its limit, a new global, or a new array type, won't
+  fit, and raising a limit costs cccomp memory.
 - **Library calls pull in objects.** Calling `putc` in diag.c added
   the library's putc object to ccpp's and cclink's links, past the
-  linker's 128 bytes for the added objects' names. Use what every
-  program already links (`fputs` through `put_err()`).
+  linker's room for the added objects' names (`LIB_NAMES`). Use what
+  every program already links (`fputs` through `put_err()`).
 - **A comment changes no code,** but measure.txt gives the largest
   source file's size ("parse.c: N bytes of source"), so a comment
   there moves that line; that's fine.
-- **Don't trade speed away.** A change that makes a hot path slower
-  (ccpp's identifier lookup runs about 47,000 times compiling ccish)
-  needs a profile showing it isn't.
+- **Don't trade speed away.** A change on a hot path (`make profile`
+  shows which functions run most, such as ccpp's identifier lookup)
+  needs a profile showing it isn't slower.
 
 ## Ideas not yet tried
 
-- `stop()`'s 128-byte copy of a message's detail (diag.c) is now the
-  largest frame in every pass. It exists because `clean_up()` may
-  reuse `stream_name()`'s buffer; reporting before the partial output
+- `stop()`'s copy of a message's detail (diag.c, `MAX_PATH` bytes)
+  is the largest frame in every pass. It exists because `clean_up()`
+  may reuse `stream_name()`'s buffer; reporting before the partial output
   is removed would make it unnecessary, but cccomp's source-name hook
   (tokin.c) opens the name file through the same buffer.
-- cccomp's worst chain: `parse_declaration` (80), `init_elem` (72),
-  `copy_struct` (82), `fold_held` (78, two Operand copies) and
-  `parse_assign` (74).
+- The large frames on cccomp's worst chain (measure.txt's "the worst
+  frame chain"; `tools/fsize.py -f`): when this was written,
+  `parse_declaration`, `init_elem`, `copy_struct`, `fold_held` (two
+  Operand copies) and `parse_assign`.
 - approach.md issue 24, "Putting cccomp on a diet", lists more.
 - For kind B: `tools/opstats.py -p cccomp` counts the commonest ops
   and runs of 2 to 4 ops in the passes' code: a run that's common and
