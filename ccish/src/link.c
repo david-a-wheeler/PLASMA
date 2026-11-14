@@ -799,14 +799,17 @@ static int lib_add(const char *base, int len)
 // else add base. len, the bytes in use, goes on to the next add.
 static int map_line(const char *base, const char *name, int len)
 {
+  // Big enough for two names of MAX_NAME and the text; each append is
+  // bounded by the room left, so a longer name is cut short, never
+  // written past the end.
   static char buf[MAX_NAME * 2 + 34];
   if (!lib_base_linked(base))
     return lib_add(base, len);
   strcpy(buf, "'");
-  strncat(buf, base, MAX_NAME);
-  strcat(buf, "' defines '");
-  strncat(buf, name, MAX_NAME);
-  strcat(buf, "', but it doesn't");
+  strncat(buf, base, sizeof buf - 1 - strlen(buf));
+  strncat(buf, "' defines '", sizeof buf - 1 - strlen(buf));
+  strncat(buf, name, sizeof buf - 1 - strlen(buf));
+  strncat(buf, "', but it doesn't", sizeof buf - 1 - strlen(buf));
   error_d(302 /* "the library map says" */, buf);
   return len;
 }
