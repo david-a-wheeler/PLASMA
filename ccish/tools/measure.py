@@ -708,15 +708,29 @@ def summary_table(rows):
               " stack.")
 
 
+def prodos_bytes(n):
+    """The disk space a ProDOS file of n bytes takes: whole blocks (a
+    disk can't give a file part of one), for its data and its index. A
+    file of one block (a seedling) is just that block; one of up to 256
+    blocks (a sapling) has an index block too; a longer one (a tree),
+    an index block for each 256 data blocks and a master index block."""
+    data = max(1, -(-n // PRODOS_BLOCK))
+    if data == 1:
+        index = 0
+    elif data <= 256:
+        index = 1
+    else:
+        index = -(-data // 256) + 1
+    return (data + index) * PRODOS_BLOCK
+
+
 def image_summary(rows, xl):
     """Print the summary at the report's end when what runs on an Apple
     II is XLOAD images: for each program (rows, as for summary_table) its
     image's sizes, then XLOAD's, then whether each loads and runs on a
     64K Apple II, and its margin."""
     yes = lambda need: "yes" if need <= APPLE_FREE else "NO"
-    # A file's bytes rounded up to whole ProDOS blocks: a disk can't
-    # give a file part of one.
-    blocked = lambda n: -(-n // PRODOS_BLOCK) * PRODOS_BLOCK
+    blocked = prodos_bytes
     build = "full" if FULL else "small"
     print("\nDisk space: %s build programs (XLOAD images) file sizes +"
           " XLOAD itself:" % build.capitalize())
@@ -751,10 +765,10 @@ def image_summary(rows, xl):
           " disk space saved, shown where it goes in memory, after Data"
           " (init\nclears it); (REL), the same program as a REL module, for"
           " comparison. XLOAD\nis a REL module, and XLOAD2, its second"
-          " part, an image. Blocked: File rounded\nup to whole %d-byte"
-          " ProDOS blocks, since a disk can't give a file part\nof a block"
-          " (a file over one block also takes an index block, not counted\n"
-          "here)." % (IMAGE_HEADER, PRODOS_BLOCK))
+          " part, an image. Blocked: the disk\nspace the file takes on a"
+          " ProDOS disk, in whole %d-byte blocks (a disk\ncan't give a file"
+          " part of one): its data, rounded up, and for a file over\none"
+          " block, its index block." % (IMAGE_HEADER, PRODOS_BLOCK))
     if xl:
         print("XLOAD in memory: its first part %d, its second part %d,"
               " placed\n(none of it stays once the program runs)."
