@@ -1106,24 +1106,29 @@ static void parse_sizeof(Operand *o)
 static void parse_logical(Operand *o, int prec)
 {
   int is_and = tok == TC_ANDAND, end, t, f;
-  Operand r;
 
+  // The right side is parsed into *o, once the left is used up (a
+  // constant's value and nonice kept), so that the frame, at every
+  // level of an expression's nesting, holds no Operand of its own.
   next();
+  end = o->nonice;
   if (o->kind == K_CONST) {
     if ((o->val != 0) != is_and) {
-      // 0 && x is 0, and 1 || x is 1: x never runs.
-      parse_skipped(prec + 1, &r);
+      // 0 && x is 0, and 1 || x is 1: x never runs. o becomes that
+      // constant (rvalue() sets a constant's is_bool, and assigned is
+      // a place's; quals must go, or x's const would make it one).
+      parse_skipped(prec + 1, o);
+      o->kind = K_CONST;
       o->val = !is_and;
       o->type = TY_INT;
-      o->nonice |= r.nonice;
+      o->quals = 0;
+      o->nonice |= end;
       return;
     }
     // 1 && x and 0 || x are x, as 1 or 0 (or as a condition).
-    end = o->nonice;
-    parse_expr(prec + 1, &r);
-    if (r.kind != K_JUMP)
-      to_bool(&r);
-    *o = r;
+    parse_expr(prec + 1, o);
+    if (o->kind != K_JUMP)
+      to_bool(o);
     o->nonice |= end;
     return;
   }
@@ -1135,28 +1140,28 @@ static void parse_logical(Operand *o, int prec)
       f = new_label();
       cond_branch(o, f, 0);
     }
-    parse_expr(prec + 1, &r);
+    parse_expr(prec + 1, o);
     t = -1;
-    if (r.kind == K_JUMP) {
+    if (o->kind == K_JUMP) {
       // Keep b's false label, the one its last branch names (so that
       // a BRNCH and that label can still meet in the peephole stage),
       // and join a's to it.
-      join_label(f, r.val);
-      f = r.val;
-      t = r.off;
+      join_label(f, o->val);
+      f = o->val;
+      t = o->off;
     } else {
-      cond_branch(&r, f, 0);
+      cond_branch(o, f, 0);
     }
   } else {
     t = new_label();
     cond_branch(o, t, 1);
-    parse_expr(prec + 1, &r);
-    if (r.kind == K_JUMP) {
-      f = r.val;
-      join_label(r.off, t);
+    parse_expr(prec + 1, o);
+    if (o->kind == K_JUMP) {
+      f = o->val;
+      join_label(o->off, t);
     } else {
       f = new_label();
-      cond_branch(&r, f, 0);
+      cond_branch(o, f, 0);
     }
   }
   o->kind = K_JUMP;
