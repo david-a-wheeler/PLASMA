@@ -269,6 +269,17 @@ files of the sessions so far; brought up to date 2026-11-12.)
   short path (ccish's output names are limited to 128 characters, and
   the scratchpad path is too long): `git worktree add --detach
   /tmp/claude-1000/wb HEAD`, build it, measure both, remove it after.
+- **Same output?** `tools/gencmp.sh BASE` (BASE: a built ccish
+  directory, such as the worktree above; about a second) compiles this
+  tree's sources, every test's and ccish's own, with BASE's passes and
+  with this tree's, and compares what each pass writes (.i, .nam, .ir,
+  .obj, .syms), then links ccish's four programs both ways (REL and
+  -x) and compares those. It names each source and pass that differs,
+  and exits 1 if any does. Run it for every change meant to shrink or
+  speed up the compiler without changing its output: the tests can
+  pass while the output changes (it caught a diet change whose call
+  results kept the last argument's flags), so "the same output" is the
+  claim to make, and to check, in the commit message.
 - **Op counts:** `tools/opcount.py BASE` (BASE: a built ccish
   directory, such as the worktree above) builds a copy of plvm that
   counts each op it runs, compiles every run test with BASE's ccish and
