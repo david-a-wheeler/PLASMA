@@ -73,6 +73,7 @@ APPLE_LINK = ["-x"]
 XLOAD = os.path.join(CCOMP, "tests", "out", "xload", "xload")
 XLOAD2 = XLOAD + "2"            # XLOAD's second part, an image beside it
 IMAGE_HEADER = 12               # an image's fixed header (doc/xload.md, 3.2)
+PRODOS_BLOCK = 512              # a ProDOS disk block, the least a file takes
 FRAME_SPARE = 512               # what XLOAD leaves for frames, as
                                 # HEAP_SPARE does (xload.c, xload2.c)
 # The files each program holds open at once (from its bopen() calls),
@@ -713,29 +714,35 @@ def image_summary(rows, xl):
     image's sizes, then XLOAD's, then whether each loads and runs on a
     64K Apple II, and its margin."""
     yes = lambda need: "yes" if need <= APPLE_FREE else "NO"
+    # A file's bytes rounded up to whole ProDOS blocks: a disk can't
+    # give a file part of one.
+    blocked = lambda n: -(-n // PRODOS_BLOCK) * PRODOS_BLOCK
     build = "full" if FULL else "small"
     print("\nDisk space: %s build programs (XLOAD images) file sizes +"
           " XLOAD itself:" % build.capitalize())
-    print("%-7s %5s %5s %5s %6s %6s %6s %6s %6s" % (
+    print("%-7s %5s %5s %5s %6s %6s %6s %6s %6s %7s" % (
         "Program", "Names", "Table", "Data", "(Zero)", "Code", "Fixups",
-        "(REL)", "File"))
+        "(REL)", "File", "Blocked"))
     for prog, r in rows:
         if r is None:
             print("%-7s not measured (a file or the link failed)" % prog)
             continue
         assert r["file"] == (IMAGE_HEADER + r["names"] + 2 * r["n"]
                              + r["d"] + r["c"] + r["fixups"])
-        print("%-7s %5d %5d %5d %6d %6d %6d %6d %6d" % (
+        print("%-7s %5d %5d %5d %6d %6d %6d %6d %6d %7d" % (
             prog, r["names"], 2 * r["n"], r["d"], r["z"], r["c"],
-            r["fixups"], r["module"], r["file"]))
+            r["fixups"], r["module"], r["file"], blocked(r["file"])))
+    files = [r["file"] for _, r in rows if r]
     if xl:
-        print("%-7s %52d" % ("XLOAD", xl["file"]))  # under File
+        # Under File and Blocked.
+        print("%-7s %52d %7d" % ("XLOAD", xl["file"], blocked(xl["file"])))
         r = image_sizes(XLOAD2)
-        print("%-7s %5d %5d %5d %6d %6d %6d %6s %6d" % (
+        print("%-7s %5d %5d %5d %6d %6d %6d %6s %6d %7d" % (
             "XLOAD2", r["names"], 2 * r["n"], r["d"], r["z"], r["c"],
-            r["fixups"], "", r["file"]))
-    print("%-7s %52d" % ("Total", sum(r["file"] for _, r in rows if r)
-                         + (xl["file"] + xl["file2"] if xl else 0)))
+            r["fixups"], "", r["file"], blocked(r["file"])))
+        files += [xl["file"], xl["file2"]]
+    print("%-7s %52d %7d" % ("Total", sum(files),
+                             sum(blocked(n) for n in files)))
     print("File: the whole file's bytes; Total, all of them. An image"
           " file's parts, in\nits order: a %d-byte header (the same in"
           " every image), Names (the\ndependencies' and imports'), Table"
@@ -744,7 +751,10 @@ def image_summary(rows, xl):
           " disk space saved, shown where it goes in memory, after Data"
           " (init\nclears it); (REL), the same program as a REL module, for"
           " comparison. XLOAD\nis a REL module, and XLOAD2, its second"
-          " part, an image." % IMAGE_HEADER)
+          " part, an image. Blocked: File rounded\nup to whole %d-byte"
+          " ProDOS blocks, since a disk can't give a file part\nof a block"
+          " (a file over one block also takes an index block, not counted\n"
+          "here)." % (IMAGE_HEADER, PRODOS_BLOCK))
     if xl:
         print("XLOAD in memory: its first part %d, its second part %d,"
               " placed\n(none of it stays once the program runs)."
@@ -852,6 +862,7 @@ def summary(name):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
+    print("Measurements of ccish\n")
     print("The %s build:" % ("full" if FULL else "small"))
     names = sorted({n for _, files in PROGRAMS for n in files})
     sizes, failed, big, over, fit = {}, False, None, {}, {}

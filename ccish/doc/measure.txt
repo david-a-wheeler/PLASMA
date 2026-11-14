@@ -1,3 +1,5 @@
+Measurements of ccish
+
 The small build:
 File        Code    Data  Strings     Zero
 bio          376       0        8          0
@@ -326,21 +328,24 @@ Peaks: each limit, the most ccish's own source uses, and where:
   MAX_VARS 79 link.c
 
 Disk space: Small build programs (XLOAD images) file sizes + XLOAD itself:
-Program Names Table  Data (Zero)   Code Fixups  (REL)   File
-ccpp       75   342  1397  16690  15077   1792  28039  18695
-cccomp     75   596   621   6589  26817   2839  44173  30960
-ccgen      75   414  1993   7491  23220   2140  37213  27854
-cclink     75   226   819  12581  11845   1313  20674  14290
-XLOAD                                                   5270
-XLOAD2    107    44   512    941   2316    382          3373
-Total                                                 100442
+Program Names Table  Data (Zero)   Code Fixups  (REL)   File Blocked
+ccpp       75   342  1397  16690  15077   1792  28039  18695   18944
+cccomp     75   596   621   6589  26817   2839  44173  30960   31232
+ccgen      75   414  1993   7491  23220   2140  37213  27854   28160
+cclink     75   226   819  12581  11845   1313  20674  14290   14336
+XLOAD                                                   5270    5632
+XLOAD2    107    44   512    941   2316    382          3373    3584
+Total                                                 100442  101888
 File: the whole file's bytes; Total, all of them. An image file's parts, in
 its order: a 12-byte header (the same in every image), Names (the
 dependencies' and imports'), Table (the function table, 2 bytes a function,
 init too), Data, Code and Fixups. Not in the file: (Zero), the zero region,
 the disk space saved, shown where it goes in memory, after Data (init
 clears it); (REL), the same program as a REL module, for comparison. XLOAD
-is a REL module, and XLOAD2, its second part, an image.
+is a REL module, and XLOAD2, its second part, an image. Blocked: File rounded
+up to whole 512-byte ProDOS blocks, since a disk can't give a file part
+of a block (a file over one block also takes an index block, not counted
+here).
 XLOAD in memory: its first part 4451, its second part 3879, placed
 (none of it stays once the program runs).
 
