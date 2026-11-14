@@ -40,7 +40,12 @@ static Bfile files[MAX_INCLUDE + 1];
 static int file_no[MAX_INCLUDE + 1];
 static char file_conds[MAX_INCLUDE + 1];
 static int depth;
-static char cur_path[MAX_PATH];     // the current file's name
+// The current file's name, or (before any file is read, while
+// apply_options() runs) the option text it lexes: never both at once.
+static union {
+  char path[MAX_PATH];
+  char opt[MAX_LINE + 1];
+} cur;
 #ifdef CCISH_STATS
 static int depth_peak, conds_peak;  // the most of each at once
 #endif
@@ -213,7 +218,7 @@ static int try_open(const char *path)
 {
   if (!bopen(&files[depth + 1], path, 0))
     return 0;
-  strcpy(cur_path, path);
+  strcpy(cur.path, path);
   return 1;
 }
 
@@ -246,8 +251,8 @@ static void do_include(void)
   if (depth >= MAX_INCLUDE)
     error(237 /* "#include nested too deeply:" */, name);
   if (!angle) {
-    slash = strrchr(cur_path, '/');
-    found = join(buf, cur_path, slash ? (int)(slash - cur_path) : 0, name)
+    slash = strrchr(cur.path, '/');
+    found = join(buf, cur.path, slash ? (int)(slash - cur.path) : 0, name)
             && try_open(buf);
   }
   for (i = 0; !found && i < ninc_dirs; i++)
@@ -261,10 +266,10 @@ static void do_include(void)
   if (depth > depth_peak)
     depth_peak = depth;
 #endif
-  file_no[depth] = pp_add_file(cur_path);
+  file_no[depth] = pp_add_file(cur.path);
   file_conds[depth] = (char)nconds;
   pp_cur_file = file_no[depth];
-  src_name = cur_path;
+  src_name = cur.path;
   pp_mode = PM_TEXT;
   pp_lex_push(&files[depth]);
 }
@@ -345,9 +350,9 @@ static void do_line(void)
   if (c == TC_STR) {
     if (pt_len >= MAX_PATH)
       fatal0(1 /* "output name too long" */);
-    memcpy(cur_path, pt_text, pt_len);
-    cur_path[pt_len] = 0;
-    file_no[depth] = pp_cur_file = pp_add_file(cur_path);
+    memcpy(cur.path, pt_text, pt_len);
+    cur.path[pt_len] = 0;
+    file_no[depth] = pp_cur_file = pp_add_file(cur.path);
     c = pp_next();
   }
   if (c != TC_NL)
@@ -438,7 +443,6 @@ static void directive(void)
 // and -D name=text is name text.
 static void apply_options(void)
 {
-  static char buf[MAX_LINE + 1];    // too big for a frame
   const char *eq;
   int i;
 #ifdef CCISH_INC
@@ -457,17 +461,17 @@ static void apply_options(void)
   for (i = 0; i < nopts; i++) {
     if (strlen(opt_text[i]) + 2 > MAX_LINE)
       error(233 /* "line too long (over 255 characters)" */, opt_text[i]);
-    strcpy(buf, opt_text[i]);
+    strcpy(cur.opt, opt_text[i]);
     eq = strchr(opt_text[i], '=');
     if (opt_kind[i] == 'U') {
-      pp_lex_text(buf);
+      pp_lex_text(cur.opt);
       do_undef();
     } else {
       if (eq)
-        buf[eq - opt_text[i]] = ' ';
+        cur.opt[eq - opt_text[i]] = ' ';
       else
-        strcat(buf, " 1");
-      pp_lex_text(buf);
+        strcat(cur.opt, " 1");
+      pp_lex_text(cur.opt);
       do_define();
     }
   }
@@ -485,8 +489,8 @@ static int end_file(void)
   depth--;
   pp_lex_pop();
   pp_cur_file = file_no[depth];
-  pp_file_path(pp_cur_file, cur_path);
-  src_name = cur_path;
+  pp_file_path(pp_cur_file, cur.path);
+  src_name = cur.path;
   after_directive();
   return 1;
 }
@@ -527,13 +531,13 @@ void pp_file(const char *src, const char *base)
   apply_options();
   if (strlen(src) >= MAX_PATH)
     fatal0(1 /* "output name too long" */);
-  strcpy(cur_path, src);
+  strcpy(cur.path, src);
   if (!bopen(&files[0], src, 0))
     fatal_d(171 /* "cannot open" */, src);
   file_no[0] = pp_add_file(src);
   file_conds[0] = 0;
   pp_cur_file = file_no[0];
-  src_name = cur_path;
+  src_name = cur.path;
   pp_out_open(base);
   pp_mode = PM_TEXT;
   pp_lex_open(&files[0]);
