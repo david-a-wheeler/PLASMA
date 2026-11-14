@@ -35,9 +35,10 @@ needs, from a directory it's told about.
 library objects today, is deleted before the rename (section 9, step
 4), since `-L` does its job. So nothing needs a new name.
 
-**What it touches.** The Makefile (`CCREL_SRC`, the `ccrel` and
-`ccrel-small` rules, `PASSES`, clean, the measure, bootstrap and
-xload rules, and every other mention); `src/ccrel.c` renamed to
+**What it touches.** The Makefile (`PROGS`, `SRC_ccrel` and its
+prerequisite line, from which every other list of the programs
+comes, and the mentions of `ccrel-small` in the xload, xload_self and
+apple rules: `grep -n ccrel Makefile` finds them all); `src/ccrel.c` renamed to
 `src/cclink.c`; `tests/special/ccrel.sh` renamed to `cclink.sh`;
 `tests/special/xload.sh`, `xload_self.sh` (both run `ccrel-small`),
 `lib.sh`, `small.sh` and `bootstrap.sh` (`vccrel`);

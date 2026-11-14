@@ -41,16 +41,26 @@ FRONT  = src/tokin.c src/name.c src/type.c src/parse.c src/pexpr.c \
          src/pstmt.c src/ptop.c src/irout.c
 BACK   = src/irin.c src/irloop.c src/lower.c src/peep.c src/emit.c src/helper.c
 LINK   = src/link.c
-# Each Apple II program's sources, in link order (also the bootstrap's,
-# below).
-CCPP_SRC   = src/ccpp.c $(COMMON) $(PP)
-CCCOMP_SRC = src/cccomp.c $(COMMON) $(NAM) $(FRONT)
-CCGEN_SRC  = src/ccgen.c $(COMMON) $(NAM) $(BACK)
-CCREL_SRC  = src/ccrel.c $(COMMON) $(LINK)
+# The four Apple II programs (the passes), each built for the host
+# twice: PROG, the full build, and PROG-small, the small build
+# (-DCCISH_SMALL, approach.md decision 21), whose limits are the Apple
+# II's; the tests check that both write the same objects and modules.
+# Every list of the programs below comes from PROGS.
+PROGS := ccpp cccomp ccgen ccrel
+SMALL := $(PROGS:%=%-small)
+# Each program's sources, in link order (the bootstrap's and
+# measure.py's too, below), and ccish's, the driver that runs all four.
+SRC_ccpp   = src/ccpp.c $(COMMON) $(PP)
+SRC_cccomp = src/cccomp.c $(COMMON) $(NAM) $(FRONT)
+SRC_ccgen  = src/ccgen.c $(COMMON) $(NAM) $(BACK)
+SRC_ccrel  = src/ccrel.c $(COMMON) $(LINK)
+SRC_ccish  = src/main.c $(COMMON) $(PP) $(NAM) $(FRONT) $(BACK) $(LINK)
 HEADERS := $(wildcard src/*.h)
 SOURCES := $(wildcard src/*.h src/*.c)
 # The library's headers: ccpp's default include directory, compiled in
-# for the host (on the VM it's <syspath>ccinc; src/pp.c).
+# for the host (on the VM it's <syspath>ccinc; src/pp.c). Every
+# program gets it, so that one recipe builds them all; only the ones
+# with pp.c (ccpp and ccish) use it.
 CCINC  = -DCCISH_INC='"$(abspath lib/include)"'
 PLVM   = ../src/plvm
 PLVMBIN= $(abspath $(PLVM))
@@ -65,39 +75,24 @@ XPLASM = ../src/xplasm
 ACME  ?= acme
 CCSTAT = $(OUT)/ccstat
 CCRUN  = CCSTAT=$(abspath $(CCSTAT)) PLVM=$(PLVMBIN) $(abspath tools/ccrun)
+# The stamp that says doc/measure.txt and tools/out are current (its
+# rule is below, after doc/limits.md's).
+MEASURED := tools/out/measure.stamp
 
-all: ccish ccpp cccomp ccgen ccrel doc/limits.md
+all: ccish $(PROGS) doc/limits.md
+small: $(SMALL)
 
-ccish: src/main.c $(COMMON) $(PP) $(NAM) $(FRONT) $(BACK) $(LINK) $(HEADERS)
-	$(CC) $(CFLAGS) $(CCINC) -o $@ src/main.c $(COMMON) $(PP) $(NAM) $(FRONT) $(BACK) $(LINK)
-
-ccpp: $(CCPP_SRC) $(HEADERS)
-	$(CC) $(CFLAGS) $(CCINC) -o $@ $(CCPP_SRC)
-
-cccomp: $(CCCOMP_SRC) $(HEADERS)
-	$(CC) $(CFLAGS) -o $@ $(CCCOMP_SRC)
-
-ccgen: $(CCGEN_SRC) $(HEADERS)
-	$(CC) $(CFLAGS) -o $@ $(CCGEN_SRC)
-
-ccrel: $(CCREL_SRC) $(HEADERS)
-	$(CC) $(CFLAGS) -o $@ $(CCREL_SRC)
-
-# The small build (approach.md decision 21), for the host: the tests check
-# that it writes the same objects and modules as the full build.
-small: ccpp-small cccomp-small ccgen-small ccrel-small
-
-ccpp-small: $(CCPP_SRC) $(HEADERS)
-	$(CC) $(CFLAGS) $(CCINC) -DCCISH_SMALL -o $@ $(CCPP_SRC)
-
-cccomp-small: $(CCCOMP_SRC) $(HEADERS)
-	$(CC) $(CFLAGS) -DCCISH_SMALL -o $@ $(CCCOMP_SRC)
-
-ccgen-small: $(CCGEN_SRC) $(HEADERS)
-	$(CC) $(CFLAGS) -DCCISH_SMALL -o $@ $(CCGEN_SRC)
-
-ccrel-small: $(CCREL_SRC) $(HEADERS)
-	$(CC) $(CFLAGS) -DCCISH_SMALL -o $@ $(CCREL_SRC)
+# Each program and its sources; one recipe builds them all, from the
+# .c files among the prerequisites, and the small build adds its flag.
+ccish:               $(SRC_ccish) $(HEADERS)
+ccpp ccpp-small:     $(SRC_ccpp) $(HEADERS)
+cccomp cccomp-small: $(SRC_cccomp) $(HEADERS)
+ccgen ccgen-small:   $(SRC_ccgen) $(HEADERS)
+ccrel ccrel-small:   $(SRC_ccrel) $(HEADERS)
+PROG_FLAGS =
+$(SMALL): PROG_FLAGS = -DCCISH_SMALL
+ccish $(PROGS) $(SMALL):
+	$(CC) $(CFLAGS) $(PROG_FLAGS) $(CCINC) -o $@ $(filter %.c,$^)
 
 $(PLVM):
 	$(MAKE) -C ../src plvm
@@ -111,14 +106,10 @@ $(CCSTAT): tools/ccstat.pla ../src/inc/cmdsys.plh $(XPLASM)
 	$(ACME) --setpc 4094 -o $@ $@.a
 
 # The C library (lib/, doc/bootstrap-test.md R4): one object per
-# source, $(OUT)/lib/NAME.obj and .syms, compiled by the host passes.
-# The stamp that says doc/measure.txt and tools/out are current (the
-# rule is below, by doc/measure.txt's).
-MEASURED := tools/out/measure.stamp
+# source, $(OUT)/lib/NAME.obj and .syms, compiled by the host passes
+# (its sources go to the bootstrap and measure.py too).
 LIBSRC := $(wildcard lib/*.c)
 LIBOBJS:= $(patsubst lib/%.c,$(OUT)/lib/%.obj,$(LIBSRC))
-# The library's sources, for the bootstrap and measure.py.
-CCLIB_SRC = $(LIBSRC)
 $(OUT)/lib/%.obj: lib/%.c $(wildcard lib/include/*.h) ccpp cccomp ccgen
 	@mkdir -p $(dir $@)
 	@./ccpp -o $(OUT)/lib/$* $< && ./cccomp -o $(OUT)/lib/$* $(OUT)/lib/$* \
@@ -152,12 +143,22 @@ apple-inputs: $(APPLE_IN)
 
 # The passes a test may run; a stamp depends on these, so a rebuilt pass
 # re-runs the tests.
-PASSES := ccish ccpp cccomp ccgen ccrel \
-          ccpp-small cccomp-small ccgen-small ccrel-small $(PLVM) \
+PASSES := ccish $(PROGS) $(SMALL) $(PLVM) \
           $(CCSTAT) tools/ccrun $(LIBOBJS) $(XLOAD)
 
 # --- The test kinds. Each is a directory of inputs; the stamp for input
 # tests/<kind>/<stem> is tests/out/<kind>/<stem>.stamp.
+
+# Two steps the run, gen and xrun recipes share, for the module $*
+# compiled beside the stamp $@. RUN_MODULE runs it under plvm (through
+# tools/ccrun), its output, CRs removed, in $*.actual and its exit
+# status in $*.status there. $(call CHECK_STATUS,KIND,WANT) fails
+# unless that status is the number in the file WANT (0 if it's missing
+# or empty, as /dev/null is, for "must be 0").
+RUN_MODULE = (cd $(dir $@) && { $(CCRUN) -t 10 $* 2>&1; echo $$? > $*.status; } \
+              | tr -d '\r' > $*.actual)
+CHECK_STATUS = want=$$(cat $2 2>/dev/null); want=$${want:-0}; got=$$(cat $(dir $@)$*.status); \
+               [ "$$got" = "$$want" ] || { echo "$1 $*: exit status $$got, expected $$want"; exit 1; }
 
 # run: compile, run under plvm (through tools/ccrun); stdout must equal
 # the .expected, the exit status the number in .status (or 0 if there
@@ -171,10 +172,9 @@ $(OUT)/run/%.stamp: tests/run/%.c tests/run/%.expected \
                     $(PASSES) tests/check_listing.sh
 	@mkdir -p $(dir $@)
 	@./ccish -v -o $(dir $@)$* tests/run/$*.c >$(dir $@)$*.lst 2>$(dir $@)$*.stderr
-	@(cd $(dir $@) && { $(CCRUN) -t 10 $(notdir $*) 2>&1; echo $$? > $(notdir $*).status; } | tr -d '\r' > $*.actual)
+	@$(RUN_MODULE)
 	@diff -u tests/run/$*.expected $(dir $@)$*.actual
-	@want=$$(cat tests/run/$*.status 2>/dev/null || echo 0); got=$$(cat $(dir $@)$*.status); \
-	 [ "$$got" = "$$want" ] || { echo "run $*: exit status $$got, expected $$want"; exit 1; }
+	@$(call CHECK_STATUS,run,tests/run/$*.status)
 	@if [ -f tests/run/$*.stderr.expected ]; then diff -u tests/run/$*.stderr.expected $(dir $@)$*.stderr; elif [ -s $(dir $@)$*.stderr ]; then echo "run: unexpected stderr"; cat $(dir $@)$*.stderr; exit 1; fi
 	@tests/check_listing.sh tests/run/$*.c $(dir $@)$*.lst
 	@touch $@
@@ -199,9 +199,8 @@ $(OUT)/gen/%.stamp: tests/gen/%.c tests/gen/%.exp \
 	@./ccish -m -o $(dir $@)$* tests/gen/$*.c >$@.actual 2>$@.err
 	@test ! -s $@.err || { echo "gen: unexpected messages"; cat $@.err; exit 1; }
 	@diff -u tests/gen/$*.exp $@.actual
-	@(cd $(dir $@) && $(CCRUN) -t 10 $(notdir $*) >/dev/null 2>&1; echo $$? > $(notdir $*).status)
-	@want=$$(cat tests/gen/$*.status 2>/dev/null || echo 0); got=$$(cat $(dir $@)$*.status); \
-	 [ "$$got" = "$$want" ] || { echo "gen $*: exit status $$got, expected $$want"; exit 1; }
+	@$(RUN_MODULE)
+	@$(call CHECK_STATUS,gen,tests/gen/$*.status)
 	@touch $@
 
 # xrun: the same source must print the same under ccish+plvm as under
@@ -217,9 +216,9 @@ $(OUT)/xrun/%.stamp: tests/xrun/%.c tests/xrun/%.ref \
 	 $$(for o in $$(cat tests/xrun/$*.lib 2>/dev/null); do echo $(OUT)/lib/$$o; done) \
 	 2>$(dir $@)$*.err
 	@test ! -s $(dir $@)$*.err || { echo "xrun: unexpected messages"; cat $(dir $@)$*.err; exit 1; }
-	@(cd $(dir $@) && { $(CCRUN) -t 10 $(notdir $*) 2>&1; echo $$? > $(notdir $*).status; } | tr -d '\r' > $*.actual)
+	@$(RUN_MODULE)
 	@diff -u tests/xrun/$*.ref $(dir $@)$*.actual
-	@got=$$(cat $(dir $@)$*.status); [ "$$got" = 0 ] || { echo "xrun $*: exit status $$got"; exit 1; }
+	@$(call CHECK_STATUS,xrun,/dev/null)
 	@touch $@
 
 # errors: must fail to compile, and the message (stderr) must contain
@@ -276,7 +275,7 @@ $(OUT)/special/tables.stamp: tests/special/tables.c src/irin.c src/lower.c src/i
 $(OUT)/special/enumvals.stamp: $(SOURCES)
 $(OUT)/special/fit.stamp: $(MEASURED)
 $(OUT)/special/xload_self.stamp: $(MEASURED) ccrel-small $(XLOAD) \
-                         tests/run/hello.c $(wildcard src/*.c src/*.h)
+                         tests/run/hello.c $(SOURCES)
 $(OUT)/special/xload.stamp: ccrel-small $(XLOAD) tools/xlinfo.py \
                          tests/xload/xltest.c tests/xload/xltest.expected xload/xload.c \
                          $(patsubst %,tests/run/%.c,hello global_init pointers addr_const c_names)
@@ -291,9 +290,8 @@ $(OUT)/special/xload.stamp: ccrel-small $(XLOAD) tools/xlinfo.py \
 $(OUT)/special/bootstrap.stamp: tests/special/bootstrap.sh $(PASSES) tests/lib.sh \
                              $(OUT)/lib/lib.map ccish.msg $(wildcard lib/include/*.h)
 	@mkdir -p $(dir $@) && BOOTSTRAP_VM="$(BOOTSTRAP_VM)" \
-	 BOOT_ccpp="$(CCPP_SRC)" BOOT_cccomp="$(CCCOMP_SRC)" \
-	 BOOT_ccgen="$(CCGEN_SRC)" BOOT_ccrel="$(CCREL_SRC)" \
-	 BOOT_LIB="$(CCLIB_SRC)" sh $< && touch $@
+	 $(foreach p,$(PROGS),BOOT_$p="$(SRC_$p)") \
+	 BOOT_LIB="$(LIBSRC)" sh $< && touch $@
 
 # Run bootstrap test. This takes ~30 seconds on Linux
 bootstrap: $(OUT)/special/bootstrap.stamp
@@ -361,7 +359,7 @@ limits: doc/limits.md
 # checked in, so a git checkout gives it a new time, and it stays when
 # tools/out is deleted, and either way it would look current when
 # tools/out isn't.
-$(MEASURED): ccpp cccomp ccgen ccrel ccish.msg tools/measure.py \
+$(MEASURED): $(PROGS) ccish.msg tools/measure.py \
                  tools/libmap.py $(LIMIT_SRC) $(XLOAD) \
                  $(wildcard lib/include/*.h)
 	@echo "tools/measure.py > doc/measure.txt"
@@ -406,25 +404,20 @@ listings: all
 # its name and its sources in link order, and a line "lib" and the
 # library's. measure.py asks for these, so they're kept only here.
 print-sources:
-	@echo ccpp $(CCPP_SRC)
-	@echo cccomp $(CCCOMP_SRC)
-	@echo ccgen $(CCGEN_SRC)
-	@echo ccrel $(CCREL_SRC)
-	@echo lib $(CCLIB_SRC)
+	@$(foreach p,$(PROGS),echo $p $(SRC_$p);)
+	@echo lib $(LIBSRC)
 
-# Print some common ops and op sequences (e.g., peephole targets)
-# This counts cccomp's ops and its most common runs of 2 to 4 ops,
-# reading the listings from step 1.
-# Add -o to keep operands, so that LLW 0 and LLW 2 count separately.
-common-ops: tools/opstats.py ccomp listings
+# Print cccomp's commonest ops and runs of 2 to 4 ops (peephole
+# targets), from make listings' listings. Add -o to tools/opstats.py
+# to keep operands, so that LLW 0 and LLW 2 count separately.
+common-ops: tools/opstats.py listings
 	python3 tools/opstats.py -p cccomp -n 30 -l 4
 
 
 clean:
-	rm -f ccish ccpp cccomp ccgen ccrel
-	rm -f ccpp-small cccomp-small ccgen-small ccrel-small
+	rm -f ccish $(PROGS) $(SMALL)
 	rm -rf $(OUT) tools/out bootstrap
 	rm -f doc/measure.txt doc/limits.md
 
 .PHONY: all small test testbuild xref measure listings print-sources bootstrap xload apple apple-inputs \
-        full-test limits demo-disk demo-run profile clean
+        full-test limits demo-disk demo-run profile common-ops clean

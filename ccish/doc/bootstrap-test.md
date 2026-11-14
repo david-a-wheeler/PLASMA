@@ -671,7 +671,7 @@ The order agreed on 2026-11-08, as five steps:
   for, and writes PROG.objs, the objects linked. measure.py's own loop
   (`lib_object`) is gone; it calls cclink too, and its report is
   unchanged. The Makefile gives the script each program's sources
-  (`CCPP_SRC` and the rest, which the program rules use too) and the
+  (`SRC_ccpp` and the rest, which the program rules use too; once named `CCPP_SRC`) and the
   library's, so no list is written by hand. The stages are in
   tests/out/boot/1 to 3, removed when they match. All three stages'
   49 objects (27 of src/, 22 of the library) and four modules are the
