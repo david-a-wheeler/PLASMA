@@ -11,12 +11,13 @@ with file and line references for checking (as of 2026-11-13; check
 them again, since they move). Section 8 is the list of verified facts
 the decisions rest on.
 
-**Status (2026-11-14).** Steps 1 to 5 of section 9 are done: the one
+**Status (2026-11-14).** Steps 1 to 6 of section 9 are done: the one
 exit (section 5.5), the option letters (section 2, with `-m` and `-r`
 as proposed), the library search, `-L dir` (section 5), using `-L`
 everywhere, with tools/cclink deleted (section 9, step 4), and the
-rename of ccrel to cclink (section 1). Steps 6 and 7 aren't. Work
-through them in order, as section 10 says.
+rename of ccrel to cclink (section 1), and ccpp's CMDSYS ids out of
+its name pool (section 3.1). Step 7 isn't. Work through it as section
+10 says.
 
 ## 1. The final pass is renamed `ccrel` to `cclink`
 
@@ -183,6 +184,22 @@ cache's miss path, about 5,500 ops, approach.md "ccpp's name
 lookup") skips 25 fewer entries. Measure it with `make measure`, and
 make it its own commit, with the current `__` spelling (section 9,
 step 6), so the saving is measured apart from the rename.
+
+**Measured** (step 6, 2026-11-14): ccpp's running spare went from 740
+to 868 bytes, 128 more, half the estimate; loading, 130 more. The pool
+holds 225 bytes less (its peak 8,130 to 7,905, and `MAX_PP_POOL` 8,432
+to 8,207), and the table and the strings it replaced are 124 bytes
+smaller; but ppname.c's code grew 209 bytes (1,003 to 1,212), not 60
+to 100. Where: the `__` test and the table's walk in `cmdsys_find()`
+(94 bytes) and `cmdsys_at()` (33); `pp_id_spelling()`'s "__" and the
+table (42 more); `pp_names_write()`'s 25 CMDSYS lines (53 more); and
+`find()`'s ids from `NCMDSYS + 1` (14 more). `pp_intern()` got 10
+bytes smaller, with one exit and one cache update. Walking the table
+with a pointer, not an index, saved about 20 bytes, since every
+`cmdsys[i]` was an `LA` and an `ADDLW`. ccpp runs 3.8% fewer ops
+compiling ccish's own sources (`make profile`: 572.8M against 595.6M),
+since every pool walk skips 25 entries. The token streams and name
+files are unchanged: every pp test's `.i` and `.nam` are the same.
 
 ### 3.1a Spare CMDSYS ids, so a new one renumbers nothing
 
@@ -657,7 +674,8 @@ leading-comma temp-file convention, AGENTS.md).
    (This check first found section 5.5's SAW bug.)
 5. **Done** (2026-11-14). **Rename ccrel to cclink** (section 1's
    list).
-6. **ccpp's CMDSYS ids leave the pool** (section 3.1), with today's
+6. **Done** (2026-11-14; section 3.1 has the measurements). **ccpp's
+   CMDSYS ids leave the pool** (section 3.1), with today's
    `__` spelling: a pure saving, measured on its own, with
    `MAX_PP_POOL` lowered.
 7. **The `__cmd_` spellings, the spare CMDSYS ids, the `_` private

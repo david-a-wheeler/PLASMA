@@ -3,9 +3,12 @@
 // NUL: an identifier, or, with ENT_FILE in its length byte, a source
 // file's name. Whether an identifier names a macro now is the macro
 // table's, in ppmac.c, not the pool's. Entries are never removed, so an
-// identifier's id is simply its place among the identifiers, and
-// NAME.nam is the pool written out in order, with no table from ids to
-// entries.
+// identifier's id is NCMDSYS plus its place among the identifiers, and
+// NAME.nam is the CMDSYS functions' names, then the pool written out in
+// order, with no table from ids to entries. The CMDSYS functions, ids
+// 1 to NCMDSYS, aren't in the pool: they're fixed, so their names are
+// in cmdsys[], a packed table, which costs ccpp less than the pool's
+// entries and the pointers to their strings did (doc/linking.md, 3.1).
 #include <stdio.h>
 #include <string.h>
 #include "build.h"
@@ -17,7 +20,7 @@
 #include "ppmac.h"
 #include "ppname.h"
 
-#define MAX_PP_POOL  8432   // limit pp: bytes of ccpp's names (macros' too)
+#define MAX_PP_POOL  8207   // limit pp: bytes of ccpp's names (macros' too)
                             // and file names, with a length byte each:
                             // a byte of ccpp's heap each, so no larger
                             // than ccish's own use needs (ccpp has under
@@ -52,23 +55,25 @@ static int cache_id[PP_CACHE];
 static int cache_off[PP_CACHE];
 static unsigned char cache_len[PP_CACHE];
 
-// The names every file has, in id order from 1 (CCPP.md, "The fixed
-// ids"): the CMDSYS functions in cmdsys_sigs[]'s order (parse.c), main
-// and pstr, then the names ccpp itself gives a meaning. A CMDSYS
-// function's C name is its PLASMA name with "__" in front (__puts for
-// PUTS), a name C reserves to the implementation, so the standard names
-// (puts, memset, ...) stay free for a C library with C's meanings; cclink
-// drops the "__" in the import (approach.md issue 22, decision 35).
-// Last, __asm__ and __plasma_import, for imports from other modules
-// (pp.c, ppout.c).
-static const char *const fixed[NFIXED] = {
-  "__putc", "__putln", "__puts", "__puti", "__putb", "__puth", "__getc",
-  "__gets", "__call", "__syscall", "__heapmark", "__heapallocalign",
-  "__heapalloc", "__heaprelease", "__heapavail", "__memset", "__memcpy",
-  "__strcpy", "__strcat", "__toupper", "__sext", "__isugt", "__isuge",
-  "__isult", "__isule", "main", "pstr",
-  "__CCISH__", "__FILE__", "__LINE__", "defined", "__asm__",
-  "__plasma_import"
+// The names every file has (CCPP.md, "The fixed ids"). First, ids 1
+// to NCMDSYS, the CMDSYS functions in cmdsys_sigs[]'s order (parse.c):
+// each one's PLASMA name, after its length byte (in octal), and a 0 at
+// the end. A CMDSYS function's C name is its PLASMA name with "__" in
+// front (__puts for PUTS), a name C reserves to the implementation, so
+// the standard names (puts, memset, ...) stay free for a C library with
+// C's meanings; cclink drops the "__" in the import (approach.md issue
+// 22, decision 35).
+static const unsigned char cmdsys[] =
+  "\004putc\005putln\004puts\004puti\004putb\004puth\004getc\004gets"
+  "\004call\007syscall\010heapmark\016heapallocalign\011heapalloc"
+  "\013heaprelease\011heapavail\006memset\006memcpy\006strcpy"
+  "\006strcat\007toupper\004sext\005isugt\005isuge\005isult\005isule";
+// Then the pool's first entries, from id NCMDSYS + 1: main and pstr,
+// the names ccpp itself gives a meaning, and last, __asm__ and
+// __plasma_import, for imports from other modules (pp.c, ppout.c).
+static const char *const fixed[NFIXED - NCMDSYS] = {
+  "main", "pstr", "__CCISH__", "__FILE__", "__LINE__", "defined",
+  "__asm__", "__plasma_import"
 };
 
 // The length of the entry at pool offset i, the length byte without
@@ -78,27 +83,53 @@ static int entry_len(int i)
   return pool[i] & FILE_LEN;
 }
 
-// Is the entry at pool offset i spelled s (n chars, as long as it)?
-static int same(int i, const char *s, int n)
+// Are the n bytes at p spelled s (n chars)?
+static int same(const unsigned char *p, const char *s, int n)
 {
   int j;
   for (j = 0; j < n; j++)
-    if (pool[i + 1 + j] != (unsigned char)s[j])
+    if (p[j] != (unsigned char)s[j])
       return 0;
   return 1;
 }
 
+// The length byte, in cmdsys[], of CMDSYS function id.
+static const unsigned char *cmdsys_at(int id)
+{
+  const unsigned char *p = cmdsys;
+  while (--id > 0)
+    p += *p + 1;
+  return p;
+}
+
+// The id of the CMDSYS function whose C name is s (n chars): "__" and
+// a name in cmdsys[]; or 0.
+static int cmdsys_find(const char *s, int n)
+{
+  const unsigned char *p = cmdsys;
+  int id = 1;
+  if (n <= 2 || s[0] != '_' || s[1] != '_')
+    return 0;
+  for (; *p; p += *p + 1) {
+    if (*p == n - 2 && same(p + 1, s + 2, n - 2))
+      return id;
+    id++;
+  }
+  return 0;
+}
+
 // Find the entry of kind kind (0 or ENT_FILE) spelled s (n chars):
-// return its number among the entries of that kind, from 1, or 0 if
-// there is none; its offset goes in *at.
+// return its number among the entries of that kind, from 1 for a file
+// and from NCMDSYS + 1 for an identifier (its id), or 0 if there is
+// none; its offset goes in *at.
 static int find(const char *s, int n, int kind, int *at)
 {
-  int i = 0, k = 0, len;
+  int i = 0, k = kind ? 0 : NCMDSYS, len;
   while (i < pool_used) {
     len = entry_len(i);
     if ((pool[i] & ENT_FILE) == kind) {
       k++;
-      if (len == n && same(i, s, n)) {
+      if (len == n && same(pool + i + 1, s, n)) {
         *at = i;
         return k;
       }
@@ -129,13 +160,13 @@ static void add(const char *s, int n, int kind)
   pool_used += n + 1;
 }
 
-// Start a new pool with the fixed ids.
+// Start a new pool with the fixed ids after the CMDSYS functions'.
 void pp_names_init(void)
 {
   int i;
   pool_used = 0;
-  nids = 0;
-  for (i = 0; i < NFIXED; i++)
+  nids = NCMDSYS;
+  for (i = 0; i < NFIXED - NCMDSYS; i++)
     pp_intern(fixed[i], (int)strlen(fixed[i]));
 }
 
@@ -152,30 +183,30 @@ static int name_hash(const char *s, int n)
 
 // The id of identifier s, of n characters (at most MAX_NAME), giving
 // it the next one if it is new; pp_macro_flag says whether it names a
-// macro. The recent-names cache goes first (above); the pool's walk
-// is the miss.
+// macro (never a new one, so the macro table's search is skipped). A
+// CMDSYS function's name is its fixed id; then the recent-names cache
+// (above); the pool's walk is the miss.
 int pp_intern(const char *s, int n)
 {
-  int k = PP_SLOT(name_hash(s, n)), at, id;
-  if (cache_len[k] == n + 1 && same(cache_off[k], s, n)) {
-    pp_macro_flag = pp_mac_find(cache_id[k]) >= 0;
-    return cache_id[k];
+  int k, at, id = cmdsys_find(s, n), fresh = 0;
+  if (!id) {
+    k = PP_SLOT(name_hash(s, n));
+    if (cache_len[k] == n + 1 && same(pool + cache_off[k] + 1, s, n))
+      id = cache_id[k];
+    else {
+      id = find(s, n, 0, &at);
+      if (!id) {
+        at = pool_used;
+        id = ++nids;
+        fresh = 1;
+        add(s, n, 0);
+      }
+      cache_id[k] = id;
+      cache_off[k] = at;
+      cache_len[k] = (unsigned char)(n + 1);
+    }
   }
-  id = find(s, n, 0, &at);
-  if (id) {
-    pp_macro_flag = pp_mac_find(id) >= 0;
-    cache_id[k] = id;
-    cache_off[k] = at;
-    cache_len[k] = (unsigned char)(n + 1);
-    return id;
-  }
-  at = pool_used;
-  id = ++nids;
-  add(s, n, 0);
-  cache_id[k] = id;
-  cache_off[k] = at;
-  cache_len[k] = (unsigned char)(n + 1);
-  pp_macro_flag = 0;
+  pp_macro_flag = !fresh && pp_mac_find(id) >= 0;
   return id;
 }
 
@@ -210,13 +241,21 @@ void pp_file_path(int k, char *buf)
 }
 
 // The spelling of identifier id, in a static buffer that the next call
-// reuses, for messages.
+// reuses: for messages, # and ##, struct tags' hashes and NAME.nam.
 const char *pp_id_spelling(int id)
 {
   static char buf[MAX_NAME + 1];
-  int i = entry_at(id, 0), n = entry_len(i);
-  memcpy(buf, pool + i + 1, n);
-  buf[n] = 0;
+  const unsigned char *p;
+  int k = 0, n;
+  if (id <= NCMDSYS) {
+    p = cmdsys_at(id);
+    buf[0] = buf[1] = '_';
+    k = 2;
+  } else
+    p = pool + entry_at(id - NCMDSYS, 0);
+  n = *p & FILE_LEN;
+  memcpy(buf + k, p + 1, n);
+  buf[k + n] = 0;
   return buf;
 }
 
@@ -226,9 +265,10 @@ const char *pp_id_spelling(int id)
 // *mul is 31^n; all mod 65536.
 int pp_name_hash(int id, int *mul)
 {
-  int i = entry_at(id, 0), len = entry_len(i), j, h = 0, m = 1;
-  for (j = 1; j <= len; j++) {
-    h = (h * 31 + pool[i + j]) & 0xFFFF;
+  const char *s = pp_id_spelling(id);
+  int h = 0, m = 1;
+  for (; *s; s++) {
+    h = (h * 31 + (unsigned char)*s) & 0xFFFF;
     m = (m * 31) & 0xFFFF;
   }
   *mul = m;
@@ -266,12 +306,19 @@ static void put_hex(Bfile *f, int v)
   }
 }
 
-// Write the pool to f as NAME.nam: the identifiers, a line each; then
-// the files, each after an '@'; a blank line; and the stamp. Return
-// the checksum, for NAME.i's stamp too.
+// Write NAME.nam to f: the identifiers, a line each, the CMDSYS
+// functions' and then the pool's; then the files,
+// each after an '@'; a blank line; and the stamp. Return the checksum,
+// for NAME.i's stamp too.
 int pp_names_write(Bfile *f)
 {
   int pass, i, j, len, h = 0;
+  const char *s;
+  for (i = 1; i <= NCMDSYS; i++) {
+    for (s = pp_id_spelling(i); *s; s++)
+      put_sum(f, *s, &h);
+    put_sum(f, '\n', &h);
+  }
   for (pass = 0; pass <= ENT_FILE; pass += ENT_FILE)
     for (i = 0; i < pool_used; i += len + 1) {
       len = entry_len(i);

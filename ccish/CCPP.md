@@ -288,8 +288,9 @@ count           id 34: then every other name, in the order ccpp met it
 name"). Ids are given in the order `ccpp` first meets each name: every
 identifier, including macro names, macro parameters and names in `#if`
 lines, whether or not it reaches the token stream, so that `NAME.nam`
-is simply `ccpp`'s name pool written out (no table from ids to names
-is needed). C's keywords are not names: they never get an id, except
+is simply the CMDSYS functions' names (ids 1 to 25, which `ccpp`
+keeps in a table of its own, not its pool) and then `ccpp`'s name
+pool, written out (no table from ids to names is needed). C's keywords are not names: they never get an id, except
 the unsupported ones (`$08`), whose spelling the message needs. A
 name has at most 31 characters (`MAX_NAME`); `ccpp` keeps only the
 first 31, so readers may rely on that.
