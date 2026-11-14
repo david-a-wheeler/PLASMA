@@ -39,7 +39,8 @@ PP     = src/ppname.c src/pplex.c src/ppmac.c src/ppif.c src/ppout.c src/pp.c
 NAM    = src/nam.c
 PARSER = src/tokin.c src/name.c src/type.c src/parse.c src/pexpr.c \
          src/pstmt.c src/ptop.c src/irout.c
-BACK   = src/irin.c src/irloop.c src/lower.c src/peep.c src/emit.c src/helper.c
+CODEGEN = src/irin.c src/irloop.c src/lower.c src/peep.c src/emit.c \
+          src/helper.c
 LINK   = src/link.c
 # The four Apple II programs (the passes), each built for the host
 # twice: PROG, the full build, and PROG-small, the small build
@@ -52,9 +53,9 @@ SMALL_PROGS := $(PROGS:%=%-small)
 # measure.py's too, below), and ccish's, the driver that runs all four.
 SRC_ccpp   = src/ccpp.c $(COMMON) $(PP)
 SRC_cccomp = src/cccomp.c $(COMMON) $(NAM) $(PARSER)
-SRC_ccgen  = src/ccgen.c $(COMMON) $(NAM) $(BACK)
+SRC_ccgen  = src/ccgen.c $(COMMON) $(NAM) $(CODEGEN)
 SRC_ccrel  = src/ccrel.c $(COMMON) $(LINK)
-SRC_ccish  = src/main.c $(COMMON) $(PP) $(NAM) $(PARSER) $(BACK) $(LINK)
+SRC_ccish  = src/main.c $(COMMON) $(PP) $(NAM) $(PARSER) $(CODEGEN) $(LINK)
 HEADERS := $(wildcard src/*.h)
 SOURCES := $(wildcard src/*.h src/*.c)
 # The library's headers: ccpp's default include directory, compiled in
