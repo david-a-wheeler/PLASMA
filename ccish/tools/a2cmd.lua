@@ -118,12 +118,96 @@ local function prompt_back(t)
   return t >= prompt_since + 2
 end
 
+-- With A2CMD_WATCH set to "LO-HI ARM" (hex addresses, and screen
+-- text): once ARM is on the screen, each write to main memory from LO
+-- to HI is printed (the first 40), with the 6502's PC when MAME gives
+-- it, and zero page $EF-$F4 (the 64K VM's fetch loop and IP). For
+-- finding what writes over a program's bytecode on the 64K VM.
+local watch_tap = nil
+local watch_arm = nil
+local watch_n = 0
+do
+  local w = os.getenv("A2CMD_WATCH")
+  if w then
+    local lo, hi, arm = w:match("^(%x+)-(%x+) (.+)$")
+    lo, hi = tonumber(lo, 16), tonumber(hi, 16)
+    watch_arm = function()
+      local cpu = machine.devices[":maincpu"]
+      watch_tap = mem:install_write_tap(lo, hi, "a2cmd_watch",
+        function(offset, data, mask)
+          watch_n = watch_n + 1
+          if watch_n <= 40 then
+            local ok, pc = pcall(function() return cpu.state["PC"].value end)
+            local zp = ""
+            for a = 0xEF, 0xF4 do
+              zp = zp .. string.format(" %02X", mem:read_u8(a))
+            end
+            print(string.format("a2cmd: write $%04X = $%02X, PC %s, zp $EF:%s",
+              offset, data & 0xFF, ok and string.format("$%04X", pc) or "?", zp))
+          end
+          return data
+        end)
+    end
+    a2cmd_watch_text = arm
+  end
+end
+
+-- With A2CMD_FETCHES set to "LO-HI ARM": once ARM is on the screen,
+-- each read of main memory from LO to HI is kept (the last 400), with
+-- the 6502's PC and stack pointer, and the last 151 are printed when
+-- MAME exits: on the 64K VM, a read at PC $F1 is a bytecode fetch,
+-- and one at $F6 the dispatch's JMP (OPTBL), so this shows the last
+-- bytecode run before a trap. (It found init's SAW to TMP writing
+-- over the dispatch's page: doc/linking.md, 5.5.)
+local fetch_arm = nil
+local fetches = {}
+-- With A2CMD_FETCH_FIRST set too, the first 400 instead.
+local fetch_first = os.getenv("A2CMD_FETCH_FIRST") ~= nil
+do
+  local f = os.getenv("A2CMD_FETCHES")
+  if f then
+    local lo, hi, arm = f:match("^(%x+)-(%x+) (.+)$")
+    lo, hi = tonumber(lo, 16), tonumber(hi, 16)
+    fetch_arm = function()
+      local cpu = machine.devices[":maincpu"]
+      a2cmd_fetch_tap = mem:install_read_tap(lo, hi, "a2cmd_fetches",
+        function(offset, data, mask)
+          local pc = cpu.state["PC"].value
+          fetches[#fetches + 1] = string.format("$%04X:%02X pc $%04X sp $%02X",
+            offset, data & 0xFF, pc, cpu.state["SP"].value & 0xFF)
+          if #fetches > 400 and not fetch_first then
+            table.remove(fetches, 1)
+          end
+          return data
+        end)
+    end
+    a2cmd_fetch_text = arm
+  end
+end
+local function print_fetches()
+  local from = math.max(1, #fetches - 150)
+  if fetch_first then
+    from = 1
+  end
+  for i = from, math.min(#fetches, from + 399) do
+    print("a2cmd: fetch " .. fetches[i])
+  end
+end
+
 -- With A2CMD_DEBUG set, every 5 seconds: the last line, as the
 -- prompt test sees it.
 local debug_at = 0
 local debug = os.getenv("A2CMD_DEBUG") ~= nil
 a2cmd_sub = emu.add_machine_frame_notifier(function()
   local t = machine.time:as_double()
+  if watch_arm and on_screen(a2cmd_watch_text) then
+    watch_arm()
+    watch_arm = nil
+  end
+  if fetch_arm and on_screen(a2cmd_fetch_text) then
+    fetch_arm()
+    fetch_arm = nil
+  end
   if debug and t >= debug_at then
     debug_at = t + 5
     local l = last_line()
@@ -158,6 +242,7 @@ a2cmd_sub = emu.add_machine_frame_notifier(function()
     for r = 0, 23 do
       print(row(r))
     end
+    print_fetches()
     machine:exit()
   end
 end)

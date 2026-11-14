@@ -477,9 +477,17 @@ plvm path and init's setting TMP can go.
    TMP ($E7, a zero-page pointer), which the Apple VMs' ICAL sets to
    the routine's address and plvm's doesn't
    (src/vmsrc/plvm.c:418-427). So init runs `LA __exitcap; DUP;
-   SAW $00E7; ICAL` (src/link.c's `init_code()`, `ZP_TMP`; 4 bytes
-   more). The routine then runs on plvm's emulated 6502, harmlessly:
-   it writes only its own area, and puts X back.
+   CB $E7; SW; ICAL` (src/link.c's `init_code()`, `ZP_TMP`; 4 bytes
+   more). Not `SAW $00E7`, the same size, as first done: the Apple
+   VMs' SAW stores through TMP itself (plvm02.s, plvmjit02.s), so its
+   first byte moves TMP and its second lands at $00xx+1, xx being the
+   routine's address's low byte. Step 3's code moved `__exitcap` in
+   ccrel's image to $27F7, which put $27 in $F8, the 64K VM's dispatch
+   page (OPPAGE), and the image trapped at $0000 on the next opcode;
+   before, the byte had landed somewhere harmless, by luck. SW stores
+   through the evaluation stack, on every VM. The routine then runs
+   on plvm's emulated 6502, harmlessly: it writes only its own area,
+   and puts X back.
 2. **exit tells plvm apart by $F1** (`ON_APPLE` in lib/exit.c:
    `LAB $00F1; BRTRU`, 6 bytes, against 10 for a test of exit's def
    entry). On both Apple VMs, $F1 holds the opcode of the zero-page
@@ -505,7 +513,7 @@ Running spare: ccpp 740 and cccomp 724 (they were 763 and 747).
 **Tests:** lib.sh runs `exit` from five calls deep under plvm with
 statuses 3, -1 (255) and 0, one of them after output that doesn't end
 its line, and checks plvm's BRK message; and checks init's code,
-`LA data+0|DUP|SAW $00E7|ICAL|...`. On MAME's 64K and 128K IIe: a
+`LA data+0|DUP|CB 231|SW|ICAL|...`. On MAME's 64K and 128K IIe: a
 pass's error gives `ERR:$01`, and a program compiled there by the
 passes that calls `exit(3)` deep gives `ERR:$03`, twice, with the
 next commands working. `make test` and `make bootstrap` pass.

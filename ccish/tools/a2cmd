@@ -12,6 +12,10 @@
 # With A2CMD_128K set, the IIe has 128K (an extended 80-column card),
 # so PLASMA runs its 128K VM, with the bytecode in aux memory.
 #
+# For debugging, A2CMD_WATCH and A2CMD_FETCHES ("LO-HI TEXT") print
+# the writes to, or the last reads from, main memory from LO to HI
+# once TEXT is on the screen (tools/a2cmd.lua).
+#
 # With A2CMD_DISK3 set to a disk image, a second Disk II controller
 # goes in slot 5, with that disk in its first drive. (MAME then numbers
 # slot 5's drives first: flop1 and flop2 are slot 5's, flop3 and flop4

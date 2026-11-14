@@ -1781,10 +1781,13 @@ static int init_code(void)
     // Right before main's call, with nothing pushed: exit makes that
     // call return its status, one value, so a void main gets a 0. The
     // routine finds its save area through TMP, which the Apple VMs'
-    // ICAL sets and plvm's doesn't, so init sets it first.
+    // ICAL sets and plvm's doesn't, so init sets it first, with SW:
+    // the Apple VMs' SAW stores through TMP itself, so SAW to TMP
+    // moves TMP between its two bytes and writes its second byte
+    // elsewhere in the zero page (once over the 64K VM's dispatch).
     init_op(&n, OP_LA, data_base + obj_data[g_def[i]] + g_off[i], -1);
-    fbuf[n++] = OP_DUP;
-    init_word(&n, OP_SAW, ZP_TMP);
+    init_word(&n, OP_DUP, OP_CB | ZP_TMP << 8);   // DUP, CB $E7
+    fbuf[n++] = OP_SW;
     fbuf[n++] = OP_ICAL;
     if (!(g_flags[main_sym] & G_RETURNS))
       fbuf[n++] = OP_CN;
@@ -1809,7 +1812,7 @@ static int init_size(void)
     return 0;
   n = g_flags[main_sym] & G_RETURNS ? 7 : 5;
   if (exit_cap() >= 0)
-    n += 3 + 1 + 3 + 1 + (g_flags[main_sym] & G_RETURNS ? 0 : 1 + 2);
+    n += 3 + 1 + 2 + 1 + 1 + (g_flags[main_sym] & G_RETURNS ? 0 : 1 + 2);
   if (opt_xload && zstay > 0)
     n += 3 + 1 + 3 + 3;
   if (nmoved > 0)

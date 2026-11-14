@@ -104,10 +104,10 @@ init_has() {
         | cut -c10- | sed 's/ \$[0-9A-F]* *; / /' | tr '\n' '|' >"$D/$1.init"
     same "$(cat "$D/$1.init")" "$2" "lib/exit's init for $1"
 }
-init_has quit 'LA data+0|DUP|SAW $00E7|ICAL|CALL main|ANDI 255|NEG|RET|'
+init_has quit 'LA data+0|DUP|CB 231|SW|ICAL|CALL main|ANDI 255|NEG|RET|'
 src_obj vquit '#include <stdlib.h>
 void main(void) { exit(4); }' || bad=1
-init_has vquit 'LA data+0|DUP|SAW $00E7|ICAL|CN 0|CALL main|ANDI 255|NEG|RET|'
+init_has vquit 'LA data+0|DUP|CB 231|SW|ICAL|CN 0|CALL main|ANDI 255|NEG|RET|'
 
 # The link errors: no start object, and no exit.
 if ./ccrel -o "$D/nostart" "$D/args" "$L/putc" "$L/fputs" "$L/strlen" 2>"$D/nostart.err"; then
