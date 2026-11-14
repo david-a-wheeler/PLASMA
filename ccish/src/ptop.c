@@ -313,16 +313,15 @@ static void init_zero(int n, int off)
 }
 
 // Parse the initializer of one scalar element of type type, at offset
-// off of the array. A global's must be constant (parse_scalar_init); a
-// local's may be any expression, as C99 allows.
-static void init_elem(int type, int off)
+// off of a local array: any expression, as C99 allows. Apart from
+// init_elem() so that a global's initializer, on cccomp's deepest
+// chain, doesn't hold its Operand. One Operand serves: e is pushed
+// before it becomes the element, the place stored into, and
+// store_var() reads only the fields set here.
+static void init_local_elem(int type, int off)
 {
-  Operand e, v;
+  Operand e;
   int at = init_base + off;
-  if (!init_local) {
-    parse_scalar_init(type);
-    return;
-  }
   reserve(at + type_size(type));
   begin_expr();
   parse_expr(PREC_ASSIGN, &e);
@@ -331,15 +330,26 @@ static void init_elem(int type, int off)
     init_byte(off, e.val);
   } else {
     rvalue(&e);
-    v.kind = K_VAR;
-    v.type = type;
-    v.quals = init_vol;         // a volatile's store is volatile
-    v.off = at;
-    v.global = 0;
-    store_var(&v);
+    e.kind = K_VAR;
+    e.type = type;
+    e.quals = init_vol;         // a volatile's store is volatile
+    e.off = at;
+    e.global = 0;
+    store_var(&e);
     put_op(IR_DROP);
   }
   end_expr();
+}
+
+// Parse the initializer of one scalar element of type type, at offset
+// off of the array. A global's must be constant (parse_scalar_init); a
+// local's may be any expression (init_local_elem).
+static void init_elem(int type, int off)
+{
+  if (init_local)
+    init_local_elem(type, off);
+  else
+    parse_scalar_init(type);
 }
 
 // Initialize the array, from offset off, with the string literal (the

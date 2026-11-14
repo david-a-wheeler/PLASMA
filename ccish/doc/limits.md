@@ -28,7 +28,7 @@ blank for a limit that isn't measured.
 | `MAX_EXP_BYTES` | 256 | 139 (emit.c) | bytes of the expansions and arguments being read, and of the arguments' own expansions (two buffers): room for macros longer than ccish's | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_ARG_SLOTS` | 32 | 4 (pexpr.c) | arguments of the calls being expanded | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_PP_PARAMS` | 16 |  | parameters of one macro | [src/ppmac.h](../src/ppmac.h) |
-| `MAX_PP_POOL` | 8207 | 7934 (ptop.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each: a byte of ccpp's heap each, so no larger than ccish's own use needs (ccpp has under 2K to spare on a 64K Apple II) | [src/ppname.c](../src/ppname.c) |
+| `MAX_PP_POOL` | 8207 | 7950 (ptop.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each: a byte of ccpp's heap each, so no larger than ccish's own use needs (ccpp has under 2K to spare on a 64K Apple II) | [src/ppname.c](../src/ppname.c) |
 
 ## One source file (cccomp)
 
@@ -65,7 +65,7 @@ blank for a limit that isn't measured.
 | `MAX_GSYMS` | 307 | 262 (linking cccomp) | names shared between objects: the first prime about 10% above what linking cccomp, with the library, needs | [src/link.c](../src/link.c) |
 | `MAX_GNAMES` | 3000 | 2598 (linking cccomp) | bytes of those names, with their NULs: about 10% above what linking cccomp needs | [src/link.c](../src/link.c) |
 | `MAX_MOVED` | 32 |  | large globals moved to the heap in one module (OBJECT.md, "Zero-filled globals") | [src/link.c](../src/link.c) |
-| `MAX_DEFS` | 320 | 299 (linking cccomp) | functions in an XLOAD image's table (-x), helpers and init included: about 10% above what cccomp needs | [src/link.c](../src/link.c) |
+| `MAX_DEFS` | 320 | 300 (linking cccomp) | functions in an XLOAD image's table (-x), helpers and init included: about 10% above what cccomp needs | [src/link.c](../src/link.c) |
 | `MAX_MODS` | 8 |  | modules one link imports from | [src/link.c](../src/link.c) |
 | `LIB_NAMES` | 128 | 126 (linking ccpp) | bytes of the bases of the objects -L adds, each with its NUL: the peak (126) links cccomp | [src/link.c](../src/link.c) |
 | `MAX_OBJS` | 32 |  | objects in one link (ccish's own is MAX_LINK, main.c) | [src/link.h](../src/link.h) |
