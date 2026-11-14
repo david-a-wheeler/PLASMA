@@ -1443,11 +1443,12 @@ result is `b`'s value and type, and isn't an lvalue. The most common
 use is a `for` loop with two variables: `for (i = 0, j = n - 1;
 i < j; i++, j--)`. Where a comma separates things (a call's arguments,
 an initializer list, a declaration), put a comma expression in
-parentheses: `f((a, b), c)` passes two arguments. As in C, a comma
-expression isn't a constant expression, even when both sides are
-constants: the full build rejects `case (1, 2):` (section 2.6), and
-the small build, which leaves out checks that only reject invalid
-programs, accepts it.
+parentheses: `f((a, b), c)` passes two arguments.
+
+As in C, a comma expression isn't a constant expression, even when both
+sides are constants: the full build rejects `case (1, 2):` (section 2.6).
+The small build, which leaves out checks that only reject invalid
+programs, currently accepts it; do not depend on this.
 
 ## 7. Statements
 
@@ -2263,6 +2264,7 @@ The shape:
   the step `i--`, `i += k` or `i -= k` (a constant `k`),
 * `i` an `int` local, compared signed, or a `char` local whose count
   stays in 0 to 255 to the end (below),
+  You should use a *register* variable to enable more optimizations.
 * the limit a constant or another local (not a global, and not a
   pointer),
 * a body that makes no calls, has no `return`, holds no inner loop,
@@ -2278,7 +2280,9 @@ c++)` never ends in C, so it isn't counted, nor is a loop against an
 
 `while` loops can't be counted (a counted loop needs a step to
 check).
-A `goto` loop is never counted. When a loop can't be counted, the
+A `goto` loop is never counted.
+A loop with comma operators is generally not counted.
+When a loop can't be counted, the
 test-at-the-bottom layout still applies (section 10.5).
 
 What it costs per pass, for `for (i = 0; i < n; i++)`:
