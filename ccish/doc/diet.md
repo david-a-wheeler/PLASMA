@@ -12,20 +12,21 @@ file adds to them.
 ccish's four passes (ccpp, cccomp, ccgen, cclink) must run on a 64K
 Apple II, and they have very little memory to spare while they run:
 see the summary at the end of doc/measure.txt ("And their fit on a 64K
-Apple II"). Make all of the code ccish generates more efficient:
+Apple II"). Make the final build of ccish, as it runs on an Apple II,
+more efficient:
 
-1. **Size first.** Less memory while a pass runs (its code, data, zero
-   region, def table and frame stack), and smaller files on disk.
-   **cccomp matters most**, since it has the least room; ccpp next.
-   ccgen and cclink have more room, but every byte saved still helps.
-2. **Speed, when it costs no size.** The passes are already slow on a
+1. **Size first.** Less memory while a pass runs on an Apple II
+   (its code, data, zero region, def table and frame stack), and smaller
+   files on disk. **cccomp and ccpp matter most**, while
+   ccgen and cclink have more room, but every byte saved anywhere helps.
+2. **Speed, when it costs no size.** The passes are already very slow on a
    1 MHz Apple II (ccpp, the slowest, most of all), so never
    make them slower; a change that makes them faster at no cost in
    size is very welcome.
 3. **Don't make the code much harder to understand.** Comments and
    clearer names can explain a less obvious form. Don't trade C
    correctness for size (AGENTS.md, "Correct C first").
-3. **Correctness most important.** Do not sacrifice correctness.
+4. **Correctness most important.** Do not sacrifice correctness.
    Pass tests. Add mechanisms like tests and `_Static_assert`
    as appropriate to ensure that invariants are kept without adding
    to memory size of final execution time.
@@ -70,6 +71,9 @@ those is a place to save:
   anywhere raises it. The figure is a lower bound: in real use, a
   recursive function's frame is paid again at every level of nesting,
   so a saving there is worth more than it shows.
+  We do implement same-function tail recursion optimization into a jump
+  to the beginning of the function, so in that *narrow* case
+  there is no extra stack frame.
   `tools/fsize.py -f tools/out/PROGRAM.named.lst` lists the largest
   frames first.
 - **Def table**: 5 bytes for every function, kept while the program
