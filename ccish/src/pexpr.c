@@ -1727,17 +1727,17 @@ static int fold_held(Operand *o, Operand *rp, int ir_op, int addr_kind)
   if (is_pointer_value(r.type)) {
     if (ir_op == IR_ADD && r.kind != K_VOID) {
       // c + p: emit p, then c scaled; c + an address constant
-      // folds.
-      Operand c = *o;
+      // folds. o is c until the end, so it needs no copy (one would
+      // be in this frame, on cccomp's deepest chain).
       nheld--;
       if (addr_const(&r)) {
-        a = wrap16((unsigned)c.val * (unsigned)elem_size(r.type));
+        a = wrap16((unsigned)o->val * (unsigned)elem_size(r.type));
         r.off = wrap16((unsigned)r.off + (unsigned)a);
         *o = r;
         return 1;
       }
       rvalue(&r);
-      push_scaled(&c, r.type);
+      push_scaled(o, r.type);
       put_op(IR_ADD);
       *o = r;
       return 1;
