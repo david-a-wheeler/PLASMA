@@ -877,6 +877,23 @@ def summary(name):
 def main():
     os.makedirs(OUT, exist_ok=True)
     print("Measurements of ccish\n")
+    print("Written by tools/measure.py (make measure; make test refreshes"
+          " it).\nOther checks (AGENTS.md's \"Measuring\" says how to use"
+          " each):")
+    for tool, what in (
+            ("tools/fsize.py", "each function's code and frame (-f, the"
+             " largest\n%25sframes first; -c, two listings compared)" % ""),
+            ("tools/gencmp.sh BASE", "does this tree write the same code"
+             " as BASE?"),
+            ("tools/opcount.py BASE", "the ops the run tests take, against"
+             " BASE's"),
+            ("make profile", "where the passes spend their time"),
+            ("tools/opstats.py", "the commonest ops and runs of ops"),
+            ("tools/loops.py", "accesses in loops to globals moved to the"
+             " heap"),
+            ("doc/limits.md", "each limit, with its measured peak")):
+        print("  %-22s %s" % (tool, what))
+    print()
     print("The %s build:" % ("full" if FULL else "small"))
     names = sorted({n for _, files in PROGRAMS for n in files})
     sizes, failed, big, over, fit = {}, False, None, {}, {}
