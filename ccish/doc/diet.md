@@ -170,11 +170,17 @@ Each of these is in git history, with its measurements:
 ## How to measure
 
 1. **Before you change anything,** make a worktree of the current
-   commit at a short path, build it, and keep it as your BASE:
-   `git worktree add --detach /tmp/claude-1000/wb HEAD`, then
-   `make -C /tmp/claude-1000/wb/ccish` (which builds, tests and
-   measures it). ccish's output names are limited to 128 characters,
-   so the path must be short.
+   commit, build it, and keep it as your BASE. Make it at a short
+   path in the allowed area, at the repo root, with a leading comma,
+   like a temporary (AI may create comma files and directories; don't
+   commit it). Don't use /tmp, even though it looks like a scratch
+   area: a session often runs under nono's OS sandbox, where /tmp is
+   write-only, so a worktree there can't be read or built, and one
+   left there can't be read or removed:
+   `git worktree add --detach /home/dwheeler/projects/PLASMA/,wb HEAD`,
+   then `make -C /home/dwheeler/projects/PLASMA/,wb/ccish` (which
+   builds, tests and measures it). ccish's output names are limited
+   to 128 characters, so the path must be short.
 2. **After a change,** `make test` rebuilds what's stale, runs every
    stale test, and refreshes doc/measure.txt and doc/limits.md.
 3. **Read the change:** `git diff doc/measure.txt`. Look first at the
@@ -187,7 +193,7 @@ Each of these is in git history, with its measurements:
    measure.txt is deterministic: the same tree gives the same file, so
    every line that moved, moved because of your change.
 4. **Per function:** `tools/fsize.py -c
-   /tmp/claude-1000/wb/ccish/tools/out/cccomp.named.lst
+   /home/dwheeler/projects/PLASMA/,wb/ccish/tools/out/cccomp.named.lst
    tools/out/cccomp.named.lst` lists each function whose size, ops or
    frame changed.
 5. **Speed:** `make profile` (about 20 seconds) gives each pass's ops
@@ -206,7 +212,8 @@ Every change, before it's committed:
 2. **`make bootstrap`** must end `stages 1, 2 and 3 are the same`:
    ccish compiles itself with itself, three times. Run it after any
    change to a pass.
-3. **Kind A: `tools/gencmp.sh /tmp/claude-1000/wb/ccish`** must end
+3. **Kind A: `tools/gencmp.sh /home/dwheeler/projects/PLASMA/,wb/ccish`**
+   must end
    `gencmp: the same output`: every test's source and ccish's own,
    through both trees' passes, byte for byte, and the four programs
    linked both ways. If it names a difference, your change changed

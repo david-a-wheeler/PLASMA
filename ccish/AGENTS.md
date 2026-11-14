@@ -270,8 +270,14 @@ files of the sessions so far; brought up to date 2026-11-12.)
   an image moves nothing to the heap).
 - **Compare against the previous commit** with a git worktree at a
   short path (ccish's output names are limited to 128 characters, and
-  the scratchpad path is too long): `git worktree add --detach
-  /tmp/claude-1000/wb HEAD`, build it, measure both, remove it after.
+  the scratchpad path is too long), made in the allowed area, at the
+  repo root, with a leading comma, like a temporary (AI may create
+  comma files and directories; don't commit it), and never in /tmp:
+  a session often runs under nono's OS sandbox, where /tmp is
+  write-only, so a worktree there can't be read or built, and one
+  left there can't be read or removed: `git worktree add --detach
+  /home/dwheeler/projects/PLASMA/,wb HEAD`, build it, measure both,
+  remove it after.
 - **Same output?** `tools/gencmp.sh BASE` (BASE: a built ccish
   directory, such as the worktree above; about a second) compiles this
   tree's sources, every test's and ccish's own, with BASE's passes and
