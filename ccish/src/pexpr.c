@@ -1688,26 +1688,27 @@ static void parse_assign(Operand *o, int ir_op, int m0, int h0)
 // After parse_expr() has parsed r, the right operand of o's binary
 // operator ir_op, with o's constant still held back (hold()) because
 // r emitted nothing: fold what can be folded now (a + c and a - c, for
-// o the address constant *addr, or a constant pointer; c + p; c op c;
-// c op x).
+// o an address constant whose kind addr_kind was (it's K_VALUE now,
+// its other fields unchanged), or a constant pointer; c + p; c op c;
+// c op x). addr_kind is -1 if o isn't an address constant.
 // Returns 1 if it did, so the operator needs nothing more, else 0. It
 // is apart from parse_expr() so that its locals aren't in the frame of
 // every level of parse_expr()'s recursion.
-static int fold_held(Operand *o, Operand *rp, int ir_op, Operand *addr)
+static int fold_held(Operand *o, Operand *rp, int ir_op, int addr_kind)
 {
   Operand r = *rp;       // a copy: cheaper to reach, and off the
                          // recursion's frames; *rp is unchanged when
                          // this returns 0
   int a, *p;
-  if (addr || is_pointer(o->type)) {
+  if (addr_kind >= 0 || is_pointer(o->type)) {
     // The left operand is an address constant, or a constant pointer
     // (a cast integer, (char *)0x400): a + c and a - c fold.
     if (r.kind != K_CONST || is_pointer(r.type))
       return 0;
     nheld--;
     p = &o->val;
-    if (addr) {
-      *o = *addr;
+    if (addr_kind >= 0) {
+      o->kind = addr_kind;
       p = &o->off;
     }
     a = (unsigned)r.val * (unsigned)elem_size(o->type);
@@ -1789,8 +1790,11 @@ void parse_expr(int min_prec, Operand *o)
   }
 
   for (;;) {
-    int mark = -1, is_addr = 0, a, f, op;
-    Operand addr;
+    // An address constant's kind, kept while its op is held (-1 if
+    // none): only o's kind changes meanwhile, so it's all fold_held()
+    // needs to put o back, where a copy of o would take 46 bytes in
+    // every level of this recursion's frames.
+    int mark = -1, addr_kind = -1, a, f, op;
     lstart = -1;
     if (TC_IS_ANY_ASSIGN(tok))
       error_in(41 /* "lvalue required as" */,
@@ -1822,8 +1826,7 @@ void parse_expr(int min_prec, Operand *o)
       // operand's code ccgen must know the length of; nor one that may
       // move with an offset already, which takes more than one op.)
       op = addr_op(o, &a, &f);
-      addr = *o;
-      is_addr = 1;
+      addr_kind = o->kind;
       mark = hold(op, a, f);
       o->kind = K_VALUE;        // its value, once put() writes it
     } else {
@@ -1839,7 +1842,7 @@ void parse_expr(int min_prec, Operand *o)
       check_right_const(ir_op, r.val);
 #endif
     if (mark >= 0 && nheld > mark
-        && fold_held(o, &r, ir_op, is_addr ? &addr : NULL))
+        && fold_held(o, &r, ir_op, addr_kind))
       continue;
     // Otherwise the left value is (or, via put(), will be) on the
     // stack below the right one.
