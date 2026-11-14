@@ -122,14 +122,17 @@ _Static_assert(K_VALUE >= 0 && K_VOID >= 0 && K_CONST >= 0 && K_VAR >= 0
                         // static local with no initializer is (at
                         // var_off[], VL_ZAREA); the IR's IR_ZERO_AREA
 
+// An operand, as the parser holds it. Its small fields (the kind and
+// the flags) are char: an Operand is in the frame of nearly every
+// level of the expression parser's recursion, and in its struct copies.
 typedef struct {
-  int kind;
+  char kind;      // K_*: what the operand is
   int type;       // its C type, unqualified. A char value on the stack
                   // is always 0 to 255, so it needs no conversion to
                   // char.
   int quals;      // a place: its object's qualifiers (Q_CONST,
                   // Q_VOLATILE), which type leaves out
-  int nonice;     // K_CONST: not an integer constant expression in C,
+  char nonice;    // K_CONST: not an integer constant expression in C,
                   // because a const variable's value went into it
                   // (const int N = 10; N + 1). It can't size an array
                   // or initialize a global, and 0 isn't a null
@@ -140,17 +143,17 @@ typedef struct {
                   // global), 0 if a frame offset, or 2 + v if off is
                   // an addend to extern global v (var_where())
   int val;        // K_CONST: the value; K_JUMP: the false label
-  int is_bool;    // K_VALUE: known to be 1 or 0 (a comparison, !, &&)
-  int assigned;   // K_VAR, K_ELEM: the result of an assignment to
+  char is_bool;   // K_VALUE: known to be 1 or 0 (a comparison, !, &&)
+  char assigned;  // K_VAR, K_ELEM: the result of an assignment to
                   // the object (K_VAR: only a struct's), so not an
                   // lvalue. Its value, if needed, is read back from
                   // the object.
   // K_ELEM only:
-  int base_arr;   // the base is the address of the array at off, not
+  char base_arr;  // the base is the address of the array at off, not
                   // the pointer in the variable at off
   int idx;        // offset of the index variable, or -1
   int idx_global; // the index variable is a global
-  int idx_char;   // the index variable is a char
+  char idx_char;  // the index variable is a char
   int scale;      // bytes per step of the index
   int disp;       // a constant number of bytes added
   // K_STORE only. The address's code is from IR position m0 to m1,
@@ -158,7 +161,7 @@ typedef struct {
   // is 1 or 0.
   int m0, m1, mend;
   int stype;      // the type of the object stored into
-  int vmask;      // the value needs ANDI 255 to be what was stored
+  char vmask;     // the value needs ANDI 255 to be what was stored
                   // (an int stored into a char)
 } Operand;
 
