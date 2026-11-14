@@ -289,9 +289,11 @@ $ ./cclink -o prog main util && ../src/plvm prog
   holds even for a declaration nothing uses.
 * A function that no object defines must be a CMDSYS function
   (`__cmd_puts` and the rest), which is imported (section 5.3), or a
-  PLASMA import (section 11.1); a program may define its own function
-  of a CMDSYS name, with the same type, and calls then go to it.
-  Anything else used and not defined is an "undefined reference",
+  PLASMA import (section 11.1). Only CMDSYS has `__cmd_` names: a
+  program that defines one gets "only CMDSYS may define a __cmd_
+  name", and a call to one that isn't CMDSYS's (a misspelled
+  `__cmd_strcp`) gets "not a CMDSYS function". Anything else used and
+  not defined is an "undefined reference",
   including a C library function (`strlen`) whose object isn't on the
   link line (section 11.2).
 * `main` (not `static`) in any object is the entry point. A `main`
@@ -1122,8 +1124,9 @@ int puts(const char *s)
 }
 ```
 
-A program may also define its own function of a CMDSYS name, with
-the same type, and calls then go to it instead of the import. The
+A program can't define its own function of a CMDSYS name: the
+linker reports "only CMDSYS may define a __cmd_ name" (C reserves
+`__` names to the implementation), so a call is always CMDSYS's. The
 compiler's own calls use these names too: a struct copy calls
 `__cmd_memcpy` (section 4.7).
 

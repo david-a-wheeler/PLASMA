@@ -1528,9 +1528,10 @@ static void push_place_addr(Operand *o)
     push_address(o);
 }
 
-// The function a struct copy calls: __cmd_memcpy(dst, src, n), from CMDSYS
-// unless the program defines its own, which must take C's arguments in
-// C's order. A value it returns is dropped.
+// The function a struct copy calls: __cmd_memcpy(dst, src, n), from
+// CMDSYS (no program may define it: cclink's error 301), as declared
+// here unless the program declares it, with C's arguments in C's
+// order. A value it returns is dropped.
 static int copy_func(void)
 {
   int f = find_func(ID_MEMCPY);
