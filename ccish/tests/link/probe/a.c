@@ -5,7 +5,7 @@
 // at slot 1, so both are pushed past the slots taken, and b.c finds
 // this object's names past their starting slot. (A new MAX_GSYMS needs
 // new names here.)
-// listing-has: ; shared names: 9 of 307 slots, 67 of 3000 name bytes
+// listing-has: ; shared names: 9 of 307 slots, 79 of 3000 name bytes
 int f108042 = 10;
 
 // One more than n.

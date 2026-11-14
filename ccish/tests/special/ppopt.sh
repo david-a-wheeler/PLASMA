@@ -15,13 +15,13 @@ int gone = 1;
 #endif
 int main()
 {
-  __puti(SEVEN); __putc(' '); __puti(TWO); __putc(' '); __puti(ONE); __putc(' ');
+  __cmd_puti(SEVEN); __cmd_putc(' '); __cmd_puti(TWO); __cmd_putc(' '); __cmd_puti(ONE); __cmd_putc(' ');
 #ifdef GONE
-  __puti(9);
+  __cmd_puti(9);
 #else
-  __puti(0);
+  __cmd_puti(0);
 #endif
-  __putc(' '); __puti(__CCISH__ * FROM_INC); __putln();
+  __cmd_putc(' '); __cmd_puti(__CCISH__ * FROM_INC); __cmd_putln();
   return 0;
 }
 EOF

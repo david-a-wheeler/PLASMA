@@ -44,56 +44,56 @@ int main()
   lp = &l;
   lp->a = 1000;
   lp->c = 300;                    // a char keeps the low byte: 44
-  __puti(l.a); __putc(' ');
-  __puti(l.c); __putc(' ');
-  __puti(sizeof(struct later)); __putc(' ');
-  __puti(local_tag()); __putc(' ');
-  __puti(sizeof(struct later)); __putln();
+  __cmd_puti(l.a); __cmd_putc(' ');
+  __cmd_puti(l.c); __cmd_putc(' ');
+  __cmd_puti(sizeof(struct later)); __cmd_putc(' ');
+  __cmd_puti(local_tag()); __cmd_putc(' ');
+  __cmd_puti(sizeof(struct later)); __cmd_putln();
 
   solo.x = 2;
   o.in.x = 3;
   o.in.tag = 'T';
   o.z = 4;
-  __puti(sizeof solo); __putc(' ');
-  __puti(sizeof(struct outer)); __putc(' ');
-  __puti((char *)&o.z - (char *)&o); __putc(' ');
-  __puti(solo.x + o.in.x + o.z); __putc(' ');
-  __putc(cp->in.tag); __putln();
+  __cmd_puti(sizeof solo); __cmd_putc(' ');
+  __cmd_puti(sizeof(struct outer)); __cmd_putc(' ');
+  __cmd_puti((char *)&o.z - (char *)&o); __cmd_putc(' ');
+  __cmd_puti(solo.x + o.in.x + o.z); __cmd_putc(' ');
+  __cmd_putc(cp->in.tag); __cmd_putln();
 
   anon.u = 6;
   anon.v = anon.u * 7;
-  __puti(anon.v); __putc(' ');
-  __puti(sizeof anon); __putln();
+  __cmd_puti(anon.v); __cmd_putc(' ');
+  __cmd_puti(sizeof anon); __cmd_putln();
 
   // through a call: its address is on the stack
   get()->z = 10;
-  __puti((*get()).z); __putc(' ');
+  __cmd_puti((*get()).z); __cmd_putc(' ');
   get()->arr[i] = 20;
-  __puti(get()->arr[1] + get()->in.x); __putc(' ');
-  __puti(calls); __putln();
+  __cmd_puti(get()->arr[1] + get()->in.x); __cmd_putc(' ');
+  __cmd_puti(calls); __cmd_putln();
 
   // array members, through a variable and a pointer
   o.arr[0] = 1;
   o.arr[2] = 3;
   p->arr[i] += 5;
   for (i = 0; i < 3; i++) {
-    __puti(p->arr[i]); __putc(' ');
+    __cmd_puti(p->arr[i]); __cmd_putc(' ');
   }
-  __puti(p[0].arr[2]); __putln();
+  __cmd_puti(p[0].arr[2]); __cmd_putln();
 
   // ++, -- and op= on members
   p->z++;
   ++p->z;
   o.in.x--;
   p->in.x *= 10;
-  __puti(o.z); __putc(' ');
-  __puti(o.in.x); __putc(' ');
-  __puti(p->z++ + 1); __putc(' ');
-  __puti(o.z); __putc(' ');
-  __puti(*&p->z); __putc(' ');
-  __puti(&p->arr[2] - &o.arr[0]); __putln();
+  __cmd_puti(o.z); __cmd_putc(' ');
+  __cmd_puti(o.in.x); __cmd_putc(' ');
+  __cmd_puti(p->z++ + 1); __cmd_putc(' ');
+  __cmd_puti(o.z); __cmd_putc(' ');
+  __cmd_puti(*&p->z); __cmd_putc(' ');
+  __cmd_puti(&p->arr[2] - &o.arr[0]); __cmd_putln();
   for (struct later *q = &l; q; q = 0)
-    __puti(q->a);
-  __putln();
+    __cmd_puti(q->a);
+  __cmd_putln();
   return 0;
 }

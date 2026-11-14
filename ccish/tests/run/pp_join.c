@@ -38,15 +38,15 @@ int main()
   dc = 8;
   char s4[] = "ij   \
    kl";
-  __puti(SUM6(1, 2, 3, 4, 5, 6)); __putc(' ');
-  __puti(value); __putc(' ');
-  __puti(sizeof s1 - 1); __putc(' ');
-  __puti(c1); __putc(' ');
-  __puti(c2); __putc(' ');
-  __puti(sizeof s3 - 1); __putc(' ');
-  __puti(dc); __putc(' ');
-  __puti(sizeof s4 - 1); __putc(' ');
-  __puti(sizeof s5 - 1); __putc(' ');
-  __puti(sizeof s6 - 1); __putln();
+  __cmd_puti(SUM6(1, 2, 3, 4, 5, 6)); __cmd_putc(' ');
+  __cmd_puti(value); __cmd_putc(' ');
+  __cmd_puti(sizeof s1 - 1); __cmd_putc(' ');
+  __cmd_puti(c1); __cmd_putc(' ');
+  __cmd_puti(c2); __cmd_putc(' ');
+  __cmd_puti(sizeof s3 - 1); __cmd_putc(' ');
+  __cmd_puti(dc); __cmd_putc(' ');
+  __cmd_puti(sizeof s4 - 1); __cmd_putc(' ');
+  __cmd_puti(sizeof s5 - 1); __cmd_putc(' ');
+  __cmd_puti(sizeof s6 - 1); __cmd_putln();
   return 0;
 }

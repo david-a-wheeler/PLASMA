@@ -1,16 +1,16 @@
 // The standard C names belong to the program: CMDSYS's functions are
-// __puts, __memset and so on (approach.md decision 35), so a program
+// __cmd_puts, __cmd_memset and so on (approach.md decision 35), so a program
 // can define puts and memset with C's meanings beside them. C's memset
 // fills bytes (xxx), where CMDSYS's fills a 16-bit pattern (x, NUL, x);
 // C's puts takes a C string and adds a newline, where CMDSYS's takes a
 // PLASMA string and adds none.
-// listing-lacks: __memset
-// listing-has: __puts (import)
+// listing-lacks: __cmd_memset
+// listing-has: __cmd_puts (import)
 int puts(const char *s)
 {
   while (*s)
-    __putc(*s++);
-  __putc('\n');
+    __cmd_putc(*s++);
+  __cmd_putc('\n');
   return 0;
 }
 
@@ -29,7 +29,7 @@ int main(void)
   b[3] = 0;
   puts(b);
   puts("ok");
-  __puts(pstr("pl"));
-  __putln();
+  __cmd_puts(pstr("pl"));
+  __cmd_putln();
   return 0;
 }

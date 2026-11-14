@@ -1,2 +1,2 @@
 
-int main() { __puti(__putln()); return 0; }
+int main() { __cmd_puti(__cmd_putln()); return 0; }

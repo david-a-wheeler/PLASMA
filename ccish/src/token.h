@@ -16,7 +16,7 @@
 #define SUFFIX_I     ".i"
 #define SUFFIX_NAM   ".nam"
 #define TOK_VERSION  8        // NAME.i's format, after its "CTK"
-#define NAM_VERSION  2        // NAME.nam's, in its stamp line
+#define NAM_VERSION  3        // NAME.nam's, in its stamp line
 
 // The codes of NAME.i, one byte each. A one-character token ($20-$7E)
 // is itself. The parser's tokens are these codes: TC_END at the end,

@@ -11,13 +11,13 @@ void showu(unsigned n)
 {
   if (n >= 10)
     showu(n / 10);
-  __putc('0' + n % 10);
+  __cmd_putc('0' + n % 10);
 }
 
 void show(unsigned n)
 {
   showu(n);
-  __putc(' ');
+  __cmd_putc(' ');
 }
 
 int main()
@@ -26,21 +26,21 @@ int main()
   unsigned one = 1, s0 = 0, s1 = 1, s8 = 8, s15 = 15, s3 = 3, t = 30000;
 
   show(65535); show(40000); show(0);
-  __putln();
+  __cmd_putln();
   show(u / d); show(u % d); show(w / d7); show(w % d7);
-  __putln();
+  __cmd_putln();
   show(w / big); show(w % big); show(t / big); show(t % big);
   show(big / big); show(big % big); show(w / x); show(w % x);
-  __putln();
+  __cmd_putln();
   show(w / one); show(w % one);
-  __putln();
+  __cmd_putln();
   show(w >> s0); show(w >> s1); show(w >> s8); show(w >> s15);
   show(u >> s3);
-  __putln();
+  __cmd_putln();
   u /= d; show(u);
   u %= 1000; show(u);
   s3 = 2;
   u >>= s3; show(u);
-  __putln();
+  __cmd_putln();
   return 0;
 }

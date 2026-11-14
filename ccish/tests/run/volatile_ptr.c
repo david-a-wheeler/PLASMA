@@ -37,14 +37,14 @@ void f4(void)
 
 int main()
 {
-  __puti(f1());
-  __putc(' ');
-  __puti(f2());
-  __putc(' ');
-  __puti(f3());
-  __putc(' ');
+  __cmd_puti(f1());
+  __cmd_putc(' ');
+  __cmd_puti(f2());
+  __cmd_putc(' ');
+  __cmd_puti(f3());
+  __cmd_putc(' ');
   f4();
-  __puti(buf[0]);
-  __putln();
+  __cmd_puti(buf[0]);
+  __cmd_putln();
   return 0;
 }

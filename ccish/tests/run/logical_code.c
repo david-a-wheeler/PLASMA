@@ -85,22 +85,22 @@ int g7(int a, int b, int c)
 
 int main()
 {
-  __puti(g1(6, 0, 0)); __puti(g1(6, 1, 0)); __puti(g1(6, 1, 1));
-  __puti(g1(5, 0, 1));
-  __putln();
-  __puti(g2(1, 1, 0)); __puti(g2(1, 0, 0)); __puti(g2(0, 1, 1));
-  __puti(g2(0, 0, 0));
-  __putln();
-  __puti(g3(1, 1)); __puti(g3(1, 0)); __puti(g3(0, 1));
-  __putln();
-  __puti(g4(2, 2)); __puti(g4(3, 3)); __puti(g4(2, 3));
-  __putln();
-  __puti(g5(0, 0)); __puti(g5(1, 0)); __puti(g5(0, 2));
-  __putln();
-  __puti(g6(3, 9)); __puti(g6(2, 3)); __puti(g6(2, 2));
-  __putln();
-  __puti(g7(0, 1, 1)); __puti(g7(1, 0, 0)); __puti(g7(1, 1, 0));
-  __puti(g7(1, 0, 1));
-  __putln();
+  __cmd_puti(g1(6, 0, 0)); __cmd_puti(g1(6, 1, 0)); __cmd_puti(g1(6, 1, 1));
+  __cmd_puti(g1(5, 0, 1));
+  __cmd_putln();
+  __cmd_puti(g2(1, 1, 0)); __cmd_puti(g2(1, 0, 0)); __cmd_puti(g2(0, 1, 1));
+  __cmd_puti(g2(0, 0, 0));
+  __cmd_putln();
+  __cmd_puti(g3(1, 1)); __cmd_puti(g3(1, 0)); __cmd_puti(g3(0, 1));
+  __cmd_putln();
+  __cmd_puti(g4(2, 2)); __cmd_puti(g4(3, 3)); __cmd_puti(g4(2, 3));
+  __cmd_putln();
+  __cmd_puti(g5(0, 0)); __cmd_puti(g5(1, 0)); __cmd_puti(g5(0, 2));
+  __cmd_putln();
+  __cmd_puti(g6(3, 9)); __cmd_puti(g6(2, 3)); __cmd_puti(g6(2, 2));
+  __cmd_putln();
+  __cmd_puti(g7(0, 1, 1)); __cmd_puti(g7(1, 0, 0)); __cmd_puti(g7(1, 1, 0));
+  __cmd_puti(g7(1, 0, 1));
+  __cmd_putln();
   return 0;
 }

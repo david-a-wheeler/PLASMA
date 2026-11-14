@@ -25,13 +25,13 @@ int pbet(int k)
 
 int main()
 {
-  __puti(vbet('5'));
-  __putc(' ');
-  __puti(pbet('5'));
-  __putc(' ');
-  __puti(vbet('9'));
-  __putc(' ');
-  __puti(pbet('9'));
-  __putln();
+  __cmd_puti(vbet('5'));
+  __cmd_putc(' ');
+  __cmd_puti(pbet('5'));
+  __cmd_putc(' ');
+  __cmd_puti(vbet('9'));
+  __cmd_putc(' ');
+  __cmd_puti(pbet('9'));
+  __cmd_putln();
   return 0;
 }

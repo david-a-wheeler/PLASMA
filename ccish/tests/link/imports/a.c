@@ -31,9 +31,9 @@ extern struct t_cmdsys cmdsys __asm__("CMDSYS");
 
 int main()
 {
-  __puti(b_version() >> 8); __putc(' ');
-  __puti(fileio.open(pstr("nosuchfile"))); __putc(' ');
-  __puti(cmdsys.sysver & 255);
-  __putln();
+  __cmd_puti(b_version() >> 8); __cmd_putc(' ');
+  __cmd_puti(fileio.open(pstr("nosuchfile"))); __cmd_putc(' ');
+  __cmd_puti(cmdsys.sysver & 255);
+  __cmd_putln();
   return 0;
 }

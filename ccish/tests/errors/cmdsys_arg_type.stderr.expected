@@ -1,1 +1,1 @@
-:2: error 47: pointer from integer without a cast in argument 1 of '__puts'
+:2: error 47: pointer from integer without a cast in argument 1 of '__cmd_puts'

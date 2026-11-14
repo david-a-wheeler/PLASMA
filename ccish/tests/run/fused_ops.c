@@ -45,14 +45,14 @@ int word_at_k(void)
 
 int main()
 {
-  __puti(plus100(1)); __putc(' ');
-  __puti(minus100(1)); __putc(' ');
-  __puti(plus_minus7(10)); __putc(' ');
-  __puti(minus_minus9(10)); __putc(' ');
-  __puti(minus_minus1(10)); __putc(' ');
-  __puti(sum(3, 4)); __putc(' ');
-  __puti(plus_g(2)); __putc(' ');
-  __puti(word_at_k());
-  __putln();
+  __cmd_puti(plus100(1)); __cmd_putc(' ');
+  __cmd_puti(minus100(1)); __cmd_putc(' ');
+  __cmd_puti(plus_minus7(10)); __cmd_putc(' ');
+  __cmd_puti(minus_minus9(10)); __cmd_putc(' ');
+  __cmd_puti(minus_minus1(10)); __cmd_putc(' ');
+  __cmd_puti(sum(3, 4)); __cmd_putc(' ');
+  __cmd_puti(plus_g(2)); __cmd_putc(' ');
+  __cmd_puti(word_at_k());
+  __cmd_putln();
   return 0;
 }

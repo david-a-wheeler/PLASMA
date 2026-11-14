@@ -116,9 +116,9 @@ static char xl_callname[] = { 'C' | 0x80, 'A' | 0x80, 'L' | 0x80, 'L' };
 static int xl_noopen(char *name)
 {
   xl_say();
-  __puts(pstr("can't open "));
-  __puts(name);
-  __putln();
+  __cmd_puts(pstr("can't open "));
+  __cmd_puts(name);
+  __cmd_putln();
   return 1;
 }
 
@@ -174,8 +174,8 @@ static int xl_run(void)
     }
   if (!a.vm) {
     xl_say();
-    __puts(pstr("doesn't know this VM yet"));
-    __putln();
+    __cmd_puts(pstr("doesn't know this VM yet"));
+    __cmd_putln();
     return 1;
   }
   cl = xl_sys.cmdline;
@@ -184,8 +184,8 @@ static int xl_run(void)
     path[i] = cl[i];
   path[0] = (char)(i - 1);
   if (path[0] == 0) {
-    __puts(pstr("usage: +XLOAD [-V] PROGRAM [ARGS]"));
-    __putln();
+    __cmd_puts(pstr("usage: +XLOAD [-V] PROGRAM [ARGS]"));
+    __cmd_putln();
     return 2;
   }
   a.name = path;
@@ -217,14 +217,14 @@ static int xl_run(void)
   need = xl_n * (unsigned)a.esize + xl_d + xl_z;
   if (a.vm != XL_APPLE128)
     need += xl_c;
-  end = (unsigned char *)__heapmark();
+  end = (unsigned char *)__cmd_heapmark();
   t = zero > end ? zero : end;
   if (t + need > zend)
     t = top > end ? top : end;
-  if ((unsigned)(t + need + 512) - (unsigned)end > (unsigned)__heapavail()) {
+  if ((unsigned)(t + need + 512) - (unsigned)end > (unsigned)__cmd_heapavail()) {
     xl_say();
-    __puts(pstr("not enough memory"));
-    __putln();
+    __cmd_puts(pstr("not enough memory"));
+    __cmd_putln();
     return xl_close2();
   }
 
@@ -242,8 +242,8 @@ static int xl_run(void)
     if (!a.call || !a.aux || aux2 < a.aux + code
         || aux2 < *(unsigned *)(e + 3) + 16 || xl_auxfit(aux2, xl_c) != aux2) {
       xl_say();
-      __puts(pstr("not enough aux memory"));
-      __putln();
+      __cmd_puts(pstr("not enough aux memory"));
+      __cmd_putln();
       return xl_close2();
     }
     code = a.aux;               /* the program's, while a.aux is ours */
@@ -260,16 +260,16 @@ static int xl_run(void)
     return 1;
   if (a.vm == XL_APPLE128)
     a.aux = code;
-  __memset(t + xl_n * (unsigned)a.esize + xl_d, 0, xl_z);
+  __cmd_memset(t + xl_n * (unsigned)a.esize + xl_d, 0, xl_z);
   /* Move the heap's mark above the program and the second part while
    * the program loads. On the 128K VM the JIT compiles in scratch
    * memory at the mark (src/libsrc/jitcore.pla), and FILEIO's read,
    * which loading calls dozens of times, comes to be compiled. (The
    * second part sets the mark to the program's end when it's done.) */
   e = t + need > top ? t + need : top;
-  end = (unsigned char *)__heapmark();
-  if (e > end && (unsigned)(e - end) <= (unsigned)__heapavail())
-    __heapalloc((unsigned)(e - end));
+  end = (unsigned char *)__cmd_heapmark();
+  if (e > end && (unsigned)(e - end) <= (unsigned)__cmd_heapavail())
+    __cmd_heapalloc((unsigned)(e - end));
   entry = (int (*)(struct xl_args *))(void *)t;
   if (entry(&a))
     return 1;

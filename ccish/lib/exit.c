@@ -3,7 +3,7 @@
  * 5.5). On an Apple II it makes main return
  * status, from wherever exit was called, so that init returns
  * -(status & 255) to CMD. When exit is linked, cclink's init runs
- * __exitcap's first routine (cap) just before it calls main. On both
+ * _exitcap's first routine (cap) just before it calls main. On both
  * VMs, ICAL (or ICALX) and CALL (or CALLX) push the same frame, the
  * caller's IP and a JSR's return, so cap runs at the very stack pointer
  * main runs at, and main's call frame stays intact above it until main
@@ -41,7 +41,7 @@
 #define SV_END    6
 /* A 0 byte in cap, its LDA's address's high byte: a BRK, for plvm. */
 #define BRK_AT    4
-unsigned char __exitcap[AREA + SV_END] = {
+unsigned char _exitcap[AREA + SV_END] = {
   /* cap: save IFP, PP, X and the stack pointer. */
   0xA0, AREA + SV_END - 1,         /* LDY #FP+3 */
   0xB9, 0xE0 - (AREA + SV_FP), 0x00, /* fp: LDA $E0-FP,Y (BRK_AT: 0) */
@@ -86,9 +86,9 @@ unsigned char __exitcap[AREA + SV_END] = {
 void exit(int status)
 {
   if (!ON_APPLE) {
-    __putc(1);
-    __puti(status);
-    ((void (*)(void))(void *)(__exitcap + BRK_AT))();
+    __cmd_putc(1);
+    __cmd_puti(status);
+    ((void (*)(void))(void *)(_exitcap + BRK_AT))();
   }
-  ((void (*)(int))(void *)(__exitcap + RST))(status);
+  ((void (*)(int))(void *)(_exitcap + RST))(status);
 }

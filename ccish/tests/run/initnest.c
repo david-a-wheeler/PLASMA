@@ -21,10 +21,10 @@ void show(int *p, int n)
 {
   int i;
   for (i = 0; i < n; i++) {
-    __puti(p[i]);
-    __putc(' ');
+    __cmd_puti(p[i]);
+    __cmd_putc(' ');
   }
-  __putln();
+  __cmd_putln();
 }
 
 int main()
@@ -40,8 +40,8 @@ int main()
   show(a, 3);
   show(&x, 1);
   for (i = 0; i < 6; i++)
-    __putc(cs[i / 3][i % 3] ? cs[i / 3][i % 3] : '.');
-  __putln();
+    __cmd_putc(cs[i / 3][i % 3] ? cs[i / 3][i % 3] : '.');
+  __cmd_putln();
   show(&lm[0][0], 4);
   show(&lmix[0].x, 6);
   return 0;

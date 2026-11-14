@@ -9,10 +9,10 @@ int f108019(int n) { return n - f108028; }
 
 int main()
 {
-  __puti(f108018(1)); __putc(' ');
-  __puti(f108042); __putc(' ');
-  __puti(f108050(3)); __putc(' ');
-  __puti(f108019(10));
-  __putln();
+  __cmd_puti(f108018(1)); __cmd_putc(' ');
+  __cmd_puti(f108042); __cmd_putc(' ');
+  __cmd_puti(f108050(3)); __cmd_putc(' ');
+  __cmd_puti(f108019(10));
+  __cmd_putln();
   return 0;
 }

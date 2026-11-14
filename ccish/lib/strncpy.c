@@ -8,6 +8,6 @@ char *strncpy(char *d, const char *s, size_t n)
   char *p = d;
   for (; n && *s; n--)
     *p++ = *s++;
-  __memset(p, 0, n);
+  __cmd_memset(p, 0, n);
   return d;
 }

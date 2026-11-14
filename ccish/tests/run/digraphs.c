@@ -2,8 +2,8 @@
 int one() <% return 1; %>   /* a block comment
                                spanning lines */
 int main() <%
-  __puti(one() // a line comment inside an expression
+  __cmd_puti(one() // a line comment inside an expression
        + /* here too */ 2);
-  __putln();
+  __cmd_putln();
   return 0;
 %>

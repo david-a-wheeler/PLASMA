@@ -17,13 +17,13 @@ int main()
   q = &p[1];
   *q = 'B';
   for (register int j = 0; j < 3; j++)
-    __putc(buf[j]);
-  __putc(' ');
-  __puti(sum); __putc(' ');
+    __cmd_putc(buf[j]);
+  __cmd_putc(' ');
+  __cmd_puti(sum); __cmd_putc(' ');
   {
     register char c = 'z';
-    __putc(c);
+    __cmd_putc(c);
   }
-  __putln();
+  __cmd_putln();
   return 0;
 }

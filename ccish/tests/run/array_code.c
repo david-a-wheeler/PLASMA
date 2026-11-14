@@ -31,15 +31,15 @@ int main()
   b[i]--;
   m[1][0] = 3;
   bump(m, 0);
-  __puti(a[1]);
-  __putc(' ');
-  __puti(a[3]);
-  __putc(' ');
-  __puti(a[2]);
-  __putc(' ');
-  __putc(b[1]);
-  __putc(' ');
-  __puti(m[1][0]);
-  __putln();
+  __cmd_puti(a[1]);
+  __cmd_putc(' ');
+  __cmd_puti(a[3]);
+  __cmd_putc(' ');
+  __cmd_puti(a[2]);
+  __cmd_putc(' ');
+  __cmd_putc(b[1]);
+  __cmd_putc(' ');
+  __cmd_puti(m[1][0]);
+  __cmd_putln();
   return 0;
 }

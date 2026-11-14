@@ -21,8 +21,8 @@ const char *names[] = {"zero", "one"};
 
 void show(int n)
 {
-  __puti(n);
-  __putc(' ');
+  __cmd_puti(n);
+  __cmd_putc(' ');
 }
 
 int len(char *s)
@@ -74,6 +74,6 @@ int main()
   show(p[1]);
   s = x ? q : names[0];
   show(s[0]);
-  __putln();
+  __cmd_putln();
   return 0;
 }

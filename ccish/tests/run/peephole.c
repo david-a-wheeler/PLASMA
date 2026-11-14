@@ -12,5 +12,5 @@ void main()
   int x, y;
   x = -5;
   y = x + 1;
-  __puti(x); __putc(' '); __puti(y); __putln();
+  __cmd_puti(x); __cmd_putc(' '); __cmd_puti(y); __cmd_putln();
 }

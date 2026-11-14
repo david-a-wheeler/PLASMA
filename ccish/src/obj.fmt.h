@@ -31,6 +31,6 @@ enum { REC_LINE = 'L', REC_NAME = 'N', REC_WORD = 'W', REC_SECOND = 'X',
 // with no code, and cclink imports them (OBJECT.md).
 enum { HELP_UDIV, HELP_UMOD, HELP_USHR, NHELPERS };
 #define NHELP_CMDSYS  4
-#define HELP_CMDSYS_NAMES  "__isult", "__isuge", "__isugt", "__isule"
+#define HELP_CMDSYS_NAMES  "__cmd_isult", "__cmd_isuge", "__cmd_isugt", "__cmd_isule"
 
 #endif

@@ -8,6 +8,6 @@ int main()
 {
   one[0] = 1;
   two[0] = 2;
-  __puts(pstr("ran"));
+  __cmd_puts(pstr("ran"));
   return 0;
 }

@@ -21,8 +21,8 @@ int top(void) { int i; for (i = 32760; i <= 32766; i++) ; return i; }
 int never(void) { int i; for (i = 9; i < 5; i++) ; return i; }
 int main(void)
 {
-  __puti(up()); __putc(' '); __puti(le()); __putc(' '); __puti(lt3()); __putc(' ');
-  __puti(dn()); __putc(' '); __puti(ge()); __putc(' '); __puti(big()); __putc(' ');
-  __puti(top()); __putc(' '); __puti(never()); __putln();
+  __cmd_puti(up()); __cmd_putc(' '); __cmd_puti(le()); __cmd_putc(' '); __cmd_puti(lt3()); __cmd_putc(' ');
+  __cmd_puti(dn()); __cmd_putc(' '); __cmd_puti(ge()); __cmd_putc(' '); __cmd_puti(big()); __cmd_putc(' ');
+  __cmd_puti(top()); __cmd_putc(' '); __cmd_puti(never()); __cmd_putln();
   return 0;
 }

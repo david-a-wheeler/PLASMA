@@ -650,7 +650,7 @@ static void parse_primary(Operand *o)
     }
     f = find_func(name);
     if (f < 0 && (c = find_cmdsys(name)) >= 0) {
-      f = add_func(name);       // fp = __puti: declared by use
+      f = add_func(name);       // fp = __cmd_puti: declared by use
       declare_cmdsys(f, c);
     }
     if (f >= 0) {
@@ -1528,7 +1528,7 @@ static void push_place_addr(Operand *o)
     push_address(o);
 }
 
-// The function a struct copy calls: __memcpy(dst, src, n), from CMDSYS
+// The function a struct copy calls: __cmd_memcpy(dst, src, n), from CMDSYS
 // unless the program defines its own, which must take C's arguments in
 // C's order. A value it returns is dropped.
 static int copy_func(void)

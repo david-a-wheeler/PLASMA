@@ -1,5 +1,5 @@
 /* start.c: the startup for main(argc, argv) (doc/bootstrap-test.md,
- * R7). When main has two parameters, cclink's init calls __start, which
+ * R7). When main has two parameters, cclink's init calls _start, which
  * splits CMDSYS's command line at spaces and calls main. argv[0] is the
  * module's name, without the "+" CMD's command line has on an Apple II
  * when CMD runs the module itself. */
@@ -14,7 +14,7 @@ static char *args[MAX_ARGS + 1];
 /* Split the command line into args[] and call main. The line is a
  * PLASMA string; moving its text down over its length byte makes room
  * for the last NUL without a second buffer. */
-int __start(void)
+int _start(void)
 {
   char *d = cmdsys.cmdline;
   char *s = d + 1;

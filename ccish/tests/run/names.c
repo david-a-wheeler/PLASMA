@@ -12,14 +12,14 @@ int first(int first_param)
 {
   int local_only_in_first = first_param * 2;
   int count = 5;                  // hides the global
-  local_only_in_first += helper_called_early(__sext(count));
+  local_only_in_first += helper_called_early(__cmd_sext(count));
   return local_only_in_first + count;
 }
 
 int second(int x)
 {
   int another_local_name = x + 1;
-  int y = later_too(__toupper(another_local_name));
+  int y = later_too(__cmd_toupper(another_local_name));
   return y + count;               // the global
 }
 
@@ -37,9 +37,9 @@ int later_too(int z)
 int main()
 {
   int local_only_in_first = 7;    // the same name, a new variable
-  __puti(first(4)); __putc(' ');
-  __puti(second(1)); __putc(' ');
-  __puti(__sext(local_only_in_first + count));
-  __putln();
+  __cmd_puti(first(4)); __cmd_putc(' ');
+  __cmd_puti(second(1)); __cmd_putc(' ');
+  __cmd_puti(__cmd_sext(local_only_in_first + count));
+  __cmd_putln();
   return 0;
 }

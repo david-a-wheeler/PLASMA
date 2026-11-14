@@ -1,0 +1,1 @@
+only CMDSYS may define a __cmd_ name: '__cmd_puti'

@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <fileio.h>
 
-char *__path(const char *path);
+char *_path(const char *path);
 
 /* On an Apple II, FILEIO opens a file only into a free 1K I/O buffer:
  * it has one, ProDOS's system buffer at $0800, and more only from
@@ -21,19 +21,19 @@ static int nbufs = 1;
 static int ftype = 6, faux;
 
 /* Create files of ProDOS type type, aux type aux, from now on. */
-void __filetype(int type, int aux)
+void _filetype(int type, int aux)
 {
   ftype = type;
   faux = aux;
 }
 
 /* Open path: mode "r..." to read, "w..." to write (destroying and
- * creating it first, as a binary file of __filetype()'s type); NULL if that fails, or for any
+ * creating it first, as a binary file of _filetype()'s type); NULL if that fails, or for any
  * other mode. FILEIO opens a file for both, so "r" and "w" differ only
  * in the create. */
 FILE *fopen(const char *path, const char *mode)
 {
-  char *p = __path(path);
+  char *p = _path(path);
   int ref;
   if (!p)
     return NULL;

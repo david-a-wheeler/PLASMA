@@ -7,6 +7,6 @@ int getc(FILE *f)
 {
   char c;
   if ((int)f < 0)
-    return __getc();
+    return __cmd_getc();
   return fileio.read((int)f, &c, 1) ? c : EOF;
 }

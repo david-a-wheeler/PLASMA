@@ -107,7 +107,7 @@ static int xl_jit;
 /* Print XLOAD's prefix for a message. */
 static void xl_say(void)
 {
-  __puts(pstr("XLOAD: "));
+  __cmd_puts(pstr("XLOAD: "));
 }
 
 /* Report what's wrong (only the first time), and stop the source. */
@@ -115,8 +115,8 @@ static void xl_fail(char *msg)
 {
   if (!xl_err) {
     xl_say();
-    __puts(msg);
-    __putln();
+    __cmd_puts(msg);
+    __cmd_putln();
   }
   xl_err = 1;
   xl_in = xl_ff;
@@ -162,7 +162,7 @@ static void xl_read(unsigned char *to, unsigned n)
     k = (unsigned)(xl_end - xl_in);
     if (k > n)
       k = n;
-    __memcpy(to, xl_in, k);
+    __cmd_memcpy(to, xl_in, k);
     xl_in += k;
     to += k;
     n -= k;
@@ -207,7 +207,7 @@ static void xl_putname(void)
 {
   int i = 0;
   do
-    __putc(xl_name[i] & 0x7F);
+    __cmd_putc(xl_name[i] & 0x7F);
   while (xl_name[i++] & 0x80);
 }
 
@@ -219,9 +219,9 @@ static int xl_names(int verbose)
   while (xl_getname())
     if (!xl_sys.lookupsym(xl_name)) {
       xl_say();
-      __puts(pstr("needs the module "));
+      __cmd_puts(pstr("needs the module "));
       xl_putname();
-      __putln();
+      __cmd_putln();
       return 0;
     }
   xl_nimp = 0;
@@ -229,18 +229,18 @@ static int xl_names(int verbose)
     a = xl_sys.lookupsym(xl_name);
     if (!a || xl_nimp == XL_MAXIMP) {
       xl_say();
-      __puts(pstr("can't import "));
+      __cmd_puts(pstr("can't import "));
       xl_putname();
-      __putln();
+      __cmd_putln();
       return 0;
     }
     if (verbose) {
       xl_say();
-      __puts(pstr("import "));
+      __cmd_puts(pstr("import "));
       xl_putname();
-      __puts(pstr(" $"));
-      __puth(a);
-      __putln();
+      __cmd_puts(pstr(" $"));
+      __cmd_puth(a);
+      __cmd_putln();
     }
     xl_imp[xl_nimp++] = a;
   }

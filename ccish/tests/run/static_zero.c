@@ -9,8 +9,8 @@
 // listing-lacks: heap global
 void show(int n)
 {
-  __puti(n);
-  __putc(' ');
+  __cmd_puti(n);
+  __cmd_putc(' ');
 }
 
 int count(void)
@@ -77,6 +77,6 @@ int main(void)
   show(blocks());
   show(big(7));
   show(big(9));
-  __putln();
+  __cmd_putln();
   return 0;
 }

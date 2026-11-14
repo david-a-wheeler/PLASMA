@@ -1,2 +1,2 @@
 
-int main() { __puts(pstr("\q")); return 0; }
+int main() { __cmd_puts(pstr("\q")); return 0; }

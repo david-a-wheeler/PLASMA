@@ -11,9 +11,9 @@ int fputs(const char *s, FILE *f)
   if ((int)f < 0) {
     for (; *s; s++)
       if (*s == '\n')
-        __putln();
+        __cmd_putln();
       else
-        __putc(*s);
+        __cmd_putc(*s);
     return 0;
   }
   n = strlen(s);

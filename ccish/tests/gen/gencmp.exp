@@ -347,7 +347,7 @@
     ; label 103
     LLW 0
     LLW 2
-    CALL __isule
+    CALL __cmd_isule
     NEG
     LEAVE 4
 

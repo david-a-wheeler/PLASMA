@@ -38,7 +38,7 @@ int main()
   click();
   click();
   click();
-  __puti(ready());
-  __putln();
+  __cmd_puti(ready());
+  __cmd_putln();
   return 0;
 }

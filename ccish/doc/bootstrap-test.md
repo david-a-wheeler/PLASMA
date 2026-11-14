@@ -190,6 +190,10 @@ file with gcc, with ccish on the host, and with ccish on the Apple II.
 
 ### R3. CMDSYS names get a `__` prefix (done, decision 35)
 
+(Since replaced by `__cmd_`, as in `__cmd_puts`: doc/linking.md,
+section 3, and approach.md decision 46. This section records the
+`__` step as it was.)
+
 Today the CMDSYS names are fixed ids 1 to NCMDSYS with PLASMA's
 semantics (`cmdsys_sigs`, src/parse.c): `puts` takes a length-prefixed
 string and adds no newline, `getc()` takes no stream, `memset` fills a

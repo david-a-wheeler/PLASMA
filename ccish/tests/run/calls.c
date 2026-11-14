@@ -6,7 +6,7 @@ int later();                        // the first call fixes the count
 
 void three(int a, int b, int c)
 {
-  __puti(a); __puti(b); __puti(c); __putln();
+  __cmd_puti(a); __cmd_puti(b); __cmd_puti(c); __cmd_putln();
 }
 
 int sum3(int a, int b, int c) { return a + b + c; }
@@ -16,11 +16,11 @@ void nothing() { return; }
 int main()
 {
   three(1, 2, 3);
-  __puti(twice(21)); __putln();
-  __puti(later(4)); __putln();        // declared with ()
-  __puti(sum3(100, twice(10), sum3(1, 2, 3))); __putln();
+  __cmd_puti(twice(21)); __cmd_putln();
+  __cmd_puti(later(4)); __cmd_putln();        // declared with ()
+  __cmd_puti(sum3(100, twice(10), sum3(1, 2, 3))); __cmd_putln();
   nothing();
-  __puti(((1 + (2)) + 3)); __putln();
+  __cmd_puti(((1 + (2)) + 3)); __cmd_putln();
   return 99;                      // the exit status (calls.status)
 }
 

@@ -11,11 +11,11 @@ int main()
   ++i;
   i--;
   --i;
-  __puti(i); __putc(' ');
-  j = i++; __puti(j); __puti(i); __putc(' ');
-  j = ++i; __puti(j); __puti(i); __putc(' ');
-  j = i--; __puti(j); __puti(i); __putc(' ');
-  j = --i; __puti(j); __puti(i); __putc(' ');
-  __puti(-i++); __puti(i); __putln();
+  __cmd_puti(i); __cmd_putc(' ');
+  j = i++; __cmd_puti(j); __cmd_puti(i); __cmd_putc(' ');
+  j = ++i; __cmd_puti(j); __cmd_puti(i); __cmd_putc(' ');
+  j = i--; __cmd_puti(j); __cmd_puti(i); __cmd_putc(' ');
+  j = --i; __cmd_puti(j); __cmd_puti(i); __cmd_putc(' ');
+  __cmd_puti(-i++); __cmd_puti(i); __cmd_putln();
   return 0;
 }

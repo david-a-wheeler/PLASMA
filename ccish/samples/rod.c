@@ -48,7 +48,7 @@ int main(void)
 
   conio.grmode(MIXED);
   conio.gotoxy(MSG_X, MSG_Y);
-  __puts(pstr("Press any key to exit."));
+  __cmd_puts(pstr("Press any key to exit."));
   for (;;) {
     for (w = W_FIRST; w <= W_LAST; w++) {
       for (i = 1; i <= RINGS; i++) {
@@ -75,7 +75,7 @@ int main(void)
   }
 done:
   conio.textmode(0);
-  __puts(pstr("That's all, folks!"));
-  __putln();
+  __cmd_puts(pstr("That's all, folks!"));
+  __cmd_putln();
   return 0;
 }

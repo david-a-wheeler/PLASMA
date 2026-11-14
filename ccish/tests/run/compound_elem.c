@@ -20,21 +20,21 @@ int main()
   a[2] = 2;
   i = 1;
   a[i] += f(&i);
-  __puti(a[1]);
-  __putc(' ');
-  __puti(a[2]);
-  __putc(' ');
-  __puti(i);
-  __putc(' ');
+  __cmd_puti(a[1]);
+  __cmd_putc(' ');
+  __cmd_puti(a[2]);
+  __cmd_putc(' ');
+  __cmd_puti(i);
+  __cmd_putc(' ');
 
   s[2] = 'e';
   c = 2;
   s[c] -= 2;
-  __putc(s[2]);
-  __putc(' ');
+  __cmd_putc(s[2]);
+  __cmd_putc(' ');
 
   a[i] <<= 2;
-  __puti(a[i] += 1);
-  __putln();
+  __cmd_puti(a[i] += 1);
+  __cmd_putln();
   return 0;
 }

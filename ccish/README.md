@@ -61,12 +61,12 @@ ccish [-v] [-m] [-r] [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.
 ```
 $ cat hello.c
 int add(int a, int b) { return a + b; }
-int main(void) { __puts(pstr("Hello")); __puti(add(2, 3)); __putln(); return 0; }
+int main(void) { __cmd_puts(pstr("Hello")); __cmd_puti(add(2, 3)); __cmd_putln(); return 0; }
 $ ./ccish hello.c && ../src/plvm hello
 Hello5
 ```
 
-`__puts` is PLASMA's CMDSYS `puts`, which takes a PLASMA
+`__cmd_puts` is PLASMA's CMDSYS `puts`, which takes a PLASMA
 (length-prefixed) string, so `pstr()` turns the C string literal into
 one. `-o` names the module (by default, the input's name without
 `.c`), `-v` prints a listing of the bytecode, and the `object...`

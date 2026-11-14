@@ -7,7 +7,7 @@
 // listing-has: object tests/out/link/basic_b:
 // listing-has: ; add
 // listing-has: ; helper
-// listing-has: ; shared names: 12 of 307 slots, 80 of 3000 name bytes
+// listing-has: ; shared names: 12 of 307 slots, 92 of 3000 name bytes
 extern int total;                   // defined in b.c
 extern int squares[];               // b.c gives the size
 int add(int n);                     // b.c
@@ -24,12 +24,12 @@ int main()
 {
   add(4);
   add(5);
-  __puti(total); __putc(' ');
-  __puti(*third); __putc(' ');
-  __puti(squares[2]); __putc(' ');
-  __puti(helper(1)); __putc(' ');
-  __puti(b_hidden() + hidden); __putc(' ');
-  __puti(squares[4]);
-  __putln();
+  __cmd_puti(total); __cmd_putc(' ');
+  __cmd_puti(*third); __cmd_putc(' ');
+  __cmd_puti(squares[2]); __cmd_putc(' ');
+  __cmd_puti(helper(1)); __cmd_putc(' ');
+  __cmd_puti(b_hidden() + hidden); __cmd_putc(' ');
+  __cmd_puti(squares[4]);
+  __cmd_putln();
   return 0;
 }

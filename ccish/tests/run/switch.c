@@ -28,19 +28,19 @@ void sign(int v)
 {
   switch (v) {
   case -1:
-    __putc('-');
+    __cmd_putc('-');
     // fall through
   case 0:
-    __putc('0');
+    __cmd_putc('0');
     break;
   case 1:
-    __putc('+');
+    __cmd_putc('+');
     break;
   case 30000:
-    __putc('B');
+    __cmd_putc('B');
     break;
   }
-  __putc(' ');
+  __cmd_putc(' ');
 }
 
 // Copy n words with Duff's device: case labels inside a loop.
@@ -61,45 +61,45 @@ int main()
   int i, a[7] = {1, 2, 3, 4, 5, 6, 7}, b[7] = {0};
   char c = 'q';
 
-  __puti(kind('a')); __puti(kind('z')); __puti(kind('0'));
-  __puti(kind(' ')); __puti(kind('\n')); __puti(kind('?')); __putln();
+  __cmd_puti(kind('a')); __cmd_puti(kind('z')); __cmd_puti(kind('0'));
+  __cmd_puti(kind(' ')); __cmd_puti(kind('\n')); __cmd_puti(kind('?')); __cmd_putln();
 
   for (i = -2; i <= 2; i++)
     sign(i);
   sign(30000);
-  __putln();
+  __cmd_putln();
 
   // nested switches, and break and continue in a loop
   for (i = 0; i < 6; i++) {
     switch (i % 3) {
     case 0:
       switch (i) {
-      case 0: __putc('A'); break;
-      default: __putc('B');
+      case 0: __cmd_putc('A'); break;
+      default: __cmd_putc('B');
       }
-      __putc('.');
+      __cmd_putc('.');
       break;
     case 1:
       continue;               // the loop's next round
     case 2 + sizeof(int) - 2:   // a constant expression: 2
-      __putc('C');
+      __cmd_putc('C');
     }
-    __putc(';');
+    __cmd_putc(';');
   }
-  __putln();
+  __cmd_putln();
 
   copy(b, a, 7);
   for (i = 0; i < 7; i++)
-    __puti(b[i]);
-  __putc(' ');
+    __cmd_puti(b[i]);
+  __cmd_putc(' ');
 
   switch (c) {                    // a char value
-  case 'q': __puts(pstr("q ")); break;
-  case 'Q': __puts(pstr("Q ")); break;
+  case 'q': __cmd_puts(pstr("q ")); break;
+  case 'Q': __cmd_puts(pstr("Q ")); break;
   }
   switch (i) { }                  // no cases
-  switch (i) { default: __putc('D'); }
-  switch (kind('a') + 1) { case 2: __putc('2'); }
-  __putln();
+  switch (i) { default: __cmd_putc('D'); }
+  switch (kind('a') + 1) { case 2: __cmd_putc('2'); }
+  __cmd_putln();
   return 0;
 }

@@ -11,13 +11,13 @@ char *const back = (char *)0x400 - 1;
 int main()
 {
   int i = 5;
-  __puth((int)rows[0]); __putc(' ');
-  __puth((int)rows[1]); __putc(' ');
-  __puth((int)rows[2]); __putc(' ');
-  __puth((int)iw); __putc(' ');
-  __puth((int)back); __putln();
-  __puti((char *)0x500 - (char *)0x400); __putc(' ');
-  __puth((int)((char *)0x400 + i)); __putc(' ');
-  __puth((int)((int *)0x400 + i)); __putln();
+  __cmd_puth((int)rows[0]); __cmd_putc(' ');
+  __cmd_puth((int)rows[1]); __cmd_putc(' ');
+  __cmd_puth((int)rows[2]); __cmd_putc(' ');
+  __cmd_puth((int)iw); __cmd_putc(' ');
+  __cmd_puth((int)back); __cmd_putln();
+  __cmd_puti((char *)0x500 - (char *)0x400); __cmd_putc(' ');
+  __cmd_puth((int)((char *)0x400 + i)); __cmd_putc(' ');
+  __cmd_puth((int)((int *)0x400 + i)); __cmd_putln();
   return 0;
 }

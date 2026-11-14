@@ -1,10 +1,10 @@
 # CCPP.md's example: int main() { return 0; }
 43 54 4b 08     # "CTK", version 8
 80              # int
-04 1a 00        # main, a fixed id: 26
+04 29 00        # main, a fixed id: 41
 28 29 7b        # ( ) {
 98              # return
 05 00 00        # 0
 3b 7d           # ; }
 01              # the next line
-00 21 00 ss ss  # the end: 33 ids (the fixed ones), the checksum
+00 30 00 ss ss  # the end: 48 ids (the fixed ones), the checksum

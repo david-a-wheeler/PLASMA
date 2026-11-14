@@ -59,12 +59,12 @@ static unsigned char xl_stub[] = {
 /* With -V, print a label and a number, in hex if hex. */
 static void xl_show(char *label, int v, int hex)
 {
-  __puts(label);
+  __cmd_puts(label);
   if (hex) {
-    __putc('$');
-    __puth(v);
+    __cmd_putc('$');
+    __cmd_puth(v);
   } else {
-    __puti(v);
+    __cmd_puti(v);
   }
 }
 
@@ -77,9 +77,9 @@ static int xl2_load(struct xl_args *a)
   xl_ref = xl_fio.open(a->name);
   if (!xl_ref) {
     xl_say();
-    __puts(pstr("can't open "));
-    __puts(a->name);
-    __putln();
+    __cmd_puts(pstr("can't open "));
+    __cmd_puts(a->name);
+    __cmd_putln();
     return 1;
   }
   xl_in = xl_end = xl_buf;
@@ -96,30 +96,30 @@ static int xl2_load(struct xl_args *a)
    * init checks), must fit below the frame stack. */
   if ((unsigned)top + 512 < (unsigned)top
       || (unsigned)top + 512
-         > (unsigned)__heapmark() + (unsigned)__heapavail()) {
+         > (unsigned)__cmd_heapmark() + (unsigned)__cmd_heapavail()) {
     xl_say();
-    __puts(pstr("not enough memory"));
-    __putln();
+    __cmd_puts(pstr("not enough memory"));
+    __cmd_putln();
     xl_fio.close(xl_ref);
     return 1;
   }
   if (a->verbose) {
     xl_say();
     if (a->vm == XL_PLVM)
-      __puts(pstr("VM plvm"));
+      __cmd_puts(pstr("VM plvm"));
     else if (a->vm == XL_APPLE64)
-      __puts(pstr("VM Apple 64K"));
+      __cmd_puts(pstr("VM Apple 64K"));
     else
-      __puts(pstr("VM Apple 128K"));
+      __cmd_puts(pstr("VM Apple 128K"));
     xl_show(pstr(", entries JSR "), a->vec, 1);
-    __putln();
+    __cmd_putln();
     xl_say();
     xl_show(pstr("data "), xl_d, 0);
     xl_show(pstr(", zero "), xl_z, 0);
     xl_show(pstr(", code "), xl_c, 0);
     xl_show(pstr(", functions "), xl_n, 0);
     xl_show(pstr(", imports "), xl_nimp, 0);
-    __putln();
+    __cmd_putln();
     xl_say();
     xl_show(pstr("defs "), (int)defs, 1);
     xl_show(pstr(", body "), (int)body, 1);
@@ -127,10 +127,10 @@ static int xl2_load(struct xl_args *a)
     xl_show(pstr(", code "), a->aux ? (int)a->aux : (int)(body + xl_d + xl_z),
             1);
     if (a->aux)
-      __puts(pstr(" (aux)"));
+      __cmd_puts(pstr(" (aux)"));
     xl_show(pstr(", end "), (int)top, 1);
     xl_show(pstr("; XLOAD2 "), (int)xl_handoff, 1);
-    __putln();
+    __cmd_putln();
   }
 
   /* From here on, the first part's memory is the program's. */
@@ -144,27 +144,27 @@ static int xl2_load(struct xl_args *a)
     xl_show(pstr(": address "), xl_nadd, 0);
     xl_show(pstr(", function "), xl_ndef, 0);
     xl_show(pstr(", import "), xl_nimpfix, 0);
-    __putln();
+    __cmd_putln();
     xl_say();
     xl_show(pstr("init "), a->init, 1);
     xl_show(pstr(", free "),
-            (int)((unsigned)__heapmark() + (unsigned)__heapavail()
+            (int)((unsigned)__cmd_heapmark() + (unsigned)__cmd_heapavail()
                   - (unsigned)top), 1);
     if (a->vm != XL_PLVM) {
       xl_show(pstr("; hand-off SP "), (a->spx >> 8) & 255, 1);
       xl_show(pstr(", X "), a->spx & 255, 1);
       xl_show(pstr(", IFP "), a->ifp, 1);
     } else {
-      __puts(pstr("; a plain call"));
+      __cmd_puts(pstr("; a plain call"));
     }
-    __putln();
+    __cmd_putln();
   }
   if (xl_err) {
     if (a->vm == XL_PLVM)
       return 1;                 /* the first part is still there */
     a->init = (int)xl_stub;
   } else {
-    __heaprelease(top);
+    __cmd_heaprelease(top);
   }
   if (a->vm != XL_PLVM) {
     /* The hand-off: the capture was 8 bytes below init's stack, on

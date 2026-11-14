@@ -251,8 +251,8 @@ Each helper entry:
 | *n* bytes | name, for the listing (`udiv`) |
 
 Numbers 3 to 6 are CMDSYS's unsigned comparisons, which `ccgen` calls
-for `IR_ULT`, `IR_UGE`, `IR_UGT` and `IR_ULE`: `__isult`, `__isuge`,
-`__isugt` and `__isule` (native code, smaller and faster than the
+for `IR_ULT`, `IR_UGE`, `IR_UGT` and `IR_ULE`: `__cmd_isult`, `__cmd_isuge`,
+`__cmd_isugt` and `__cmd_isule` (native code, smaller and faster than the
 signed comparison with both sign bits flipped). Their entry has code
 length 0 and checksum 0, and no `H` record; the final pass imports
 the CMDSYS function, and a kind 5 relocation to one is that import.

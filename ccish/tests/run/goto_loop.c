@@ -15,12 +15,12 @@ again:
       *p = 8;
   }
   runs++;
-  __puti(passes); __putc(' ');
+  __cmd_puti(passes); __cmd_putc(' ');
   if (runs < 2) {
     p = &i;
     passes = 0;
     goto again;
   }
-  __puti(n); __putln();
+  __cmd_puti(n); __cmd_putln();
   return 0;
 }

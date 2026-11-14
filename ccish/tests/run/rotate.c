@@ -18,15 +18,15 @@ int a[6];
 
 void show(int n)
 {
-  __puti(n);
-  __putc(' ');
+  __cmd_puti(n);
+  __cmd_putc(' ');
 }
 
 void say(char *s)
 {
   while (*s)
-    __putc(*s++);
-  __putc(' ');
+    __cmd_putc(*s++);
+  __cmd_putc(' ');
 }
 
 void copy(char *d, char *s)
@@ -82,6 +82,6 @@ int main()
   show(g[0]);
   show(g[1]);
   show(g[2]);
-  __putln();
+  __cmd_putln();
   return 0;
 }

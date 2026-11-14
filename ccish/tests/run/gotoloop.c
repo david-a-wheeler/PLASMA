@@ -12,7 +12,7 @@ top:
   i = i - 1;
   goto top;
 done:
-  __puti(sum);
-  __putln();
+  __cmd_puti(sum);
+  __cmd_putln();
   return 0;
 }

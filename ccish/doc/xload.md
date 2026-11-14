@@ -495,7 +495,7 @@ if loadmod had called it.
 - **cclink's init has no frame** and calls `main` directly when main
   takes no parameters (link.c, init_code), with nothing left on the
   evaluation stack. So **XLOAD's `main` takes no parameters** and
-  reads `cmdsys.cmdline` itself: the startup `__start` would split the
+  reads `cmdsys.cmdline` itself: the startup `_start` would split the
   command line in place.
 
 **The capture.** The first part's `int main(void)` has no locals, so
@@ -780,7 +780,7 @@ To check once XLOAD runs, on MAME and then a real Apple II:
    outside XLOAD: the passes take their options in either case and a
    source named NAME.C, since CMD's command line is uppercase; and
    cclink creates its REL modules as ProDOS type $FE, aux type $1000
-   (the library's `__filetype()`), or CMD won't run them. `exit()`
+   (the library's `_filetype()`), or CMD won't run them. `exit()`
    now unwinds on the Apple (lib/exit.c, 2026-11-12): a pass's error
    gives `ERR:$01` and CMD's prompt, checked on MAME's 64K IIe. Still
    to do on the Apple: a ProDOS type of its own for images. Was:

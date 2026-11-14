@@ -43,21 +43,21 @@ int main()
   int i;
 
   // sizes and offsets
-  __puti(sizeof(struct pt)); __putc(' ');
-  __puti(sizeof(struct rec)); __putc(' ');
-  __puti(sizeof r.name); __putc(' ');
-  __puti(sizeof pts); __putc(' ');
-  __puti((char *)&r.at.y - (char *)&r); __putln();
+  __cmd_puti(sizeof(struct pt)); __cmd_putc(' ');
+  __cmd_puti(sizeof(struct rec)); __cmd_putc(' ');
+  __cmd_puti(sizeof r.name); __cmd_putc(' ');
+  __cmd_puti(sizeof pts); __cmd_putc(' ');
+  __cmd_puti((char *)&r.at.y - (char *)&r); __cmd_putln();
 
   // a local, written and read directly and through a pointer
   a.x = 3;
   a.y = 4;
-  __puti(a.x * a.y); __putc(' ');
+  __cmd_puti(a.x * a.y); __cmd_putc(' ');
   p->x += 10;
   p->y++;
-  __puti(a.x); __putc(' ');
-  __puti(p->y); __putc(' ');
-  __puti(origin.x + origin.y); __putln();
+  __cmd_puti(a.x); __cmd_putc(' ');
+  __cmd_puti(p->y); __cmd_putc(' ');
+  __cmd_puti(origin.x + origin.y); __cmd_putln();
 
   // nested members and an array member
   r.tag = 'R';
@@ -67,19 +67,19 @@ int main()
   r.name[2] = 0;
   r.at.x = 7;
   r.at.y = r.at.x * 2;
-  __putc(r.tag);
-  __puti(r.n); __putc(' ');
-  __putc(r.name[0]); __putc(r.name[1]); __putc(' ');
-  __puti(r.at.y); __putln();
+  __cmd_putc(r.tag);
+  __cmd_puti(r.n); __cmd_putc(' ');
+  __cmd_putc(r.name[0]); __cmd_putc(r.name[1]); __cmd_putc(' ');
+  __cmd_puti(r.at.y); __cmd_putln();
 
   // arrays of structs, with constant and variable indexes
   for (i = 0; i < 3; i++)
     move(&pts[i], i, i * i);
   pts[2].x += 100;
   for (i = 0; i < 3; i++) {
-    __puti(pts[i].x); __putc(','); __puti(pts[i].y); __putc(' ');
+    __cmd_puti(pts[i].x); __cmd_putc(','); __cmd_puti(pts[i].y); __cmd_putc(' ');
   }
-  __puti((pts + 1)->y); __putln();
+  __cmd_puti((pts + 1)->y); __cmd_putln();
 
   // a linked list
   recs[0].n = 1;
@@ -87,17 +87,17 @@ int main()
   r.next = &recs[0];
   recs[0].next = &recs[1];
   recs[1].next = 0;
-  __puti(total(&r)); __putc(' ');
-  __puti(r.next->next->n); __putln();
+  __cmd_puti(total(&r)); __cmd_putc(' ');
+  __cmd_puti(r.next->next->n); __cmd_putln();
 
   // a static local keeps its value; a block-scope struct shadows
   saved.y = 9;
   {
     struct pt { char c; } inner;
     inner.c = 'z';
-    __putc(inner.c); __puti(sizeof inner); __putc(' ');
+    __cmd_putc(inner.c); __cmd_puti(sizeof inner); __cmd_putc(' ');
   }
-  __puti(sizeof(struct pt)); __putc(' ');
-  __puti(saved.y); __putln();
+  __cmd_puti(sizeof(struct pt)); __cmd_putc(' ');
+  __cmd_puti(saved.y); __cmd_putln();
   return 0;
 }

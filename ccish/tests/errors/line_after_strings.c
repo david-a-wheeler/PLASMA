@@ -1,6 +1,6 @@
 
 int main() {
-  __puts(pstr("a"
+  __cmd_puts(pstr("a"
             "b"));
   return y;
 }

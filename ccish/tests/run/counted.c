@@ -17,8 +17,8 @@
 // listing-count: 3 BRGT
 void show(int n)
 {
-  __puti(n);
-  __putc(' ');
+  __cmd_puti(n);
+  __cmd_putc(' ');
 }
 
 // Counting up.
@@ -52,7 +52,7 @@ void up(void)
     s += i;
   show(s);
   show(i);
-  __putln();
+  __cmd_putln();
 }
 
 // Counting down.
@@ -80,7 +80,7 @@ void down(void)
     s += i;
   show(s);
   show(i);
-  __putln();
+  __cmd_putln();
 }
 
 // The limit first; loops that never run.
@@ -111,7 +111,7 @@ void never(void)
     s++;
   show(s);
   show(i);
-  __putln();
+  __cmd_putln();
 }
 
 // break, continue, a switch.
@@ -142,7 +142,7 @@ void flow(void)
     }
   show(s);
   show(i);
-  __putln();
+  __cmd_putln();
 }
 
 // An inner loop that is counted (its outer loop holds a loop, so it
@@ -156,7 +156,7 @@ void nested(void)
       s += 10 * j + i;
   show(s);
   show(i);
-  __putln();
+  __cmd_putln();
 }
 
 int main()

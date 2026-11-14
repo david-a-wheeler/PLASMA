@@ -12,9 +12,9 @@ mkdir -p "$OUT"
 # function's line record, then each op. main's body starts at line 2;
 # puti returns nothing; falling off main's end returns 0, which the
 # peephole stage drops later.
-printf 'int main()\n{\n  __puti(7);\n  return 0;\n}\n' >"$OUT/ir_dump.c"
+printf 'int main()\n{\n  __cmd_puti(7);\n  return 0;\n}\n' >"$OUT/ir_dump.c"
 printf '%s\n' '; line 2' 'IR FUNC     main' 'IR CONST    7' \
-    'IR CALL     __puti nargs=1' 'IR CONST    0' 'IR RETURN  ' \
+    'IR CALL     __cmd_puti nargs=1' 'IR CONST    0' 'IR RETURN  ' \
     'IR CONST    0' 'IR RETURN  ' 'IR ENDFUNC  frame=0' >"$OUT/ir_dump.want"
 if cc_ir "$OUT/ir_dump" "$OUT/ir_dump.c" \
    && ./ccgen -r "$OUT/ir_dump" >"$OUT/ir_dump.got" \

@@ -260,7 +260,7 @@ static void init_byte(int off, int v)
   held_at = at;
 }
 
-// The CMDSYS function __memset, declared from the CMDSYS table if the
+// The CMDSYS function __cmd_memset, declared from the CMDSYS table if the
 // program hasn't used it yet; or -1 if the program has its own.
 static int cmdsys_memset(void)
 {
@@ -650,7 +650,7 @@ int parse_asm_label(void)
 // or IMP_DATA plus a global's) was declared here with asm label label
 // (an id, or 0): it is an import if it has a label, or if a pragma
 // covers this file. A CMDSYS function without a label stays one (a
-// header may declare __puts after a pragma).
+// header may declare __cmd_puts after a pragma).
 void note_import(int key, int label)
 {
   int i, d = 0;

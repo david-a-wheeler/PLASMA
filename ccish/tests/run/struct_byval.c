@@ -82,36 +82,36 @@ int main()
   struct one o = {77};
   int i = 0;
 
-  __puti(sum(a)); __putc(' '); __puti(a.x); __putc(' ');
-  __puti(sum(*p)); __putc(' ');
+  __cmd_puti(sum(a)); __cmd_putc(' '); __cmd_puti(a.x); __cmd_putc(' ');
+  __cmd_puti(sum(*p)); __cmd_putc(' ');
   d = divide(17, 5);
-  __puti(d.q); __putc(' '); __puti(d.r); __putc(' ');
-  __puti(divide(23, 4).r); __putln();
+  __cmd_puti(d.q); __cmd_putc(' '); __cmd_puti(d.r); __cmd_putc(' ');
+  __cmd_puti(divide(23, 4).r); __cmd_putln();
 
   e = dim(c, 2);
-  __puti(e.r); __putc(' '); __puti(e.g); __putc(' '); __puti(e.b); __putc(' ');
-  __puti(dim(dim(c, 2), 5).r); __putln();
+  __cmd_puti(e.r); __cmd_putc(' '); __cmd_puti(e.g); __cmd_putc(' '); __cmd_puti(e.b); __cmd_putc(' ');
+  __cmd_puti(dim(dim(c, 2), 5).r); __cmd_putln();
 
   a = swap(a);
-  __puti(a.x); __putc(','); __puti(a.y); __putc(' ');
+  __cmd_puti(a.x); __cmd_putc(','); __cmd_puti(a.y); __cmd_putc(' ');
   a = twice(a);
-  __puti(a.x); __putc(','); __puti(a.y); __putc(' ');
+  __cmd_puti(a.x); __cmd_putc(','); __cmd_puti(a.y); __cmd_putc(' ');
   pts[1] = swap(a);
   p = &pts[2];
   *p = pts[1];
   *at(0) = swap(*p);
   for (i = 0; i < 3; i++) {
-    __puti(pts[i].x); __putc(','); __puti(pts[i].y); __putc(' ');
+    __cmd_puti(pts[i].x); __cmd_putc(','); __cmd_puti(pts[i].y); __cmd_putc(' ');
   }
   i = 0;
-  __puti(sum(pts[i + 1])); __putc(' ');
-  __puti(get(*(struct one *)&o)); __putc(' ');
+  __cmd_puti(sum(pts[i + 1])); __cmd_putc(' ');
+  __cmd_puti(get(*(struct one *)&o)); __cmd_putc(' ');
   swap(a);                        // the result is dropped
-  __putln();
+  __cmd_putln();
 
   w = dbl(w);
-  __puti(w.a + w.b + w.c + w.d + w.e); __putc(' ');
-  __puti(dbl(w).e); __putc(' ');
-  __putc(n.s[0]); __puti(sizeof n); __putln();
+  __cmd_puti(w.a + w.b + w.c + w.d + w.e); __cmd_putc(' ');
+  __cmd_puti(dbl(w).e); __cmd_putc(' ');
+  __cmd_putc(n.s[0]); __cmd_puti(sizeof n); __cmd_putln();
   return 0;
 }

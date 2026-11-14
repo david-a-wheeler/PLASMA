@@ -25,15 +25,15 @@ int main()
   table[2] = 40;
   table[count - 4] = 30;            // table[3]
   origin.y = 9;
-  __puti(count); __putc(' ');
-  __puti(*pcount); __putc(' ');
-  __puti(table[2] + table[3]); __putc(' ');
-  __puti(*pthird); __putc(' ');
-  __puti(pend - pthird); __putc(' ');
-  __puti(origin.x + origin.y); __putc(' ');
-  __putc(pname[0]); __putc(name[1]); __putc(' ');
-  __puti(helper(twice(3)));
-  __putln();
+  __cmd_puti(count); __cmd_putc(' ');
+  __cmd_puti(*pcount); __cmd_putc(' ');
+  __cmd_puti(table[2] + table[3]); __cmd_putc(' ');
+  __cmd_puti(*pthird); __cmd_putc(' ');
+  __cmd_puti(pend - pthird); __cmd_putc(' ');
+  __cmd_puti(origin.x + origin.y); __cmd_putc(' ');
+  __cmd_putc(pname[0]); __cmd_putc(name[1]); __cmd_putc(' ');
+  __cmd_puti(helper(twice(3)));
+  __cmd_putln();
   return 0;
 }
 

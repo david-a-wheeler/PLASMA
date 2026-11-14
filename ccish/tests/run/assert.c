@@ -18,7 +18,7 @@ int main(void)
 {
   assert(bump() == 1);
   assert(0);
-  __puti(count);
-  __putln();
+  __cmd_puti(count);
+  __cmd_putln();
   return 0;
 }

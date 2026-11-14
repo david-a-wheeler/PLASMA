@@ -795,9 +795,9 @@ stage 4 replaces it with an offset.
   (it was the length of `y`'s code, for sign flips; `ccgen` ignores
   it).
 - **Lowering (in `ccgen`, `src/lower.c`):** a call of CMDSYS's native
-  `ISULT` and the rest (`__isult` ...; OBJECT.md, helper numbers 3-6),
+  `ISULT` and the rest (`__cmd_isult` ...; OBJECT.md, helper numbers 3-6),
   which give `$FFFF` or 0 as `ISLT` does, then `NEG`: `x y CALL
-  __isult NEG`. That's 3 bytes and about 123 cycles; the signed
+  __cmd_isult NEG`. That's 3 bytes and about 123 cycles; the signed
   comparison with both sign bits flipped (`CONST $8000 XOR`), which
   `ccgen` wrote before, was 9 bytes and about 218 cycles for two
   variables, and 5 bytes and 131 cycles with the flip folded into a

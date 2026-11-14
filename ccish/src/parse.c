@@ -202,10 +202,10 @@ void set_nparams(int f, int n)
 // S (const char *), p (void *) or P (const void *). A pointer the
 // function only reads is const, so that passing a const char * needs
 // no cast. Their meanings are PLASMA's, not C's, so their C names are
-// PLASMA's with "__" in front (ppname.c's fixed ids), leaving the
-// standard names to C's own functions: __puts() takes a PLASMA
-// (length-prefixed) string and adds no newline, and __strcpy() copies
-// PLASMA strings. divmod() returns two values and is left out.
+// PLASMA's with "__cmd_" in front (ppname.c's fixed ids; fixed.h's
+// CMD_PREFIX), leaving the standard names to C's own functions:
+// __cmd_puts() takes a PLASMA (length-prefixed) string and adds no
+// newline, and __cmd_strcpy() copies PLASMA strings. divmod() returns two values and is left out.
 static const char *const cmdsys_sigs[NCMDSYS] = {
   "vc", "v", "vS", "vi",                // putc putln puts puti
   "vi", "vi", "i", "sc",                // putb puth getc gets

@@ -17,8 +17,8 @@ int f(void)
 
 void show(int n)
 {
-  __puti(n);
-  __putc(' ');
+  __cmd_puti(n);
+  __cmd_putc(' ');
 }
 
 int param(int a[], char *s)
@@ -42,7 +42,7 @@ int main()
   show(sizeof(int[3][4]));
   show(sizeof(void *));
   show(sizeof(char *[4]));
-  __putln();
+  __cmd_putln();
 
   show(sizeof a);
   show(sizeof(a));
@@ -54,7 +54,7 @@ int main()
   show(sizeof m[1]);
   show(sizeof m[1][2]);
   show(sizeof b / sizeof b[0]);
-  __putln();
+  __cmd_putln();
 
   p = gc;
   show(sizeof c);
@@ -69,7 +69,7 @@ int main()
   show(sizeof "");
   show(sizeof sizeof c);
   show(param(a, p));
-  __putln();
+  __cmd_putln();
 
   // the operand isn't run
   i = 5;
@@ -80,6 +80,6 @@ int main()
   show(sizeof (f() + i++));
   show(count);
   show(i);
-  __putln();
+  __cmd_putln();
   return 0;
 }

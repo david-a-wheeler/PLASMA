@@ -2,13 +2,13 @@
 // literal used as a statement.
 int main()
 {
-  __puts(pstr("one, " "two"));
-  __putln();
-  __puts(pstr("tab:\t| quote:\" backslash:\\ end"));
-  __putln();
-  __puts(pstr(""));
-  __puts(pstr("x"));
-  __putln();
+  __cmd_puts(pstr("one, " "two"));
+  __cmd_putln();
+  __cmd_puts(pstr("tab:\t| quote:\" backslash:\\ end"));
+  __cmd_putln();
+  __cmd_puts(pstr(""));
+  __cmd_puts(pstr("x"));
+  __cmd_putln();
   "unused literal";
   return 0;
 }

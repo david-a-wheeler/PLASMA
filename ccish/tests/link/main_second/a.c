@@ -1,10 +1,12 @@
-// main in the second object; a program's own definition of a CMDSYS
-// name (toupper), used instead of the import; and a function declared
-// with () in one object and defined with its parameters in another.
+// main in the second object; a function defined in one object and
+// called from the other (upcase: no longer a CMDSYS name of its own, as
+// it was, since only CMDSYS may define a __cmd_ name, which
+// tests/errors/cmd_define.c checks); and a function declared with ()
+// in one object and defined with its parameters in another.
 int count;
 
-// This program's own toupper, with CMDSYS's type.
-int __toupper(int c)
+// This program's own upper case, of a sort.
+int upcase(int c)
 {
   count++;
   return c + 1;

@@ -3,7 +3,7 @@
 # line 1: a comment's newline is a line too
 01
 # line 2: x = 0x8000 + 10u - 'A' * 65535;
-04 22 00        # x: the first new id, 34 (after the 33 fixed)
+04 31 00        # x: the first new id, 49 (after the 48 fixed)
 3d
 06 00 80        # 0x8000: hex over $7FFF, so unsigned
 2b
@@ -15,28 +15,28 @@
 3b
 01
 # line 3: the name's first 31 characters only, then +=
-04 23 00        # id 35
+04 32 00        # id 50
 c0              # +=
-04 22 00        # x again: id 34
+04 31 00        # x again: id 49
 3b
 01
 # line 4: p = "a\tb", and the string is held to be joined
-04 24 00        # p: id 36
+04 33 00        # p: id 51
 3d
 01              # the newline is written before the held string
 # line 5: "\x41\101" joins it; then the digraphs and float
 08 05 61 09 62 41 41    # "a\tbAA": 5 bytes
 5b 5d 7b 7d     # <: :> <% %>
-07 25 00        # float: unsupported, id 37
+07 34 00        # float: unsupported, id 52
 3b
 01
 # line 6: the operators
-04 22 00        # x
+04 31 00        # x
 ca              # <<=
-04 26 00        # y: id 38
+04 35 00        # y: id 53
 cb              # >>=
-04 27 00        # z: id 39
+04 36 00        # z: id 54
 db da d5 d4 d2 d3 d0 d1 c9    # ... -> != == && || ++ -- %=
 3b
 01
-00 27 00 ss ss  # the end: 39 ids, the checksum
+00 36 00 ss ss  # the end: 54 ids, the checksum

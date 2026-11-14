@@ -7,7 +7,7 @@ int main(void)
 {
   union W u;
   u.a = 0x1234;
-  __puti(f(u) + u.b);
-  __putln();
+  __cmd_puti(f(u) + u.b);
+  __cmd_putln();
   return 0;
 }

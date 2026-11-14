@@ -44,13 +44,13 @@ int ploop(void)
 
 int main()
 {
-  __puti(vsum());
-  __putc(' ');
-  __puti(psum());
-  __putc(' ');
-  __puti(vloop());
-  __putc(' ');
-  __puti(ploop());
-  __putln();
+  __cmd_puti(vsum());
+  __cmd_putc(' ');
+  __cmd_puti(psum());
+  __cmd_putc(' ');
+  __cmd_puti(vloop());
+  __cmd_putc(' ');
+  __cmd_puti(ploop());
+  __cmd_putln();
   return 0;
 }

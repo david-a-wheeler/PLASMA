@@ -57,7 +57,7 @@ same "$out" "01 args NULL" "no args"
 out=$(run_args args 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29) || bad=1
 same "$out" "24 args 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 NULL" "many args"
 
-# The same link through -L: the map offers the objects. __start is
+# The same link through -L: the map offers the objects. _start is
 # wanted only because main has two parameters (no object names it),
 # and the map's line for start offers it; the listing names the
 # objects added.
@@ -72,11 +72,11 @@ rm -f "$D/argsl"
 # under plvm, through exit's marker, then the BRK, whose message plvm
 # prints on stderr. Statuses: 3; -1, which is 255; and 0. The second
 # prints text that doesn't end its line before exit's marker. (Its
-# BRK is the 0 byte at __exitcap + BRK_AT, lib/exit.c.)
+# BRK is the 0 byte at _exitcap + BRK_AT, lib/exit.c.)
 exit_run() {
     src_obj "$1" "#include <stdlib.h>
 void deep(int n) { if (n) deep(n - 1); else exit($2); }
-int main(void) { __puts(pstr(\"$3\")); deep(5); return 9; }" || bad=1
+int main(void) { __cmd_puts(pstr(\"$3\")); deep(5); return 9; }" || bad=1
     ./cclink -L "$L" -o "$D/$1" "$D/$1" || bad=1
     out=$(run_args "$1")
     st=$?
@@ -94,7 +94,7 @@ exit_run quit 3 before 3
 exit_run quitm -1 partial 255
 exit_run quit0 0 zero 0
 
-# With lib/exit.c's exit, init sets TMP ($E7) to __exitcap's first
+# With lib/exit.c's exit, init sets TMP ($E7) to _exitcap's first
 # routine (at data+0, the module's only data) and runs it right before
 # main's call, and for a
 # void main pushes the 0 that exit may replace.
@@ -113,7 +113,7 @@ init_has vquit 'LA data+0|DUP|CB 231|SW|ICAL|CN 0|CALL main|ANDI 255|NEG|RET|'
 if ./cclink -o "$D/nostart" "$D/args" "$L/putc" "$L/fputs" "$L/strlen" 2>"$D/nostart.err"; then
     echo "FAIL lib: main(argc, argv) linked without lib/start"; bad=1
 fi
-grep -qF "undefined reference to '__start'" "$D/nostart.err" \
+grep -qF "undefined reference to '_start'" "$D/nostart.err" \
     || { echo "FAIL lib: wrong message without lib/start:"; cat "$D/nostart.err"; bad=1; }
 if ./cclink -o "$D/noexit" "$D/quit" 2>"$D/noexit.err"; then
     echo "FAIL lib: exit linked without lib/exit"; bad=1

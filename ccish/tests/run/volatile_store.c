@@ -35,11 +35,11 @@ int main()
   int a = 0, b = 0;
   vstore();
   pstore();
-  __puti(vset(&a));
-  __putc(' ');
-  __puti(pset(&b));
-  __putc(' ');
-  __puti(a + b);
-  __putln();
+  __cmd_puti(vset(&a));
+  __cmd_putc(' ');
+  __cmd_puti(pset(&b));
+  __cmd_putc(' ');
+  __cmd_puti(a + b);
+  __cmd_putln();
   return 0;
 }

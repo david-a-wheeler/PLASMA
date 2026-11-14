@@ -1,11 +1,11 @@
 # Function-like macros, #, ## and __VA_ARGS__ (approach.md, "ccpp
-# design", step 5). Lines 1-6 define F (id 34; its parameters a 35,
-# b 36), B (37), S (38; x 39), CAT (40), V (41; __VA_ARGS__ 42, f 43)
-# and G (44).
+# design", step 5). Lines 1-6 define F (id 49; its parameters a 50,
+# b 51), B (52), S (53; x 54), CAT (55), V (56; __VA_ARGS__ 57, f 58)
+# and G (59).
 43 54 4b 08     # "CTK", version 8
 02 07 00        # up to line 7: 6 lines, so a jump
 # line 7: F(1, x) is 1 + x * 2
-05 01 00 2b 04 27 00 2a 05 02 00
+05 01 00 2b 04 36 00 2a 05 02 00
 01
 # line 8: B(B(1)): the argument is expanded first, so [ [ 1 ] ]
 5b 5b 05 01 00 5d 5d
@@ -14,16 +14,16 @@
 # line it takes (line 10), so both next-line codes come first.
 01 01
 08 09 61 20 2b 20 22 62 5c 6e 22
-# line 10: x1 (a new id, 43), +=, and y (44): an empty left operand
-04 2d 00 c0 04 2e 00
+# line 10: x1 (a new id, 60), +=, and y (61): an empty left operand
+04 3c 00 c0 04 3d 00
 01
 # line 11: f(1, 2) and f()
-04 2b 00 28 05 01 00 2c 05 02 00 29
-04 2b 00 28 29
+04 3a 00 28 05 01 00 2c 05 02 00 29
+04 3a 00 28 29
 01
 # line 12: G is F, which then takes (3, 4) from the line: 3 + 4 * 2;
 # the last F has no '(', so it stays a name
 05 03 00 2b 05 04 00 2a 05 02 00
-04 22 00 3b
+04 31 00 3b
 01              # the end is on line 13
-00 2e 00 ss ss  # the end: 46 ids, the checksum
+00 3d 00 ss ss  # the end: 61 ids, the checksum

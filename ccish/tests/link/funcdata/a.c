@@ -9,10 +9,10 @@ int (*tbl[2])(int) = {b_triple, inc};
 
 int main()
 {
-  __puti(tbl[0](5)); __putc(' ');
-  __puti(tbl[1](5)); __putc(' ');
-  __puti(b_neg(5)); __putc(' ');
-  __puti(b_neg(tbl[0](1)));
-  __putln();
+  __cmd_puti(tbl[0](5)); __cmd_putc(' ');
+  __cmd_puti(tbl[1](5)); __cmd_putc(' ');
+  __cmd_puti(b_neg(5)); __cmd_putc(' ');
+  __cmd_puti(b_neg(tbl[0](1)));
+  __cmd_putln();
   return 0;
 }

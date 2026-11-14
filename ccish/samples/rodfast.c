@@ -263,7 +263,7 @@ int main(void)
 
   conio.grmode(MIXED);
   conio.gotoxy(MSG_X, MSG_Y);
-  __puts(pstr("Press any key to exit."));
+  __cmd_puts(pstr("Press any key to exit."));
   make_tables();
   for (;;) {
     wq = WQ_FIRST;
@@ -338,7 +338,7 @@ int main(void)
 done:
   KBDSTRB;
   conio.textmode(0);
-  __puts(pstr("That's all, folks!"));
-  __putln();
+  __cmd_puts(pstr("That's all, folks!"));
+  __cmd_putln();
   return 0;
 }

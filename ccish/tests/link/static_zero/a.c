@@ -19,12 +19,12 @@ int fill_a(int c)
 
 int main(void)
 {
-  __puti(bump_a()); __putc(' ');
-  __puti(bump_a()); __putc(' ');
-  __puti(bump_b()); __putc(' ');
-  __puti(fill_a(5)); __putc(' ');
-  __puti(fill_b(6)); __putc(' ');
-  __puti(bump_a()); __putc(' ');
-  __puti(bump_b()); __putln();
+  __cmd_puti(bump_a()); __cmd_putc(' ');
+  __cmd_puti(bump_a()); __cmd_putc(' ');
+  __cmd_puti(bump_b()); __cmd_putc(' ');
+  __cmd_puti(fill_a(5)); __cmd_putc(' ');
+  __cmd_puti(fill_b(6)); __cmd_putc(' ');
+  __cmd_puti(bump_a()); __cmd_putc(' ');
+  __cmd_puti(bump_b()); __cmd_putln();
   return 0;
 }

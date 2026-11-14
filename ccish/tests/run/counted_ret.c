@@ -22,8 +22,8 @@ int done;
 
 void show(int n)
 {
-  __puti(n);
-  __putc(' ');
+  __cmd_puti(n);
+  __cmd_putc(' ');
 }
 
 // The index of the first element of tab at least n, or -1.
@@ -112,8 +112,8 @@ int main()
   int j, s = 0;
   show(index_of(9));
   show(index_of(100));
-  __putc(letter(3));
-  __putc(' ');
+  __cmd_putc(letter(3));
+  __cmd_putc(' ');
   stop_at(4);
   show(done);
   stop_at(20);
@@ -137,6 +137,6 @@ int main()
   for (j = 0; j < 40; j++)
     s += index_of(j);
   show(s);
-  __putln();
+  __cmd_putln();
   return 0;
 }

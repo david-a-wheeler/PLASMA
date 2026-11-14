@@ -7,8 +7,8 @@
 // The gen test genzeroinit.c shows where each goes.
 void show(int n)
 {
-  __puti(n);
-  __putc(' ');
+  __cmd_puti(n);
+  __cmd_putc(' ');
 }
 
 int z = 0;
@@ -41,6 +41,6 @@ int main(void)
   show(one[0] * 10 + one[1]);
   show(counter());
   show(counter());
-  __putln();
+  __cmd_putln();
   return 0;
 }

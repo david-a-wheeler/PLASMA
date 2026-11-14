@@ -34,22 +34,22 @@ int main(void)
   int (*lp)[4] = &a;
   int *(*r)[2];
   x = 100;
-  __puti(u); __putc(' '); __puti(z); __putc(' '); __puti(w); __putln();
+  __cmd_puti(u); __cmd_putc(' '); __cmd_puti(z); __cmd_putc(' '); __cmd_puti(w); __cmd_putln();
   {
     int t = 1;
     extern int x;
-    __puti(t + x); __putln();
+    __cmd_puti(t + x); __cmd_putln();
   }
-  __puti(u); __putc(' '); __puti(w); __putln();
-  __puti(sizeof(gp)); __putc(' '); __puti(sizeof(table)); __putc(' ');
-  __puti(sizeof(int (*)[4])); __putc(' '); __puti(sizeof(*pa)); __putc(' ');
-  __puti(sizeof(*r)); __putc(' '); __puti(sizeof(fp_t)); __putc(' ');
-  __puti(sizeof(struct ops)); __putln();
-  __puti((*pa)[2]); __putc(' '); __puti(pa[0][3]); __putc(' '); __puti((*lp)[1]); __putln();
-  __puti(p == 0); __putc(' '); __puti(gp == 0); __putc(' '); __puti(table[1] == 0); __putln();
+  __cmd_puti(u); __cmd_putc(' '); __cmd_puti(w); __cmd_putln();
+  __cmd_puti(sizeof(gp)); __cmd_putc(' '); __cmd_puti(sizeof(table)); __cmd_putc(' ');
+  __cmd_puti(sizeof(int (*)[4])); __cmd_putc(' '); __cmd_puti(sizeof(*pa)); __cmd_putc(' ');
+  __cmd_puti(sizeof(*r)); __cmd_putc(' '); __cmd_puti(sizeof(fp_t)); __cmd_putc(' ');
+  __cmd_puti(sizeof(struct ops)); __cmd_putln();
+  __cmd_puti((*pa)[2]); __cmd_putc(' '); __cmd_puti(pa[0][3]); __cmd_putc(' '); __cmd_puti((*lp)[1]); __cmd_putln();
+  __cmd_puti(p == 0); __cmd_putc(' '); __cmd_puti(gp == 0); __cmd_putc(' '); __cmd_puti(table[1] == 0); __cmd_putln();
   p = (int (*)(int))0;
-  __puti(p == 0); __putc(' '); __puti(k(5)); __putc(' '); __puti(f(3)); __putc(' ');
-  __puti(g(3)); __putc(' '); __puti(apply(0, 9)); __putc(' '); __puti(y); __putln();
+  __cmd_puti(p == 0); __cmd_putc(' '); __cmd_puti(k(5)); __cmd_putc(' '); __cmd_puti(f(3)); __cmd_putc(' ');
+  __cmd_puti(g(3)); __cmd_putc(' '); __cmd_puti(apply(0, 9)); __cmd_putc(' '); __cmd_puti(y); __cmd_putln();
   return 0;
 }
 int z = 7;

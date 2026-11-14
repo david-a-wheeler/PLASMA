@@ -17,8 +17,8 @@ int gi;
 
 void show(int n)
 {
-  __puti(n);
-  __putc(' ');
+  __cmd_puti(n);
+  __cmd_putc(' ');
 }
 
 // Count calls in a global.
@@ -54,7 +54,7 @@ int main()
   show(table[4]);
   show(big[999]);
   show(gp == 0);
-  __putln();
+  __cmd_putln();
 
   // scalars
   count = 5;
@@ -76,7 +76,7 @@ int main()
     show(count);
   }
   show(count);
-  __putln();
+  __cmd_putln();
 
   // arrays
   for (i = 0; i < 5; i++)
@@ -99,10 +99,10 @@ int main()
   big[999] = 'z';
   i = 998;
   big[i] = 'y';
-  __putc(big[998]);
-  __putc(big[i + 1]);
-  __putc(' ');
-  __putln();
+  __cmd_putc(big[998]);
+  __cmd_putc(big[i + 1]);
+  __cmd_putc(' ');
+  __cmd_putln();
 
   // two dimensions
   for (i = 0; i < 3; i++)
@@ -116,7 +116,7 @@ int main()
   show(grid[i][gi]);
   show(*grid[2]);
   show(**grid);
-  __putln();
+  __cmd_putln();
 
   // pointers
   gp = table;
@@ -136,9 +136,9 @@ int main()
   words[1] = "dog";
   words[2] = "emu";
   for (i = 0; i < 3; i++)
-    __putc(words[i][1]);
-  __putc(' ');
+    __cmd_putc(words[i][1]);
+  __cmd_putc(' ');
   show(&big[10] - big);
-  __putln();
+  __cmd_putln();
   return 0;
 }

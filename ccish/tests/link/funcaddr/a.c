@@ -11,12 +11,12 @@ static int inc(int x) { return x + 1; }
 int main()
 {
   int (*f)(int);
-  __puti(b_apply(inc, 10)); __putc(' ');
-  __puti(b_apply(b_double, 10)); __putc(' ');
+  __cmd_puti(b_apply(inc, 10)); __cmd_putc(' ');
+  __cmd_puti(b_apply(b_double, 10)); __cmd_putc(' ');
   f = b_pick(1);
-  __puti(f(10)); __putc(' ');
-  __puti(b_pick(0) == b_double); __putc(' ');
-  __puti(b_pick(0) == f);
-  __putln();
+  __cmd_puti(f(10)); __cmd_putc(' ');
+  __cmd_puti(b_pick(0) == b_double); __cmd_putc(' ');
+  __cmd_puti(b_pick(0) == f);
+  __cmd_putln();
   return 0;
 }

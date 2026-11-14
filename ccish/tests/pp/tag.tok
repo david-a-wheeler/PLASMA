@@ -3,20 +3,20 @@
 # from 0) and 31^length.
 43 54 4b 08     # "CTK", version 8
 88              # struct
-09 22 00 73 00 1f 00    # s: id 34, h = 's' = 115, 31^1 = 31
+09 31 00 73 00 1f 00    # s: id 49, h = 's' = 115, 31^1 = 31
 2a
-04 23 00        # p: id 35, not a tag
+04 32 00        # p: id 50, not a tag
 3b
 01
 88              # struct
 01              # a newline between it and the tag
-09 24 00 21 0c c1 03    # ab: id 36, h = 97 * 31 + 98 = 3105, 31^2 = 961
+09 33 00 21 0c c1 03    # ab: id 51, h = 97 * 31 + 98 = 3105, 31^2 = 961
 3b
 01
 89              # union
-09 25 00 75 00 1f 00    # u: id 37, h = 'u' = 117, 31^1 = 31
+09 34 00 75 00 1f 00    # u: id 52, h = 'u' = 117, 31^1 = 31
 2a
-04 26 00        # q: id 38, not a tag
+04 35 00        # q: id 53, not a tag
 3b
 01
-00 26 00 ss ss  # the end: 38 ids, the checksum
+00 35 00 ss ss  # the end: 53 ids, the checksum

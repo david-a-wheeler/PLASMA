@@ -47,26 +47,26 @@
  * cleanly whatever standard the host defaults to.
  *
  * Under ccish (__CCISH__, predefined by ccpp), puti, putc, putln and
- * puts are the CMDSYS's, which ccish names __puti, __putc, __putln and
- * __puts (the plain names are left for a C library): these are their
+ * puts are the CMDSYS's, which ccish names __cmd_puti, __cmd_putc, __cmd_putln and
+ * __cmd_puts (the plain names are left for a C library): these are their
  * declarations, and the #defines map the names a test uses to them.
  * The declarations must state the CMDSYS's exact signatures (ccish
- * checks a declaration against them, error 173): __putc takes a char,
+ * checks a declaration against them, error 173): __cmd_putc takes a char,
  * not an int. pstr is the parser's builtin (the address of a string
  * literal), declared here for the same reason. Every other compiler
  * takes the #else branch, which defines them in C, matching the
  * CMDSYS's observable behavior for the contract above.
  */
 #ifdef __CCISH__
-extern void __puti(int);
-extern void __putc(char);
-extern void __putln(void);
-extern void __puts(const char *);
+extern void __cmd_puti(int);
+extern void __cmd_putc(char);
+extern void __cmd_putln(void);
+extern void __cmd_puts(const char *);
 extern char *pstr(const char *);
-#define puti __puti
-#define putc __putc
-#define putln __putln
-#define puts __puts
+#define puti __cmd_puti
+#define putc __cmd_putc
+#define putln __cmd_putln
+#define puts __cmd_puts
 /* w16: the signed 16-bit interpretation of a value's low 16 bits,
  * the conventional sign extension: XOR the sign bit, then subtract
  * it (no comparison with 0x7FFF, no 0x10000, no shift by the

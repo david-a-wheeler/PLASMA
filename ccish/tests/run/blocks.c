@@ -3,22 +3,22 @@
 int f(int x)
 {
   { ; }
-  { { __puti(x); } }
+  { { __cmd_puti(x); } }
   ;;
   return;
 }
 
 void g()
 {
-  __putc('g');
+  __cmd_putc('g');
   return;
-  __putc('X');
+  __cmd_putc('X');
 }
 
 void main()
 {
-  __puti(f(7));
-  __putln();
+  __cmd_puti(f(7));
+  __cmd_putln();
   g();
-  __putln();
+  __cmd_putln();
 }

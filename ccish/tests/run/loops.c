@@ -16,8 +16,8 @@ int calls;
 
 void show(int n)
 {
-  __puti(n);
-  __putc(' ');
+  __cmd_puti(n);
+  __cmd_putc(' ');
 }
 
 // Count calls, and return n.
@@ -70,7 +70,7 @@ int main()
       break;
   }
   show(i);                      // 3
-  __putln();
+  __cmd_putln();
   // Calls, && and ||, and ?: in the test and the step.
   calls = 0;
   s = 0;
@@ -81,8 +81,8 @@ int main()
   // A string in the test; unsigned comparisons.
   t = "abc";
   for (i = 0; t[i] != 0 && "xyz"[i] != 'z'; i++)
-    __putc(t[i]);
-  __putc(' ');                    // ab
+    __cmd_putc(t[i]);
+  __cmd_putc(' ');                    // ab
   s = 0;
   for (u = 0xFFF0; u > 0x7FFF; u += 4)
     s++;
@@ -102,7 +102,7 @@ int main()
     i += 3;
   while (i < 10);
   show(i);                      // 12
-  __putln();
+  __cmd_putln();
   // A header of more than 64 ops: laid out in place.
   s = 0;
   for (i = 0; i < a + a + a + a + a + a + a + a + a + a + a + a + a + a
@@ -128,6 +128,6 @@ int main()
                       s += 10;
                   }
   show(s);                      // 108
-  __putln();
+  __cmd_putln();
   return 0;
 }

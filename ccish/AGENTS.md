@@ -391,8 +391,9 @@ Open, roughly in the order they matter:
   cccomp's.
 - **The cclink package** (doc/linking.md, decision 46): its section 9
   is the commit plan, step by step, and its section 10 says how to
-  work through it. Steps 1 to 6 are done; next, step 7, the __cmd_
-  spellings.
+  work through it. All seven steps are done (2026-11-14): CMDSYS
+  functions are spelled `__cmd_puts` and so on, the final pass is
+  cclink, and it finds library objects with `-L`.
 - **A ProDOS file type for images** (BIN for now): the user's choice.
 - **The other PLASMA platforms** (doc/xload.md, R6; leave the partial
   C64 work in src/vmsrc alone).

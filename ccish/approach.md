@@ -5255,6 +5255,11 @@ issue. In summary:
     TMP, $E7, itself; under plvm exit prints a shorter ccstat marker,
     ^A and the number, then a BRK), about 28 bytes a pass, and
     tools/plvmexit.c goes.
+    **Done (2026-11-14):** all seven steps of doc/linking.md's
+    section 9, which records each one's measurements. The pool step
+    saved ccpp 128 bytes, not 250 (its code grew 209 bytes, not 60 to
+    100); defining a __cmd_ name is now an error (301), and calling
+    an unknown one is "not a CMDSYS function" (300).
 
 
 ## Milestones

@@ -12,7 +12,7 @@ char e = 4;
 int main(void)
 {
   z[1] = 5;
-  __puti(d + z[1] + e);
-  __putln();
+  __cmd_puti(d + z[1] + e);
+  __cmd_putln();
   return 0;
 }

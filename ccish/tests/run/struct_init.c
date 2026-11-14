@@ -16,7 +16,7 @@ const struct pt unit = {1, 1};
 // Print a point.
 void show(const struct pt *p)
 {
-  __puti(p->x); __putc(','); __puti(p->y); __putc(' ');
+  __cmd_puti(p->x); __cmd_putc(','); __cmd_puti(p->y); __cmd_putc(' ');
 }
 
 int main()
@@ -29,22 +29,22 @@ int main()
   int i;
 
   show(&origin);
-  __puti(sizeof corners / sizeof corners[0]); __putc(' ');
+  __cmd_puti(sizeof corners / sizeof corners[0]); __cmd_putc(' ');
   for (i = 0; i < 3; i++)
     show(&corners[i]);
-  __putln();
-  show(&gb.lo); show(&gb.hi); __putc(gb.tag); __putln();
+  __cmd_putln();
+  show(&gb.lo); show(&gb.hi); __cmd_putc(gb.tag); __cmd_putln();
   for (i = 0; i < 2; i++) {
-    __puts(pstr("["));
-    __puti(stock[i].qty); __putc(' ');
-    __puti(stock[i].name[0]); __putc(' ');
-    __puti(stock[i].where ? stock[i].where->y : -1);
-    __puts(pstr("] "));
+    __cmd_puts(pstr("["));
+    __cmd_puti(stock[i].qty); __cmd_putc(' ');
+    __cmd_puti(stock[i].name[0]); __cmd_putc(' ');
+    __cmd_puti(stock[i].where ? stock[i].where->y : -1);
+    __cmd_puts(pstr("] "));
   }
-  __putln();
+  __cmd_putln();
   show(&unit); show(&saved); show(&b);
-  show(&lb.lo); show(&lb.hi); __puti(lb.tag); __putln();
+  show(&lb.lo); show(&lb.hi); __cmd_puti(lb.tag); __cmd_putln();
   show(&many[1]);
-  __putln();
+  __cmd_putln();
   return 0;
 }

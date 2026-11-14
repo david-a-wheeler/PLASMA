@@ -18,7 +18,7 @@ int nshallow(int n)
 }
 int main(void)
 {
-  __puti(nshallow(100)); __putln();
-  __puti(tdeep(5000, 0)); __putln();
+  __cmd_puti(nshallow(100)); __cmd_putln();
+  __cmd_puti(tdeep(5000, 0)); __cmd_putln();
   return 0;
 }

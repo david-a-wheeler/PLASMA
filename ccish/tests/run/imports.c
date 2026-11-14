@@ -6,7 +6,7 @@
 // file and reads its header's magic, $6502; then a file that doesn't
 // exist, which sets CMDSYS's error byte.
 // img-skip: it reads its own module file, a REL module's header.
-extern void __puti(int);              // still CMDSYS's, after the pragma
+extern void __cmd_puti(int);              // still CMDSYS's, after the pragma
 
 struct t_cmdsys
 {
@@ -38,24 +38,24 @@ struct t_fileio
   int (*write)(int, char *, int);
 };
 extern struct t_fileio fileio;
-extern void __putln(void);
+extern void __cmd_putln(void);
 
 int main()
 {
   char buf[4];
   int ref;
-  __puti(cmdsys.sysver >> 8); __putc(' ');      // 2
-  __puti(cmdsys.sysver & 255); __putc(' ');     // $20, 32
-  __puti(cmdsys.syspath != 0); __putln();
+  __cmd_puti(cmdsys.sysver >> 8); __cmd_putc(' ');      // 2
+  __cmd_puti(cmdsys.sysver & 255); __cmd_putc(' ');     // $20, 32
+  __cmd_puti(cmdsys.syspath != 0); __cmd_putln();
   ref = fileio.open(pstr("imports"));
-  __puti(ref != 0); __putc(' ');
-  __puti(fileio.read(ref, buf, 4)); __putc(' ');
-  __puti(buf[2]); __putc(' ');                  // $02
-  __puti(buf[3]); __putc(' ');                  // $65
-  __puti(fileio.close(ref)); __putln();
+  __cmd_puti(ref != 0); __cmd_putc(' ');
+  __cmd_puti(fileio.read(ref, buf, 4)); __cmd_putc(' ');
+  __cmd_puti(buf[2]); __cmd_putc(' ');                  // $02
+  __cmd_puti(buf[3]); __cmd_putc(' ');                  // $65
+  __cmd_puti(fileio.close(ref)); __cmd_putln();
   cmdsys.syserr = 0;
   ref = fileio.open(pstr("nosuchfile"));
-  __puti(ref); __putc(' ');
-  __puti(cmdsys.syserr != 0); __putln();
+  __cmd_puti(ref); __cmd_putc(' ');
+  __cmd_puti(cmdsys.syserr != 0); __cmd_putln();
   return 0;
 }

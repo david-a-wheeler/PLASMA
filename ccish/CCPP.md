@@ -266,10 +266,10 @@ identifier can't contain a newline, and nor can a ProDOS path, so
 nothing is escaped.
 
 ```
-__putc          id 1: the fixed ids, 1-33, in every file
-__putln         id 2
+__cmd_putc          id 1: the fixed ids, 1-33, in every file
+__cmd_putln         id 2
 ...
-__isule         id 25
+__cmd_isule         id 25
 main            id 26
 pstr            id 27
 ...
@@ -289,24 +289,30 @@ name"). Ids are given in the order `ccpp` first meets each name: every
 identifier, including macro names, macro parameters and names in `#if`
 lines, whether or not it reaches the token stream, so that `NAME.nam`
 is simply the CMDSYS functions' names (ids 1 to 25, which `ccpp`
-keeps in a table of its own, not its pool) and then `ccpp`'s name
-pool, written out (no table from ids to names is needed). C's keywords are not names: they never get an id, except
+keeps in a table of its own, not its pool), a `?` for each spare
+CMDSYS id (26 to 40), and then `ccpp`'s name pool, written out (no
+table from ids to names is needed). A `?` isn't an identifier, so it
+can't be mistaken for one. C's keywords are not names: they never
+get an id, except
 the unsupported ones (`$08`), whose spelling the message needs. A
 name has at most 31 characters (`MAX_NAME`); `ccpp` keeps only the
 first 31, so readers may rely on that.
 
 **The fixed ids** come first, in every file, in this order: the 25
-CMDSYS functions `cccomp` knows, each its PLASMA name with `__` in
-front (`__putc`, `__putln`, `__puts`, `__puti`, `__putb`, `__puth`,
-`__getc`, `__gets`, `__call`, `__syscall`, `__heapmark`,
-`__heapallocalign`, `__heapalloc`, `__heaprelease`, `__heapavail`,
-`__memset`, `__memcpy`, `__strcpy`, `__strcat`, `__toupper`, `__sext`,
-`__isugt`, `__isuge`, `__isult`, `__isule`: ids 1-25; approach.md
-decision 35), then `main` (26) and `pstr` (27): every
-name C-ish gives a meaning of its own; then `__CCISH__` (28),
-`__FILE__` (29), `__LINE__` (30) and `defined` (31), which `ccpp`
-gives one; then `__asm__` (32) and `__plasma_import` (33), for imports
-from other modules. So `cccomp` and `ccpp` know them by number
+CMDSYS functions `cccomp` knows, each its PLASMA name with `__cmd_`
+in front (`__cmd_putc`, `__cmd_putln`, `__cmd_puts`, `__cmd_puti`,
+`__cmd_putb`, `__cmd_puth`, `__cmd_getc`, `__cmd_gets`, `__cmd_call`,
+`__cmd_syscall`, `__cmd_heapmark`, `__cmd_heapallocalign`,
+`__cmd_heapalloc`, `__cmd_heaprelease`, `__cmd_heapavail`,
+`__cmd_memset`, `__cmd_memcpy`, `__cmd_strcpy`, `__cmd_strcat`,
+`__cmd_toupper`, `__cmd_sext`, `__cmd_isugt`, `__cmd_isuge`,
+`__cmd_isult`, `__cmd_isule`: ids 1-25; approach.md decisions 35 and
+46), then 15 spare ids (26-40), so that a CMDSYS function a later
+PLASMA adds takes the next one and no other id moves; then `main` (41)
+and `pstr` (42): every name C-ish gives a meaning of its own; then
+`__CCISH__` (43), `__FILE__` (44), `__LINE__` (45) and `defined` (46),
+which `ccpp` gives one; then `__asm__` (47) and `__plasma_import`
+(48), for imports from other modules. So `cccomp` and `ccpp` know them by number
 (`src/fixed.h`), with no spellings.
 
 **Files.** After the names, one line for each source file, starting

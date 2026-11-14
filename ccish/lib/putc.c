@@ -10,8 +10,8 @@ int putc(int c, FILE *f)
   if ((int)f >= 0)
     return fileio.write((int)f, &b, 1) ? b : EOF;
   if (b == '\n')
-    __putln();
+    __cmd_putln();
   else
-    __putc(b);
+    __cmd_putc(b);
   return b;
 }

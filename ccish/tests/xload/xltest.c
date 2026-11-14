@@ -22,7 +22,7 @@ static int seen;
 void cputs(char *s)
 {
   while (*s)
-    __putc(*s++);
+    __cmd_putc(*s++);
 }
 
 /* a / b, unsigned: a helper. */
@@ -42,29 +42,29 @@ int main(int argc, char **argv)
 {
   int i, ref;
   char path[17], buf[2];
-  __puti(argc);
-  __putc(' ');
+  __cmd_puti(argc);
+  __cmd_putc(' ');
   for (i = 0; i < argc; i++) {
     cputs(argv[i]);
-    __putc(' ');
+    __cmd_putc(' ');
   }
-  __puti(ops[0](2, 3));
-  __putc(' ');
-  __puti(ops[1](2, 3));
-  __putc(' ');
+  __cmd_puti(ops[0](2, 3));
+  __cmd_putc(' ');
+  __cmd_puti(ops[1](2, 3));
+  __cmd_putc(' ');
   cputs(words[1]);
-  __putc(' ');
-  __puti(*mid);
-  __putc(' ');
-  __puti(zeros[199] + big[699] + seen + count());
-  __putc(' ');
+  __cmd_putc(' ');
+  __cmd_puti(*mid);
+  __cmd_putc(' ');
+  __cmd_puti(zeros[199] + big[699] + seen + count());
+  __cmd_putc(' ');
   big[699] = 5;
   zeros[0] = 6;
   seen = 7;
-  __puti(big[699] + zeros[0] + seen + count());
-  __putc(' ');
-  __puti((int)quot(50000u, 7u));
-  __putc(' ');
+  __cmd_puti(big[699] + zeros[0] + seen + count());
+  __cmd_putc(' ');
+  __cmd_puti((int)quot(50000u, 7u));
+  __cmd_putc(' ');
   for (i = 0; argv[0][i] && i < 16; i++)
     path[i + 1] = argv[0][i];
   path[0] = (char)i;
@@ -74,8 +74,8 @@ int main(int argc, char **argv)
     fileio.read(ref, buf, 2);
     fileio.close(ref);
   }
-  __putc(buf[0]);
-  __putc(buf[1]);
-  __putln();
+  __cmd_putc(buf[0]);
+  __cmd_putc(buf[1]);
+  __cmd_putln();
   return 7;
 }

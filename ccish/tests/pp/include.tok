@@ -1,16 +1,16 @@
 # An #include: file 2 is tests/pp/inc/one.h, found beside include.c
 # (CCPP.md, $03).
 43 54 4b 08     # "CTK", version 8
-# one.h line 1 defines ONE (id 32)
+# one.h line 1 defines ONE (id 47)
 03 02 02 00     # file 2, line 2: int b;
 80
-04 23 00        # b: id 35
+04 32 00        # b: id 50
 3b
 03 01 02 00     # back in file 1, line 2: int a = ONE;
 80
-04 24 00        # a: id 36
+04 33 00        # a: id 51
 3d
 05 01 00        # ONE: 1
 3b
 01              # the end is on line 3
-00 24 00 ss ss  # the end: 36 ids, the checksum
+00 33 00 ss ss  # the end: 51 ids, the checksum

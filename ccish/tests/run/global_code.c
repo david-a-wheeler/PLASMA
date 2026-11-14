@@ -23,9 +23,9 @@ int main()
   a[i] = g;
   a[3] = 1;
   c = 'A';
-  __puti(a[2] + a[3] + h);
-  __putc(' ');
-  __putc(c);
-  __putln();
+  __cmd_puti(a[2] + a[3] + h);
+  __cmd_putc(' ');
+  __cmd_putc(c);
+  __cmd_putln();
   return 0;
 }

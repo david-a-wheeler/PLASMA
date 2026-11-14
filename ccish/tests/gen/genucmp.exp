@@ -3,7 +3,7 @@
     ; label 103
     LLW 0
     LLW 2
-    CALL __isult
+    CALL __cmd_isult
     NEG
     LEAVE 4
 
@@ -12,7 +12,7 @@
     ; label 103
     LLW 0
     LLW 2
-    CALL __isuge
+    CALL __cmd_isuge
     NEG
     LEAVE 4
 
@@ -21,7 +21,7 @@
     ; label 103
     LLW 0
     LLW 2
-    CALL __isugt
+    CALL __cmd_isugt
     NEG
     LEAVE 4
 
@@ -30,7 +30,7 @@
     ; label 103
     LLW 0
     LLW 2
-    CALL __isule
+    CALL __cmd_isule
     NEG
     LEAVE 4
 
@@ -39,7 +39,7 @@
     ; label 103
     LLW 0
     LLW 2
-    CALL __isult
+    CALL __cmd_isult
     NEG
     LEAVE 4
 
@@ -48,7 +48,7 @@
     ; label 103
     LLW 0
     CW 40000
-    CALL __isugt
+    CALL __cmd_isugt
     NEG
     LEAVE 2
 
@@ -57,7 +57,7 @@
     ; label 103
     LLW 0
     CW 40000
-    CALL __isult
+    CALL __cmd_isult
     NEG
     LEAVE 2
 

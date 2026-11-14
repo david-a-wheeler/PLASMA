@@ -1,3 +1,3 @@
 
-int main() { __putln()
+int main() { __cmd_putln()
 }

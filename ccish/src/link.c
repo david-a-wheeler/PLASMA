@@ -6,7 +6,7 @@
 // It uses none of the compiler's tables (fn_name[] and so on), only the
 // files, so it is a program of its own, cclink (approach.md, "B3").
 // The module exports nothing and imports only CMDSYS functions, by their
-// PLASMA names (__puts imports PUTS), so other C names never meet
+// PLASMA names (__cmd_puts imports PUTS), so other C names never meet
 // PLASMA's symbol table (approach.md issue 11, decision 35).
 //
 // The files are read in order, with no seeking, and only one at a time
@@ -57,6 +57,7 @@
 #include "obj.fmt.h"
 #include "obj.sym.h"
 #include "mop.h"
+#include "fixed.h"
 #include "link.h"
 
 #define MAX_GSYMS   307     // limit link: names shared between objects: the
@@ -368,6 +369,16 @@ static void read_mods(const char *name)
   }
 }
 
+// Is name a CMDSYS function's C spelling: CMD_PREFIX and a name?
+static int is_cmd(const char *name)
+{
+  const char *p = CMD_PREFIX;
+  while (*p)
+    if (*name++ != *p++)
+      return 0;
+  return 1;
+}
+
 // Report error msg about the symbol named name, quoted.
 static void undefined(int msg, const char *name)
 {
@@ -597,6 +608,11 @@ static void add_global(Lsym *s, int data)
     }
   }
   if (s->flags & SYM_DEFINED) {
+    // C reserves __ names to the implementation (C11 7.1.3), so only
+    // CMDSYS defines a __cmd_ one, and a call is always the import.
+    if (is_cmd(s->name))
+      undefined(301 /* "only CMDSYS may define a __cmd_ name:" */,
+                s->name);
     g_def[g] = (unsigned char)cur;
     g_off[g] = s->off;
     if (s->flags & SYM_BSS)
@@ -708,7 +724,7 @@ static int name_wanted(const char *name)
   return g;
 }
 
-// Does the link want __start: main has two parameters, and no object
+// Does the link want _start: main has two parameters, and no object
 // defines it. No object references it (resolve() asks for it only
 // because of main's count), so the map must offer it by its own
 // spelling.
@@ -718,7 +734,7 @@ static int start_wanted(void)
   if (m < 0 || g_def[m] == NO_OBJ || (g_flags[m] & G_DATA)
       || g_count[m] != 2)
     return 0;
-  g = gsym_find("__start");
+  g = gsym_find("_start");
   return !(g >= 0 && g_def[g] != NO_OBJ);
 }
 
@@ -833,7 +849,7 @@ static int map_pass(Bfile *map, int len)
       // The line's base.
       state = 1;
       strcpy(base, tok);
-    } else if (state == 1 && (!strcmp(tok, "__start") ? start_wanted()
+    } else if (state == 1 && (!strcmp(tok, "_start") ? start_wanted()
                                                        : name_wanted(tok) >= 0)) {
       // A name the link wants: judge the line, and skip its rest.
       len = map_line(base, tok, len);
@@ -880,8 +896,8 @@ static void find_library(void)
   }
 }
 
-// Make CMDSYS function name, which the init function calls, used (an
-// import, unless a program defines its own).
+// Make CMDSYS function name, which the init function calls, used: an
+// import, since no program may define one (add_global()).
 static void use_cmdsys(const char *name)
 {
   int g = gsym_find(name);
@@ -892,7 +908,7 @@ static void use_cmdsys(const char *name)
 
 // After step 1: resolve the shared names. A used name that no object
 // defines must be a CMDSYS function, which becomes an import; main, or
-// __start for a main with parameters, becomes the entry point.
+// _start for a main with parameters, becomes the entry point.
 static void resolve(void)
 {
   int g;
@@ -901,14 +917,14 @@ static void resolve(void)
       g_off[g] = place_zero(gnames + g_name[g], g_count[g],
                             g_flags[g] & G_INDATA);
   if (nmoved > 0) {
-    use_cmdsys("__heapavail");
-    use_cmdsys("__isult");
-    use_cmdsys("__heapalloc");
-    use_cmdsys("__memset");
-    use_cmdsys("__puts");
+    use_cmdsys("__cmd_heapavail");
+    use_cmdsys("__cmd_isult");
+    use_cmdsys("__cmd_heapalloc");
+    use_cmdsys("__cmd_memset");
+    use_cmdsys("__cmd_puts");
   }
   if (opt_xload && zstay > 0)
-    use_cmdsys("__memset");           // init clears the zero region
+    use_cmdsys("__cmd_memset");           // init clears the zero region
   for (g = 0; g < MAX_GSYMS; g++) {
     const char *name;
     int fl = g_flags[g];
@@ -924,8 +940,14 @@ static void resolve(void)
       if (g_lab[g] < 0 && (fl & G_BADCMDSYS))
         undefined(173 /* "declaration doesn't match the CMDSYS"
                          " function" */, name);
-      if (g_lab[g] < 0 && (fl & (G_DATA | G_PLAIN)))
-        undefined(172 /* "undefined reference to" */, name);
+      // A plain __cmd_ name is none of the 25 (a typo, most likely):
+      // the CMDSYS ones are ccpp's fixed ids, which aren't plain.
+      if (g_lab[g] < 0 && (fl & (G_DATA | G_PLAIN))) {
+        if (is_cmd(name))
+          undefined(300 /* "not a CMDSYS function:" */, name);
+        else
+          undefined(172 /* "undefined reference to" */, name);
+      }
       if (nimports >= 255)
         fatal0(190 /* "too many imported functions" */);
       g_flags[g] = (unsigned char)(fl | G_IMPORT);
@@ -937,9 +959,9 @@ static void resolve(void)
   // main(argc, argv): init calls the library's startup (lib/start.c),
   // which splits the command line and calls main.
   if (main_sym >= 0 && g_count[main_sym] == 2) {
-    g = gsym_find("__start");
+    g = gsym_find("_start");
     if (g < 0 || g_def[g] == NO_OBJ)
-      undefined(172 /* "undefined reference to" */, "__start");
+      undefined(172 /* "undefined reference to" */, "_start");
     else
       main_sym = g;
   }
@@ -1717,11 +1739,11 @@ static void init_word(int *n, int op, int w)
 // in on the Apple VMs (lib/exit.c).
 #define ZP_TMP 0xE7
 
-// The slot of __exitcap (lib/exit.c), whose routine init runs just
+// The slot of _exitcap (lib/exit.c), whose routine init runs just
 // before main when exit is linked, or -1.
 static int exit_cap(void)
 {
-  int g = gsym_find("__exitcap");
+  int g = gsym_find("_exitcap");
   return g >= 0 && g_def[g] != NO_OBJ ? g : -1;
 }
 
@@ -1732,7 +1754,7 @@ static int exit_cap(void)
 // its global. (It asks heapavail first: plvm's heapalloc stops the VM
 // when the heap is full, and the Apple's can wrap past $FFFF.) In an
 // image (-x), nothing moved, and init clears the zero region, which
-// isn't in the file. When exit is linked, it runs __exitcap's routine
+// isn't in the file. When exit is linked, it runs _exitcap's routine
 // (lib/exit.c), which saves what exit needs to make main return. Then
 // it calls main and returns -(status & 255), main's exit status (or
 // exit's) as a PLASMA error (0 for success, or for a void main, for
@@ -1746,21 +1768,21 @@ static int init_code(void)
   int n = 0, i, pw = data_base + zbase + zstay;
   nir = 0;
   if (nmoved > 0) {
-    init_op(&n, OP_CALL, 0, gsym_find("__heapavail"));
+    init_op(&n, OP_CALL, 0, gsym_find("__cmd_heapavail"));
     init_word(&n, OP_CW, (int)mv_total + HEAP_SPARE);
-    init_op(&n, OP_CALL, 0, gsym_find("__isult"));
+    init_op(&n, OP_CALL, 0, gsym_find("__cmd_isult"));
     // To ok: past this word, the CS, CALL, MINUS1 and RET.
     init_word(&n, OP_BRFLS, 2 + (1 + sizeof(no_memory)) + 3 + 1 + 1);
     fbuf[n++] = OP_CS;
     fbuf[n++] = sizeof(no_memory) - 1;
     for (i = 0; no_memory[i]; i++)
       fbuf[n++] = no_memory[i];
-    init_op(&n, OP_CALL, 0, gsym_find("__puts"));
+    init_op(&n, OP_CALL, 0, gsym_find("__cmd_puts"));
     fbuf[n++] = OP_MINUS1;
     fbuf[n++] = OP_RET;
     // ok:
     init_word(&n, OP_CW, (int)mv_total);
-    init_op(&n, OP_CALL, 0, gsym_find("__heapalloc"));
+    init_op(&n, OP_CALL, 0, gsym_find("__cmd_heapalloc"));
     init_op(&n, OP_DAW, pw, -1);
     for (i = 1; i < nmoved; i++) {
       init_word(&n, OP_CW, mv_size[i - 1]);
@@ -1771,14 +1793,14 @@ static int init_code(void)
     init_op(&n, OP_LAW, pw, -1);
     fbuf[n++] = OP_CN;
     init_word(&n, OP_CW, (int)mv_total);
-    init_op(&n, OP_CALL, 0, gsym_find("__memset"));
+    init_op(&n, OP_CALL, 0, gsym_find("__cmd_memset"));
   }
   if (opt_xload && zstay > 0) {
     // An image's zero region isn't in its file: clear it.
     init_op(&n, OP_LA, data_base + zbase, -1);
     fbuf[n++] = OP_CN;
     init_word(&n, OP_CW, zstay);
-    init_op(&n, OP_CALL, 0, gsym_find("__memset"));
+    init_op(&n, OP_CALL, 0, gsym_find("__cmd_memset"));
   }
   if ((i = exit_cap()) >= 0) {
     // Right before main's call, with nothing pushed: exit makes that
@@ -1845,16 +1867,16 @@ static void init_entries(int init_off)
 // Write the imports' names, in import order (slot order), each in DCI
 // form, then $00: the ESD, with each one's type and number unless -x.
 // One declared as a PLASMA import has its PLASMA name; the others are
-// CMDSYS functions, whose C name is the PLASMA name with "__" in front
-// (__puts for PUTS), so the "__" goes.
+// CMDSYS functions, whose C name is CMD_PREFIX and the PLASMA name
+// (__cmd_puts for PUTS), so the prefix goes.
 static void write_imports(void)
 {
   int i;
   for (i = 0; i < MAX_GSYMS; i++)
     if (g_name[i] >= 0 && (g_flags[i] & G_IMPORT)) {
       const char *name = gnames + (g_lab[i] >= 0 ? g_lab[i] : g_name[i]);
-      if (g_lab[i] < 0 && name[0] == '_' && name[1] == '_')
-        name += 2;
+      if (g_lab[i] < 0 && is_cmd(name))
+        name += CMD_PREFIX_LEN;
       out_dci(name);
 #ifdef CCISH_LISTING
       if (opt_list)
@@ -2054,7 +2076,7 @@ void link_module(int n, const char **bases, const char *path, const char *dir)
   // On an Apple II, a REL module is ProDOS type $FE, aux type $1000,
   // or CMD won't run it; an image stays BIN (../doc/xload.md, 2).
   if (!opt_xload)
-    __filetype(0xFE, 0x1000);
+    _filetype(0xFE, 0x1000);
 #endif
   if (!bopen(&out, path, 1))
     fatal_d(192 /* "cannot create output file" */, path);

@@ -5,8 +5,8 @@
 // listing-has: IDXW
 void show(int n)
 {
-  __puti(n);
-  __putc(' ');
+  __cmd_puti(n);
+  __cmd_putc(' ');
 }
 
 int sum(int a[], int n)
@@ -78,7 +78,7 @@ int main()
   show(a[0]);
   show(a[4]);
   show(a[1] + a[3]);
-  __putln();
+  __cmd_putln();
 
   // variable indexes, compound assignment, ++ and --
   for (i = 0; i < 5; i++)
@@ -94,22 +94,22 @@ int main()
   show(--a[i]);
   show(a[i] = 7);
   show(a[2]);
-  __putln();
+  __cmd_putln();
 
   // char arrays and char indexes
   for (c = 0; c < 7; c++)
     s[c] = 'a' + c;
   s[7] = 0;
   c = 3;
-  __putc(s[c]);
+  __cmd_putc(s[c]);
   s[c] = 'D';
   for (i = 0; s[i]; i++)
-    __putc(s[i]);
-  __putc(' ');
+    __cmd_putc(s[i]);
+  __cmd_putc(' ');
   show(s[c] + 1);
   s[0] = 300;                 // a char keeps the low byte
   show(s[0]);
-  __putln();
+  __cmd_putln();
 
   // arrays as pointers
   p = a;
@@ -132,7 +132,7 @@ int main()
   show(a[3]);
   show(a == &a[0]);
   show(p > a);
-  __putln();
+  __cmd_putln();
 
   // functions taking arrays
   show(sum(a, 5));
@@ -145,7 +145,7 @@ int main()
   sort(t, 6);
   for (i = 0; i < 6; i++)
     show(t[i]);
-  __putln();
+  __cmd_putln();
 
   // two-dimensional arrays
   for (i = 0; i < 3; i++)
@@ -169,20 +169,20 @@ int main()
   show(get(m, 1));
   bump(m, 0);
   show(m[1][0]);
-  __putln();
+  __cmd_putln();
 
   // arrays of pointers
   names[0] = "zero";
   names[1] = "one";
   names[2] = "two";
   for (i = 0; i < 3; i++)
-    __putc(names[i][0]);
-  __putc(' ');
+    __cmd_putc(names[i][0]);
+  __cmd_putc(' ');
   copy(s, names[2]);
   for (i = 0; s[i]; i++)
-    __putc(s[i]);
-  __putc(' ');
+    __cmd_putc(s[i]);
+  __cmd_putc(' ');
   show(names[1][2]);
-  __putln();
+  __cmd_putln();
   return 0;
 }

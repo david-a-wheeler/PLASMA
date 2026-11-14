@@ -21,8 +21,8 @@ int other;
 
 void show(int n)
 {
-  __puti(n);
-  __putc(' ');
+  __cmd_puti(n);
+  __cmd_putc(' ');
 }
 
 int main()
@@ -71,6 +71,6 @@ int main()
     s += i;
   show(s);
   show(i);
-  __putln();
+  __cmd_putln();
   return 0;
 }

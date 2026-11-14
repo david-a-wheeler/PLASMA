@@ -11,13 +11,15 @@ with file and line references for checking (as of 2026-11-13; check
 them again, since they move). Section 8 is the list of verified facts
 the decisions rest on.
 
-**Status (2026-11-14).** Steps 1 to 6 of section 9 are done: the one
-exit (section 5.5), the option letters (section 2, with `-m` and `-r`
-as proposed), the library search, `-L dir` (section 5), using `-L`
-everywhere, with tools/cclink deleted (section 9, step 4), and the
-rename of ccrel to cclink (section 1), and ccpp's CMDSYS ids out of
-its name pool (section 3.1). Step 7 isn't. Work through it as section
-10 says.
+**Status (2026-11-14).** All seven steps of section 9 are done: the
+one exit (section 5.5), the option letters (section 2, with `-m` and
+`-r` as proposed), the library search, `-L dir` (section 5), using
+`-L` everywhere, with tools/cclink deleted (section 9, step 4), the
+rename of ccrel to cclink (section 1), ccpp's CMDSYS ids out of its
+name pool (section 3.1), and the `__cmd_` spellings with the spare
+ids, the `_` private names and the two link checks (sections 3, 3.1a,
+3.2 and 4, with the diagnostic of section 7, item 2: yes). Section 9,
+step 7, says what the plan got wrong.
 
 ## 1. The final pass is renamed `ccrel` to `cclink`
 
@@ -269,7 +271,8 @@ fixed-id list (CCPP.md:269-278, 297-309).
   `tests/out` use `__put*` alone. The name files (`.nam`) hold the
   spellings, so the pp tests' `.nam` expectations change (e.g.
   tests/pp/directives.nam:3, `__puts`); the `.i` token streams don't
-  (they hold ids). Call sites: the C library's wrappers (lib/memcpy.c,
+  (they hold ids). (Wrong, as step 7 found: 3.1a's spare ids move
+  every file's own ids by 15, so every `.tok` changed too.) Call sites: the C library's wrappers (lib/memcpy.c,
   lib/memset.c, lib/strncpy.c, lib/getc.c; grep for the full set),
   inc/ptest.h:49-66 (the cross-test mapping), samples/rod.c and
   samples/rodfast.c, tests/errors/proto_mismatch.c, every test, and
@@ -283,7 +286,8 @@ fixed-id list (CCPP.md:269-278, 297-309).
     double-underscore names (C11 7.1.3). **It changes today's rule**:
     `use_cmdsys()` says a CMDSYS name is an import "unless a program
     defines its own" (src/link.c:657). No test defines one now (I
-    grepped); check again when implementing.
+    grepped); check again when implementing. (Wrong, as step 7 found:
+    two did; section 9, step 7.)
   - An *undefined* `__cmd_` name that isn't one of the 25 gets "not a
     CMDSYS function" instead of a bare 172, naming it: it catches a
     typo like `__cmd_strcp` at the right moment. Recommended
@@ -683,6 +687,42 @@ leading-comma temp-file convention, AGENTS.md).
    `NAM_VERSION` raised and the regenerated pp `.nam`
    expectations and inc/ptest.h. With step 6 done, the prefix itself
    is one string in ccpp.
+
+   **Done** (2026-11-14), with the diagnostic (section 7, item 2:
+   yes). The 25 spellings and the 4 private names were one
+   substitution each, by word boundary, in every tracked file but
+   approach.md, this file and doc/bootstrap-test.md (history; R3 has a
+   note). The prefix is fixed.h's `CMD_PREFIX`, for ccpp and cclink
+   both; ccpp's ids 26 to 40 are spare (a `?` line each), `main` is
+   41, and a file's own names start at 49; `NAM_VERSION` is 3. cclink
+   gives 300, "not a CMDSYS function: '__cmd_strcp'", for a plain
+   undefined `__cmd_` name, and 301, "only CMDSYS may define a __cmd_
+   name", for a definition; tests/errors/cmd_typo.c and cmd_define.c
+   check them. Two things the plan got wrong:
+   - **Every `.tok` changed, not only the `.nam`** (3.2 said the
+     token streams wouldn't): the spare ids move a file's own ids by
+     15. The pp tests' expectations were moved by a rule (every id
+     from 26 up gains 15, in `$04`, `$07`, `$09` and the end stamp's
+     count, and in the comments' "id N"), not copied from ccpp; the
+     other numbers in comments were checked by hand. One comment was
+     already wrong: funcmacro.tok's x1 and y were ids 45 and 46, not
+     43 and 44.
+   - **Two tests defined a CMDSYS name** (3.2 said none did):
+     tests/run/dead_store.c's `__call` was its old `call`, renamed
+     with decision 35, and is `call` again; tests/link/main_second
+     tested the old rule, a program's own `__toupper` used instead of
+     the import, and now uses `upcase`, with cmd_define.c testing the
+     new rule.
+   The shared-name byte counts that tests pin grew 4 bytes a CMDSYS
+   name (link/basic 80 to 92, link/probe 67 to 79, cclink.sh's nofit
+   2991 to 2999, still too few for its static name).
+
+   **Size** (running spare on a 64K Apple II): ccpp 868 to 832 (the
+   longer prefix and the spare ids' lines: code 17 bytes, strings 19);
+   cccomp 724, unchanged; ccgen 2377 to 2361 (its four helper names);
+   cclink 11628 to 11490 (the two checks and the longer names). ccpp's
+   pool peak, compiling ccish, rose 37 bytes to 7942 of 8207, since
+   ptop.c now sees fixed.h's three new macros.
 
 ## 10. For the implementer: how to work through steps 2 to 7
 

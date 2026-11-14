@@ -297,8 +297,8 @@
 297 _Static_assert
 298 (spare)
 299 (spare)
-300 (spare)
-301 (spare)
+300 not a CMDSYS function:
+301 only CMDSYS may define a __cmd_ name:
 302 the library map says
 303 the library map has a name over 31 characters:
 304 a -L path is too long (128 characters)

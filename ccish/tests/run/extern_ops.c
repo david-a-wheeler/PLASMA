@@ -15,8 +15,8 @@ int main()
   n *= 3;
   buf[n] = 'z';
   buf[0] += 1;
-  __puti(o.x); __putc(' '); __puti(o.y); __putc(' '); __puti(n); __putc(' ');
-  __putc(buf[0]); __putc(buf[6]); __putln();
+  __cmd_puti(o.x); __cmd_putc(' '); __cmd_puti(o.y); __cmd_putc(' '); __cmd_puti(n); __cmd_putc(' ');
+  __cmd_putc(buf[0]); __cmd_putc(buf[6]); __cmd_putln();
   return 0;
 }
 struct pt o = {1, 2};

@@ -17,8 +17,8 @@
 // plain LAWs, so this only checks that the call works.
 // listing-count: 1 SLB
 // listing-count: 10 SLW
-// listing-count: 2 CALL $0000  ; __memset
-// listing-count: 2 CALL $0000  ; __memcpy
+// listing-count: 2 CALL $0000  ; __cmd_memset
+// listing-count: 2 CALL $0000  ; __cmd_memcpy
 struct vs { volatile int a; int b; };
 struct ps { int a; int b; };
 struct vs gv = {7, 8};
@@ -90,7 +90,7 @@ int main()
   pmember();
   vcopy();
   pcopy();
-  __puti(gv.a + gp.b + vtake(gv) + ptake(gp));
-  __putln();
+  __cmd_puti(gv.a + gp.b + vtake(gv) + ptake(gp));
+  __cmd_putln();
   return 0;
 }

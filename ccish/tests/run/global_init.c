@@ -41,16 +41,16 @@ int count;
 
 void show(int n)
 {
-  __puti(n);
-  __putc(' ');
+  __cmd_puti(n);
+  __cmd_putc(' ');
 }
 
 // Print the C string s, then a space.
 void say(char *s)
 {
   while (*s)
-    __putc(*s++);
-  __putc(' ');
+    __cmd_putc(*s++);
+  __cmd_putc(' ');
 }
 
 int main()
@@ -63,17 +63,17 @@ int main()
   show(wrap);
   show(size);
   show(np == 0);
-  __putln();
+  __cmd_putln();
 
   say(msg);
   say(empty);
   say(tail);
   say(word);
   say(roomy);
-  __putc(exact[0]);
-  __putc(exact[2]);
-  __putc(' ');
-  __putln();
+  __cmd_putc(exact[0]);
+  __cmd_putc(exact[2]);
+  __cmd_putc(' ');
+  __cmd_putln();
 
   for (i = 0; i < 5; i++)
     show(table[i]);
@@ -83,7 +83,7 @@ int main()
   show(sizeof exact);
   show(sizeof roomy);
   show(roomy[5]);
-  __putln();
+  __cmd_putln();
 
   show(m[1][2]);
   show(part[0][0]);
@@ -91,7 +91,7 @@ int main()
   show(sizeof flat);
   show(flat[1][0]);
   show(flat[1][1]);
-  __putln();
+  __cmd_putln();
 
   show(*pn);
   *pn = 6;
@@ -100,7 +100,7 @@ int main()
   show(*pm);
   show(pend - sq);
   say(pw);
-  __putln();
+  __cmd_putln();
 
   for (i = 0; i < 3; i++)
     say(names[i]);
@@ -112,6 +112,6 @@ int main()
   show(speaker == (char *)0xC030);
   show(self == (int *)&self);
   show(count);
-  __putln();
+  __cmd_putln();
   return 0;
 }

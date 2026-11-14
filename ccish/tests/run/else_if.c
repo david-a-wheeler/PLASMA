@@ -84,23 +84,23 @@ int longchain(int n)
 
 int main()
 {
-  __puti(classify(-5)); __putc(' ');
-  __puti(classify(0)); __putc(' ');
-  __puti(classify(7)); __putc(' ');
-  __puti(classify(42)); __putc(' ');
-  __puti(classify(999)); __putc(' ');
-  __puti(classify(5000)); __putln();
-  __puti(partial(1)); __putc(' ');
-  __puti(partial(2)); __putc(' ');
-  __puti(partial(3)); __putc(' ');
-  __puti(partial(4)); __putln();
-  __puti(nested(1, 1)); __putc(' ');
-  __puti(nested(1, 2)); __putc(' ');
-  __puti(nested(2, 1)); __putc(' ');
-  __puti(nested(3, 0)); __putln();
-  __puti(longchain(0)); __putc(' ');
-  __puti(longchain(20)); __putc(' ');
-  __puti(longchain(39)); __putc(' ');
-  __puti(longchain(40)); __putln();
+  __cmd_puti(classify(-5)); __cmd_putc(' ');
+  __cmd_puti(classify(0)); __cmd_putc(' ');
+  __cmd_puti(classify(7)); __cmd_putc(' ');
+  __cmd_puti(classify(42)); __cmd_putc(' ');
+  __cmd_puti(classify(999)); __cmd_putc(' ');
+  __cmd_puti(classify(5000)); __cmd_putln();
+  __cmd_puti(partial(1)); __cmd_putc(' ');
+  __cmd_puti(partial(2)); __cmd_putc(' ');
+  __cmd_puti(partial(3)); __cmd_putc(' ');
+  __cmd_puti(partial(4)); __cmd_putln();
+  __cmd_puti(nested(1, 1)); __cmd_putc(' ');
+  __cmd_puti(nested(1, 2)); __cmd_putc(' ');
+  __cmd_puti(nested(2, 1)); __cmd_putc(' ');
+  __cmd_puti(nested(3, 0)); __cmd_putln();
+  __cmd_puti(longchain(0)); __cmd_putc(' ');
+  __cmd_puti(longchain(20)); __cmd_putc(' ');
+  __cmd_puti(longchain(39)); __cmd_putc(' ');
+  __cmd_puti(longchain(40)); __cmd_putln();
   return 0;
 }

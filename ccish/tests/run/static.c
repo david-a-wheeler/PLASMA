@@ -14,8 +14,8 @@ static int twice(int n);
 
 void show(int n)
 {
-  __puti(n);
-  __putc(' ');
+  __cmd_puti(n);
+  __cmd_putc(' ');
 }
 
 int counter(void)
@@ -81,6 +81,6 @@ int main()
   show(blocks());
   show(blocks());
   inits();
-  __putln();
+  __cmd_putln();
   return 0;
 }

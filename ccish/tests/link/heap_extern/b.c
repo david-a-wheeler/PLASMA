@@ -9,11 +9,11 @@ int last(void);
 
 int main()
 {
-  __puti(big[0] + big[299] + *pb + own[127]);
-  __putc(32);
+  __cmd_puti(big[0] + big[299] + *pb + own[127]);
+  __cmd_putc(32);
   fill();
   own[127] = 1;
-  __puti(big[299] + *pb + own[127] + last());
-  __putln();
+  __cmd_puti(big[299] + *pb + own[127] + last());
+  __cmd_putln();
   return 0;
 }

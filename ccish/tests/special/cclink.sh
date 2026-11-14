@@ -122,8 +122,8 @@ cat >>"$OUT/link/many_b.c" <<'EOF'
 int a_first(void); int a_last(void);
 int main()
 {
-  __puti(a_first()); __putc(' '); __puti(a_last()); __putc(' ');
-  __puti(b_first()); __putc(' '); __puti(b_last()); __putc(10);
+  __cmd_puti(a_first()); __cmd_putc(' '); __cmd_puti(a_last()); __cmd_putc(' ');
+  __cmd_puti(b_first()); __cmd_putc(' '); __cmd_puti(b_last()); __cmd_putc(10);
   return 0;
 }
 EOF
@@ -202,7 +202,7 @@ rm -f "$OUT/link/long.objs" "$OUT/link/many33.objs" "$OUT/link/list.err"
     done
     echo 'int main()'
     echo '{'
-    echo '  f1(); __puti(g); __putc(32); f25(); __puti(g); __putc(10);'
+    echo '  f1(); __cmd_puti(g); __cmd_putc(32); f25(); __cmd_puti(g); __cmd_putc(10);'
     echo '  return 0;'
     echo '}'
 } >"$OUT/link/relocs.c"
@@ -229,7 +229,7 @@ gen_long() {
     done >"$1"
 }
 # The 92 names of 31 characters, main, the 27-character caller, and
-# __puti and __putc take 2991 of the 3000 name bytes, too few for the
+# __cmd_puti and __cmd_putc take 2999 of the 3000 name bytes, too few for the
 # static name's 32.
 gen_long "$OUT/link/nofit_a.c" 1 46
 gen_long "$OUT/link/nofit_b.c" 47 92
@@ -241,7 +241,7 @@ int caller_padded_to_27_chars_x(void)
 }
 int main()
 {
-  __puti(caller_padded_to_27_chars_x()); __putc(10);
+  __cmd_puti(caller_padded_to_27_chars_x()); __cmd_putc(10);
   return 0;
 }
 EOF
@@ -251,7 +251,7 @@ if cc_obj "" "$OUT/link/nofit_a" "$OUT/link/nofit_a.c" \
       2>>"$OUT/link/nofit.err" \
    && ./cclink -v -o "$OUT/link/nofit" "$OUT/link/nofit_a" \
       "$OUT/link/nofit_b" >"$OUT/link/nofit.lst" 2>>"$OUT/link/nofit.err" \
-   && grep -qF "; shared names: 96 of 307 slots, 2991 of 3000" \
+   && grep -qF "; shared names: 96 of 307 slots, 2999 of 3000" \
         "$OUT/link/nofit.lst" \
    && grep -q '^static@\$[0-9A-F]\{4\}:$' "$OUT/link/nofit.lst" \
    && grep -qF '; static@$' "$OUT/link/nofit.lst" \
@@ -312,8 +312,8 @@ int main(void)
   int ok = f != 0;
   if (f)
     fclose(f);
-  __puti(ok);
-  __putln();
+  __cmd_puti(ok);
+  __cmd_putln();
   return ok ? 0 : 1;
 }
 EOF
@@ -360,7 +360,7 @@ cat >"$OUT/link/mwp.c" <<'EOF'
 int mw_a(void); int mw_c(void);
 int main(void)
 {
-  __puti(mw_a() + mw_c()); __putln();
+  __cmd_puti(mw_a() + mw_c()); __cmd_putln();
   return 0;
 }
 EOF
@@ -390,7 +390,7 @@ want_fail "a missing map" "cannot open $OUT/link/nomap/lib.map" \
 
 # A map naming an object that isn't there: the 171 for its summary.
 mkdir -p "$OUT/link/lmisslib"
-echo 'int libmiss(void); int main(void) { __puti(libmiss()); __putln(); return 0; }' \
+echo 'int libmiss(void); int main(void) { __cmd_puti(libmiss()); __cmd_putln(); return 0; }' \
     >"$OUT/link/lmiss.c"
 cc_obj "" "$OUT/link/lmiss" "$OUT/link/lmiss.c"
 echo "nosuch libmiss" > "$OUT/link/lmisslib/lib.map"
@@ -400,7 +400,7 @@ want_fail "a map naming a missing object" \
 
 # A map saying an object defines a name it doesn't: the drift error,
 # naming both. First, for an object already named:
-echo 'int driftname(void); int main(void) { __puti(driftname()); __putln(); return 0; }' \
+echo 'int driftname(void); int main(void) { __cmd_puti(driftname()); __cmd_putln(); return 0; }' \
     >"$OUT/link/drift.c"
 cc_obj "" "$OUT/link/drift" "$OUT/link/drift.c"
 mkdir -p "$OUT/link/driftlib"
@@ -415,7 +415,7 @@ want_fail "a map line for a named object that doesn't define the name" \
 echo 'int driftother(void); int driftmiss(void);
 int main(void)
 {
-  __puti(driftother()); __puti(driftmiss()); __putln();
+  __cmd_puti(driftother()); __cmd_puti(driftmiss()); __cmd_putln();
   return 0;
 }' >"$OUT/link/drift2.c"
 cc_obj "" "$OUT/link/drift2" "$OUT/link/drift2.c"
@@ -428,7 +428,7 @@ want_fail "a map line for an added object that doesn't define the name" \
     -L "$OUT/link/driftlib2" -o "$OUT/link/x" "$OUT/link/drift2"
 
 # A name on no line of the real map: the 172 text, as without -L.
-echo 'int notinthemap(void); int main(void) { __puti(notinthemap()); __putln(); return 0; }' \
+echo 'int notinthemap(void); int main(void) { __cmd_puti(notinthemap()); __cmd_putln(); return 0; }' \
     >"$OUT/link/notline.c"
 cc_obj "" "$OUT/link/notline" "$OUT/link/notline.c"
 want_fail "a name on no line" "undefined reference to 'notinthemap'" \
