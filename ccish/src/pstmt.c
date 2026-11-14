@@ -981,10 +981,40 @@ static void parse_switch(void)
   sw_default = def;
 }
 
+// return [expr];  Apart from parse_statement() so that its Operand
+// (46 bytes) isn't in the frame of every level of statement nesting,
+// only while a return value is parsed.
+static void parse_return(void)
+{
+  Operand o;
+  next();
+  if (tok == ';') {
+    if (fn_type[cur_fn] != TY_VOID)
+      push_zero_result(fn_type[cur_fn]);  // C89 allows this
+  } else {
+#ifdef CCISH_LINT
+    if (fn_type[cur_fn] == TY_VOID)
+      error(145 /* "void function returns a value:" */,
+            quote(fn_name[cur_fn]));
+#endif
+    begin_expr();
+    parse_expr(PREC_COMMA, &o);
+    check_assign(fn_type[cur_fn], &o, 199 /* "return" */, NULL);
+    if (fn_type[cur_fn] == TY_CHAR)
+      to_char(&o);        // a char function returns 0 to 255
+    if (is_struct(fn_type[cur_fn]))
+      push_struct_words(&o);  // returned as its words
+    else
+      rvalue(&o);
+    end_expr();
+  }
+  expect(';', 146 /* "expected ';' after return value, not" */);
+  put(IR_RETURN, result_words(fn_type[cur_fn]), -1);
+}
+
 // Parse one statement (or declaration) and emit its code.
 static void parse_statement(void)
 {
-  Operand o;
   int else_l, end_l;
   if (tok == TC_ID && next_is_colon()) {
     parse_label();              /* label: (before the typedef check, as
@@ -1059,29 +1089,7 @@ static void parse_statement(void)
     next();
     return;
   case TC_RETURN:
-    next();
-    if (tok == ';') {
-      if (fn_type[cur_fn] != TY_VOID)
-        push_zero_result(fn_type[cur_fn]);  // C89 allows this
-    } else {
-#ifdef CCISH_LINT
-      if (fn_type[cur_fn] == TY_VOID)
-        error(145 /* "void function returns a value:" */,
-              quote(fn_name[cur_fn]));
-#endif
-      begin_expr();
-      parse_expr(PREC_COMMA, &o);
-      check_assign(fn_type[cur_fn], &o, 199 /* "return" */, NULL);
-      if (fn_type[cur_fn] == TY_CHAR)
-        to_char(&o);        // a char function returns 0 to 255
-      if (is_struct(fn_type[cur_fn]))
-        push_struct_words(&o);  // returned as its words
-      else
-        rvalue(&o);
-      end_expr();
-    }
-    expect(';', 146 /* "expected ';' after return value, not" */);
-    put(IR_RETURN, result_words(fn_type[cur_fn]), -1);
+    parse_return();
     return;
   case TC_TYPEDEF:
   case TC_CONSTEXPR:
