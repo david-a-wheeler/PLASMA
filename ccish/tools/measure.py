@@ -894,6 +894,25 @@ def main():
             ("doc/limits.md", "each limit, with its measured peak")):
         print("  %-22s %s" % (tool, what))
     print()
+    print("Contents, in order (each part starts with the text quoted):")
+    for part in (
+            '"The %s build:", each source file\'s code, data, strings and'
+            ' zero' % ("full" if FULL else "small"),
+            '  data; "The library:", the same for each library object',
+            '"ccpp\'s tables:" (and cccomp\'s, ccgen\'s): the most one'
+            ' source needs',
+            '"ccpp:" (and "cccomp:", "ccgen:", "cclink:"): each program\'s'
+            ' totals,',
+            '  its stack at worst ("the worst frame chain") and its fit on'
+            ' an Apple II',
+            '"Peaks:", each limit, the most ccish\'s own source uses, and'
+            ' where',
+            '"Disk space:", each image\'s parts and size, in bytes and in'
+            ' blocks',
+            '"And their fit on a 64K Apple II": each program\'s need and'
+            ' spare'):
+        print("  " + part)
+    print()
     print("The %s build:" % ("full" if FULL else "small"))
     names = sorted({n for _, files in PROGRAMS for n in files})
     sizes, failed, big, over, fit = {}, False, None, {}, {}

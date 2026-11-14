@@ -11,6 +11,16 @@ Other checks (AGENTS.md's "Measuring" says how to use each):
   tools/loops.py         accesses in loops to globals moved to the heap
   doc/limits.md          each limit, with its measured peak
 
+Contents, in order (each part starts with the text quoted):
+  "The small build:", each source file's code, data, strings and zero
+    data; "The library:", the same for each library object
+  "ccpp's tables:" (and cccomp's, ccgen's): the most one source needs
+  "ccpp:" (and "cccomp:", "ccgen:", "cclink:"): each program's totals,
+    its stack at worst ("the worst frame chain") and its fit on an Apple II
+  "Peaks:", each limit, the most ccish's own source uses, and where
+  "Disk space:", each image's parts and size, in bytes and in blocks
+  "And their fit on a 64K Apple II": each program's need and spare
+
 The small build:
 File        Code    Data  Strings     Zero
 bio          376       0        8          0
