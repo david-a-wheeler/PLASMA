@@ -1204,36 +1204,35 @@ static int cond_type(Operand *b, int b_null, Operand *c, int c_null)
 // Parse "? b : c" with *o as the condition. Code: "cond BRFLS Lelse b
 // BRNCH Lend Lelse: c Lend:". A constant condition picks b or c at
 // compile time, and the other is parsed but emits no code. Both sides
-// may be void calls, as in C, but not just one.
+// may be void calls, as in C, but not just one. c is parsed into *o,
+// whose condition is used up by then, so that the frame (at every
+// level of an expression's nesting) holds one Operand, b, not two.
 static void parse_conditional(Operand *o)
 {
-  Operand b, c;
+  Operand b;
   int else_l, end_l, b_null, type;
 
   next();                         // '?'
   if (o->kind == K_CONST) {
-    int take_b = o->val != 0;
+    int take_b = o->val != 0, nonice = o->nonice;
     if (take_b)
       parse_expr(PREC_COMMA, &b);
     else
       parse_skipped(PREC_COMMA, &b);
     expect(':', 81 /* "expected ':' in conditional expression, not" */);
     if (take_b)
-      parse_skipped(PREC_COND, &c);
+      parse_skipped(PREC_COND, o);
     else
-      parse_expr(PREC_COND, &c);
-    if (is_void(&b) != is_void(&c))
+      parse_expr(PREC_COND, o);
+    if (is_void(&b) != is_void(o))
       error0(82 /* "only one side of '?:' is void" */);
-    type = cond_type(&b, is_null(&b), &c, is_null(&c));
-    b_null = o->nonice;
+    type = cond_type(&b, is_null(&b), o, is_null(o));
     if (take_b)
       *o = b;                   // not a struct ?:, which ccish lacks
-    else
-      *o = c;
     if (is_place(o))
       rvalue(o);              // the result is not an lvalue
     o->type = type;
-    o->nonice |= b_null;        // N ? 1 : 2 is no more constant
+    o->nonice |= nonice;        // N ? 1 : 2 is no more constant
     return;
   }
   else_l = new_label();
@@ -1246,16 +1245,16 @@ static void parse_conditional(Operand *o)
   branch(IR_JUMP, end_l);
   expect(':', 81 /* "expected ':' in conditional expression, not" */);
   place_forward(else_l);
-  parse_expr(PREC_COND, &c);
-  type = cond_type(&b, b_null, &c, is_null(&c));
-  if (!is_void(&c))
-    rvalue(&c);
-  if (is_void(&b) != is_void(&c))
+  parse_expr(PREC_COND, o);       // c
+  type = cond_type(&b, b_null, o, is_null(o));
+  if (!is_void(o))
+    rvalue(o);
+  if (is_void(&b) != is_void(o))
     error0(82 /* "only one side of '?:' is void" */);
   place_forward(end_l);
   o->kind = b.kind;
   o->type = type;
-  o->is_bool = b.is_bool && c.is_bool;
+  o->is_bool = b.is_bool && o->is_bool;
 }
 
 // Is IR op one of < > <= >=?
