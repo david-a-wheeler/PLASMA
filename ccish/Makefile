@@ -47,7 +47,7 @@ LINK   = src/link.c
 # II's; the tests check that both write the same objects and modules.
 # Every list of the programs below comes from PROGS.
 PROGS := ccpp cccomp ccgen ccrel
-SMALL := $(PROGS:%=%-small)
+SMALL_PROGS := $(PROGS:%=%-small)
 # Each program's sources, in link order (the bootstrap's and
 # measure.py's too, below), and ccish's, the driver that runs all four.
 SRC_ccpp   = src/ccpp.c $(COMMON) $(PP)
@@ -80,7 +80,7 @@ CCRUN  = CCSTAT=$(abspath $(CCSTAT)) PLVM=$(PLVMBIN) $(abspath tools/ccrun)
 MEASURED := tools/out/measure.stamp
 
 all: ccish $(PROGS) doc/limits.md
-small: $(SMALL)
+small: $(SMALL_PROGS)
 
 # Each program and its sources; one recipe builds them all, from the
 # .c files among the prerequisites, and the small build adds its flag.
@@ -90,8 +90,8 @@ cccomp cccomp-small: $(SRC_cccomp) $(HEADERS)
 ccgen ccgen-small:   $(SRC_ccgen) $(HEADERS)
 ccrel ccrel-small:   $(SRC_ccrel) $(HEADERS)
 PROG_FLAGS =
-$(SMALL): PROG_FLAGS = -DCCISH_SMALL
-ccish $(PROGS) $(SMALL):
+$(SMALL_PROGS): PROG_FLAGS = -DCCISH_SMALL
+ccish $(PROGS) $(SMALL_PROGS):
 	$(CC) $(CFLAGS) $(PROG_FLAGS) $(CCINC) -o $@ $(filter %.c,$^)
 
 $(PLVM):
@@ -143,7 +143,7 @@ apple-inputs: $(APPLE_IN)
 
 # The passes a test may run; a stamp depends on these, so a rebuilt pass
 # re-runs the tests.
-PASSES := ccish $(PROGS) $(SMALL) $(PLVM) \
+PASSES := ccish $(PROGS) $(SMALL_PROGS) $(PLVM) \
           $(CCSTAT) tools/ccrun $(LIBOBJS) $(XLOAD)
 
 # --- The test kinds. Each is a directory of inputs; the stamp for input
@@ -415,7 +415,7 @@ common-ops: tools/opstats.py listings
 
 
 clean:
-	rm -f ccish $(PROGS) $(SMALL)
+	rm -f ccish $(PROGS) $(SMALL_PROGS)
 	rm -rf $(OUT) tools/out bootstrap
 	rm -f doc/measure.txt doc/limits.md
 
