@@ -47,6 +47,9 @@ files of the sessions so far; brought up to date 2026-11-12.)
   data on the heap" (REL modules only), "Loop design" (steps 1 and 2,
   the DLW fix, "Possible improvements to the loop forms"), issue 20
   "Writing fast C-ish".
+- `doc/diet.md`: instructions for making ccish's code smaller (and
+  faster at no cost in size), for an agent to follow again and again:
+  what has worked, what bites, and how to measure and test each gain.
 - `doc/xload.md`: XLOAD and its image format, what's left to do, and
   the plan; `doc/streaming-options.md`: why XLOAD, and the options
   set aside.
