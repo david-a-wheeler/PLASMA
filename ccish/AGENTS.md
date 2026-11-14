@@ -279,12 +279,16 @@ files of the sessions so far; brought up to date 2026-11-12.)
   own sources (as measure.py prepares them in `tools/out/src`). That is
   how we found that cccomp's loops were blocked by calls and returns in
   their bodies, not by their limits.
-- Per-function sizes: `tools/fsize.py LISTING [FUNCTION...]`, or
-  `tools/fsize.py -c OLD NEW` to compare two listings (such as
-  `tools/out/cccomp.lst` from a worktree and from this tree). Static
-  functions whose names didn't fit are `static@$ADDR`, which shifts
-  between builds, so `-c` leaves them out: compare per file instead
-  (measure.py's table).
+- **Per-function sizes and frames:** `tools/fsize.py LISTING
+  [FUNCTION...]` gives each function's code bytes, ops and frame bytes
+  (its ENTER's); `tools/fsize.py -f LISTING`, all of them, the largest
+  frame first, which is where to look to shrink the frame stack; and
+  `tools/fsize.py -c OLD NEW` compares two listings, each function
+  whose size, ops or frame changed. Use `tools/out/PROGRAM.named.lst`,
+  which measure.py links with room for every name; in
+  `tools/out/PROGRAM.lst`, a static whose name didn't fit is
+  `static@$ADDR`, which shifts between builds, and `-c` leaves it out.
+  For OLD, run measure.py in a worktree of the earlier commit.
 
 ## Verified PLASMA VM facts that shape the code
 

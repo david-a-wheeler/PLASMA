@@ -1007,6 +1007,10 @@ def main():
         if os.path.exists(named):
             os.remove(named)
         if ok:
+            # Kept as PROGRAM.named.lst, every function by its name, for
+            # tools/fsize.py.
+            with open(module + ".named.lst", "w") as f:
+                f.write(msg)
             funcs = parse_listing(msg)
             comps, edges, frame, unbounded = stack_report(funcs)
             static_report(funcs, comps, edges)
