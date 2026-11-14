@@ -5,10 +5,11 @@
 #             XLOAD2, an image), ccish's four passes as
 #             XLOAD images (ccrel -x, from tools/measure.py's objects,
 #             the small build's), and CCISH.MSG: about 108K of the 140K
-#   cclib.po  volume CCLIB: the C library's objects in LIB/ (link a
-#             program with LIB/START and the rest, as tools/cclink
-#             names them), with room for a program's own files: its
-#             own disk, since 42 small files take about 21K
+#   cclib.po  volume CCLIB: the C library's objects in LIB/, with
+#             LIB/LIB.MAP, so a program links as CCREL -L LIB -O PROG
+#             PROG (CCLINK after doc/linking.md's step 5), with room
+#             for a program's own files: its own disk, since 42 small
+#             files take about 21K
 #   boot.po   samples/boot.po (PLASMA 2.20, stopping at its prompt) with
 #             the C library's headers in SYS/CCINC, where ccpp looks
 #             for <...> on an Apple II (<syspath>ccinc)
@@ -26,7 +27,8 @@ cd "$here"
 AC=../bin/ac-linux-aarch64-15.2
 out=tests/out/apple
 mkdir -p "$out/obj"
-for f in tools/out/ccpp.objs tests/out/xload/xload samples/boot.po; do
+for f in tools/out/ccpp.objs tests/out/lib/lib.map tests/out/xload/xload \
+         samples/boot.po; do
     [ -f "$f" ] || { echo "a2disk: no $f (make, make xload)" >&2; exit 1; }
 done
 
@@ -57,6 +59,7 @@ for o in tests/out/lib/*.obj; do
     $AC -p "$out/cclib.po" "LIB/$n.OBJ" BIN <"$o"
     $AC -p "$out/cclib.po" "LIB/$n.SYMS" BIN <"${o%.obj}.syms"
 done
+$AC -p "$out/cclib.po" LIB/LIB.MAP TXT <tests/out/lib/lib.map
 
 # The boot disk, with the headers.
 cp samples/boot.po "$out/boot.po"

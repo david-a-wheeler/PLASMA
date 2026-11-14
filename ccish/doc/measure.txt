@@ -101,8 +101,8 @@ ccpp: 9 files, and 19 library objects:
     leaf functions: 34 of 143 framed functions, 249 frame accesses; saves 98 bytes with new opcodes, -277 with LAW/SAW
     compiled stack (all non-recursive): 124 of 143 framed functions, 1373 frame accesses; saves 469 bytes with new opcodes, -1260 with LAW/SAW
     leaf region 12 bytes (largest leaf frame); compiled stack region 119 bytes
-  as an XLOAD image: file 18589 bytes; data 1502, zero region 16915, code 14844,
-    169 functions (init too), fixups 1818 bytes
+  as an XLOAD image: file 18587 bytes; data 1502, zero region 16915, code 14844,
+    169 functions (init too), fixups 1816 bytes
   on a 64K Apple II (41171 bytes free), through XLOAD:
     def table 845, data 1502, zero region 16915, code 14844,
     frame stack at least 487, FILEIO 1998,
@@ -159,8 +159,8 @@ ccgen: 10 files, and 17 library objects:
     leaf functions: 55 of 191 framed functions, 525 frame accesses; saves 177 bytes with new opcodes, -531 with LAW/SAW
     compiled stack (all non-recursive): 177 of 191 framed functions, 2730 frame accesses; saves 646 bytes with new opcodes, -2594 with LAW/SAW
     leaf region 14 bytes (largest leaf frame); compiled stack region 264 bytes
-  as an XLOAD image: file 27837 bytes; data 1977, zero region 7491, code 23213,
-    207 functions (init too), fixups 2146 bytes
+  as an XLOAD image: file 27835 bytes; data 1977, zero region 7491, code 23213,
+    207 functions (init too), fixups 2144 bytes
   on a 64K Apple II (41171 bytes free), through XLOAD:
     def table 1035, data 1977, zero region 7491, code 23213,
     frame stack at least 520, FILEIO 1998,
@@ -225,13 +225,13 @@ Peaks: each limit, the most ccish's own source uses, and where:
 
 Disk space: Small build programs (XLOAD images) file sizes + XLOAD itself:
 Program Names Table  Data (Zero)   Code Fixups  (REL)   File
-ccpp       75   338  1502  16915  14844   1818  27991  18589
+ccpp       75   338  1502  16915  14844   1816  27991  18587
 cccomp     75   594   621   6589  26910   2854  44282  31066
-ccgen      75   414  1977   7491  23213   2146  37198  27837
+ccgen      75   414  1977   7491  23213   2144  37198  27835
 ccrel      75   224   751  12581  11740   1303  20449  14105
 XLOAD                                                   5270
 XLOAD2    107    44   512    941   2316    382          3373
-Total                                                 100240
+Total                                                 100236
 File: the whole file's bytes; Total, all of them. An image file's parts, in
 its order: a 12-byte header (the same in every image), Names (the
 dependencies' and imports'), Table (the function table, 2 bytes a function,

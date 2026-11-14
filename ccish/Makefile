@@ -282,7 +282,7 @@ $(OUT)/special/xload.stamp: ccrel-small $(XLOAD) tools/xlinfo.py \
 # in the regular suite (full-test runs both), because it's slow. The
 # sources come from here: each program's, and the library's.
 $(OUT)/special/bootstrap.stamp: tests/special/bootstrap.sh $(PASSES) tests/lib.sh \
-                             tools/cclink ccish.msg $(wildcard lib/include/*.h)
+                             $(OUT)/lib/lib.map ccish.msg $(wildcard lib/include/*.h)
 	@mkdir -p $(dir $@) && BOOTSTRAP_VM="$(BOOTSTRAP_VM)" \
 	 BOOT_ccpp="$(CCPP_SRC)" BOOT_cccomp="$(CCCOMP_SRC)" \
 	 BOOT_ccgen="$(CCGEN_SRC)" BOOT_ccrel="$(CCREL_SRC)" \
@@ -348,7 +348,7 @@ limits: doc/limits.md
 # doc/measure.txt: tools/measure.py's report, compiling ccish's own
 # source with ccish (about 4 seconds; needs python3).
 doc/measure.txt: ccpp cccomp ccgen ccrel ccish.msg tools/measure.py \
-                 tools/cclink $(LIMIT_SRC) $(XLOAD) \
+                 tools/libmap.py $(LIMIT_SRC) $(XLOAD) \
                  $(wildcard lib/include/*.h)
 	@echo "tools/measure.py > $@"
 	@python3 tools/measure.py > $@.tmp && mv $@.tmp $@ \

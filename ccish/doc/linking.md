@@ -11,10 +11,11 @@ with file and line references for checking (as of 2026-11-13; check
 them again, since they move). Section 8 is the list of verified facts
 the decisions rest on.
 
-**Status (2026-11-13).** Steps 1 to 3 of section 9 are done: the one
+**Status (2026-11-13).** Steps 1 to 4 of section 9 are done: the one
 exit (section 5.5), the option letters (section 2, with `-m` and `-r`
-as proposed), and the library search, `-L dir` (section 5). Steps 4 to
-7 aren't. Work through them in order, as section 10 says.
+as proposed), the library search, `-L dir` (section 5), and using
+`-L` everywhere, with tools/cclink deleted (section 9, step 4). Steps
+5 to 7 aren't. Work through them in order, as section 10 says.
 
 ## 1. The final pass is renamed `ccrel` to `cclink`
 
@@ -323,8 +324,9 @@ no label; the G_ flags at src/link.c:177-178) is 172
    imports are never looked up.
 2. **`_start`, when main has two parameters.** No object references
    it: `resolve()` asks for it only because of main's parameter count
-   (src/link.c:712-716), and today tools/cclink adds start only by
-   reacting to that 172. The lookup must ask for it the same way, or
+   (src/link.c:712-716), and a library search that reacts to that 172
+   (as tools/cclink's did, until step 4 deleted it) adds start only
+   that way. The lookup must ask for it the same way, or
    `main(argc, argv)` programs won't link with `-L`. (Test it: lib.sh's
    `args` program.)
 
@@ -429,9 +431,9 @@ then resolve(), as today.
   already exists.
 - **Determinism** (the bootstrap must stay byte-for-byte): passes in
   order, the map in file order within a pass. The objects may come in
-  a different order than tools/cclink's, which changes the modules'
-  bytes once; the bootstrap compares stages with each other, so that's
-  fine.
+  a different order than tools/cclink's (deleted in step 4, whose
+  reaction order they replaced), which changes the modules' bytes
+  once; the bootstrap compares stages with each other, so that's fine.
 - **The listing names the objects added.** With `-v`, the linker
   lists the objects it added, so measure.py can write
   `tools/out/PROGRAM.objs` (which tools/a2disk and xload_self.sh
@@ -632,12 +634,19 @@ leading-comma temp-file convention, AGENTS.md).
    Makefile; `-L` in the linker and the driver,
    with `_start`, the early map check, the drift check, and the
    listing of the objects added; the section 5.4 tests.
-4. **Use `-L`, and delete tools/cclink:** measure.py and bootstrap.sh
-   link with `-L $(OUT)/lib`, and measure.py writes `PROGRAM.objs`
-   from the listing; tools/a2disk writes `LIB/LIB.MAP` and its usage
-   example becomes `CCREL -L LIB -O PROG PROG` (CCLINK after step 5);
-   lib.sh's quit test links with `-L` too. Then delete tools/cclink
-   and its Makefile dependencies.
+4. **Done** (2026-11-13). **Use `-L`, and delete tools/cclink:**
+   measure.py (its library's map made with tools/libmap.py, linking
+   with `-L`, and `PROGRAM.objs` written from the listing) and
+   bootstrap.sh (each stage linking with `-L lib`, the stage's
+   `lib.map`, `PROG.objs` the program's own objects) link with `-L`;
+   tools/a2disk writes `LIB/LIB.MAP` and its usage example becomes
+   `CCREL -L LIB -O PROG PROG` (CCLINK after step 5); lib.sh's quit
+   test links with `-L` too. Then tools/cclink and its Makefile
+   dependencies go. On MAME's 64K IIe, a program compiled there by
+   the four passes and linked with `CCREL -L LIB -O T T` prints its
+   output and gives `ERR:$03` from `exit(3)` five calls deep, twice,
+   and is byte-identical to the host's link; on the 128K IIe too.
+   (This check first found section 5.5's SAW bug.)
 5. **Rename ccrel to cclink** (section 1's list).
 6. **ccpp's CMDSYS ids leave the pool** (section 3.1), with today's
    `__` spelling: a pure saving, measured on its own, with

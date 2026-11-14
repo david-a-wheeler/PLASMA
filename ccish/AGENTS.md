@@ -240,8 +240,9 @@ files of the sessions so far; brought up to date 2026-11-12.)
   doc/measure.txt, checked in; `make test` refreshes it (and
   doc/limits.md) after a change, so commit it with the change. It
   writes `tools/out/PROGRAM` (the REL module), `PROGRAM.lst` (ccrel's
-  listing of it), `PROGRAM.apple` (the image), and `PROGRAM.objs`, the
-  objects tools/cclink linked.
+  listing of it), `PROGRAM.apple` (the image), and `PROGRAM.objs`,
+  the objects linked, the program's then the library's, which
+  measure.py writes from ccrel's listing (the link is with -L).
 - `python3 tools/listings.py` (or `make listings`; after `make`)
   writes tools/out/lst/NAME.lst for every source file of the programs
   and the library: each function's comment and C, then the machine ops
@@ -389,7 +390,7 @@ Open, roughly in the order they matter:
   cccomp's.
 - **The cclink package** (doc/linking.md, decision 46): its section 9
   is the commit plan, step by step, and its section 10 says how to
-  work through it. Step 1 (one exit) is done; next, the options.
+  work through it. Steps 1 to 4 are done; next, step 5, the rename.
 - **A ProDOS file type for images** (BIN for now): the user's choice.
 - **The other PLASMA platforms** (doc/xload.md, R6; leave the partial
   C64 work in src/vmsrc alone).

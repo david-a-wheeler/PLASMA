@@ -12,9 +12,9 @@ build, with -full). The C library (lib/*.c) is
 compiled too, unchanged (the programs' sources and the
 library's are the Makefile's, from make print-sources). Then each of
 the Apple II programs
-(ccpp, cccomp, ccgen, ccrel) is linked by tools/cclink, which adds
-only the library objects it needs, and writes OUT/PROGRAM.objs, the
-objects linked. The report gives each
+(ccpp, cccomp, ccgen, ccrel) is linked with ccrel's -L, which adds
+the library objects it needs; the program's objects, then the
+library's, are written to OUT/PROGRAM.objs, from the listing. The report gives each
 file's code, data and string sizes (from its .syms header) and each
 program's totals and link workload (from ccrel's listing), and how full
 ccpp's tables got (from a ccpp built with CCISH_STATS), and what
@@ -44,7 +44,7 @@ import sys
 
 CCOMP = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(CCOMP, "tools")
-CCLINK = os.path.join(TOOLS, "cclink")
+LIBMAP = os.path.join(TOOLS, "libmap.py")
 OUT = os.path.join(TOOLS, "out")
 FULL = "-full" in sys.argv[1:]      # measure the full build instead
 
@@ -918,6 +918,12 @@ def main():
     print("\nThe longest source line: %d of %d characters  (%s)"
           % (v, limit("MAX_LINE"), who))
     note_peak(limit_peaks, "MAX_LINE", v, who)
+    # The library's map, for the link's -L (its objects are in OUT,
+    # beside the programs').
+    ok, msg = run([sys.executable, LIBMAP, OUT] + sorted(LIB_SOURCES))
+    if not ok:
+        print("lib.map FAILED: %s" % msg.strip())
+        failed = True
     for prog, files in PROGRAMS:
         print()
         if any(n not in sizes for n in files):
@@ -927,11 +933,10 @@ def main():
         # A file compiled with raised limits may be over ccrel's too.
         raised = [n for n in files if n in over]
         ccrel = os.path.join(big if raised else CCOMP, "ccrel")
-        # tools/cclink adds the library objects the program needs, and
-        # writes the list of the objects it linked.
+        # ccrel's -L adds the library objects the program needs, from
+        # OUT's lib.map; the listing names them.
         def link(ccrel):
-            return run([CCLINK, "-r", ccrel, "-l", "-L", OUT, "-o", module,
-                        "-w", module + ".objs"]
+            return run([ccrel, "-v", "-L", OUT, "-o", module]
                        + [os.path.join(OUT, n) for n in files])
         ok, msg = link(ccrel)
         if not ok and any(m in msg for m in LIMIT_MSGS):
@@ -948,9 +953,14 @@ def main():
             print("%s: link FAILED: %s" % (prog, msg.strip().splitlines()[-1]))
             failed = True
             continue
-        with open(module + ".objs") as f:
-            objs = f.read().split("\n")[:-1]
-        libs = [os.path.basename(o) for o in objs[len(files):]]
+        # The objects linked: the program's, then the ones -L added,
+        # named by the listing; the list, for tools/a2disk and
+        # xload_self.sh, and the call graph's relink below.
+        libs = [m.group(1) for m in re.finditer(
+            r"^; library object: (\S+)$", msg, re.M)]
+        objs = [os.path.join(OUT, n) for n in files + libs]
+        with open(module + ".objs", "w") as f:
+            f.write("".join(o + "\n" for o in objs))
         # The bases the linker's -L adds, each with its NUL, in
         # link.c's LIB_NAMES.
         note_peak(limit_peaks, "LIB_NAMES",

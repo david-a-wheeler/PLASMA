@@ -77,7 +77,7 @@ exit_run() {
     src_obj "$1" "#include <stdlib.h>
 void deep(int n) { if (n) deep(n - 1); else exit($2); }
 int main(void) { __puts(pstr(\"$3\")); deep(5); return 9; }" || bad=1
-    ./ccrel -o "$D/$1" "$D/$1" "$L/exit" || bad=1
+    ./ccrel -L "$L" -o "$D/$1" "$D/$1" || bad=1
     out=$(run_args "$1")
     st=$?
     same "$st" "$4" "exit status for exit($2)"
@@ -99,7 +99,7 @@ exit_run quit0 0 zero 0
 # main's call, and for a
 # void main pushes the 0 that exit may replace.
 init_has() {
-    ./ccrel -v -o "$D/$1" "$D/$1" "$L/exit" >"$D/$1.lst" || bad=1
+    ./ccrel -v -L "$L" -o "$D/$1" "$D/$1" >"$D/$1.lst" || bad=1
     sed -n '/^(init):/,/RET/p' "$D/$1.lst" | sed '1d; s/^  [0-9A-F]*  //' \
         | cut -c10- | sed 's/ \$[0-9A-F]* *; / /' | tr '\n' '|' >"$D/$1.init"
     same "$(cat "$D/$1.init")" "$2" "lib/exit's init for $1"

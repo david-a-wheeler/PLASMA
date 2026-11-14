@@ -11,8 +11,10 @@ complete: it fails if two objects define the same name, so a map can't
 be ambiguous. Someone who adds objects to a library directory on an
 Apple edits lib.map by hand (or regenerates it on a host).
 
-Usage: tools/libmap.py DIR
-    writes DIR/lib.map
+Usage: tools/libmap.py DIR [base ...]
+    writes DIR/lib.map, from DIR's NAME.syms, for every object in DIR,
+    or only the named bases, as tools/measure.py's library objects are
+    in its output directory beside the programs'.
 """
 import os
 import sys
@@ -92,15 +94,18 @@ def defined_names(path):
 
 
 def main():
-    if len(sys.argv) != 2:
-        die("usage: tools/libmap.py DIR")
+    if len(sys.argv) < 2:
+        die("usage: tools/libmap.py DIR [base ...]")
     d = sys.argv[1]
+    only = set(sys.argv[2:])
     lines = []
     defines = {}
     for entry in sorted(os.listdir(d)):
         if not entry.endswith(".syms"):
             continue
         base = entry[:-len(".syms")]
+        if only and base not in only:
+            continue
         names = defined_names(os.path.join(d, entry))
         for nm in names:
             if nm in defines:

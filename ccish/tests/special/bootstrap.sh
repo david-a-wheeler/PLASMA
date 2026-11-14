@@ -6,10 +6,11 @@
 #
 # Stage 1: the host's passes compile the four programs' sources (the
 # small build) and the C library, one file per invocation (R1), and
-# tools/cclink links each program, writing PROG.objs, the objects it
-# linked. Stages 2 and 3: the same, under the VM through tools/ccrun,
-# with the previous stage's modules as the passes (vccpp and the rest)
-# and `ccrel @PROG.objs` (stage 1's lists, R10) as the link. Each stage
+# each program is linked with ccrel's -L, the stage's lib and its
+# lib.map; PROG.objs is the program's own objects, the same list at
+# every stage. Stages 2 and 3: the same, under the VM through
+# tools/ccrun, with the previous stage's modules as the passes (vccpp
+# and the rest) and `ccrel -L lib @PROG.objs` (R10) as the link. Each stage
 # has its own directory, tests/out/boot/N, holding copies of the
 # sources, sys/ccinc (lib/include, R2) and ccish.msg (diag looks for
 # it beside the program). Stage 1's objects and modules must equal
@@ -59,7 +60,8 @@ setup() {
     d=$BOOT/$1
     (cd "$top" && mkdir -p "$d/src" "$d/lib" "$d/sys" \
      && cp src/*.c src/*.h "$d/src/" && cp $BOOT_LIB "$d/lib/" \
-     && cp -R lib/include "$d/sys/ccinc" && cp ccish.msg "$d/") || exit 1
+     && cp -R lib/include "$d/sys/ccinc" && cp ccish.msg "$d/" \
+     && cp "$top/$OUT/lib/lib.map" "$d/lib/") || exit 1
 }
 
 # Compile every source in stage $1's directory, with the passes $2 ccpp,
@@ -70,13 +72,15 @@ compile() {
     for s in $srcs; do
         n=$(basename "$s" .c)
         case $s in
-        src/*) in=src/$n.c def=-DCCISH_SMALL ;;
-        *) in=lib/$n.c def= ;;
+        src/*) in=src/$n.c out=$n def=-DCCISH_SMALL ;;
+        # The library's objects, in lib/, with lib.map: the stage's
+        # lib is the library's directory, as LIB/ is on the CCLIB disk.
+        *) in=lib/$n.c out=lib/$n def= ;;
         esac
         for pass in ccpp cccomp ccgen; do
             case $pass in
-            ccpp) set -- $def -o "$n" "$in" ;;
-            *) set -- "$n" ;;
+            ccpp) set -- $def -o "$out" "$in" ;;
+            *) set -- "$out" ;;
             esac
             if [ "$how" = host ]; then
                 "$top/$pass" "$@"
@@ -113,7 +117,8 @@ for p in $PROGS; do
     eval "list=\$BOOT_$p"
     objs=
     for s in $list; do objs="$objs $(basename "$s" .c)"; done
-    "$top/tools/cclink" -r "$top/ccrel" -o "$p" -w "$p.objs" $objs \
+    printf '%s\n' $objs >"$p.objs"
+    "$top/ccrel" -L lib -o "$p" "@$p.objs" \
         >>log 2>&1 || fail "stage 1: linking $p failed (see $BOOT/1/log)"
 done
 end
@@ -136,7 +141,7 @@ for stage in 2 3; do
     begin $stage plvm
     compile $stage vm
     for p in $PROGS; do
-        "$CCRUN" -t $TIMEOUT vccrel -o "$p" "@$p.objs" >>log 2>&1 \
+        "$CCRUN" -t $TIMEOUT vccrel -L lib -o "$p" "@$p.objs" >>log 2>&1 \
             || fail "stage $stage: linking $p failed (see $BOOT/$stage/log)"
     done
     end
@@ -147,8 +152,13 @@ done
 echo "bootstrap: comparing the stages"
 for a in 1 2; do
     b=$((a + 1))
-    for n in $names; do
-        for f in "$n.obj" "$n.syms"; do
+    for s in $srcs; do
+        n=$(basename "$s" .c)
+        case $s in          # as compile's output names
+        src/*) d= ;;
+        *) d=lib/ ;;
+        esac
+        for f in "$d$n.obj" "$d$n.syms"; do
             cmp -s "$BOOT/$a/$f" "$BOOT/$b/$f" \
                 || fail "stages $a and $b differ, first at $f"
         done
