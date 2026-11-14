@@ -352,7 +352,8 @@ files of the sessions so far; brought up to date 2026-11-12.)
   screen; A2CMD_DISK3 adds a third drive, A2CMD_128K makes it a 128K
   IIe, which runs PLASMA's 128K VM with its JIT, in 80 columns; type a
   throwaway command first there, as keys typed while the JIT loads
-  are lost). make apple (tools/a2disk) makes the
+  are lost). make apple (or tools/a2disk, which first runs make apple-inputs, so
+  tools/out is never stale) makes the
   disks that run ccish there: boot.po (with the headers), ccish.po
   (XLOAD and XLOAD2, the four passes as images, the messages), cclib.po (the
   library, and room for a program's files). Disks are made with AppleCommander

@@ -27,10 +27,11 @@ cd "$here"
 AC=../bin/ac-linux-aarch64-15.2
 out=tests/out/apple
 mkdir -p "$out/obj"
-for f in tools/out/ccpp.objs tests/out/lib/lib.map tests/out/xload/xload \
-         samples/boot.po; do
-    [ -f "$f" ] || { echo "a2disk: no $f (make, make xload)" >&2; exit 1; }
-done
+# Bring the inputs up to date first (the passes, XLOAD, the library
+# and its map, and tools/out, which make measure writes), so that disks
+# made by running this directly never hold a stale image. Under make
+# apple, they already are, and this does nothing.
+make -s apple-inputs || { echo "a2disk: make apple-inputs failed" >&2; exit 1; }
 
 # The four images, from the objects measure.py linked.
 for p in ccpp cccomp ccgen ccrel; do

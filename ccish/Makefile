@@ -112,6 +112,9 @@ $(CCSTAT): tools/ccstat.pla ../src/inc/cmdsys.plh $(XPLASM)
 
 # The C library (lib/, doc/bootstrap-test.md R4): one object per
 # source, $(OUT)/lib/NAME.obj and .syms, compiled by the host passes.
+# The stamp that says doc/measure.txt and tools/out are current (the
+# rule is below, by doc/measure.txt's).
+MEASURED := tools/out/measure.stamp
 LIBSRC := $(wildcard lib/*.c)
 LIBOBJS:= $(patsubst lib/%.c,$(OUT)/lib/%.obj,$(LIBSRC))
 # The library's sources, for the bootstrap and measure.py.
@@ -140,8 +143,12 @@ xload: $(XLOAD)
 
 # apple: the disks that run ccish on a 64K Apple II through XLOAD, in
 # tests/out/apple (tools/a2disk says what each holds).
-apple: $(XLOAD) doc/measure.txt $(LIBOBJS) ccrel-small
+# Its inputs: tools/a2disk makes them first (make apple-inputs), so
+# that running it directly can't make disks from a stale tools/out.
+APPLE_IN := $(XLOAD) $(MEASURED) $(LIBOBJS) $(OUT)/lib/lib.map ccrel-small
+apple: $(APPLE_IN)
 	@tools/a2disk
+apple-inputs: $(APPLE_IN)
 
 # The passes a test may run; a stamp depends on these, so a rebuilt pass
 # re-runs the tests.
@@ -267,8 +274,8 @@ $(OUT)/special/smalldiag.stamp: tests/run/const.c
 $(OUT)/special/tables.stamp: tests/special/tables.c src/irin.c src/lower.c src/ir.h \
                           src/mop.h
 $(OUT)/special/enumvals.stamp: $(SOURCES)
-$(OUT)/special/fit.stamp: doc/measure.txt
-$(OUT)/special/xload_self.stamp: doc/measure.txt ccrel-small $(XLOAD) \
+$(OUT)/special/fit.stamp: $(MEASURED)
+$(OUT)/special/xload_self.stamp: $(MEASURED) ccrel-small $(XLOAD) \
                          tests/run/hello.c $(wildcard src/*.c src/*.h)
 $(OUT)/special/xload.stamp: ccrel-small $(XLOAD) tools/xlinfo.py \
                          tests/xload/xltest.c tests/xload/xltest.expected xload/xload.c \
@@ -298,7 +305,7 @@ full-test: test $(OUT)/special/bootstrap.stamp
 # passes, the VM, and the cross references. The test stamps hang off this,
 # so nothing runs against a stale pass. It also refreshes doc/measure.txt
 # (and so doc/limits.md), which takes a few seconds, only after a change.
-testbuild: all small $(PLVM) $(CCSTAT) $(LIBOBJS) xref doc/measure.txt
+testbuild: all small $(PLVM) $(CCSTAT) $(LIBOBJS) xref $(MEASURED)
 
 # The whole suite: a stamp for every test, then one that depends on all
 # of them and reports the count (only when something actually ran).
@@ -346,17 +353,26 @@ doc/limits.md: tools/limits.sh $(LIMIT_SRC)
 limits: doc/limits.md
 
 # doc/measure.txt: tools/measure.py's report, compiling ccish's own
-# source with ccish (about 4 seconds; needs python3).
-doc/measure.txt: ccpp cccomp ccgen ccrel ccish.msg tools/measure.py \
+# source with ccish (about 4 seconds; needs python3). It also writes
+# tools/out (the modules, images, listings and PROGRAM.objs that
+# tools/a2disk, xload_self.sh and the other tools read), and
+# $(MEASURED) records that both are current. The rules that read
+# either depend on $(MEASURED), never on doc/measure.txt: that's
+# checked in, so a git checkout gives it a new time, and it stays when
+# tools/out is deleted, and either way it would look current when
+# tools/out isn't.
+$(MEASURED): ccpp cccomp ccgen ccrel ccish.msg tools/measure.py \
                  tools/libmap.py $(LIMIT_SRC) $(XLOAD) \
                  $(wildcard lib/include/*.h)
-	@echo "tools/measure.py > $@"
-	@python3 tools/measure.py > $@.tmp && mv $@.tmp $@ \
-	 || { rm -f $@.tmp; exit 1; }
+	@echo "tools/measure.py > doc/measure.txt"
+	@python3 tools/measure.py > doc/measure.txt.tmp \
+	 && mv doc/measure.txt.tmp doc/measure.txt \
+	 || { rm -f doc/measure.txt.tmp; exit 1; }
 	@echo "tools/limits.sh > doc/limits.md"
 	@$(LIMITS_CMD)
+	@touch $@
 
-measure: doc/measure.txt
+measure: $(MEASURED)
 	@cat doc/measure.txt
 
 # Profile ccpp, cccomp and ccgen compiling ccish's own sources, each a
@@ -365,7 +381,7 @@ measure: doc/measure.txt
 # pass's busiest functions, in tools/out/profile.txt. PROFILE_ARGS
 # passes options on, e.g. PROFILE_ARGS="-n 50 -f id_find cccomp".
 PROFILE_ARGS ?=
-profile: all doc/measure.txt $(CCSTAT)
+profile: all $(MEASURED) $(CCSTAT)
 	@python3 tools/profile.py $(PROFILE_ARGS) > tools/out/profile.txt.tmp \
 	 && mv tools/out/profile.txt.tmp tools/out/profile.txt \
 	 || { rm -f tools/out/profile.txt.tmp; exit 1; }
@@ -410,5 +426,5 @@ clean:
 	rm -rf $(OUT) tools/out bootstrap
 	rm -f doc/measure.txt doc/limits.md
 
-.PHONY: all small test testbuild xref measure listings print-sources bootstrap xload apple \
+.PHONY: all small test testbuild xref measure listings print-sources bootstrap xload apple apple-inputs \
         full-test limits demo-disk demo-run profile clean
