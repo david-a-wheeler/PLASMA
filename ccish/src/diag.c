@@ -75,13 +75,25 @@ void msg_init(const char *argv0)
   strcpy(msg_path + n, "ccish.msg");
 }
 
+// Write s to stderr.
+static void put_err(const char *s)
+{
+  fputs(s, stderr);
+}
+
 // Copy message n's text from the message file into buf (size bytes,
 // truncating a longer one), and return 1; or return 0 if the file or
-// the message can't be found. Lines may end in CR, LF or CRLF.
+// the message can't be found. With size 0, write the string buf to
+// stderr and then the text, instead, so that report() needs no buffer
+// for it (on the frame stack at the deepest point of every pass). Lines
+// may end in CR, LF or CRLF.
 int msg_text(int n, char *buf, int size)
 {
   FILE *f = fopen(msg_path, "r");
   int c, num, len, found = 0;
+  char one[2];                  // a character, for put_err() (fputs,
+                                // which every program links; putc may
+                                // not be)
   if (!f)
     return 0;
   for (;;) {
@@ -94,10 +106,17 @@ int msg_text(int n, char *buf, int size)
     if (c == EOF || num > n)
       break;
     if (num == n && c == ' ') {
+      if (!size)
+        put_err(buf);
       for (len = 0; (c = getc(f)) != EOF && c != '\n' && c != '\r'; )
-        if (len < size - 1)
+        if (!size) {
+          one[0] = (char)c;
+          one[1] = 0;
+          put_err(one);
+        } else if (len < size - 1)
           buf[len++] = (char)c;
-      buf[len] = 0;
+      if (size)
+        buf[len] = 0;
       found = 1;
       break;
     }
@@ -128,12 +147,6 @@ const char *num_text(int n)
   return buf + i;
 }
 
-// Write s to stderr.
-static void put_err(const char *s)
-{
-  fputs(s, stderr);
-}
-
 // Write message number part to stderr, as " (part)".
 static void put_part(int part)
 {
@@ -150,7 +163,6 @@ static void put_part(int part)
 // "x.c:2: error 41 (194):".
 static void report(const char *kind, int msg, int part, const char *detail)
 {
-  char text[MAX_MSG];
   void (*hook)(void) = src_name_hook;
   fflush(stdout);
   if (src_line > 0) {
@@ -169,15 +181,9 @@ static void report(const char *kind, int msg, int part, const char *detail)
   put_err(kind);
   put_err(" ");
   put_err(num_text(msg));
-  if (msg_text(msg, text, sizeof(text))) {
-    put_err(": ");
-    put_err(text);
-    if (part && msg_text(part, text, sizeof(text))) {
-      put_err(" ");
-      put_err(text);
-    } else if (part) {
+  if (msg_text(msg, ": ", 0)) {
+    if (part && !msg_text(part, " ", 0))
       put_part(part);
-    }
   } else {
     if (part)
       put_part(part);

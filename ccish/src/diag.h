@@ -44,7 +44,8 @@ void warning(int msg, const char *detail);  // only cccomp's, in the
 void warning_in(int msg, int part, const char *detail); // full build
 #endif
 void msg_init(const char *argv0);           // find ccish.msg
-int  msg_text(int n, char *buf, int size);  // message n's text, or 0
+int  msg_text(int n, char *buf, int size);  // message n's text, or 0;
+                                            // size 0: to stderr
 const char *stream_name(const char *base, const char *suffix);
 void remove_stream(const char *base, const char *suffix);  // unless -k
 const char *num_text(int n);                // n in decimal (no printf)
