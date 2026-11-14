@@ -129,10 +129,10 @@ Each of these is in git history, with its measurements:
 - **Estimates are often wrong**, sometimes by twice. Measure every
   change; report the real figure, and say plainly when it missed.
 - **ccish compiles itself,** so the passes' source must be in the C
-  ccish supports: no comma operator, no `signed char`, no `long`, no
-  floating point. Its library has no `memcmp` or `strncmp`. A host
-  build that compiles is not enough: make test also has measure.py
-  compile the source with ccish, and fails if it can't.
+  ccish supports: no `signed char`, no `long`, no floating point. Its
+  library has no `memcmp` or `strncmp`. A host build that compiles is
+  not enough: make test also has measure.py compile the source with
+  ccish, and fails if it can't.
 - **Limits in self-compilation:** when ccish compiles its own source,
   a file may be at a limit, such as `MAX_VARS` or `MAX_TYPES`:
   doc/limits.md gives each limit's peak and the file that reaches it.

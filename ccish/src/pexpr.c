@@ -206,9 +206,10 @@ void parse_skipped(int min_prec, Operand *o)
 // Parse a constant expression (C's constant-expression, a
 // conditional-expression), emitting nothing, and return its value. msg
 // is the error if it isn't an integer constant; part is message 201's
-// part if a const variable's value went into it, which C doesn't count
-// as a constant (C11 6.6), nor does gcc. To accept one, as clang does,
-// drop the nonice check, or skip it for a part of 0.
+// part if a const variable's value or a comma operator went into it,
+// which C doesn't count as a constant (C11 6.6), nor does gcc. To
+// accept one, as clang does, drop the nonice check, or skip it for a
+// part of 0.
 int parse_const(int msg, int part)
 {
   Operand e;
@@ -217,22 +218,23 @@ int parse_const(int msg, int part)
     error(msg, NULL);
 #ifdef CCISH_LINT
   if (e.nonice)
-    error_in(201 /* "a const variable's value isn't a constant"
-                  " expression in C" */, part, NULL);
+    error_in(e.nonice & NI_COMMA
+             ? 276 /* "a comma operator isn't allowed in a constant"
+                      " expression in C" */
+             : 201 /* "a const variable's value isn't a constant"
+                      " expression in C" */,
+             part, NULL);
 #else
   (void)part;
 #endif
   return e.val;
 }
 
-// Binary operators: precedence and IR op (-1 for one parsed specially,
-// and for ','). Returns 0, and sets no IR op, if tok is not a binary
-// operator. Sets *supported to 0 for C operators we don't
-// support yet; they still get their real precedence, so that, say, a
-// ',' ending a function argument isn't mistaken for an error.
-static int binary_prec(int *ir_op, int *supported)
+// Binary operators: precedence and IR op (-1 for one parsed
+// specially: &&, ||, ?: and ','). Returns 0, and sets no IR op, if tok
+// is not a binary operator.
+static int binary_prec(int *ir_op)
 {
-  *supported = 1;
   switch (tok) {
   case '*':   *ir_op = IR_MUL; return PREC_MUL;
   case '/':   *ir_op = IR_DIV; return PREC_MUL;
@@ -250,15 +252,11 @@ static int binary_prec(int *ir_op, int *supported)
   case TC_GE:  *ir_op = IR_GE;  return PREC_RELATIONAL;
   case TC_EQ:  *ir_op = IR_EQ;  return PREC_EQUALITY;
   case TC_NE:  *ir_op = IR_NE;  return PREC_EQUALITY;
-  // These three are parsed specially, not with an IR op.
+  // These four are parsed specially, not with an IR op.
   case TC_ANDAND: *ir_op = -1;  return PREC_ANDAND;
   case TC_OROR:   *ir_op = -1;  return PREC_OROR;
   case '?':      *ir_op = -1;  return PREC_COND;
-  }
-  *supported = 0;
-  if (tok == ',') {
-    *ir_op = -1;
-    return PREC_COMMA;
+  case ',':      *ir_op = -1;  return PREC_COMMA;
   }
   return 0;
 }
@@ -633,7 +631,7 @@ static void parse_primary(Operand *o)
       o->quals = Q_CONST;     // so N = 2 is an error 42
       o->type = UNQUAL(var_type[v]);
       o->val = var_val[v];
-      o->nonice = 1;
+      o->nonice = NI_CONSTVAR;
       return;
     }
     if (v >= 0) {
@@ -1122,6 +1120,9 @@ static void parse_logical(Operand *o, int prec)
       o->val = !is_and;
       o->type = TY_INT;
       o->quals = 0;
+#ifdef CCISH_LINT
+      o->nonice &= NI_CONSTVAR;   // an unevaluated comma is allowed
+#endif
       o->nonice |= end;
       return;
     }
@@ -1778,7 +1779,7 @@ static int fold_held(Operand *o, Operand *rp, int ir_op, int addr_kind)
 // still pending (a bare variable).
 void parse_expr(int min_prec, Operand *o)
 {
-  int ir_op, supported, prec, m0 = ir_here(), h0 = nheld, lstart, mid;
+  int ir_op, prec, m0 = ir_here(), h0 = nheld, lstart, mid;
   Operand r;
 
   enter_nest();
@@ -1807,17 +1808,36 @@ void parse_expr(int min_prec, Operand *o)
     if (TC_IS_ANY_ASSIGN(tok))
       error_in(41 /* "lvalue required as" */,
                194 /* "left operand of assignment" */, NULL);
-    prec = binary_prec(&ir_op, &supported);
+    prec = binary_prec(&ir_op);
     if (prec == 0 || prec < min_prec)
       break;
-    if (!supported)
-      not_yet();
     if (TC_IS_LOGICAL(tok)) {
       parse_logical(o, prec);
       continue;
     }
     if (tok == '?') {
       parse_conditional(o);
+      continue;
+    }
+    if (tok == ',') {
+      // C11 6.5.17: the left operand is a void expression; the right
+      // one's type and value are the result's, which is not an lvalue,
+      // nor a constant expression (6.6p3), though a constant stays
+      // folded. ',' is left-associative.
+      discard(o);
+      next();
+      parse_expr(PREC_ASSIGN, o);
+      if (is_struct(o->type))
+        o->assigned = 1;              // (x, s).m reads; (x, s) = t and
+                                       // &(x, s) are errors
+      else if (o->kind == K_FUNC)
+        o->type = value_type(o->type);  // f becomes &f, still a
+                                         // constant
+      else if (is_place(o))
+        rvalue(o);                    // loaded; an array decays
+#ifdef CCISH_LINT
+      o->nonice |= NI_COMMA;          // only for the messages
+#endif
       continue;
     }
     if (o->kind == K_CONST && nheld < MAX_HELD

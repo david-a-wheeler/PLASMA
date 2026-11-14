@@ -273,7 +273,7 @@
 273 too many imports for an XLOAD image (127)
 274 void
 275 relocations out of order for an XLOAD image
-276 (spare)
+276 a comma operator isn't allowed in a constant expression in C
 277 (spare)
 278 static
 279 extern

@@ -44,7 +44,8 @@
 //     assigned to; dropping a qualifier from a pointer's target is a
 //     warning. Reading a const scalar with a constant initializer gives
 //     its value at compile time (see parse_primary()), but that value
-//     isn't a C constant expression (Operand.nonice);
+//     (like a comma operator's result) isn't a C constant expression
+//     (Operand.nonice);
 //   - casts;
 //   - _Static_assert, at file scope or as a statement in a block;
 //   - statements: return, if/else, while, do, for, switch (with case
@@ -147,8 +148,11 @@ static void parse_scalar_init(int type)
     error0(206 /* "initializer is not a constant ccish supports" */);
 #ifdef CCISH_LINT
   if (o.nonice && o.kind == K_CONST)
-    error_in(201 /* "a const variable's value isn't a constant"
-                  " expression in C" */,
+    error_in(o.nonice & NI_COMMA
+             ? 276 /* "a comma operator isn't allowed in a constant"
+                      " expression in C" */
+             : 201 /* "a const variable's value isn't a constant"
+                      " expression in C" */,
              205 /* "(an initializer here must be one)" */, NULL);
 #endif
   check_assign(type, &o, 198 /* "initialization" */, NULL);

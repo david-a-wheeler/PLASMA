@@ -1,0 +1,1 @@
+:2: error 276: a comma operator isn't allowed in a constant expression in C (a case label must be one)

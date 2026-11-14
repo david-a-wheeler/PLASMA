@@ -5273,6 +5273,42 @@ issue. In summary:
     saved ccpp 128 bytes, not 250 (its code grew 209 bytes, not 60 to
     100); defining a __cmd_ name is now an error (301), and calling
     an unknown one is "not a CMDSYS function" (300).
+47. **The comma operator** (decided in discussion, 2026-11-14;
+    doc/add-comma.md is the plan that was followed). C11 6.5.17, in
+    parse_expr(): the left operand is discard()ed, then the right
+    one's value and type are the result's. It isn't an lvalue: a
+    scalar or array is loaded (an array decays), a struct is marked
+    assigned ((x, s).m reads; (x, s) = t and &(x, s) are errors), and
+    a function designator becomes a pointer but stays a pending
+    address, so (n++, f)(x) is still a direct call. It isn't a
+    constant expression (C11 6.6p3), though a constant stays folded:
+    a new NI_COMMA bit in Operand.nonice, set and checked only in the
+    full build, per decision 44 (message 276, with the same part as
+    201's); the small build sets nothing, and is_null() (whose
+    readers are lint-only besides cond_type()) there sees (0, 0) as
+    a null pointer constant, accepting the invalid c ? p : (0, 0)
+    that the full build rejects. A comma in an unevaluated
+    subexpression is allowed (6.6p3): parse_logical() masks NI_COMMA
+    off a skipped side. binary_prec()'s supported out-parameter goes
+    (the comma was its only user), and the tests/errors/
+    unsupported_comma test, which pinned the "not supported yet" it
+    now replaces, is deleted. Tests: run's comma, comma_sizeof, an
+    unevaluated comma in a constant, and comma_cost, whose listing
+    counts pin that i = 0, j = 3; is the same ops as the two
+    statements; nine tests/errors/comma_* (the lvalue forms, the
+    constant expression in a case label, an enum and a global
+    initializer, and the null pointer); and xrun's xcomma against the
+    host compiler. Cost, small build: cccomp's code +56 (parse_expr
+    +68, binary_prec −12); its frame stack 902 to 900 (parse_expr's
+    frame 61 to 59, it losing the supported local, and binary_prec's
+    4 to 2); running 39620 to 39674 (1551 to 1497 to spare), loading
+    37950 to 38006 (3221 to 3165); ccpp, ccgen and cclink unchanged.
+    Not needed for self-hosting: ccish's own source has no comma
+    operator. A comma in a for loop's step clause keeps the loop out
+    of the counted form (irloop.c counts one increment variable; a
+    scratch check: for (i = 0; i < 3; i++) s++; is INCBRLE, while
+    for (i = 0, j = 3; i < j; i++, j--) s++; is a plain back edge);
+    a possible later improvement.
 
 
 ## Milestones

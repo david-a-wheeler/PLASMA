@@ -132,11 +132,11 @@ typedef struct {
                   // char.
   int quals;      // a place: its object's qualifiers (Q_CONST,
                   // Q_VOLATILE), which type leaves out
-  char nonice;    // K_CONST: not an integer constant expression in C,
-                  // because a const variable's value went into it
-                  // (const int N = 10; N + 1). It can't size an array
-                  // or initialize a global, and 0 isn't a null
-                  // pointer constant.
+  char nonice;    // K_CONST: not an integer constant expression in C
+                  // (NI_* bits): a const variable's value went into it
+                  // (const int N = 10; N + 1), or a comma operator,
+                  // evaluated. It can't size an array or initialize a
+                  // global, and 0 isn't a null pointer constant.
   int off;        // K_VAR: its offset; K_ELEM: the base's offset;
                   // K_JUMP: its true label, still to place, or -1
   int global;     // K_VAR, K_ELEM: 1 if off is a data offset (a
@@ -164,6 +164,13 @@ typedef struct {
   char vmask;     // the value needs ANDI 255 to be what was stored
                   // (an int stored into a char)
 } Operand;
+
+// Operand.nonice's bits: why a constant isn't an integer constant
+// expression in C (C11 6.6). Only the full build's messages tell them
+// apart; everything else tests nonice for zero.
+enum { NI_CONSTVAR = 1, NI_COMMA = 2 };
+_Static_assert((NI_CONSTVAR & NI_COMMA) == 0 && NI_COMMA < 128,
+               "NI_*: distinct bits that fit Operand.nonice");
 
 // C precedence levels (higher binds tighter).
 enum {

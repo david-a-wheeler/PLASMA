@@ -1321,9 +1321,8 @@ except where noted):
 ||
 ?:                                          right to left
 =  +=  -=  *=  /=  %=  &=  |=  ^=  <<=  >>=  right to left
+,                                           left to right
 ```
-
-The comma operator is not supported (section 9.1).
 
 ### 6.1 Arithmetic
 
@@ -1429,12 +1428,26 @@ an expression that is never run (such as `0 && f("x")`) they don't.
 
 Within an expression, ccish follows C's rules for what must happen
 when (the side effects of `++`, assignments and calls in the
-sub-expressions, and the evaluation of `&&`, `||` and `?:`), but C
-leaves the order of evaluation of the operands of most binary
-operators unspecified, and ccish does not pick a particular order.
-As in C, don't rely on the order: in `f() + g()`, either may run
-first, and in `a[i++] = i`, the read of `i` for the index and the
-increment are not ordered against each other.
+sub-expressions, and the evaluation of `&&`, `||`, `?:` and the comma
+operator), but C leaves the order of evaluation of the operands of
+most binary operators unspecified, and ccish does not pick a
+particular order. As in C, don't rely on the order: in `f() + g()`,
+either may run first, and in `a[i++] = i`, the read of `i` for the
+index and the increment are not ordered against each other. The comma
+operator, like `&&`, `||` and `?:`, evaluates its left operand first.
+
+### 6.8 The comma operator
+
+`a, b` evaluates `a`, discards its value, then evaluates `b`; the
+result is `b`'s value and type, and isn't an lvalue. The most common
+use is a `for` loop with two variables: `for (i = 0, j = n - 1;
+i < j; i++, j--)`. Where a comma separates things (a call's arguments,
+an initializer list, a declaration), put a comma expression in
+parentheses: `f((a, b), c)` passes two arguments. As in C, a comma
+expression isn't a constant expression, even when both sides are
+constants: the full build rejects `case (1, 2):` (section 2.6), and
+the small build, which leaves out checks that only reject invalid
+programs, accepts it.
 
 ## 7. Statements
 
@@ -1717,7 +1730,6 @@ These are deliberate limits, each a clear compile-time error:
 * The types `long`, `float` and `double` (no 32-bit or floating
   arithmetic on the 6502, and no room for it in the compiler).
 * `auto` (locals are automatic anyway).
-* The comma operator.
 * Bitfields.
 * Variable argument lists (`...` in a function's parameters; the
   preprocessor's `...`/`__VA_ARGS__` is separate, section 8.2).
