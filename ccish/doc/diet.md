@@ -25,6 +25,10 @@ Apple II"). Make all of the code ccish generates more efficient:
 3. **Don't make the code much harder to understand.** Comments and
    clearer names can explain a less obvious form. Don't trade C
    correctness for size (AGENTS.md, "Correct C first").
+3. **Correctness most important.** Do not sacrifice correctness.
+   Pass tests. Add mechanisms like tests and `_Static_assert`
+   as appropriate to ensure that invariants are kept without adding
+   to memory size of final execution time.
 
 Expect gains of tens of bytes at a time, sometimes a few hundred. They
 add up: one round took cccomp from 724 bytes to spare to 1,183
@@ -39,7 +43,7 @@ output" against the tree before your change.
 
 **B. The code generator** (cccomp's IR choices; ccgen's lower.c,
 peep.c, emit.c, irloop.c): better code for every program, the passes
-themselves included, since ccish compiles itself. Here the output is
+themselves included, since ccish compiles itself. Here the output *is*
 meant to change, so gencmp.sh reports differences, and the checks are
 the tests, the bootstrap and the measurements: every change must keep
 every program correct and make the code smaller (or faster at the
@@ -202,7 +206,7 @@ Every change, before it's committed:
    the generated code: find out why before going on.
 4. **Kind B:** gencmp.sh will report differences; look at a few, and
    be sure each is the improvement you meant. The gen tests
-   (tests/gen/*.exp, the machine ops after the peepholes) change with
+   (`tests/gen/*.exp`, the machine ops after the peepholes) change with
    the code: work each new expectation out by hand from the C and the
    rule you added, never by copying the compiler's output (AGENTS.md,
    "Testing"). Add a test for the new pattern, and one where it must
@@ -223,8 +227,7 @@ instead, or in your report.
   each program it changes, before and after (from doc/measure.txt's
   summary), what it saved where (code, frame, data), its effect on
   speed if any, "the same output" for kind A (gencmp.sh), and the test
-  and bootstrap results. Commit doc/measure.txt and doc/limits.md with
-  it.
+  and bootstrap results. Commit doc/measure.txt and doc/limits.md with it.
 - Stage files by explicit path, never push, end with the trailers
   AGENTS.md gives, and don't revert another change that works on your
   own judgment.
