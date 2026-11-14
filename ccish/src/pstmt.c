@@ -543,6 +543,42 @@ void set_known(int s, int v)
 #define add_static_local(name, type) \
   push_var(name, type, data_offset(), V_DATA)
 
+// "= e" (or "= {e}", valid C) initializing local s, a scalar of type
+// type: e's value is stored into s. Apart from parse_declaration() so
+// that its Operand isn't in that frame, which an aggregate's
+// initializer, on cccomp's deepest chain, would hold too. One Operand
+// serves: e is pushed before it becomes s, the place stored into, and
+// store_var() reads only the fields set here.
+static void scalar_init(int s, int type)
+{
+  Operand e;
+  int braced;
+  next();
+  braced = tok == '{';
+  if (braced)
+    next();
+  begin_expr();
+  parse_expr(PREC_ASSIGN, &e);
+  check_assign(type, &e, 198 /* "initialization" */, NULL);
+  if (e.kind == K_CONST)
+    set_known(s, e.val);
+  rvalue(&e);
+  e.kind = K_VAR;
+  e.type = UNQUAL(type);
+  e.quals = type & Q_ALL;     // a volatile x = e; stores volatile
+  e.off = var_off[s];
+  e.global = 0;
+  store_var(&e);
+  put_op(IR_DROP);
+  end_expr();
+  if (braced) {
+    if (tok == ',')
+      next();
+    expect('}', 117 /* "expected '}' after the initializer,"
+                       " not" */);
+  }
+}
+
 // A declaration: a base type, then declarators, each a name with any
 // '*'s before it, any array sizes after it, and an optional
 // initializer: int a = 1, *p = &a, v[10]; A struct or enum type may
@@ -565,9 +601,8 @@ static void parse_declaration(int is_static)
     return;
   }
   for (;;) {
-    Operand v, e;
     int s, name;
-    int type = parse_declarator(base, 0, &name), braced;
+    int type = parse_declarator(base, 0, &name);
     if (is_func(type)) {
       note_import(declare_function(name, type, 0), parse_asm_label());
       if (tok != ',')
@@ -621,30 +656,7 @@ static void parse_declaration(int is_static)
       else
         var_type[s] = parse_local_init(type, name, var_off[s]);
     } else if (tok == '=') {
-      next();
-      braced = tok == '{';        // int x = {5}; is valid C
-      if (braced)
-        next();
-      begin_expr();
-      parse_expr(PREC_ASSIGN, &e);
-      check_assign(type, &e, 198 /* "initialization" */, NULL);
-      if (e.kind == K_CONST)
-        set_known(s, e.val);
-      rvalue(&e);
-      v.kind = K_VAR;
-      v.type = UNQUAL(type);
-      v.quals = type & Q_ALL;     // a volatile x = e; stores volatile
-      v.off = var_off[s];
-      v.global = 0;
-      store_var(&v);
-      put_op(IR_DROP);
-      end_expr();
-      if (braced) {
-        if (tok == ',')
-          next();
-        expect('}', 117 /* "expected '}' after the initializer,"
-                           " not" */);
-      }
+      scalar_init(s, type);
     }
     if (tok != ',')
       break;
