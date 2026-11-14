@@ -29,7 +29,11 @@ static Bfile nam_in;        // lent to nam.c: NAME.i may still be open
 #endif
 static const char *base_name;
 static int at_end;          // the end code has been read
-static char source[MAX_PATH];   // tok_file's name, for messages
+#ifdef CCISH_DIAG
+static char source[MAX_PATH];   // tok_file's name, for messages: the full
+                                // build spells names in messages too, so
+                                // the hook's spelling can't be pointed at
+#endif
 int tok_file = 1;           // the file the token is in (the name file's
                             // number), for #pragma plasma import
 
@@ -71,7 +75,15 @@ static void name_source(void)
   nam_bf = &in;             // closed by now: an error closes it first
 #endif
   nam_open(base_name);
+#ifdef CCISH_DIAG
   strcpy(source, nam_file(tok_file));
+#else
+  // The small build reads the name file only here (an error's hook):
+  // the spelling in nam.c's line buffer, which the next read reuses,
+  // is not read again before the message is printed, so src_name may
+  // point to it, with no copy and no buffer of its own.
+  src_name = nam_file(tok_file);
+#endif
   nam_close();
 }
 
@@ -92,7 +104,9 @@ void tok_open(const char *base)
   nam_base(base);           // for a message's details (nam_name())
 #endif
   tok_file = 1;
+#ifdef CCISH_DIAG
   src_name = source;
+#endif
   src_name_hook = name_source;
   src_line = 1;
   next();
