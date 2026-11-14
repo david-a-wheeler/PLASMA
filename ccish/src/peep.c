@@ -121,9 +121,9 @@
 //        constant goes into the array's address, twice it before IDXW
 //        (an int's a[i + c]), so the index is one load and ADD fuses
 //        (LA a+c ADDLW i: 2 bytes and 2 ops less). For a data or string
-//        address (ccrel wraps an offset outside the object, which the
+//        address (cclink wraps an offset outside the object, which the
 //        index brings back), and for LLA n while n+c is a frame offset;
-//        not an extern's, which ccrel may move to the heap.
+//        not an extern's, which cclink may move to the heap.
 //   DUP  update  store  DROP -> update  store   x++ whose old value is
 //        unused, or (with no update) an assignment's. update is INCR,
 //        DECR, NEG, COMP, ADDI, SUBI, or a constant then ADD or SUB;
@@ -578,7 +578,7 @@ static int rewrite_load_store(Mop *a, Mop *b)
   // for a data address): a load or store through a constant address
   // is one op, such as reading the speaker at $C030. Not after CN or
   // MINUS1, which are shorter than LAB's address word, nor for an
-  // object that may move to the heap (FIX_HEAP), whose LA ccrel may
+  // object that may move to the heap (FIX_HEAP), whose LA cclink may
   // turn into an LAW.
   if ((aop == OP_CW || aop == OP_CB || aop == OP_CFFB || aop == OP_LA)
       && a->fix != FIX_HEAP && absolute_op(bop) >= 0) {
@@ -605,11 +605,11 @@ static int rewrite_load_store(Mop *a, Mop *b)
 static int add_value(Mop *m, int *v);
 
 // If base is an address that can take an addend d (LA of data, the
-// zero area or a string, which ccrel wraps, or of a global reached
+// zero area or a string, which cclink wraps, or of a global reached
 // through its
 // symbol, whose word holds the addend; LLA while it stays a frame
 // offset; not a global that may move to the heap, FIX_HEAP, whose LA
-// ccrel may rewrite), add it and return 1.
+// cclink may rewrite), add it and return 1.
 static int add_to_addr(Mop *base, int d)
 {
   if (base->op == OP_LA ? base->fix != FIX_DATA && base->fix != FIX_STR

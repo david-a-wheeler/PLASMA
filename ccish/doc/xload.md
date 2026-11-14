@@ -5,7 +5,7 @@ while running but can't be loaded, because PLASMA's loader reads the
 whole module file, relocation data included, before anything runs.
 ccish's front end, cccomp, is such a program. CMD loads XLOAD, a small
 ordinary module; XLOAD gets out of the way, loads the program's
-**image** (which ccrel writes with `-x`) in place, applies its fixups
+**image** (which cclink writes with `-x`) in place, applies its fixups
 as they stream in from the disk, and hands off to it. PLASMA itself
 doesn't change.
 
@@ -18,7 +18,7 @@ plus its fact or section number).
 part; xload2.c, the second; xlcore.c, what they share) and works on
 the 64K Apple VM, the 128K one (4.4) and plvm, with `-V` diagnostics
 (4.6).
-ccrel and ccish write version 4 images with `-x` (section 3). Under
+cclink and ccish write version 4 images with `-x` (section 3). Under
 plvm, `make test` runs every run test again as an image through XLOAD
 (the img tests), XLOAD's own test program and its errors
 (tests/special/xload.sh), and ccish's four programs as images, which
@@ -28,7 +28,7 @@ must write the same files, byte for byte, as the REL programs
 included, again and again with memory coming back each time; and
 ccish's four passes, as images through XLOAD, compile tests/run/hello.c
 into a module byte-identical to the host's, which CMD then runs
-(`+XLOAD CCPP HELLO.C`, then CCCOMP, CCGEN and CCREL on HELLO, then
+(`+XLOAD CCPP HELLO.C`, then CCCOMP, CCGEN and CCLINK on HELLO, then
 `+HELLO`). With three drives (tools/a2disk's disks: the boot disk
 with the headers, CCISH with XLOAD, the passes and the messages, CCLIB
 with the library and a program's files), ccish compiles and links a
@@ -101,14 +101,14 @@ and FETCH; "RUN" is BASIC's, and "GO" is common elsewhere.)
   error (options, fact 9) rather than a load that overwrites memory.
   XLOAD checks the type too. Which type is still to choose.
 - **Which programs.** cccomp first, since it's the one that can't
-  load. ccpp, ccgen and ccrel load today, and can stay REL modules
+  load. ccpp, ccgen and cclink load today, and can stay REL modules
   until XLOAD works on MAME; as images they'd save disk (section 6).
 
 ## 3. The image format (version 4)
 
 ### 3.1 Why it differs from PLASMA's REL format
 
-ccrel writes the image and XLOAD reads it; nothing else need
+cclink writes the image and XLOAD reads it; nothing else need
 understand it. So it's shaped for what XLOAD must do, and only that,
 not to match a REL module:
 
@@ -151,7 +151,7 @@ not to match a REL module:
 
 ### 3.2 The layout
 
-ccrel writes it with `-x` (link.c; the `ccish` driver passes `-x` to
+cclink writes it with `-x` (link.c; the `ccish` driver passes `-x` to
 the same code). Words are little-endian, and every address in it is
 an offset from the body's start, where XLOAD loads it. The body is
 three parts, in this order:
@@ -208,7 +208,7 @@ three parts, in this order:
 
   The data's come first, then the code's, object by object, then
   init's (none falls in the zero region). They come out of ccgen in
-  order with no sorting; ccrel stops with an error if they ever don't.
+  order with no sorting; cclink stops with an error if they ever don't.
 - **No absolute bytecode addresses in the body.** Branches are
   relative, ccgen never emits JUMP (options, fact 15), and functions
   are reached only through def entries. So the bytecode can run at any
@@ -250,9 +250,9 @@ and zeros; version 4 drops that.)
 
 A REL module still moves its zero-filled globals of `BSS_MIN` or more
 to the heap, and only those: cccomp's `movable()` (parse.c), which
-makes their accesses take the one form ccrel can patch into an LAW,
+makes their accesses take the one form cclink can patch into an LAW,
 gets the same size test, so a small one keeps its ordinary code. The
-rest go in ccrel's block of zeros after every object's data, as large
+rest go in cclink's block of zeros after every object's data, as large
 ones that stay do now, so a REL module's file keeps its size.
 
 ### 3.4 Earlier versions, and checking
@@ -353,7 +353,7 @@ needs no memory beyond the program's own, so the load peak is lower
 than the running need. It must also stay clear of the first part,
 which is running while it's copied: so it goes at the higher of the
 zero region's start and the first part's end (the heap's mark). The
-zero regions (doc/measure.txt): ccpp 16,918, ccrel 12,230, ccgen
+zero regions (doc/measure.txt): ccpp 16,918, cclink 12,230, ccgen
 7,494, cccomp 6,592 bytes, against the second part's 3,925. For
 cccomp on the 64K Apple, the region runs from 2,172 to 8,764 bytes
 above the heap's bottom, and the first part ends at 4,402, so the
@@ -374,7 +374,7 @@ The vector in a def entry alone doesn't tell: $03D6 is the 64K VM's
 indirect entry and also the 128K VM's JIT entry. The entries' spacing
 does, since a loader lays out a module's entries consecutively. If
 XLOAD's first file defines two small functions as its first two
-symbols, ccrel's RLD gives them consecutive entries, and the
+symbols, cclink's RLD gives them consecutive entries, and the
 difference of their addresses is the entry size:
 
 | Spacing | Vector | VM |
@@ -460,7 +460,7 @@ same, but a piece at a time (done 2026-11-12):
   heap's mark above the program and the second part before the load.
   The program's def entries get the countdown, as CMD's would.
 - **An address fixup** can't point into the bytecode, which isn't in
-  main memory. ccrel never makes one (functions are reached through
+  main memory. cclink never makes one (functions are reached through
   their def entries), but XLOAD can't check: a data address with a
   negative offset folded in, such as `arr - 58`, wraps around and
   looks like one.
@@ -492,7 +492,7 @@ if loadmod had called it.
   1166). When init's first op runs, the 6502 stack holds loadmod's 4
   bytes on top, `IFP` is loadmod's, and X is loadmod's evaluation
   stack index.
-- **ccrel's init has no frame** and calls `main` directly when main
+- **cclink's init has no frame** and calls `main` directly when main
   takes no parameters (link.c, init_code), with nothing left on the
   evaluation stack. So **XLOAD's `main` takes no parameters** and
   reads `cmdsys.cmdline` itself: the startup `__start` would split the
@@ -644,7 +644,7 @@ tree (v2.21):
 
 ## 6. Sizes on the disk
 
-Version 4 images (ccrel -x, 2026-11-12, the small build's objects, as
+Version 4 images (cclink -x, 2026-11-12, the small build's objects, as
 measure.py builds them). doc/measure.txt has the current figures, and
 each program's need on a 64K Apple II through XLOAD, loading and
 running, in its summary at the end:
@@ -654,7 +654,7 @@ running, in its summary at the end:
 | ccpp | 1,450 | 16,914 | 14,728 | 167 | 1,743 | 18,422 | 27,814 |
 | cccomp | 565 | 6,588 | 26,856 | 296 | 2,767 | 30,957 | 44,159 |
 | ccgen | 1,921 | 7,490 | 23,159 | 206 | 2,028 | 27,728 | 37,075 |
-| ccrel | 580 | 12,226 | 10,485 | 98 | 1,135 | 12,538 | 18,156 |
+| cclink | 580 | 12,226 | 10,485 | 98 | 1,135 | 12,538 | 18,156 |
 
 The four images take 89,645 bytes of the disk, against 127,204 as REL
 modules, and XLOAD 6,010 bytes, once: about 31.5K less. The images'
@@ -678,7 +678,7 @@ memory. So the second part moved to a file of its own, XLOAD2. If
 XLOAD grows again: a smaller read buffer (512 bytes now, 256 would
 do), in either part.
 
-`-x` cost ccrel 951 bytes of code and 640 of heap (the function
+`-x` cost cclink 951 bytes of code and 640 of heap (the function
 table's offsets), leaving it about 13.4K to spare running.
 
 ## 7. Open questions, and what to check
@@ -725,11 +725,11 @@ To check once XLOAD runs, on MAME and then a real Apple II:
 ## 8. Plan
 
 1. ~~The hand-off, read from plvm02.s~~ (4.5), 2026-11-11.
-2. ~~ccrel's `-x` and the image format~~ (section 3), 2026-11-12,
+2. ~~cclink's `-x` and the image format~~ (section 3), 2026-11-12,
    versions 1-3, checked by tools/xlcheck.py; version 4 specified.
 3. ~~cccomp: no initializer, any size, into the zero-filled space~~
    (3.3), 2026-11-12, for globals: `movable()` stays limited to
-   `BSS_MIN` and up, ccrel moves only those, and the peephole stage
+   `BSS_MIN` and up, cclink moves only those, and the peephole stage
    folds constants into any symbol's address, so the code is the same
    (the gen tests' ops are unchanged, only their operands' names).
    **Static locals** came next (2026-11-12): a zero-filled global is
@@ -739,7 +739,7 @@ To check once XLOAD runs, on MAME and then a real Apple II:
    no symbols: they're in each object's **zero area**, at offsets, as
    initialized data is in its data (object version 9, IR version 17:
    relocation kind 6; a global op's symbol operand -2 in the IR;
-   ccgen's `FIX_ZERO`, folded as `FIX_DATA` is). ccrel puts each
+   ccgen's `FIX_ZERO`, folded as `FIX_DATA` is). cclink puts each
    object's zero area first in its share of the zero-filled globals
    that stay. Cost: 74 bytes of cccomp's code (891 to spare running).
    Tests: tests/run/static_zero.c, tests/link/static_zero,
@@ -754,14 +754,14 @@ To check once XLOAD runs, on MAME and then a real Apple II:
    in ccish's own programs, whose sources have no such initializers;
    it's for the programs ccish compiles. Tests:
    tests/run/zero_init.c, tests/run/zero_init_place.c.
-5. ~~ccrel's version 4, and XLOAD, together~~ (done 2026-11-12; 3.4 says why): under
+5. ~~cclink's version 4, and XLOAD, together~~ (done 2026-11-12; 3.4 says why): under
    `-x`, nothing moves to the heap; the zero region; init clears it.
    XLOAD in ccish C, the first part and the second part as an image
    inside it, for plvm and the 64K VM, refusing the rest (4.2), with
    `-V` (4.6).
 6. ~~A small test program first~~ (done: tests/xload/xltest.c, tests/special/xload.sh), before any of ccish's own: run
    under plvm through XLOAD with `-V`, its output and status checked,
-   and its diagnostics checked against what ccrel's listing says (the
+   and its diagnostics checked against what cclink's listing says (the
    VM, sizes, where things went, the fixup counts, the imports). It
    uses everything an image can hold: initialized data with addresses
    (of data, strings and functions) in it, a zero region (small and
@@ -779,7 +779,7 @@ To check once XLOAD runs, on MAME and then a real Apple II:
    tools/a2screen's guards: the status above). It took two fixes
    outside XLOAD: the passes take their options in either case and a
    source named NAME.C, since CMD's command line is uppercase; and
-   ccrel creates its REL modules as ProDOS type $FE, aux type $1000
+   cclink creates its REL modules as ProDOS type $FE, aux type $1000
    (the library's `__filetype()`), or CMD won't run them. `exit()`
    now unwinds on the Apple (lib/exit.c, 2026-11-12): a pass's error
    gives `ERR:$01` and CMD's prompt, checked on MAME's 64K IIe. Still

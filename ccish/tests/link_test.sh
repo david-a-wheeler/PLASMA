@@ -19,7 +19,7 @@ for src in "$dir"*.c; do
     objs="$objs $obj"
 done
 if [ -f "$dir/expect-error" ]; then
-    if ./ccrel -o "$OUT/link/$mod" $objs 2>"$lerr"; then
+    if ./cclink -o "$OUT/link/$mod" $objs 2>"$lerr"; then
         echo "FAIL $dir: linked, but should have failed"; exit 1
     elif ! grep -qF -f "$dir/expect-error" "$lerr"; then
         echo "FAIL $dir: wrong message (wanted, then got):"
@@ -28,7 +28,7 @@ if [ -f "$dir/expect-error" ]; then
         echo "FAIL $dir: a failed link left its module"; exit 1
     fi
 else
-    if ! ./ccrel -v -o "$OUT/link/$mod" $objs >"$OUT/link/$name.lst" 2>"$lerr"; then
+    if ! ./cclink -v -o "$OUT/link/$mod" $objs >"$OUT/link/$name.lst" 2>"$lerr"; then
         echo "FAIL $dir: link error:"; sed 's/^/    /' "$lerr"; exit 1
     fi
     run_module "$OUT/link" "$mod" >"$OUT/link/$name.actual"

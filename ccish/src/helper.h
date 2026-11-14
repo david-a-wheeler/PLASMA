@@ -4,7 +4,7 @@
 
 // Helper functions (approach.md, "unsigned and helper functions
 // design"): code ccgen writes into each object that uses it, as an H
-// record, of which ccrel keeps one copy. A call to helper k is a CALL
+// record, of which cclink keeps one copy. A call to helper k is a CALL
 // with relocation REL_HELPER, target k. In ccgen, helper k is function
 // number HELPER_FN(k) while it is lowered (helper.c).
 #define HELPER_FN(k) (MAX_FUNCS + (k))

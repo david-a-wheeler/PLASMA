@@ -5,7 +5,7 @@ so that we can state the invariants that careful constant assignments
 rely on (token values, IR values) right where the code depends on
 them, mostly in the .h files. A false or non-constant assertion stops
 the build with the file and line; a true one generates nothing: no IR
-ops, no data, no work for ccgen or ccrel. The message string takes no
+ops, no data, no work for ccgen or cclink. The message string takes no
 space either.
 
 `#if ... #error` already checks invariants among `#define` values at

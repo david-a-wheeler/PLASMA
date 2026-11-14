@@ -186,7 +186,7 @@ ccish [-v] [-m] [-r] [-k] [-x] [-L dir] [-o output] [-I dir] [-D name[=text]] [-
 * `-D name[=text]` and `-U name`: define and undefine a macro before
   the first line of the program.
 * `object...`: more objects to link into the module after the input's,
-  each named as for `ccrel` (section 2.3), such as the C library's
+  each named as for `cclink` (section 2.3), such as the C library's
   (section 11.2).
 
 Example:
@@ -213,7 +213,7 @@ own, so that on the Apple II each can run separately:
 ccpp [-E] [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.c
 cccomp [-k] [-o output] input
 ccgen [-r] [-k] output
-ccrel [-v] [-x] [-L dir] [-o module] output|@file...
+cclink [-v] [-x] [-L dir] [-o module] output|@file...
 ```
 
 * `ccpp` (the preprocessor and lexer) reads the source, carries out
@@ -225,7 +225,7 @@ ccrel [-v] [-x] [-L dir] [-o module] output|@file...
   `output.ir` (`input.i` is removed unless `-k`).
 * `ccgen` (the code generator) reads the IR file and the name file
   and writes the stream files (both are removed unless `-k`).
-* `ccrel` (the final pass) links one or more objects into a REL
+* `cclink` (the final pass) links one or more objects into a REL
   module (or with `-x`, an XLOAD image, as for `ccish`).
 
 Each pass writes what the next reads, and nothing else. The formats
@@ -262,7 +262,7 @@ module:
 ```
 $ ./ccpp main.c && ./cccomp main && ./ccgen main
 $ ./ccpp util.c && ./cccomp util && ./ccgen util
-$ ./ccrel -o prog main util && ../src/plvm prog
+$ ./cclink -o prog main util && ../src/plvm prog
 ```
 
 * Each object is named by its output name, as given to `ccpp`
@@ -270,13 +270,13 @@ $ ./ccrel -o prog main util && ../src/plvm prog
   order given: every object's globals, then every object's strings,
   then every object's code. `-o` is required with more than one.
 * `@file` names the objects in `file` instead, one per line (a CR or
-  LF ends a line, and blank lines are skipped): `ccrel -o prog
+  LF ends a line, and blank lines are skipped): `cclink -o prog
   @prog.objs`. The VM's command line holds only 127 characters. The
   names may total 512 bytes, and a link may have 32 objects. It's
   GCC's and the linkers' `@file` syntax, but not their format: theirs
   holds arguments, options included, split at white space and quoted;
-  ccrel's holds only names, a whole line each.
-* `ccrel` keeps the objects, so after a change only the changed file
+  cclink's holds only names, a whole line each.
+* `cclink` keeps the objects, so after a change only the changed file
   needs compiling again. (`ccish` removes the stream files it makes,
   unless `-k`.)
 * A function or global that isn't `static` is shared by every
@@ -329,10 +329,10 @@ Compilation stops at the first error.
 make            # same as make test
 make test       # builds both builds and ../src/plvm (the C VM),
                 # then runs every test that's stale
-make all        # builds ./ccish, ./ccpp, ./cccomp, ./ccgen and ./ccrel,
+make all        # builds ./ccish, ./ccpp, ./cccomp, ./ccgen and ./cclink,
                 # and doc/limits.md
 make small      # the small build: ./ccpp-small, ./cccomp-small,
-                # ./ccgen-small and ./ccrel-small
+                # ./ccgen-small and ./cclink-small
 make bootstrap  # ccish compiles itself twice under plvm, and the
                 # results must match (about 30 seconds)
 make full-test  # make test and make bootstrap
@@ -955,7 +955,7 @@ A few specifics:
   pointer, as in C (section 4.6).
 * `main` takes no parameters (`int main(void)`), or two (`int
   main(int argc, char **argv)`). With two, link the library's `start`
-  object (section 11.2): ccrel's init calls its `__start`, which splits
+  object (section 11.2): cclink's init calls its `__start`, which splits
   CMDSYS's command line at spaces, the module's name first, and calls
   `main`. It keeps at most 24 words (`MAX_ARGS`). The parameters'
   types aren't checked. Its return value,
@@ -1746,7 +1746,7 @@ their values. Here are some examples of the limits that matter most:
 * In the preprocessor: the bytes of distinct names and file names, the
   macros and the bytes of their bodies, and the characters in a
   source line.
-* In one link: the objects, and the names shared between them (`ccrel
+* In one link: the objects, and the names shared between them (`cclink
   -v` ends its listing with how much of these a link used).
 * Also: the characters in a string literal and in a file name, and the
   significant characters in an identifier.
@@ -1778,7 +1778,7 @@ documented format, so a pass can be replaced or run by itself.
 The pipeline:
 
 ```
-source          ccpp          cccomp         ccgen           ccrel
+source          ccpp          cccomp         ccgen           cclink
  .c, .h    -->  .i, .nam  -->  .ir      -->  .obj, .syms  -->  module
 ```
 
@@ -1893,7 +1893,7 @@ ccgen works in stages over the IR stream:
 5. **Encoding.** One function at a time, to bytes, with fixup chains
    that fill in each branch's offset as its target is reached.
 
-### 10.4 ccrel: the final pass and linker
+### 10.4 cclink: the final pass and linker
 
 Reads the stream files of one or more objects (section 2.3). Writes
 the REL module, and with `-v`, a listing of it. With `-L dir`, it
@@ -1947,7 +1947,7 @@ defines the two builds' feature macros.
 | Path | Contents |
 |------|----------|
 | `src/main.c` | `ccish`: the command line, then every pass in one process |
-| `src/ccpp.c`, `src/cccomp.c`, `src/ccgen.c`, `src/ccrel.c` | The four passes as programs of their own |
+| `src/ccpp.c`, `src/cccomp.c`, `src/ccgen.c`, `src/cclink.c` | The four passes as programs of their own |
 | `src/build.h`, `src/cclimits.h` | The builds' feature macros, and the limits all the programs share |
 | `src/diag.c` | Messages, and other support every program shares |
 | `src/bio.c` | File I/O through small (128-byte) block buffers |
@@ -1971,7 +1971,7 @@ defines the two builds' feature macros.
 | `src/peep.c` | ccgen's stage 3: the peephole optimizer |
 | `src/emit.c` | ccgen's stage 4: encoding, and writing the stream files |
 | `src/helper.c` | ccgen's helper functions (unsigned `/`, `%` and `>>`), written into each object that calls one |
-| `src/link.c` | ccrel: the linker, the REL module, and the listing |
+| `src/link.c` | cclink: the linker, the REL module, and the listing |
 | `ccish.msg` | The text of every message, by number (section 10.7) |
 | `lib/`, `lib/include/` | The C library's sources (one function each) and headers (section 11.2) |
 | `tests/` | The test suite (section 2.5) |
@@ -2106,7 +2106,7 @@ ccish has a small C library, written in ccish's C: the headers in
 `lib/include/`, and one source per function in `lib/`. `make`
 compiles each into `tests/out/lib/NAME` (`NAME.obj` and `NAME.syms`),
 and generates `tests/out/lib/lib.map`, which object defines each
-name. ccrel links whole objects; without `-L`, you name on the link
+name. cclink links whole objects; without `-L`, you name on the link
 line the objects your program calls, and the ones they call:
 
 ```

@@ -13,9 +13,9 @@ which shows where hoisting a table's address out of a loop could pay
 (approach.md, "Hoisting moved globals' addresses"), not how often each
 loop runs.
 
-From each ccrel -v listing it takes:
+From each cclink -v listing it takes:
   - the moved globals, from its "; heap global N: NAME, SIZE bytes"
-    lines (the full build's ccrel writes them);
+    lines (the full build's cclink writes them);
   - their pointer words, from the init function's DAW lines, which
     store them in the same order;
   - the loops: each backward branch is one, from its target to itself;

@@ -48,7 +48,7 @@ int main(int argc, char **argv)
   putc(10, stdout);
   return 0;
 }' || bad=1
-./ccrel -o "$D/args" "$D/args" "$L/start" "$L/putc" "$L/fputs" "$L/strlen" || bad=1
+./cclink -o "$D/args" "$D/args" "$L/start" "$L/putc" "$L/fputs" "$L/strlen" || bad=1
 out=$(run_args args x yy zzz) || { echo "FAIL lib args: status $?"; bad=1; }
 same "$out" "04 args x yy zzz NULL" "args"
 out=$(run_args args) || bad=1
@@ -61,7 +61,7 @@ same "$out" "24 args 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23
 # wanted only because main has two parameters (no object names it),
 # and the map's line for start offers it; the listing names the
 # objects added.
-./ccrel -v -o "$D/argsl" "$D/args" -L "$L" >"$D/argsl.lst" || bad=1
+./cclink -v -o "$D/argsl" "$D/args" -L "$L" >"$D/argsl.lst" || bad=1
 out=$(run_args argsl x yy zzz) || { echo "FAIL lib argsl: status $?"; bad=1; }
 same "$out" "04 argsl x yy zzz NULL" "args through -L"
 grep -qF "; library object: start" "$D/argsl.lst" \
@@ -77,7 +77,7 @@ exit_run() {
     src_obj "$1" "#include <stdlib.h>
 void deep(int n) { if (n) deep(n - 1); else exit($2); }
 int main(void) { __puts(pstr(\"$3\")); deep(5); return 9; }" || bad=1
-    ./ccrel -L "$L" -o "$D/$1" "$D/$1" || bad=1
+    ./cclink -L "$L" -o "$D/$1" "$D/$1" || bad=1
     out=$(run_args "$1")
     st=$?
     same "$st" "$4" "exit status for exit($2)"
@@ -99,7 +99,7 @@ exit_run quit0 0 zero 0
 # main's call, and for a
 # void main pushes the 0 that exit may replace.
 init_has() {
-    ./ccrel -v -L "$L" -o "$D/$1" "$D/$1" >"$D/$1.lst" || bad=1
+    ./cclink -v -L "$L" -o "$D/$1" "$D/$1" >"$D/$1.lst" || bad=1
     sed -n '/^(init):/,/RET/p' "$D/$1.lst" | sed '1d; s/^  [0-9A-F]*  //' \
         | cut -c10- | sed 's/ \$[0-9A-F]* *; / /' | tr '\n' '|' >"$D/$1.init"
     same "$(cat "$D/$1.init")" "$2" "lib/exit's init for $1"
@@ -110,12 +110,12 @@ void main(void) { exit(4); }' || bad=1
 init_has vquit 'LA data+0|DUP|CB 231|SW|ICAL|CN 0|CALL main|ANDI 255|NEG|RET|'
 
 # The link errors: no start object, and no exit.
-if ./ccrel -o "$D/nostart" "$D/args" "$L/putc" "$L/fputs" "$L/strlen" 2>"$D/nostart.err"; then
+if ./cclink -o "$D/nostart" "$D/args" "$L/putc" "$L/fputs" "$L/strlen" 2>"$D/nostart.err"; then
     echo "FAIL lib: main(argc, argv) linked without lib/start"; bad=1
 fi
 grep -qF "undefined reference to '__start'" "$D/nostart.err" \
     || { echo "FAIL lib: wrong message without lib/start:"; cat "$D/nostart.err"; bad=1; }
-if ./ccrel -o "$D/noexit" "$D/quit" 2>"$D/noexit.err"; then
+if ./cclink -o "$D/noexit" "$D/quit" 2>"$D/noexit.err"; then
     echo "FAIL lib: exit linked without lib/exit"; bad=1
 fi
 grep -qF "undefined reference to 'exit'" "$D/noexit.err" \

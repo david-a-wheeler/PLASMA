@@ -1,6 +1,6 @@
 // ccish's objects (../OBJECT.md), NAME.obj and NAME.syms, which ccgen
 // writes (and cccomp, whose IR file carries their data records and
-// summary) and ccrel reads: the limits on one object that they all
+// summary) and cclink reads: the limits on one object that they all
 // share, and the file names. The format itself is in obj.fmt.h and
 // obj.sym.h, apart, so that the parser's files spend none of cccomp's
 // identifier table on names they don't use.

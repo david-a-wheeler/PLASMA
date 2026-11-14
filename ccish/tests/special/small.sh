@@ -11,7 +11,7 @@ mkdir -p "$OUT/small"
 # $1 the source, $2 an extra ccpp option (""), $3 a tag for the file
 # names, and $4 the library objects to link (a cross test's NAME.lib,
 # or none). The small ccpp/cccomp/ccgen must write the full build's
-# token stream, name file, object and symbol summary, and ccrel-small
+# token stream, name file, object and symbol summary, and cclink-small
 # the same module.
 same_build() {
     src=$1 extra=$2 tag=$3 libs=${4:-}
@@ -29,9 +29,9 @@ same_build() {
        || ! cc_obj -small "$OUT/small/$tag.s" "$src" "$extra" 2>/dev/null \
        || ! cmp -s "$OUT/small/$tag.f.obj" "$OUT/small/$tag.s.obj" \
        || ! cmp -s "$OUT/small/$tag.f.syms" "$OUT/small/$tag.s.syms" \
-       || ! ./ccrel -o "$OUT/small/$tag.f" "$OUT/small/$tag.f" $libs \
+       || ! ./cclink -o "$OUT/small/$tag.f" "$OUT/small/$tag.f" $libs \
             2>/dev/null \
-       || ! ./ccrel-small -o "$OUT/small/$tag.s" "$OUT/small/$tag.s" $libs \
+       || ! ./cclink-small -o "$OUT/small/$tag.s" "$OUT/small/$tag.s" $libs \
             2>/dev/null \
        || ! cmp -s "$OUT/small/$tag.f" "$OUT/small/$tag.s"; then
         echo "FAIL $src: the small build doesn't write the full build's" \
@@ -77,8 +77,8 @@ for dir in tests/link/*/; do
         full="$full $OUT/small/l${i}_$b.f"
         small="$small $OUT/small/l${i}_$b.s"
     done
-    if ! ./ccrel -o "$OUT/small/lfull_$i" $full 2>/dev/null \
-       || ! ./ccrel-small -o "$OUT/small/lsmall_$i" $small 2>/dev/null \
+    if ! ./cclink -o "$OUT/small/lfull_$i" $full 2>/dev/null \
+       || ! ./cclink-small -o "$OUT/small/lsmall_$i" $small 2>/dev/null \
        || ! cmp -s "$OUT/small/lfull_$i" "$OUT/small/lsmall_$i"; then
         echo "FAIL $dir: the small build doesn't link the full build's" \
              "module"

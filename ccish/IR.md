@@ -191,14 +191,14 @@ function operand is the global's variable index; *a* is 0.
 - **Stack:** `( -- addr )`.
 - **Now:** `LA addr`, with a data symbol fixup (`FIX_HEAP`), which the
   emitter writes as a kind 4 relocation with addend 0. If the global
-  moves, `ccrel` makes it `LAW` of the global's pointer word; if not, it
+  moves, `cclink` makes it `LAW` of the global's pointer word; if not, it
   stays an `LA` of the global's address.
 - **Every access goes through it.** A load, store or address of such a
   global, at any offset, is `HEAPADDR`, then `CONST off ADD` if the
   offset isn't 0, then `LOAD`, `STORE` (or the byte forms) as for a
   pointer. So no other op ever holds such a global's address, and the
   peephole stage never folds the `LA` into an absolute load or store
-  (`LAB`, `SAW` and the rest), which `ccrel` couldn't patch.
+  (`LAB`, `SAW` and the rest), which `cclink` couldn't patch.
 
 ### `IR_LOCAL` *a* = frame offset
 

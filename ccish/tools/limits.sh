@@ -36,7 +36,7 @@ BEGIN {
   title["pp"] = "The preprocessor (ccpp)"
   title["file"] = "One source file (cccomp)"
   title["function"] = "One function"
-  title["link"] = "One link (ccrel)"
+  title["link"] = "One link (cclink)"
   title["other"] = "Other limits"
   # The report'"'"'s peaks: "  NAME VALUE WHERE", after its "Peaks:" line.
   while ((getline l < report) > 0) {

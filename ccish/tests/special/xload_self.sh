@@ -6,7 +6,7 @@
 # a few of ccish's own sources (the largest among them) and the hello
 # test, as a REL module (rel/) and as an image run through XLOAD
 # (img/); every file each writes must be the same, and so must the
-# module ccrel links for hello. The image runs give their options in
+# module cclink links for hello. The image runs give their options in
 # uppercase, as CMD's command line on an Apple II does (-K for -k), and
 # ccpp also compiles HELLO.C, a copy of hello.c, with no -o, into HELLO
 # (the REL run, lowercase, into hello2): the same files again.
@@ -25,8 +25,8 @@ cp tests/run/hello.c src/*.h "$W/src/"
 cp tests/run/hello.c "$W/HELLO.C"
 
 # Each program: the REL module measure.py linked, and an image of the
-# same objects (named bare in a list file, as ccrel's @file takes them).
-for p in ccpp cccomp ccgen ccrel; do
+# same objects (named bare in a list file, as cclink's @file takes them).
+for p in ccpp cccomp ccgen cclink; do
     if [ ! -f "tools/out/$p.objs" ]; then
         echo "FAIL xload_self: no tools/out/$p.objs (run tools/measure.py)"
         exit 1
@@ -36,7 +36,7 @@ for p in ccpp cccomp ccgen ccrel; do
         cp "$o.obj" "$o.syms" "$D/obj/"
         basename "$o"
     done <"tools/out/$p.objs" >"$D/obj/$p.list"
-    (cd "$D/obj" && ../../../../ccrel-small -x -o "../img/$p" "@$p.list") \
+    (cd "$D/obj" && ../../../../cclink-small -x -o "../img/$p" "@$p.list") \
         || { echo "FAIL xload_self: $p doesn't link as an image"; exit 1; }
 done
 
@@ -57,14 +57,14 @@ pass() {
 # images, under the same names.
 OUTS="name bio parse link peep hello"
 for k in rel img; do
-    cp "$D/$k/ccpp" "$D/$k/cccomp" "$D/$k/ccgen" "$D/$k/ccrel" "$W/"
+    cp "$D/$k/ccpp" "$D/$k/cccomp" "$D/$k/ccgen" "$D/$k/cclink" "$W/"
     if [ $k = rel ]; then K=-k O=-o; else K=-K O=-O; fi
     for f in $OUTS; do
         pass $k ccpp -DCCISH_SMALL $K $O $f src/$f.c
         pass $k cccomp $K $f
         pass $k ccgen $K $f
     done
-    pass $k ccrel hello
+    pass $k cclink hello
     if [ $k = rel ]; then
         pass $k ccpp $O hello2 HELLO.C
     else
@@ -91,6 +91,6 @@ for s in .i .nam; do
         || { echo "FAIL xload_self: HELLO$s (from HELLO.C) differs"; bad=1; }
 done
 cmp -s "$D/out/hello" "$W/hello" \
-    || { echo "FAIL xload_self: ccrel's hello differs"; bad=1; }
+    || { echo "FAIL xload_self: cclink's hello differs"; bad=1; }
 [ $bad = 0 ] && rm -rf "$D"
 exit $bad

@@ -582,8 +582,8 @@ static int declare_global(int name, int type, int storage)
 // __asm__("PERR") (which ccpp turns into the id PERR), or declared
 // after "#pragma plasma import MODULE" in the same file, is a PLASMA
 // import if no linked object defines it. Its PLASMA name is the label,
-// else its C name (ccrel uppercases it); a pragma also names the
-// module to load first, which ccrel writes only if an import from it is
+// else its C name (cclink uppercases it); a pragma also names the
+// module to load first, which cclink writes only if an import from it is
 // used. A pragma covers the rest of its own file only, so a header's
 // doesn't turn the including file's externs into imports. Only the
 // few symbols involved are kept, here, as parallel arrays: imp_sym[]
@@ -727,7 +727,7 @@ static void define_global(int name, int type, int storage)
     if (is_array(type) && type_count(type) == 0)
       error0(87 /* "array size missing" */);
     // In the zero-filled space, with no data bytes, whatever its
-    // size: ccrel places it, after every object's data, or on the heap
+    // size: cclink places it, after every object's data, or on the heap
     // if it's at least BSS_MIN bytes (../doc/xload.md, 3.3).
     zero_var(s, ZERO_GLOBALS);
   }

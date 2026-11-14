@@ -1,5 +1,5 @@
 /* xload2.c: XLOAD's second part (../doc/xload.md, section 4), built
- * as an XLOAD image (ccrel -x), the file XLOAD2 beside XLOAD. The first
+ * as an XLOAD image (cclink -x), the file XLOAD2 beside XLOAD. The first
  * part (xload.c) loads it to where the program won't load over it, and
  * calls xl2_entry(), its first function.
  * It loads the program, in place at the bottom of the heap, and hands

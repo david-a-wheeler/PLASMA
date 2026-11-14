@@ -58,7 +58,7 @@ grouping work:
 | ccpp   | 13,780 | 3,364 | 1,070 | 26,012 |
 | cccomp | 26,015 | 3,172 |   554 | 42,613 (still over) |
 | ccgen  | 15,590 | 2,753 |   782 | 26,244 |
-| ccrel  |  7,713 | 1,989 |   282 | 14,200 |
+| cclink  |  7,713 | 1,989 |   282 | 14,200 |
 
 cccomp's module file is code plus data plus strings (29,741), plus
 the RLD and ESD the linker appends (12,398, of which most is RLD:
@@ -213,7 +213,7 @@ store to it keeps it -- all conservative); at the function's end the
 peep hands emit the dead spans, and emit, where it already edits the
 finished buffer (drop_frame), deletes or replaces them and re-patches
 every branch offset word around the deletions (the relocs' offsets
-move too; the relocs' targets are absolute, filled by ccrel, and
+move too; the relocs' targets are absolute, filled by cclink, and
 unaffected). A store replaced by a DROP is one byte; a fused span
 (const or frame-only expression plus the store) is two to five.
 Status: measured and designed (0d680a43); not implemented -- this
@@ -417,7 +417,7 @@ allocated) and the 128-byte-header assumption stay as they are. The
 hardware loaders are separate work: the Apple II's ProDOS seeks, so
 the same two-pass shape works; the C64's sequential channel prefers
 a one-pass loader, which the format could give by writing the ESD
-before the RLD (a ccrel change, a module-format version, and every
+before the RLD (a cclink change, a module-format version, and every
 VM's loader updated together). Risk is low: a module that loads and
 runs is a module that loads and runs, and the tests run every module
 they build.

@@ -367,7 +367,7 @@ static void xl_fixups(struct xl_args *a, unsigned char *body,
     v = p[0] | (p[1] << 8);
     if (k == -1) {
       /* Never an address in the bytecode, which on the 128K VM isn't
-       * in main memory: ccrel reaches functions through their def
+       * in main memory: cclink reaches functions through their def
        * entries. (The word may look like one: an address before the
        * data, such as arr - 58, wraps around.) */
       v += (int)body;

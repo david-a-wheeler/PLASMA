@@ -4,7 +4,7 @@ The compiler proper (stages 1–4) doesn't write the REL module itself.
 Its front end (`cccomp`) writes an **IR file**, its back end (`ccgen`)
 turns that into a **stream file** and a **symbol summary**, and a
 separate
-**final pass** (`src/link.c`, the program `ccrel`) turns them into the
+**final pass** (`src/link.c`, the program `cclink`) turns them into the
 module. See [approach.md](approach.md), 18.1, for why. Together the
 two files are ccish's object file format, an **object**. The final
 pass is also a linker, which links several objects into one module
@@ -13,7 +13,7 @@ version number bumped.
 
 For output `NAME`, the files are `NAME.obj` and `NAME.syms`. `ccish`
 removes them after the module is written, and after any error, unless
-`-k` is given; `ccgen` leaves them for `ccrel`, which keeps them.
+`-k` is given; `ccgen` leaves them for `cclink`, which keeps them.
 `NAME.obj` and `NAME.syms` are format version 9 (`OBJ_VERSION`), and
 the IR file, `NAME.ir`, is IR format version 17 (`IR_VERSION`); the
 history below gives both. Object version 9 and IR version 17 added
@@ -52,10 +52,10 @@ numbers are unreadable, so the version was bumped, as version 7's,
 which grouped the label-referencing ops (IR_REFS_LABEL) the same way. Version 6 added zero-filled globals (approach.md,
 "Large zero-filled data on the heap"): a `Z` record for a run of zero
 bytes, the summary's zero-filled size, and data symbol flags 64 and 128, so that
-`ccrel` can move large zero-filled globals to the heap (below,
+`cclink` can move large zero-filled globals to the heap (below,
 "Zero-filled globals"). Version 5 added helper functions (approach.md,
 "`unsigned` and helper functions design"): code `ccgen` writes into
-each object that calls it (an `H` record, below), of which `ccrel`
+each object that calls it (an `H` record, below), of which `cclink`
 keeps one copy. Version 4 added what linking several files needs
 (approach.md issue 11): data symbols, local (`static`) symbols, a
 relocation to an `extern` global, and type hashes; version 3 had none
@@ -139,7 +139,7 @@ so that the loader can adjust it. Kind 4 is the address of a global
 declared `extern` and not (yet) defined in this file, or of a zero-filled one,
 plus the addend (`int *q = &ext[3];`). Kind 2 is a function's address
 (`int (*fp)(int) = f;`), resolved as in code (the `F` record, below):
-the function's stub, or an import. (`ccrel` always read kind 2 here,
+the function's stub, or an import. (`cclink` always read kind 2 here,
 so allowing it changed no format version.)
 
 Data offsets elsewhere count from the first byte of the data. Its
@@ -189,7 +189,7 @@ function defined later in the file, or to an import, which the loader
 fills in. A data symbol address (kind 4) refers to a global declared
 `extern`, used before any definition in this file, or to a zero-filled
 global (in code, its word is always the operand of an `LA` with addend
-0, which `ccrel` may make an `LAW`: "Zero-filled globals", below): a
+0, which `cclink` may make an `LAW`: "Zero-filled globals", below): a
 reference to another global with storage here is kind 1.
 
 The function's code offset in the code segment is the sum of the
@@ -211,7 +211,7 @@ Unsigned arithmetic that PLASMA has no opcode for: `n / d`, `n % d`
 and `n >> c`, with the two operands as its parameters (the call is
 `CALL` with a kind 5 relocation). `ccgen` writes one, after the
 object's functions, for each helper the object calls. A helper has no
-relocations and isn't part of the object's code segment: `ccrel`
+relocations and isn't part of the object's code segment: `cclink`
 keeps the first object's copy of each and places it after every
 object's code, and every object's copy must be the same (the summary
 gives its size and checksum).
@@ -323,14 +323,14 @@ out 0 is written as 1.
 **Zero-filled globals.** A global with no initializer, of any size,
 isn't in the data: it has flag 64, and its offset is in the object's
 zero-filled space, whose size the summary gives. Every reference to
-it, in code and data, is a kind 4 relocation, to its symbol. ccrel may
+it, in code and data, is a kind 4 relocation, to its symbol. cclink may
 move one of at least `BSS_MIN` (256) bytes to the heap (approach.md,
 "Large zero-filled data on the heap"); a smaller one stays in the
 module, after every object's data (2026-11-12; before that only arrays
 and structs of `BSS_MIN` bytes or more had flag 64; doc/xload.md,
 3.3). Static locals with no initializer are in the object's zero
 area instead (kind 6 relocations; the summary's zero area size):
-ccrel puts each object's at the start of its share of the zero-filled
+cclink puts each object's at the start of its share of the zero-filled
 globals that stay, and never moves one to the heap. A global declared `extern` may get flag 64
 from the object that defines it. Flag 128 says that an initializer in
 this object holds its address (`int *p = big + 3;`), or, for an
@@ -513,7 +513,7 @@ any flag but bit 7 set. The small build trusts the lengths.
 
 ## The final pass
 
-`ccrel` links one or more objects, in the order given, into one
+`cclink` links one or more objects, in the order given, into one
 module. It has at most one input file open at a time, and the module.
 
 1. Read every object's `NAME.syms`, laying out each object's data,
@@ -572,7 +572,7 @@ reports "compiler stream file is damaged" if not.
 
 **Zero-filled globals** (approach.md, "Large zero-filled data on the
 heap"). Each one (flag 64) whose address no object's initializer holds (flag 128 in no
-entry for it) moves to the heap: `ccrel` gives it a **pointer word**,
+entry for it) moves to the heap: `cclink` gives it a **pointer word**,
 after the data, and turns each code reference to it, an `LA` of its
 address, into an `LAW` of its pointer word. A program's moved globals
 are one block, which the init function takes from `heapalloc` and

@@ -12,11 +12,11 @@ build, with -full). The C library (lib/*.c) is
 compiled too, unchanged (the programs' sources and the
 library's are the Makefile's, from make print-sources). Then each of
 the Apple II programs
-(ccpp, cccomp, ccgen, ccrel) is linked with ccrel's -L, which adds
+(ccpp, cccomp, ccgen, cclink) is linked with cclink's -L, which adds
 the library objects it needs; the program's objects, then the
 library's, are written to OUT/PROGRAM.objs, from the listing. The report gives each
 file's code, data and string sizes (from its .syms header) and each
-program's totals and link workload (from ccrel's listing), and how full
+program's totals and link workload (from cclink's listing), and how full
 ccpp's tables got (from a ccpp built with CCISH_STATS), and what
 each program needs on a 64K Apple II, running and loading, in the
 form that runs there (APPLE_LINK: XLOAD images, loaded through XLOAD;
@@ -65,7 +65,7 @@ IO_BUFFER = 1280        # ProDOS's 1K buffer for each open file but the
                         # from the heap page-aligned (heapallocalign(...,
                         # 8, ...)), which skips 1 to 256 bytes, and
                         # ccish's fopen asks for them one at a time
-# The form that runs on an Apple II: ccrel's flags for it. "-x" for
+# The form that runs on an Apple II: cclink's flags for it. "-x" for
 # XLOAD images, as tools/a2disk builds them (doc/xload.md); [] for REL
 # modules. The fit lines and the summary follow the form of the file
 # this links (an image starts with "XL"), so they describe what runs.
@@ -82,7 +82,7 @@ OPEN_FILES = {
     "ccpp": (2, "the source, {} includes at most, and NAME.i"),
     "cccomp": (2, "NAME.i and NAME.ir"),
     "ccgen": (3, "NAME.ir, NAME.nam and the object"),
-    "ccrel": (2, "an object and the module"),
+    "cclink": (2, "an object and the module"),
 }
 
 
@@ -195,7 +195,7 @@ def compile_obj(bindir, name, keep=False, src=None):
 
 
 def build_big():
-    """Build OUT/big/cccomp, ccgen and ccrel with BIG_LIMITS, from a
+    """Build OUT/big/cccomp, ccgen and cclink with BIG_LIMITS, from a
     copy of the sources (src/ is left alone), with the message file
     beside them; return the directory."""
     big = os.path.join(OUT, "big")
@@ -223,8 +223,8 @@ def build_big():
                    + src("cccomp"), check=True)
     subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccgen")]
                    + src("ccgen"), check=True)
-    subprocess.run(["cc", "-O2", "-o", os.path.join(big, "ccrel")]
-                   + src("ccrel"), check=True)
+    subprocess.run(["cc", "-O2", "-o", os.path.join(big, "cclink")]
+                   + src("cclink"), check=True)
     subprocess.run(["cc", "-O2", "-DCCISH_STATS", inc, "-o",
                     os.path.join(big, "ccpp-stats")]
                    + src("ccpp"), check=True)
@@ -296,7 +296,7 @@ FRAME_OPS = {"LLB", "LLW", "SLB", "SLW", "DLB", "DLW", "LLA", "ADDLB",
 
 
 def parse_listing(text):
-    """The functions in a ccrel -v listing: name -> dict with frame
+    """The functions in a cclink -v listing: name -> dict with frame
     (bytes, 0 if no ENTER), params, calls (set of names), indirect
     (ICAL count), frame_ops (accesses to the frame) and leaves."""
     funcs, cur = {}, None
@@ -531,7 +531,7 @@ def fit_report(prog, module, rld, heap, frame, unbounded, includes):
 
 
 def is_image(path):
-    """Is the file at path an XLOAD image (ccrel -x), not a REL module?"""
+    """Is the file at path an XLOAD image (cclink -x), not a REL module?"""
     with open(path, "rb") as f:
         return f.read(2) == b"XL"
 
@@ -819,7 +819,7 @@ def note_peak(peaks, lim, value, where):
 
 def summary(name):
     """The sizes in OUT/NAME.syms: data, strings, code, zero-filled
-    (the zero-filled globals, which ccrel may move to the heap, and the
+    (the zero-filled globals, which cclink may move to the heap, and the
     zero area's static locals)."""
     with open(os.path.join(OUT, name + ".syms"), "rb") as f:
         h = f.read(13)
@@ -930,23 +930,23 @@ def main():
             print("%s: not linked (a file failed)" % prog)
             continue
         module = os.path.join(OUT, prog)
-        # A file compiled with raised limits may be over ccrel's too.
+        # A file compiled with raised limits may be over cclink's too.
         raised = [n for n in files if n in over]
-        ccrel = os.path.join(big if raised else CCOMP, "ccrel")
-        # ccrel's -L adds the library objects the program needs, from
+        cclink = os.path.join(big if raised else CCOMP, "cclink")
+        # cclink's -L adds the library objects the program needs, from
         # OUT's lib.map; the listing names them.
-        def link(ccrel):
-            return run([ccrel, "-v", "-L", OUT, "-o", module]
+        def link(cclink):
+            return run([cclink, "-v", "-L", OUT, "-o", module]
                        + [os.path.join(OUT, n) for n in files])
-        ok, msg = link(ccrel)
+        ok, msg = link(cclink)
         if not ok and any(m in msg for m in LIMIT_MSGS):
-            # Over one of ccrel's own limits: link with raised limits,
+            # Over one of cclink's own limits: link with raised limits,
             # and say which.
-            raised.append("ccrel: " + msg.strip().splitlines()[-1]
+            raised.append("cclink: " + msg.strip().splitlines()[-1]
                           .split(": ", 1)[-1])
             big = big or build_big()
-            ccrel = os.path.join(big, "ccrel")
-            ok, msg = link(ccrel)
+            cclink = os.path.join(big, "cclink")
+            ok, msg = link(cclink)
         with open(module + ".lst", "w") as f:
             f.write(msg)
         if not ok:
@@ -972,7 +972,7 @@ def main():
         ldata = sum(sizes[n][0] for n in libs)
         lstrs = sum(sizes[n][1] for n in libs)
         rld, esd, defs = module_rld(module)
-        # An XLOAD image's def table (ccrel -x) has init's entry too.
+        # An XLOAD image's def table (cclink -x) has init's entry too.
         note_peak(limit_peaks, "MAX_DEFS", defs + 1, "linking " + prog)
         last = msg.strip().splitlines()[-1]
         m = re.search(r"shared names: (\d+) of \d+ slots, (\d+) of", last)
@@ -996,13 +996,13 @@ def main():
               % (defs, loader_sizes(module)[1]))
         print("  " + last.lstrip("; "))
         if raised:
-            print("  (linked by a ccrel with raised limits, for %s)"
+            print("  (linked by a cclink with raised limits, for %s)"
                   % ", ".join(raised))
-        # Link again with a ccrel that has room for every static name,
+        # Link again with a cclink that has room for every static name,
         # for the call graph.
         big = big or build_big()
         named = os.path.join(OUT, prog + "-named")
-        ok, msg = run([os.path.join(big, "ccrel"), "-v", "-o", named]
+        ok, msg = run([os.path.join(big, "cclink"), "-v", "-o", named]
                       + objs)
         if os.path.exists(named):
             os.remove(named)
@@ -1021,7 +1021,7 @@ def main():
             apple = module
             if APPLE_LINK:
                 apple = module + ".apple"
-                ok, msg = run([ccrel] + APPLE_LINK + ["-o", apple] + objs)
+                ok, msg = run([cclink] + APPLE_LINK + ["-o", apple] + objs)
                 if not ok:
                     print("  the Apple II form: link FAILED: %s"
                           % msg.strip().splitlines()[-1])

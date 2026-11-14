@@ -17,13 +17,13 @@ files of the sessions so far; brought up to date 2026-11-12.)
   the text screen. "32K per program" was only a proxy for that.
 - The pipeline is 4 programs: ccpp (preprocess: NAME.c → NAME.i token
   stream + NAME.nam names), cccomp (front end → NAME.ir), ccgen (back
-  end → NAME.obj + NAME.syms), ccrel (link → REL module). `ccish` runs
+  end → NAME.obj + NAME.syms), cclink (link → REL module). `ccish` runs
   all four on the host.
 - **Size matters most for cccomp**, the tightest fit: PLASMA's loader
   reads a whole module file into memory, and cccomp's REL module is
   bigger than the 41,171 bytes free on a 64K Apple II, so it can't
   load that way. The way past the load limit, chosen 2026-11-11, is
-  XLOAD, a second-stage loader ccish ships, for images ccrel writes
+  XLOAD, a second-stage loader ccish ships, for images cclink writes
   with `-x`: doc/xload.md (the design and plan;
   doc/streaming-options.md has the analysis behind the choice). Each
   program's "on a 64K Apple II, through XLOAD" lines in
@@ -51,7 +51,7 @@ files of the sessions so far; brought up to date 2026-11-12.)
   the plan; `doc/streaming-options.md`: why XLOAD, and the options
   set aside.
 - `doc/linking.md`: the linking decisions (approach.md decision 46):
-  the ccrel-to-cclink rename, the -v flag, the __cmd_ spellings, the
+  the final pass's name, cclink, the -v flag, the __cmd_ spellings, the
   C library's one-underscore private names, and the -L/lib.map
   library resolution, with the options, rationale, implementation
   notes and the verified facts. Read it before touching the final
@@ -239,10 +239,10 @@ files of the sessions so far; brought up to date 2026-11-12.)
   image that runs there (its `APPLE_LINK`). The report is
   doc/measure.txt, checked in; `make test` refreshes it (and
   doc/limits.md) after a change, so commit it with the change. It
-  writes `tools/out/PROGRAM` (the REL module), `PROGRAM.lst` (ccrel's
+  writes `tools/out/PROGRAM` (the REL module), `PROGRAM.lst` (cclink's
   listing of it), `PROGRAM.apple` (the image), and `PROGRAM.objs`,
   the objects linked, the program's then the library's, which
-  measure.py writes from ccrel's listing (the link is with -L).
+  measure.py writes from cclink's listing (the link is with -L).
 - `python3 tools/listings.py` (or `make listings`; after `make`)
   writes tools/out/lst/NAME.lst for every source file of the programs
   and the library: each function's comment and C, then the machine ops
@@ -372,7 +372,7 @@ with every commit (sizes, fits, test counts) are in doc/measure.txt
 and make's output, and recent work in git log and approach.md.
 
 Done recently (see git log, approach.md and doc/xload.md): XLOAD and
-ccrel -x; zero-filled globals, static locals and all-zero initializers
+cclink -x; zero-filled globals, static locals and all-zero initializers
 in the zero region; the passes taking options in either case (CMD
 uppercases); make apple's disks. On MAME's 64K IIe, the four passes,
 as images through XLOAD, compiled ccish's own link.c to an object

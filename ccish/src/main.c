@@ -3,7 +3,7 @@
 // the front end turns them into the IR file, the back end turns that
 // into the stream files, and the final pass (link.c) turns those into
 // the module. The passes are also programs of their own, ccpp, cccomp,
-// ccgen and ccrel, so that on the Apple II each can have nearly all of
+// ccgen and cclink, so that on the Apple II each can have nearly all of
 // memory (approach.md, "B3", 18.7 and "ccpp design"). ccish is for the
 // host only; it goes through the same files.
 //
@@ -15,7 +15,7 @@
 //   -r  print the IR as the back end reads it
 //   -k  keep the token stream, name file, IR file and stream files
 //       (output.i, output.nam, output.ir, output.obj and output.syms)
-//   -x  write an XLOAD image, not a REL module, as ccrel -x does
+//   -x  write an XLOAD image, not a REL module, as cclink -x does
 //   -L  a directory of the library's objects, with a lib.map that
 //       says which object defines each name: the objects that define
 //       the names the link wants are added (doc/linking.md, 5)
@@ -23,7 +23,7 @@
 //   -o  output module name (default: input name without ".c").
 //       To run it with plvm, use a lowercase name with no extension.
 //   object  more objects to link after input.c's, such as the
-//       library's (each a base name, as for ccrel)
+//       library's (each a base name, as for cclink)
 //
 // The token stream, name file, IR file and stream files are removed
 // afterward, and after any error, unless -k is given.

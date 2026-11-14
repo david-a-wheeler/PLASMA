@@ -1,10 +1,10 @@
 /ccish
 /cccomp
-/ccrel
+/cclink
 /tests/out/
 /tools/out/
 /cccomp-small
-/ccrel-small
+/cclink-small
 /ccgen
 /ccgen-small
 /ccpp

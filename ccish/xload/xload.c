@@ -1,6 +1,6 @@
 /* xload.c: XLOAD's first part (../doc/xload.md, section 4), an
  * ordinary REL module: +XLOAD [-V] PROGRAM ARGS loads PROGRAM, an
- * XLOAD image (ccrel -x), and runs it with the command line PROGRAM
+ * XLOAD image (cclink -x), and runs it with the command line PROGRAM
  * ARGS. This part is all that PLASMA's loader runs. It finds which VM
  * it's on, captures the VM's state for the hand-off, reads the
  * program's header, and loads the second part (xload2.c, an image in

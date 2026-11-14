@@ -13,7 +13,7 @@ patched with tools/plvm-profile.patch (written so it could go to
 PLASMA's maintainer), in tools/out/pvm. Then it compiles each of
 ccish's own sources (src/*.c, the small build, as the bootstrap does)
 with measure.py's modules of ccpp, cccomp and ccgen (tools/out), each
-run under that VM, and maps the counts to functions with ccrel's
+run under that VM, and maps the counts to functions with cclink's
 listings (tools/out/PROGRAM.lst).
 
 For each PROGRAM it prints its total ops, then its TOP functions

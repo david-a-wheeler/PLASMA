@@ -2,8 +2,8 @@
 // and 18.7). It parses the token stream and name file that ccpp made of
 // one .c file (NAME.i and NAME.nam, ../CCPP.md) into the IR file,
 // NAME.ir, and leaves that for ccgen, the back end, which writes the
-// stream files for ccrel. On the Apple II, a small driver runs ccpp,
-// cccomp, ccgen and then ccrel, and each is freed when it ends, so each
+// stream files for cclink. On the Apple II, a small driver runs ccpp,
+// cccomp, ccgen and then cclink, and each is freed when it ends, so each
 // has nearly all of memory.
 //
 // Usage: cccomp [-k] [-o output] input

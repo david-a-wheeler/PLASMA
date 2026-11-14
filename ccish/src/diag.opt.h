@@ -1,5 +1,5 @@
 // The command-line options diag.c holds for the programs that read
-// them: their main()s (main.c, ccpp.c, cccomp.c, ccgen.c, ccrel.c) and
+// them: their main()s (main.c, ccpp.c, cccomp.c, ccgen.c, cclink.c) and
 // the passes that act on one (irin.c, emit.c, link.c). Part of diag.c's
 // exports, with diag.h and diag.src.h: apart, because every variable a
 // file can see counts against cccomp's MAX_VARS when ccish compiles

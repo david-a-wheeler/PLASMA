@@ -6,11 +6,11 @@
 #
 # Stage 1: the host's passes compile the four programs' sources (the
 # small build) and the C library, one file per invocation (R1), and
-# each program is linked with ccrel's -L, the stage's lib and its
+# each program is linked with cclink's -L, the stage's lib and its
 # lib.map; PROG.objs is the program's own objects, the same list at
 # every stage. Stages 2 and 3: the same, under the VM through
 # tools/ccrun, with the previous stage's modules as the passes (vccpp
-# and the rest) and `ccrel -L lib @PROG.objs` (R10) as the link. Each stage
+# and the rest) and `cclink -L lib @PROG.objs` (R10) as the link. Each stage
 # has its own directory, tests/out/boot/N, holding copies of the
 # sources, sys/ccinc (lib/include, R2) and ccish.msg (diag looks for
 # it beside the program). Stage 1's objects and modules must equal
@@ -20,7 +20,7 @@
 # It says what each stage is, then prints a dot per file compiled.
 #
 # The Makefile gives the sources: BOOT_ccpp, BOOT_cccomp, BOOT_ccgen and
-# BOOT_ccrel (each program's, as it builds them), and BOOT_LIB (the
+# BOOT_cclink (each program's, as it builds them), and BOOT_LIB (the
 # library's). BOOTSTRAP_VM is the VM.
 . "$(dirname "$0")/../lib.sh"
 PLVM=${BOOTSTRAP_VM:-$PLVM}
@@ -28,7 +28,7 @@ CCSTAT=$(pwd)/$OUT/ccstat
 export PLVM CCSTAT
 top=$(pwd)
 BOOT=$top/$OUT/boot
-PROGS="ccpp cccomp ccgen ccrel"
+PROGS="ccpp cccomp ccgen cclink"
 TIMEOUT=60                      # seconds for any one pass
 
 fail() {
@@ -118,7 +118,7 @@ for p in $PROGS; do
     objs=
     for s in $list; do objs="$objs $(basename "$s" .c)"; done
     printf '%s\n' $objs >"$p.objs"
-    "$top/ccrel" -L lib -o "$p" "@$p.objs" \
+    "$top/cclink" -L lib -o "$p" "@$p.objs" \
         >>log 2>&1 || fail "stage 1: linking $p failed (see $BOOT/1/log)"
 done
 end
@@ -141,7 +141,7 @@ for stage in 2 3; do
     begin $stage plvm
     compile $stage vm
     for p in $PROGS; do
-        "$CCRUN" -t $TIMEOUT vccrel -L lib -o "$p" "@$p.objs" >>log 2>&1 \
+        "$CCRUN" -t $TIMEOUT vcclink -L lib -o "$p" "@$p.objs" >>log 2>&1 \
             || fail "stage $stage: linking $p failed (see $BOOT/$stage/log)"
     done
     end

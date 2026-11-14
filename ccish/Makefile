@@ -2,7 +2,7 @@
 # Requires GNU Make
 #
 #   make        build everything the tests need, and run the stale tests
-#   make all    build ccish and its passes (ccpp, cccomp, ccgen, ccrel),
+#   make all    build ccish and its passes (ccpp, cccomp, ccgen, cclink),
 #               and doc/limits.md
 #   make small  build the small passes (-DCCISH_SMALL), for the host
 #   make xref   write the cross tests' references with a host C compiler
@@ -47,14 +47,14 @@ LINK   = src/link.c
 # (-DCCISH_SMALL, approach.md decision 21), whose limits are the Apple
 # II's; the tests check that both write the same objects and modules.
 # Every list of the programs below comes from PROGS.
-PROGS := ccpp cccomp ccgen ccrel
+PROGS := ccpp cccomp ccgen cclink
 SMALL_PROGS := $(PROGS:%=%-small)
 # Each program's sources, in link order (the bootstrap's and
 # measure.py's too, below), and ccish's, the driver that runs all four.
 SRC_ccpp   = src/ccpp.c $(COMMON) $(PP)
 SRC_cccomp = src/cccomp.c $(COMMON) $(NAM) $(PARSER)
 SRC_ccgen  = src/ccgen.c $(COMMON) $(NAM) $(CODEGEN)
-SRC_ccrel  = src/ccrel.c $(COMMON) $(LINK)
+SRC_cclink  = src/cclink.c $(COMMON) $(LINK)
 SRC_ccish  = src/main.c $(COMMON) $(PP) $(NAM) $(PARSER) $(CODEGEN) $(LINK)
 HEADERS := $(wildcard src/*.h)
 SOURCES := $(wildcard src/*.h src/*.c)
@@ -89,7 +89,7 @@ ccish:               $(SRC_ccish) $(HEADERS)
 ccpp ccpp-small:     $(SRC_ccpp) $(HEADERS)
 cccomp cccomp-small: $(SRC_cccomp) $(HEADERS)
 ccgen ccgen-small:   $(SRC_ccgen) $(HEADERS)
-ccrel ccrel-small:   $(SRC_ccrel) $(HEADERS)
+cclink cclink-small:   $(SRC_cclink) $(HEADERS)
 PROG_FLAGS =
 $(SMALL_PROGS): PROG_FLAGS = -DCCISH_SMALL
 ccish $(PROGS) $(SMALL_PROGS):
@@ -137,7 +137,7 @@ xload: $(XLOAD)
 # tests/out/apple (tools/a2disk says what each holds).
 # Its inputs: tools/a2disk makes them first (make apple-inputs), so
 # that running it directly can't make disks from a stale tools/out.
-APPLE_IN := $(XLOAD) $(MEASURED) $(LIBOBJS) $(OUT)/lib/lib.map ccrel-small
+APPLE_IN := $(XLOAD) $(MEASURED) $(LIBOBJS) $(OUT)/lib/lib.map cclink-small
 apple: $(APPLE_IN)
 	@tools/a2disk
 apple-inputs: $(APPLE_IN)
@@ -265,7 +265,7 @@ $(OUT)/special/small.stamp: $(wildcard tests/run/*.c tests/xrun/*.c tests/xrun/*
                          tests/gen/*.c tests/link/*/*.c)
 $(OUT)/special/front.stamp: tests/run/hello.c tests/errors/const_assign.c
 $(OUT)/special/back.stamp: tests/run/hello.c tests/run/global_init.c src/ir.h
-$(OUT)/special/ccrel.stamp: tests/run/hello.c tests/run/global_init.c \
+$(OUT)/special/cclink.stamp: tests/run/hello.c tests/run/global_init.c \
                          tests/link/helpers/a.c tests/link/helpers/b.c \
                          $(OUT)/lib/lib.map
 $(OUT)/special/lib.stamp: $(OUT)/lib/lib.map
@@ -275,9 +275,9 @@ $(OUT)/special/tables.stamp: tests/special/tables.c src/irin.c src/lower.c src/i
                           src/mop.h
 $(OUT)/special/enumvals.stamp: $(SOURCES)
 $(OUT)/special/fit.stamp: $(MEASURED)
-$(OUT)/special/xload_self.stamp: $(MEASURED) ccrel-small $(XLOAD) \
+$(OUT)/special/xload_self.stamp: $(MEASURED) cclink-small $(XLOAD) \
                          tests/run/hello.c $(SOURCES)
-$(OUT)/special/xload.stamp: ccrel-small $(XLOAD) tools/xlinfo.py \
+$(OUT)/special/xload.stamp: cclink-small $(XLOAD) tools/xlinfo.py \
                          tests/xload/xltest.c tests/xload/xltest.expected xload/xload.c \
                          $(patsubst %,tests/run/%.c,hello global_init pointers addr_const c_names)
 

@@ -22,7 +22,7 @@
 //   emit.c   stage 4: encode bytes, one function at a time, and write
 //            them to the stream file, NAME.obj; then NAME.syms
 //
-// Then a separate final pass, link.c (the program ccrel), reads only
+// Then a separate final pass, link.c (the program cclink), reads only
 // the stream files and summaries and writes the REL module (approach.md
 // 18.1). It uses none of the compiler's tables.
 //
@@ -32,7 +32,7 @@
 // Each .c file has a header for what it defines (parse.c, parse.h),
 // and what several files must agree on has a header of its own: this
 // one (the builds), cclimits.h, token.h and fixed.h (ccpp and cccomp),
-// ir.h (cccomp and ccgen), obj.h (cccomp, ccgen and ccrel) and mop.h
+// ir.h (cccomp and ccgen), obj.h (cccomp, ccgen and cclink) and mop.h
 // (ccgen's stages). Headers don't include headers: each .c includes
 // what it uses, in order, each after what it needs (approach.md
 // decision 25). This one comes first: the builds' feature macros.
@@ -45,7 +45,7 @@
 // valid program doesn't need (approach.md decision 21 and 18.6 C1,
 // "Two builds: the plan"). Code tests these feature macros, never
 // CCISH_SMALL itself:
-//   CCISH_LISTING  -v (ccrel's listing) and -m (ccgen's, whose buffer is
+//   CCISH_LISTING  -v (cclink's listing) and -m (ccgen's, whose buffer is
 //                  12K), and what only they use. ccgen's -r is in both
 //                  builds (approach.md decision 22).
 //   CCISH_CHECKS   checks that only a compiler bug or a damaged file

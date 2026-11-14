@@ -305,9 +305,9 @@ static void drop_frame(void)
 
 // Write the finished function, helper k, as an H record: its number,
 // then its code, which has no relocations. It isn't part of the
-// object's code segment: ccrel places one copy of each helper after
+// object's code segment: cclink places one copy of each helper after
 // every object's code. Its size and a checksum (h * 31 + byte, as the
-// type hash) go in the summary, for ccrel to check that the objects'
+// type hash) go in the summary, for cclink to check that the objects'
 // copies agree.
 static void write_helper(int k)
 {

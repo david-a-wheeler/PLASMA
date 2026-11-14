@@ -27,7 +27,7 @@ already use range checks are included too, since they use the same sets.
 Which program a file belongs to is from the Makefile (cccomp = cccomp.c
 nam.c tokin.c name.c type.c parse.c irout.c; ccgen = irin.c lower.c
 peep.c emit.c helper.c; ccpp = ppname.c pplex.c ppmac.c ppif.c ppout.c
-pp.c; ccrel = link.c; diag.c and bio.c are common).
+pp.c; cclink = link.c; diag.c and bio.c are common).
 
 | Set of members | Used in | Enum's home | Program |
 |---|---|---|---|
@@ -71,7 +71,7 @@ pp.c; ccrel = link.c; diag.c and bio.c are common).
 | {FIX_DSYM FIX_HEAP} | emit.c:387 | mop.h | ccgen |
 | {TC_ID TC_NUM TC_UNUM TC_KEYWORD} | ppmac.c:156, 173, 193; ppout.c:180 | token.h | ccpp |
 | {TC_PARAM TC_PARAM_RAW TC_HASH_PARAM} | ppmac.c:160, 625 | pplex.h | ccpp |
-| {F_WORD F_REL F_ENTER} | link.c:743 | link.c (local) | ccrel |
+| {F_WORD F_REL F_ENTER} | link.c:743 | link.c (local) | cclink |
 
 By program, cccomp's sets are the token sets (tokin.h) and the IR sets
 (ir.h, used by parse.c); ccpp's are the TC_* sets; ccgen's are the OP_*,
@@ -454,12 +454,12 @@ RET, BRNCH, SEL}, $5A, $5C, $50, $52) and the {CW, CB, CFFB, LA} set
 change is the family comment above, the FIX_ comment (below), and the
 dead-code removal (below); the size win is the last of those.
 
-**FIX_*.** FIX_DSYM and FIX_HEAP are the two fixups ccrel may rewrite
+**FIX_*.** FIX_DSYM and FIX_HEAP are the two fixups cclink may rewrite
 (emit.c:387). They are not adjacent (FIX_HELPER is between them). The
 values are internal to ccgen — no file carries them — so they could be
 reordered at no format cost. It would not change the size of the
 two-term check. Proposed: leave the order, add a comment that DSYM and
-HEAP are the pair ccrel may rewrite.
+HEAP are the pair cclink may rewrite.
 
 **Bonus, found while looking.** frame_expr() in peep.c (513) tests
 `win[i].op != OP_INCR && win[i].op != OP_DECR` after
@@ -572,7 +572,7 @@ Per step, in the order AGENTS.md prescribes:
 
 Expected direction: cccomp's code smaller by about 100 bytes (the
 token sets in parse.c, section 2's count), ccpp's code smaller by a
-little (the TC_ sets), ccgen and ccrel unchanged in size or smaller by
+little (the TC_ sets), ccgen and cclink unchanged in size or smaller by
 a little. Speed: cccomp
 parses type names with fewer ops per check. Any number that comes out
 the other way is reported plainly, per AGENTS.md.

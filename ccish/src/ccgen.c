@@ -2,7 +2,7 @@
 // It reads the IR file, NAME.ir, that cccomp wrote, and the name file,
 // NAME.nam, that ccpp wrote (for the names' spellings), lowers and
 // optimizes the IR, and writes the stream file and symbol summary,
-// NAME.obj and NAME.syms, for ccrel. The IR file and name file are
+// NAME.obj and NAME.syms, for cclink. The IR file and name file are
 // removed afterward, unless -k; after an error, they are kept (for -i),
 // and partial output removed.
 //

@@ -132,7 +132,7 @@ bytecode in auxiliary memory; everything here is the 64K VM.
   stay loader-agnostic.
 
 XLOAD meets R2, R3 (nothing in PLASMA changes) and R4; it meets R1
-only for programs ccrel writes in its image format, which is all ccish
+only for programs cclink writes in its image format, which is all ccish
 needs. R1 for everyone else is what option 1, proposed upstream, would
 add later.
 
@@ -142,7 +142,7 @@ add later.
    writes all $02 entries first ("First emit the bytecode definition
    entrypoint information", src/toolsrc/codegen.c:398), then the
    fixups (:417, "Now emit the fixup table"), then the $00 terminator
-   (:434), and emit_esd after that (:436-456). ccrel does the same
+   (:434), and emit_esd after that (:436-456). cclink does the same
    (OBJECT.md:541-543; the $02 entries are src/link.c:1273 and :1584).
 2. **The current loader is already two-phase for this reason.**
    loadmod loops over the $02 entries (cmd.pla:1111), then the fixups
@@ -157,7 +157,7 @@ add later.
 4. **External fixups are few.** In the four built modules (2026-11-11;
    counting RLD entries by type byte to the $00, then the ESD to its
    $00): cccomp has 51 of 3,036 entries, ccgen 50 of 2,246, ccpp 47 of
-   1,923, ccrel 35 of 1,115; the ESDs are 120 to 129 bytes. A deferred
+   1,923, cclink 35 of 1,115; the ESDs are 120 to 129 bytes. A deferred
    list of 4 bytes per external fixup is 204 bytes or less for
    anything ccish builds.
 5. **loadmod has two latent bugs.** It never checks allocheap's 0
@@ -232,12 +232,12 @@ PLASMA's loader needn't change, since it only ever loads XLOAD.
 **Its design, format and plan are now in [xload.md](xload.md)**
 (moved there 2026-11-12, so that the work can go on from a document
 without the alternatives): what the user sees, the image format
-ccrel writes with `-x`, what XLOAD must do on each VM (the 64K and
+cclink writes with `-x`, what XLOAD must do on each VM (the 64K and
 128K Apple II and plvm, from one image), the hand-off, the factors
 that shape it, sizes, open questions, and the plan.
 
 How it meets section 3's requirements: R2, R3 (nothing in PLASMA
-changes) and R4, and R1 for programs ccrel writes as images, which is
+changes) and R4, and R1 for programs cclink writes as images, which is
 all ccish needs. R1 for everyone else is what option 1, offered
 upstream, would add later.
 
@@ -272,7 +272,7 @@ ESD before RLD, under a new magic word: the simplest streaming loop,
 no deferred list; old files load as today.
 
 - Con: the loader keeps both paths, more resident code than option 1
-  (R2); every writer changes (xplasm, ccrel, the acme step); a new
+  (R2); every writer changes (xplasm, cclink, the acme step); a new
   file on an old loader misbehaves (fact 9); old files still load the
   old way (R1 only for new files).
 - **Now:** only worth it bundled with other format work (item 12).
@@ -294,7 +294,7 @@ The first version's name for what became XLOAD.
 
 ### Option 4: ccish fixes itself, table in the body
 
-ccrel puts the fixups in the data segment; the module's init patches
+cclink puts the fixups in the data segment; the module's init patches
 its own words. The RLD keeps only the 291 $02 defs (1,165 bytes).
 
 - At least 2 bytes per fixup: 2,745 fixups, 5,490 bytes, in the body.
@@ -329,7 +329,7 @@ the running margin.
 ### Option 8: pre-relocate the module (missed by the first version)
 
 On a given disk, a module started from a fresh prompt loads at the
-same place every time. So ccrel could apply the internal fixups itself
+same place every time. So cclink could apply the internal fixups itself
 for that address, keeping in the RLD only the $02 entries and the
 external fixups. cccomp's file would drop to about 33K and load with
 today's loader with about 4.7K to spare, and the four programs would

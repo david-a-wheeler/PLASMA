@@ -1,4 +1,4 @@
-// Large zero-filled globals, which ccrel moves to the heap (approach.md,
+// Large zero-filled globals, which cclink moves to the heap (approach.md,
 // "Large zero-filled data on the heap"): zero at the start; constant
 // and variable indexes; a char store at a constant index; a big
 // struct's members; an array whose address is in an initializer, which

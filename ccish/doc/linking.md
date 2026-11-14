@@ -11,16 +11,23 @@ with file and line references for checking (as of 2026-11-13; check
 them again, since they move). Section 8 is the list of verified facts
 the decisions rest on.
 
-**Status (2026-11-13).** Steps 1 to 4 of section 9 are done: the one
+**Status (2026-11-14).** Steps 1 to 5 of section 9 are done: the one
 exit (section 5.5), the option letters (section 2, with `-m` and `-r`
-as proposed), the library search, `-L dir` (section 5), and using
-`-L` everywhere, with tools/cclink deleted (section 9, step 4). Steps
-5 to 7 aren't. Work through them in order, as section 10 says.
+as proposed), the library search, `-L dir` (section 5), using `-L`
+everywhere, with tools/cclink deleted (section 9, step 4), and the
+rename of ccrel to cclink (section 1). Steps 6 and 7 aren't. Work
+through them in order, as section 10 says.
 
 ## 1. The final pass is renamed `ccrel` to `cclink`
 
 **Decision.** The program, its source file, the Makefile targets,
 the tests and the docs: `ccrel` becomes `cclink`.
+
+**Done** (section 9, step 5, 2026-11-14), as described here: a
+substitution of `ccrel` and `CCREL` in every tracked file but
+approach.md (history), then this file's record by hand. The C
+library's and the passes' source comments, the tests, the tools and
+the docs went too, beyond the list below.
 
 **Why.** `ccpp`, `cccomp` and `ccgen` are named for what they do;
 `ccrel` is the odd one out, named for its output. It writes a REL
@@ -80,13 +87,13 @@ as `-l` followed by an input named `dir`. The listing flag must move
 
 The letters `-m` and `-r` are a proposal (section 7).
 
-**What it touches.** `src/ccrel.c`'s usage and option loop
-(src/ccrel.c:49-57, 99); `src/main.c`'s usage and parse
+**What it touches.** `src/cclink.c`'s usage and option loop
+(src/cclink.c:49-57, 99); `src/main.c`'s usage and parse
 (src/main.c:72-110); `src/ccgen.c`'s; the Makefile's rules that pass
 `-l`, `-d` or `-i` (the run rule's `./ccish -l -o ...`, the gen
 rule); tools/listings.py (`ccgen -d`); tools/measure.py (it passes
 `-l` to the linker); the special scripts that pass `-l`
-(tests/special/ccrel.sh); the guide's option text.
+(tests/special/cclink.sh); the guide's option text.
 
 ## 3. CMDSYS functions are spelled `__cmd_` + the PLASMA name
 
@@ -354,7 +361,7 @@ exit exit _exitcap
   line), it reads as "this object defines these", and a generator
   emits it per object.
 - Line endings: **CR or LF ends a line, blank lines skipped**, as
-  `read_list()` does (src/ccrel.c:68-89): it quietly accepts Unix LF,
+  `read_list()` does (src/cclink.c:68-89): it quietly accepts Unix LF,
   ProDOS CR, and Windows CRLF. One space between tokens. No comments.
 - **It's generated, not hand-written:** a host tool,
   `tools/libmap.py`, reads each `.syms` file in a directory
@@ -418,8 +425,8 @@ then resolve(), as today.
   passes: e.g. fopen needs path, which needs strlen). The map is about
   350 bytes, read 3 or 4 times.
 - **Where the names live.** Added objects need their names stored:
-  `bases[]` (src/ccrel.c) holds pointers, into argv or into the
-  512-byte `list[]` buffer that `@file` lists fill (src/ccrel.c:36).
+  `bases[]` (src/cclink.c) holds pointers, into argv or into the
+  512-byte `list[]` buffer that `@file` lists fill (src/cclink.c:36).
   Store each added base, without the directory, in `list[]` (about 20
   objects at about 8 bytes, 180 bytes), and record the index of the
   first added object: objects from there on are opened as `dir/base`,
@@ -485,7 +492,7 @@ plvm path and init's setting TMP can go.
    VMs' SAW stores through TMP itself (plvm02.s, plvmjit02.s), so its
    first byte moves TMP and its second lands at $00xx+1, xx being the
    routine's address's low byte. Step 3's code moved `__exitcap` in
-   ccrel's image to $27F7, which put $27 in $F8, the 64K VM's dispatch
+   cclink's image to $27F7, which put $27 in $F8, the 64K VM's dispatch
    page (OPPAGE), and the image trapped at $0000 on the next opcode;
    before, the byte had landed somewhere harmless, by luck. SW stores
    through the evaluation stack, on every VM. The routine then runs
@@ -603,9 +610,9 @@ its name pool (3.1), with 15 spare CMDSYS ids after the 25 (3.1a).
   Step 1 reads every summary, then `resolve()` runs (src/link.c:1757-
   1759).
 - **The linker's object names:** `bases[MAX_OBJS]`, `LIST_BYTES` 512
-  and `list[]` (src/ccrel.c:31-38), `add_base()` :60, `read_list()`
+  and `list[]` (src/cclink.c:31-38), `add_base()` :60, `read_list()`
   :68; `MAX_OBJS` 32 (src/link.h:5); objects per program today: ccpp
-  28, cccomp 28, ccgen 27, ccrel 23 (tools/out/*.objs).
+  28, cccomp 28, ccgen 27, cclink 23 (tools/out/*.objs).
 - **Files on the VMs:** FILEIO's open takes a free 1K I/O buffer
   (src/libsrc/apple/fileio.pla:241; lib/fopen.c's accounting);
   `sysgetfileinfo` is unimplemented on plvm
@@ -648,7 +655,8 @@ leading-comma temp-file convention, AGENTS.md).
    output and gives `ERR:$03` from `exit(3)` five calls deep, twice,
    and is byte-identical to the host's link; on the 128K IIe too.
    (This check first found section 5.5's SAW bug.)
-5. **Rename ccrel to cclink** (section 1's list).
+5. **Done** (2026-11-14). **Rename ccrel to cclink** (section 1's
+   list).
 6. **ccpp's CMDSYS ids leave the pool** (section 3.1), with today's
    `__` spelling: a pure saving, measured on its own, with
    `MAX_PP_POOL` lowered.
@@ -723,7 +731,7 @@ change, and ends with the two trailer lines AGENTS.md gives.
 
 - **Step 2 (options):** each program's usage line matches section 2's
   usage (as the user approved the letters); no program has two options
-  that differ only in case; `grep -rn "ccish -l\|ccrel -l\|ccgen -d\|ccgen -i\|ccish -d\|ccish -i"` over
+  that differ only in case; `grep -rn "ccish -l\|cclink -l\|ccgen -d\|ccgen -i\|ccish -d\|ccish -i"` over
   the Makefile, tools/, tests/ and doc/ finds nothing left.
 - **Step 3 (`-L`):** section 5.4's tests, each one; tools/libmap.py
   fails on a name two objects define (test it); lib.sh's nostart and
@@ -735,8 +743,9 @@ change, and ends with the two trailer lines AGENTS.md gives.
   copy of cclib.po, deleted after), compile and link a small program
   that calls `exit(3)` from a nested call, with `-L LIB`, and check it
   prints its output and `ERR:$03`.
-- **Step 5 (rename):** `grep -rn "ccrel\|CCREL"` outside `tests/out`,
-  approach.md (history stays) and comma files finds nothing; MAME's
+- **Step 5 (rename):** `grep -rni ccrel` outside `tests/out`,
+  approach.md and this file (history stays) and comma files finds
+  nothing; MAME's
   64K IIe check from step 4 again, with CCLINK.
 - **Step 6 (ccpp's pool):** ccpp's running spare grows (section 3.1
   estimates about 250 bytes); `MAX_PP_POOL` is lowered by the pool

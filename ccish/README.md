@@ -24,7 +24,7 @@ The ccish compiler is divided into four parts:
 * `cccomp` (the parser) reads the tokens and writes an IR file.
 * `ccgen` (the code generator) reads the IR and name file
   and writes object files (both are removed unless `-k`).
-* `ccrel` (the final pass) links 1+ objects into a REL module.
+* `cclink` (the final pass) links 1+ objects into a REL module.
 
 The ccish compiler aggressively optimizes for its target (given its
 limitations) including constant folding, self tail call optimization,
@@ -71,7 +71,7 @@ Hello5
 one. `-o` names the module (by default, the input's name without
 `.c`), `-v` prints a listing of the bytecode, and the `object...`
 arguments are more objects to link, such as the C library's. On the
-Apple II, the four passes (`ccpp`, `cccomp`, `ccgen` and `ccrel`) run
+Apple II, the four passes (`ccpp`, `cccomp`, `ccgen` and `cclink`) run
 as separate programs.
 
 ## More information

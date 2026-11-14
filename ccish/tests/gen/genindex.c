@@ -2,7 +2,7 @@
 // (peep.c, rewrite_index), twice it for an int array, so the index is
 // one load, which then fuses with the ADD (LA a+c ADDLW i): 2 bytes and
 // 2 ops less. a is the first global, at data offset 0, so a[i - 1]'s
-// address is offset -1, which ccrel wraps and the index brings back.
+// address is offset -1, which cclink wraps and the index brings back.
 // Also an int array (IDXW), a local array (LLA n+c), a string, and an
 // index of more than one load. A pointer's p[i + 1] has no constant
 // address, and stays.

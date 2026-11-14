@@ -1,7 +1,7 @@
 // The source position that diag.c's messages give, for the programs
 // that read a source (ccpp, cccomp, and ccgen, which names its source).
 // Include after diag.h. It's part of diag.c's exports, apart from
-// diag.h (whose comment says why) only so that ccrel's files don't see
+// diag.h (whose comment says why) only so that cclink's files don't see
 // it.
 #ifndef DIAG_SRC_H
 #define DIAG_SRC_H

@@ -1,4 +1,4 @@
-// ccrel's final pass and linker (link.c).
+// cclink's final pass and linker (link.c).
 #ifndef LINK_H
 #define LINK_H
 

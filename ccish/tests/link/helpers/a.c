@@ -1,5 +1,5 @@
 // Two objects that both use the helper udiv (unsigned / by a value
-// known only at run time): ccgen writes it into each, and ccrel keeps
+// known only at run time): ccgen writes it into each, and cclink keeps
 // one copy, which both calls use (approach.md, "unsigned and helper
 // functions design").
 // listing-count: 1 helper udiv:

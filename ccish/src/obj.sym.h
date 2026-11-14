@@ -19,7 +19,7 @@
 // SYM_RETURNS, SYM_CMDSYS and SYM_NOTCMDSYS (a CMDSYS name declared
 // differently) are for functions. For a data symbol, SYM_BSS: it is
 // defined with no data bytes, at an offset in the object's zero-filled
-// space, for ccrel to place (approach.md, "Large zero-filled data on
+// space, for cclink to place (approach.md, "Large zero-filled data on
 // the heap"); SYM_INDATA: this object's data holds its address, so it
 // can't move to the heap.
 enum { REL_DATA = 1, REL_FUNC = 2, REL_STR = 3, REL_DSYM = 4,

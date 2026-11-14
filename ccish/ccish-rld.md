@@ -18,13 +18,13 @@ never gets one**: emit.c's branch_word() writes the final relative
 offset at compile time (the label is within the same function:
 `code_word(label_word[n] - nfbuf)`), and a relative offset stays
 correct at any load address, since branch and target move together.
-`ccrel` (link.c) then turns each record into an RLD entry: 0x81 for
+`cclink` (link.c) then turns each record into an RLD entry: 0x81 for
 an internal target, 0x91 for an import (the ESD index in the entry's
 byte), plus one 0x02 entry per defined function (its offset, for the
 VM's def dictionary, which maps a function's offset to its address
 for the module's entry and for external code; an ordinary internal
 CALL carries its already-fixed absolute word), and a few more
-for the init function ccrel assembles itself (its calls and its
+for the init function cclink assembles itself (its calls and its
 pointers to the moved globals). The VM's loader (cmdsys.c's load_mod)
 applies every entry once, at the load, and frees the RLD after.
 
@@ -32,7 +32,7 @@ applies every entry once, at the load, and frees the RLD after.
 
 | Entries | What | Share |
 |---|---|---|
-| 1,712 + 5 + 6 | calls: kind-2 relocations (to functions of the module), kind-5 (ccgen's helpers' CALLs, whose own code has no records), and the 6 CALLs of the init function ccrel assembles | 56% |
+| 1,712 + 5 + 6 | calls: kind-2 relocations (to functions of the module), kind-5 (ccgen's helpers' CALLs, whose own code has no records), and the 6 CALLs of the init function cclink assembles | 56% |
 | 627 + 327 + 12 | absolute references to data: kind-1 (the globals' data: the fn_* tables, id_nm, tok_text, the in/out buffers), kind-4 (data symbols, extern globals most of which resolve inside the module), and the init function's 11 DAW and 1 LAW | 31% |
 | 58 + 36 | string addresses: kind-3 in the code (58) plus the 36 R records in the data (a `char *p = "..."`; also kind 3) | 3% |
 | 299 | 0x02 function definitions: 296 object functions plus the 3 helpers used (udiv, umod, ushr) | 10% |
@@ -123,4 +123,4 @@ only needs if a given VM cannot stream.
   one-byte count; Z, S, R and F lengths are words.
 - The listing cross-check: count the mnemonics in
   `tools/out/cccomp.lst`; the `(init):` section at the end is
-  ccrel's, and has 6 CALL, 11 DAW and 1 LAW.
+  cclink's, and has 6 CALL, 11 DAW and 1 LAW.

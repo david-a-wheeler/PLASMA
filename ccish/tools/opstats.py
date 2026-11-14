@@ -5,7 +5,7 @@ Usage: tools/opstats.py [-p PROGRAM] [-o] [-n N] [-l LENGTH] [FILE...]
 
 Reads listings tools/listings.py wrote (tools/out/lst/NAME.lst): by
 default all of them, or with -p, the files of one program (ccpp,
-cccomp, ccgen or ccrel, from the Makefile through measure.py), or the
+cccomp, ccgen or cclink, from the Makefile through measure.py), or the
 FILEs given. Prints how often each op appears, and the most frequent
 runs of 2 up to LENGTH (default 4) ops: the places where a peephole
 pattern or better code generation would pay most. A run never spans a

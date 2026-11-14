@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Describe an XLOAD image (ccrel -x), as XLOAD -V does.
+"""Describe an XLOAD image (cclink -x), as XLOAD -V does.
 
 Usage: tools/xlinfo.py IMAGE
 
 Reads IMAGE by the format's description (doc/xload.md, section 3),
-written apart from ccrel and XLOAD, so that a test can check XLOAD's
+written apart from cclink and XLOAD, so that a test can check XLOAD's
 -V lines against it. Prints:
 
     data D, zero Z, code C, functions N, imports I

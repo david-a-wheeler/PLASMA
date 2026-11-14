@@ -1,16 +1,16 @@
 #!/bin/sh
-# XLOAD (doc/xload.md) and its images (ccish -x, ccrel -x), under plvm.
+# XLOAD (doc/xload.md) and its images (ccish -x, cclink -x), under plvm.
 # The run tests' images run through XLOAD in the img tests (the
 # Makefile); this checks the rest:
 #   - XLOAD's test program (tests/xload/xltest.c), which holds what an
 #     image can, runs through XLOAD -V with its output and status, and
 #     XLOAD's diagnostics agree with tools/xlinfo.py's reading of the
-#     image (written apart from ccrel and XLOAD) and with themselves
+#     image (written apart from cclink and XLOAD) and with themselves
 #     (each part where the sizes put it, the second part clear of the
 #     program but for its zero region);
 #   - XLOAD's errors: no program, no such file, a REL module instead of
 #     an image, a missing module, a missing import;
-#   - ccrel and ccrel-small write the same images;
+#   - cclink and cclink-small write the same images;
 #   - a link with no main, or with too many functions, isn't an image.
 . "$(dirname "$0")/../lib.sh"
 D=$OUT/xltest
@@ -130,13 +130,13 @@ EOF
 xl huge
 want 1 "XLOAD: not enough memory"
 
-# ccrel and ccrel-small write the same images.
+# cclink and cclink-small write the same images.
 for t in hello global_init pointers addr_const c_names; do
     cc_obj "" "$D/$t" "tests/run/$t.c"
-    if ! (cd "$D" && ../../../ccrel -x -o "$t.xl" "$t" \
-              && ../../../ccrel-small -x -o "$t.xls" "$t") 2>"$D/$t.err" \
+    if ! (cd "$D" && ../../../cclink -x -o "$t.xl" "$t" \
+              && ../../../cclink-small -x -o "$t.xls" "$t") 2>"$D/$t.err" \
        || ! cmp -s "$D/$t.xl" "$D/$t.xls"; then
-        echo "FAIL xload: $t: ccrel-small's image differs from ccrel's"
+        echo "FAIL xload: $t: cclink-small's image differs from cclink's"
         sed 's/^/    /' "$D/$t.err"; bad=1
     fi
 done
@@ -144,7 +144,7 @@ done
 # No main, no image.
 echo 'int f(void) { return 1; }' >"$D/nomain.c"
 cc_obj "" "$D/nomain" "$D/nomain.c"
-if ./ccrel -x -o "$D/nomain.xl" "$D/nomain" 2>"$D/nomain.err"; then
+if ./cclink -x -o "$D/nomain.xl" "$D/nomain" 2>"$D/nomain.err"; then
     echo "FAIL xload: an image linked without main"; bad=1
 elif ! grep -qF "an XLOAD image needs main" "$D/nomain.err"; then
     echo "FAIL xload: wanted 'an XLOAD image needs main', got:"
@@ -166,7 +166,7 @@ gen_funcs "$D/many_b.c" 161 320 b
 echo 'int a(void); int main() { return a() + b(); }' >>"$D/many_b.c"
 cc_obj "" "$D/many_a" "$D/many_a.c"
 cc_obj "" "$D/many_b" "$D/many_b.c"
-if ./ccrel -x -o "$D/many.xl" "$D/many_a" "$D/many_b" 2>"$D/many.err"; then
+if ./cclink -x -o "$D/many.xl" "$D/many_a" "$D/many_b" 2>"$D/many.err"; then
     echo "FAIL xload: an image linked with 324 functions (init's too)"; bad=1
 elif ! grep -qF "too many functions for an XLOAD image" "$D/many.err"; then
     echo "FAIL xload: wanted 'too many functions for an XLOAD image', got:"

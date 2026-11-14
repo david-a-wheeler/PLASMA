@@ -4,7 +4,7 @@
 // listing (-v), since only this pass knows the final addresses.
 //
 // It uses none of the compiler's tables (fn_name[] and so on), only the
-// files, so it is a program of its own, ccrel (approach.md, "B3").
+// files, so it is a program of its own, cclink (approach.md, "B3").
 // The module exports nothing and imports only CMDSYS functions, by their
 // PLASMA names (__puts imports PUTS), so other C names never meet
 // PLASMA's symbol table (approach.md issue 11, decision 35).
@@ -284,7 +284,7 @@ static void bad_obj(void)
   damaged(obj_file(cur, SUFFIX_OBJ));
 }
 
-// ---------- Reading the objects (bio.c's, for ccrel only) ----------
+// ---------- Reading the objects (bio.c's, for cclink only) ----------
 
 // A little-endian word. Running out of data here means the file is
 // damaged, which only the final pass can see.

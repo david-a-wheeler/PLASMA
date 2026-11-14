@@ -22,7 +22,7 @@ files after them (`NAME.ir`, `NAME.obj` and `NAME.syms`).
 ## The pipeline
 
 ```
-NAME.c --ccpp--> NAME.i + NAME.nam --cccomp--> NAME.ir --ccgen--> NAME.obj + NAME.syms --ccrel--> module
+NAME.c --ccpp--> NAME.i + NAME.nam --cccomp--> NAME.ir --ccgen--> NAME.obj + NAME.syms --cclink--> module
 ```
 
 - `ccpp [-k] [-o output] [-I dir] [-D name[=text]] [-U name] input.c`

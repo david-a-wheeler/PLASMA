@@ -3,10 +3,10 @@
 # through XLOAD (doc/xload.md), in tests/out/apple:
 #   ccish.po  volume CCISH: XLOAD (a REL module, and its second part,
 #             XLOAD2, an image), ccish's four passes as
-#             XLOAD images (ccrel -x, from tools/measure.py's objects,
+#             XLOAD images (cclink -x, from tools/measure.py's objects,
 #             the small build's), and CCISH.MSG: about 108K of the 140K
 #   cclib.po  volume CCLIB: the C library's objects in LIB/, with
-#             LIB/LIB.MAP, so a program links as CCREL -L LIB -O PROG
+#             LIB/LIB.MAP, so a program links as CCLINK -L LIB -O PROG
 #             PROG (CCLINK after doc/linking.md's step 5), with room
 #             for a program's own files: its own disk, since 42 small
 #             files take about 21K
@@ -34,12 +34,12 @@ mkdir -p "$out/obj"
 make -s apple-inputs || { echo "a2disk: make apple-inputs failed" >&2; exit 1; }
 
 # The four images, from the objects measure.py linked.
-for p in ccpp cccomp ccgen ccrel; do
+for p in ccpp cccomp ccgen cclink; do
     while read -r o; do
         cp "$o.obj" "$o.syms" "$out/obj/"
         basename "$o"
     done <"tools/out/$p.objs" >"$out/obj/$p.list"
-    (cd "$out/obj" && "$here/ccrel-small" -x -o "../$p" "@$p.list")
+    (cd "$out/obj" && "$here/cclink-small" -x -o "../$p" "@$p.list")
 done
 
 # The compiler's disk. AppleCommander won't overwrite a disk image.
@@ -47,7 +47,7 @@ done
 $AC -pro140 "$out/ccish.po" CCISH
 $AC -p "$out/ccish.po" XLOAD REL <tests/out/xload/xload
 $AC -p "$out/ccish.po" XLOAD2 BIN <tests/out/xload/xload2
-for p in ccpp cccomp ccgen ccrel; do
+for p in ccpp cccomp ccgen cclink; do
     $AC -p "$out/ccish.po" "$(echo $p | tr a-z A-Z)" BIN <"$out/$p"
 done
 $AC -p "$out/ccish.po" CCISH.MSG TXT <ccish.msg

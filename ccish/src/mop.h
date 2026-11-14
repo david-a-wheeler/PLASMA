@@ -140,7 +140,7 @@ _Static_assert(!MOP_IS_CONST(OP_BREQ) && !MOP_IS_CONST(OP_LA)
 enum { FIX_NONE, FIX_DATA, FIX_FUNC, FIX_STR, FIX_DSYM, FIX_HELPER,
        FIX_HEAP, FIX_ZERO };
                       // FIX_DSYM and FIX_HEAP are the two operand
-                      // words ccrel may rewrite (the fixups in emit.c);
+                      // words cclink may rewrite (the fixups in emit.c);
                       // FIX_HEAP is IR_HEAPADDR's symbol, never folded
 
 // Marks an ENTER/LEAVE frame size that is filled in at function end.

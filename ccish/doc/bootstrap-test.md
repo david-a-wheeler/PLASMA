@@ -116,11 +116,11 @@ destroy and newline all worked on host files.
 
 ### R1. Bootstrap the four passes, one file per invocation
 
-On the Apple II, ccish is four programs (ccpp, cccomp, ccgen, ccrel),
+On the Apple II, ccish is four programs (ccpp, cccomp, ccgen, cclink),
 each with nearly all of memory. The all-in-one `ccish` is a host
 convenience; it can't fit (cccomp alone is 42,743 bytes of module file
 today). So the bootstrap builds the modules `ccpp`, `cccomp`, `ccgen`
-and `ccrel` from the same groups of files the Makefile uses (COMMON,
+and `cclink` from the same groups of files the Makefile uses (COMMON,
 PP, NAM, FRONT, BACK, LINK), and each stage is a batch of short
 invocations:
 
@@ -129,8 +129,8 @@ for each source file f of the compiler:
     ccpp f.c        -> f.i, f.nam
     cccomp f        -> f.ir
     ccgen f         -> f.obj, f.syms
-for each program p in ccpp, cccomp, ccgen, ccrel:
-    ccrel -o p @p.objs    (p's objects, then the library's)
+for each program p in ccpp, cccomp, ccgen, cclink:
+    cclink -o p @p.objs    (p's objects, then the library's)
 ```
 
 - Stage 1 runs that with the host-built passes; stage 2 runs it under
@@ -222,8 +222,8 @@ command line in one compiler-specific file. Instead:
 
 - `lib/include/` for the headers and `lib/` for the sources, compiled
   by ccish into objects the stage script (and later, users) link.
-- Small objects (roughly one per function or group), because ccrel
-  links whole objects and every byte counts in 64K. Later, ccrel could
+- Small objects (roughly one per function or group), because cclink
+  links whole objects and every byte counts in 64K. Later, cclink could
   search a library directory and link only the objects that define
   something still undefined, as a Unix `ld` does with an archive;
   until then the link lists name them.
@@ -288,7 +288,7 @@ convention (`__MODULE_ENTRY`) lost.
 ### R7. Startup and `main(argc, argv)` (done)
 
 Done in phase 5: cccomp accepts `main` with 0 or 2 parameters, and
-when it has 2, ccrel's init calls `__start` (lib/start.c) instead,
+when it has 2, cclink's init calls `__start` (lib/start.c) instead,
 which splits the command line in place (its text moved down over the
 length byte, so the last NUL fits) into at most 24 words. Without the
 start object, the link fails with "undefined reference to
@@ -298,7 +298,7 @@ gone.
 The passes take command lines, and ccish's `main` takes no parameters
 today (guide 5.1), hence measure.py's former `main_args` rename and the first
 attempt's `cmd_argv` with hardcoded addresses. Instead, the library's
-startup (an object the link includes, or code ccrel's init emits)
+startup (an object the link includes, or code cclink's init emits)
 splits `cmdsys.cmdline` (R6) in a static buffer, skips the module name,
 and calls `main(argc, argv)`. ccish then accepts `int main(int, char
 **)` as well as `int main(void)`. The passes' sources need no
@@ -309,7 +309,7 @@ and calls `main(argc, argv)`. ccish then accepts `int main(int, char
 Without it, a failing pass under plvm looks like a successful one.
 Done without changing PLASMA (approach.md issue 22 has the options):
 
-1. **`main`'s return value becomes init's result:** ccrel's init
+1. **`main`'s return value becomes init's result:** cclink's init
    returns `-(status & 255)`, PLASMA's error convention, never
    positive (which would mean "keep the module"). An Apple II's CMD
    shows it as `ERR:$xx`.
@@ -339,7 +339,7 @@ Done without changing PLASMA (approach.md issue 22 has the options):
    success under plvm, and a real `exit` waits for the Apple II.
    **Done** (2026-11-12): lib/exit.c replaces tools/plvmexit.c. On an
    Apple II it closes the files and unwinds, with the 6502 routines
-   step 14 describes, saving just before main (ccrel's init calls
+   step 14 describes, saving just before main (cclink's init calls
    `__exitsave` when exit is linked), and init returns the status;
    under plvm it does what plvmexit.c did. Checked on MAME's 64K IIe:
    a pass's error prints its message, then `ERR:$01` and CMD's prompt,
@@ -389,14 +389,14 @@ compiles) leaves out. A real `printf` waits for varargs (approach.md,
 plvm's command line holds 127 characters, and an Apple II's isn't
 bigger. The per-file pass lines are short. A link line naming a
 program's objects plus the library's can approach the limit, so give
-ccrel a list file (`ccrel -o cccomp @cccomp.objs`, one name per line)
+cclink a list file (`cclink -o cccomp @cccomp.objs`, one name per line)
 rather than one-letter output names. The source and object names stay
 real names, and the list files are the same at every stage. **Done**
-(2026-11-08): `@file` in ccrel.c, read into a 512-byte buffer, one
-name per line, CR or LF ending a line. ccrel's `bases[]` shrank from
+(2026-11-08): `@file` in cclink.c, read into a 512-byte buffer, one
+name per line, CR or LF ending a line. cclink's `bases[]` shrank from
 256 entries to `MAX_OBJS` (32, now in link.h), so its module file
 grew only 374 bytes (code +180, data +68, strings +10). Under plvm,
-the self-compiled ccrel links cccomp's 30 objects from a list (187
+the self-compiled cclink links cccomp's 30 objects from a list (187
 bytes) to the same module as the host's. The list files are PROG.objs,
 not .lst, which is a listing everywhere else in ccish (tools/out's,
 the run tests'). It's GCC's `@file` syntax but not its format: only
@@ -497,23 +497,23 @@ data 608, strings 641), and ccgen links for the first time: code
 it RLD and ESD), 199 functions (995 bytes of def table), and 18,292
 bytes of zero-filled tables on the heap. 12,288 of those are emit.c's
 `lbuf[]`, kept only for `-m`'s listing, in both builds. So `-m` is now
-in the full build only (CCISH_LISTING, as ccrel's `-v` is; decided
+in the full build only (CCISH_LISTING, as cclink's `-v` is; decided
 2026-11-07). The small ccgen: code 19,590 (-981), data 2,745 (-166),
 strings 820 (-624), a 31,496-byte module file (-2,580), and 6,004 bytes
 of heap tables (-12,288). Its body, def table and heap tables come to
 about 30.1K, which fits the roughly 41.7K free with room for its frame
 stack and file buffers (approach.md, issue 24, has the budget).
 
-**B5. ccrel's shared-name table.** MAX_GSYMS 163 and MAX_GNAMES 1427
+**B5. cclink's shared-name table.** MAX_GSYMS 163 and MAX_GNAMES 1427
 (src/link.c) are exceeded by irout's summary, because a header's
 declarations count even when nothing uses them. R1 removes main.c
 from the bootstrap, but cccomp's link still carries its whole API.
 Options: raise the limits (about 13 bytes per name), or write slimmer
 summaries (only names an object defines or references, as a C linker
-keeps). ccrel has the most headroom (14,200-byte module file).
+keeps). cclink has the most headroom (14,200-byte module file).
 **Done** (2026-11-08): cccomp's link, with the library, needs 271
 names and 2,716 bytes, so they're 307 (the first prime 10% above) and
-3,000. That costs ccrel 3,589 bytes, nearly all zero-filled tables on
+3,000. That costs cclink 3,589 bytes, nearly all zero-filled tables on
 the heap.
 
 **MAX_IDS and MAX_MEMBERS** (cccomp) were over too, in 2026-11-08's
@@ -560,7 +560,7 @@ building on it.
    Done; ccgen became measurable once B4 was fixed.
 
 **Phase 1: test feedback (done, decision 36).**
-4. ccrel's init returns `main`'s status, and the ccstat driver and
+4. cclink's init returns `main`'s status, and the ccstat driver and
    `tools/ccrun` hand it to the host; the run, gen and xrun tests
    check it. The plvm changes that would help (exiting with the
    status itself, rejecting an unresolved import) are requests in
@@ -571,7 +571,7 @@ building on it.
    names, link.c (the ESD drops the `__`; its init calls `__memset`
    and the rest), inc/ptest.h (maps `puti` and friends to `__puti`),
    the tests, and the docs. Cost: ccpp +61 bytes (the longer fixed
-   names), cccomp +3, ccrel +50.
+   names), cccomp +3, cclink +50.
 
 **Phase 3: function pointers (done; approach.md, "Function pointer
 design").**
@@ -585,14 +585,14 @@ design").**
 **Phase 4: imports from other modules (done, 2026-11-07; approach.md
 decision 35).**
 7. The asm label and `#pragma plasma import` in cccomp; dependency
-   names and imports beyond CMDSYS in ccrel (OBJECT.md version bump
+   names and imports beyond CMDSYS in cclink (OBJECT.md version bump
    if the .syms format changes). Test with run tests that read
    `cmdsys` fields and call a CONIO or FILEIO entry. (This step
    doesn't need step 6 for data imports, so it could go first; the
    table calls need both.) Done: `.syms` version 7, name file version
    2; tests/run/imports.c reads `cmdsys` and calls FILEIO's `open`,
    `read` and `close` under plvm. Cost: cccomp +721 bytes of code and
-   +96 of data, ccrel +640 of code, ccpp +165, ccgen +59.
+   +96 of data, cclink +640 of code, ccpp +165, ccgen +59.
 
 **Phase 5: the library and startup (done, 2026-11-08).**
 8. `lib/include` and the default include directory: compiled in on
@@ -607,10 +607,10 @@ decision 35).**
     (the 128-byte path buffer, the 50-byte `argv`), its module file
     49,051 bytes (+951); ccpp's own code grew 55 bytes (the
     `<syspath>ccinc` branch) and its library is 858 bytes of code;
-    ccgen's 824; ccrel's 822.
+    ccgen's 824; cclink's 822.
 
 **Phase 6: the bootstrap (done, 2026-11-08).**
-11. ccrel's `@list` file (R10), then rewrite tests/special/bootstrap.sh
+11. cclink's `@list` file (R10), then rewrite tests/special/bootstrap.sh
     for R1 and R2, sharing measure.py's preparation.
 12. B2 to B5, each measured against B7.
 13. Run the stages; diagnose a stage 2 versus stage 3 difference with
@@ -651,9 +651,9 @@ The order agreed on 2026-11-08, as five steps:
   raised, so every file in src/ now fits cccomp's tables (the closest
   are `MAX_IDS`, 200 of 203 in irin.c, and `MAX_VARS`,
   76 of 79 in link.c).
-- **Step 3: ccrel's `@list` file (R10; done).** `ccrel -o cccomp
+- **Step 3: cclink's `@list` file (R10; done).** `cclink -o cccomp
   @cccomp.objs`, one object name per line, read into a static buffer
-  in ccrel only; cccomp's link names 30 objects, over the 127-character
+  in cclink only; cccomp's link names 30 objects, over the 127-character
   command line.
 - **Step 4: tests/special/bootstrap.sh.** Stage 1: the host passes
   compile src/ (small build) and the library, and link the four
@@ -669,14 +669,14 @@ The order agreed on 2026-11-08, as five steps:
   the library objects (decided in discussion): tools/cclink links a
   program, adds the library object each undefined reference calls
   for, and writes PROG.objs, the objects linked. measure.py's own loop
-  (`lib_object`) is gone; it calls cclink too, and its report is
+  (`lib_object`) is gone; it calls tools/cclink too, and its report is
   unchanged. The Makefile gives the script each program's sources
   (`SRC_ccpp` and the rest, which the program rules use too; once named `CCPP_SRC`) and the
   library's, so no list is written by hand. The stages are in
   tests/out/boot/1 to 3, removed when they match. All three stages'
   49 objects (27 of src/, 22 of the library) and four modules are the
   same: the modules are 28,011 (ccpp), 49,121 (cccomp), 32,678 (ccgen)
-  and 16,405 (ccrel) bytes, as measure.py reports. `make bootstrap`
+  and 16,405 (cclink) bytes, as measure.py reports. `make bootstrap`
   takes about 36 seconds.
 
 Each step: discuss any design change first, then test (`make`, which

@@ -22,7 +22,7 @@ int remove(const char *path);
 size_t fread(void *p, size_t size, size_t n, FILE *f);
 size_t fwrite(const void *p, size_t size, size_t n, FILE *f);
 /* Not C: the ProDOS file type and aux type of the files fopen creates
- * from now on, BIN ($06) and 0 to start with; ccrel makes its REL
+ * from now on, BIN ($06) and 0 to start with; cclink makes its REL
  * modules $FE with aux type $1000, so that CMD runs them. */
 void __filetype(int type, int aux);
 /* There's no buffer to flush: 0, evaluating f once (without the comma

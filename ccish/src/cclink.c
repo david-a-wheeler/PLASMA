@@ -1,10 +1,10 @@
-// ccrel: ccish's final pass as a program of its own (approach.md,
+// cclink: ccish's final pass as a program of its own (approach.md,
 // "B3"), and its linker (issue 11). It reads the stream files that
 // ccgen wrote for one or more compiled files, its objects, and links
 // them into one module. The objects are kept, so that a changed file
 // needs only itself compiled again.
 //
-// Usage: ccrel [-v] [-x] [-L dir] [-o module] output|@file...
+// Usage: cclink [-v] [-x] [-L dir] [-o module] output|@file...
 //   output  an object's output name, as given to cccomp and ccgen; the
 //           objects are linked in this order. @file reads the names
 //           from file instead, one per line (CR or LF ends a line,
@@ -54,10 +54,10 @@ void clean_up(void)
 static void usage(void)
 {
 #ifdef CCISH_LISTING
-  fputs("usage: ccrel [-v] [-x] [-L dir] [-o module] output|@file...\n",
+  fputs("usage: cclink [-v] [-x] [-L dir] [-o module] output|@file...\n",
         stderr);
 #else
-  fputs("usage: ccrel [-x] [-L dir] [-o module] output|@file...\n",
+  fputs("usage: cclink [-x] [-L dir] [-o module] output|@file...\n",
         stderr);
 #endif
   exit(2);

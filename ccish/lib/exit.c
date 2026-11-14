@@ -2,7 +2,7 @@
  * under plvm (doc/bootstrap-test.md, R8 and step 14; doc/linking.md,
  * 5.5). On an Apple II it makes main return
  * status, from wherever exit was called, so that init returns
- * -(status & 255) to CMD. When exit is linked, ccrel's init runs
+ * -(status & 255) to CMD. When exit is linked, cclink's init runs
  * __exitcap's first routine (cap) just before it calls main. On both
  * VMs, ICAL (or ICALX) and CALL (or CALLX) push the same frame, the
  * caller's IP and a JSR's return, so cap runs at the very stack pointer

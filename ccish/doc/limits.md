@@ -58,7 +58,7 @@ blank for a limit that isn't measured.
 | `MAX_PARAMS` | 16 |  | parameters of one function | [src/pstmt.c](../src/pstmt.c) |
 | `MAX_CASES` | 36 | 25 (pplex.c) | case labels in all the switches open at once; at most 255, a SEL table's limit | [src/pstmt.c](../src/pstmt.c) |
 
-## One link (ccrel)
+## One link (cclink)
 
 | Limit | Value | Used | Description | Defined in |
 |---|---|---|---|---|

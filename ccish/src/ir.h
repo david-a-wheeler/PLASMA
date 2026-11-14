@@ -83,7 +83,7 @@ enum {
   IR_DATAADDR,    // a = data offset: push the address of data
   // f = data symbol: push the address of a global that may move to
   // the heap (approach.md, "Large zero-filled data on the heap"):
-  // always an LA of the symbol itself, which ccrel may turn into an
+  // always an LA of the symbol itself, which cclink may turn into an
   // LAW of its pointer word, so never folded into another op
   IR_HEAPADDR,
   IR_STRADDR,     // a = string pool offset: push a string's address

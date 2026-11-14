@@ -1,5 +1,5 @@
 // Two objects, each with a zero area (its static locals with no
-// initializer): ccrel gives each its own, so a's and b's counters and
+// initializer): cclink gives each its own, so a's and b's counters and
 // buffers are apart, and each starts at zero.
 int bump_b(void);
 int fill_b(int c);

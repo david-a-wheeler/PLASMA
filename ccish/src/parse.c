@@ -648,7 +648,7 @@ int hold(int op, int a, int f)
 // reached through its symbol,
 // which is then used (unless no code is emitted): one declared extern
 // with no storage here, or one in the zero-filled space (VL_BSS), whose
-// address only ccrel knows.
+// address only cclink knows.
 int var_where(int v)
 {
   if (var_link[v] & VL_ZAREA)
@@ -927,7 +927,7 @@ static int data_sym_of(int global)
 // heap? One in this file's zero-filled space of at least BSS_MIN bytes
 // may, and so may an extern array or struct that may be one in another
 // file: of unknown size, or of at least BSS_MIN bytes. Its address is then always pushed as
-// IR_HEAPADDR, the one form ccrel can patch, with any offset added
+// IR_HEAPADDR, the one form cclink can patch, with any offset added
 // after.
 int movable(int global)
 {

@@ -3,7 +3,7 @@
 # file, so ccgen finds a damaged or stale one; cccomp finds a damaged
 # token stream (CCPP.md), the per-function limits fail, cccomp/ccpp leave
 # no IR/output on error, and an output name over MAX_PATH is refused.
-# The passes-as-programs handoff (ccpp -> cccomp -> ccgen -> ccrel keeps
+# The passes-as-programs handoff (ccpp -> cccomp -> ccgen -> cclink keeps
 # and passes on its files) is here too, plus the -k tests.
 . "$(dirname "$0")/../lib.sh"
 OUT=tests/out
@@ -154,7 +154,7 @@ limit_test too_many_relocs "__puti(1);" 300 \
 # The passes as programs of their own (approach.md, "B3", and 18.7):
 # ccpp leaves the token stream and name file for cccomp, which removes
 # the token stream and leaves the IR for ccgen, which writes the stream
-# file and symbol summary and removes the IR and name files; ccrel then
+# file and symbol summary and removes the IR and name files; cclink then
 # keeps those, as a linker keeps its objects.
 if ./ccpp -o "$OUT/split_streams" tests/run/hello.c \
    && [ -s "$OUT/split_streams.i" ] && [ -s "$OUT/split_streams.nam" ] \
@@ -165,12 +165,12 @@ if ./ccpp -o "$OUT/split_streams" tests/run/hello.c \
    && ./ccgen "$OUT/split_streams" && [ ! -e "$OUT/split_streams.ir" ] \
    && [ ! -e "$OUT/split_streams.nam" ] \
    && [ -s "$OUT/split_streams.obj" ] && [ -s "$OUT/split_streams.syms" ] \
-   && ./ccrel "$OUT/split_streams" && [ -s "$OUT/split_streams" ] \
+   && ./cclink "$OUT/split_streams" && [ -s "$OUT/split_streams" ] \
    && [ -s "$OUT/split_streams.obj" ] \
    && [ -s "$OUT/split_streams.syms" ]; then
     :
 else
-    echo "FAIL ccpp/cccomp/ccgen/ccrel: files not passed on, or not kept"
+    echo "FAIL ccpp/cccomp/ccgen/cclink: files not passed on, or not kept"
     bad=1
 fi
 rm -f "$OUT/split_streams.obj" "$OUT/split_streams.syms"

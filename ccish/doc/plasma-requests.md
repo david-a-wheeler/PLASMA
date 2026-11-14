@@ -329,7 +329,7 @@ portable.
 
 **What's there.** A module file holds its data segment byte for byte,
 and most of it is zeros: the zero-filled globals and tables too small
-for ccrel to move to the heap (approach.md, "Large zero-filled data on
+for cclink to move to the heap (approach.md, "Large zero-filled data on
 the heap").
 
 **Why it's a problem.** Disk space and load time. A 140K floppy holds
@@ -342,12 +342,12 @@ file; reading from it is slow. Measured 2026-11-09, storing each run of
 | cccomp | 44,017 | 4,799 | 4,444 (92%) | about 4,300 (10%) |
 | ccpp | 27,386 | 4,877 | 3,698 (75%) | about 3,500 (13%) |
 | ccgen | 33,624 | 4,411 | 3,140 (71%) | about 2,700 (8%) |
-| ccrel | 16,595 | 2,326 | 1,953 (83%) | about 1,850 (11%) |
+| cclink | 16,595 | 2,326 | 1,953 (83%) | about 1,850 (11%) |
 
 About 12.4K across the four. Without streaming (item 1) it would also
 lower the load peak by as much (cccomp's to about 39.7K: not enough
 alone); with streaming, it doesn't change memory, since the data takes
-the same memory once loaded. It would also let ccrel keep more zero
+the same memory once loaded. It would also let cclink keep more zero
 tables in the file instead of on the heap, whose pointer indirection
 costs code.
 
@@ -356,7 +356,7 @@ that many bytes, or a marker length ($FFFF) then a count of zeros.
 Only the data segment: the bytecode has many short zero runs, where
 the framing would cost more than it saves. A free bit in the header's
 `sysflags` word marks a file that uses it, so old files load as they
-do now. ccrel would write it (src/link.c).
+do now. cclink would write it (src/link.c).
 
 **ccish's own programs** get this from XLOAD's images (doc/xload.md,
 section 3), whose data segments are stored as runs (2026-11-12). The
@@ -366,7 +366,7 @@ request stands for REL modules in general.
 
 **What's there.** CMD frees a module's init function after it runs
 (unless init asks to keep it). But a ccish program runs all of `main`
-inside init: ccrel's init calls `main` and returns its status
+inside init: cclink's init calls `main` and returns its status
 (approach.md decision 36), so nothing is freed until the program is
 done.
 
@@ -378,7 +378,7 @@ measuring which functions run only at startup would tell.
 
 **The fix.** A way for init to return and have CMD then call another
 entry (say, an export named `main`, or a flag in the header), after
-freeing init's code. ccrel would put the startup-only code in the init
+freeing init's code. cclink would put the startup-only code in the init
 segment. The exit status would come from that entry instead of init.
 
 ## 14. VM: call bytecode directly (no def entry per function)

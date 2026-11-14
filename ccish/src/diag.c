@@ -1,6 +1,6 @@
 // Diagnostics and other support shared by ccish's programs: ccish
 // (every pass), cccomp (the front end), ccgen (the back end; approach.md
-// 18.7) and ccrel (the final pass; approach.md, "B3"). Each program
+// 18.7) and cclink (the final pass; approach.md, "B3"). Each program
 // supplies clean_up(), which closes and removes its partial output
 // after an error. What this file exports is declared in two headers,
 // diag.h and diag.src.h (the source position; diag.h says why).

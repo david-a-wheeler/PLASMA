@@ -28,7 +28,7 @@ enum { REC_LINE = 'L', REC_NAME = 'N', REC_WORD = 'W', REC_SECOND = 'X',
 // helper functions design"), by number. After them, numbered as calls
 // to helpers are, the CMDSYS unsigned comparisons, in the IR's order
 // (IR_ULT ...): an object lists the ones it calls with its helpers,
-// with no code, and ccrel imports them (OBJECT.md).
+// with no code, and cclink imports them (OBJECT.md).
 enum { HELP_UDIV, HELP_UMOD, HELP_USHR, NHELPERS };
 #define NHELP_CMDSYS  4
 #define HELP_CMDSYS_NAMES  "__isult", "__isuge", "__isugt", "__isule"

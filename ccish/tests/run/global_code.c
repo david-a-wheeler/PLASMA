@@ -2,7 +2,7 @@
 // (LAW, SAW, DAW, SAB), with no temporaries, so the frame holds only i.
 // An unused g++ keeps no copy (no DUP), a constant index is a fixed data
 // offset (a[3] is data+10: g, h, then a at 4), and a[i] = g needs no
-// temporary. They're static, so that ccrel places them, zero-filled
+// temporary. They're static, so that cclink places them, zero-filled
 // and after any initialized data (none here), in the order the file
 // declares them; shared ones it places in its name table's order.
 // listing-has: ENTER 2,0

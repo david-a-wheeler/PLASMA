@@ -1,7 +1,7 @@
 // ccgen's helper functions (approach.md, "unsigned and helper functions
 // design"): unsigned arithmetic that PLASMA has no opcode for, as small
 // functions that ccgen writes into each object that calls one (an H
-// record, after its functions), of which ccrel keeps one copy. Each is a
+// record, after its functions), of which cclink keeps one copy. Each is a
 // table of IR ops, lowered through ccgen's own stages like a function,
 // as function number HELPER_FN(k). They are leaves: no calls, and no
 // relocations. Their parameters are n at frame offset 0 and d (or the
@@ -104,7 +104,7 @@ static const int h_a[] = {
 // Where each helper's ops start in h_op[] and h_a[], and the end.
 static const char h_start[NHELPERS + 1] = { 0, 43, 91, 108 };
 
-// Each helper's name, for messages and ccrel's listing.
+// Each helper's name, for messages and cclink's listing.
 static const char *const h_names[NHELPERS + NHELP_CMDSYS] = {
   "udiv", "umod", "ushr", HELP_CMDSYS_NAMES
 };

@@ -57,7 +57,7 @@ static unsigned char cache_len[PP_CACHE];
 // and pstr, then the names ccpp itself gives a meaning. A CMDSYS
 // function's C name is its PLASMA name with "__" in front (__puts for
 // PUTS), a name C reserves to the implementation, so the standard names
-// (puts, memset, ...) stay free for a C library with C's meanings; ccrel
+// (puts, memset, ...) stay free for a C library with C's meanings; cclink
 // drops the "__" in the import (approach.md issue 22, decision 35).
 // Last, __asm__ and __plasma_import, for imports from other modules
 // (pp.c, ppout.c).
