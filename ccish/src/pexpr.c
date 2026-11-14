@@ -1561,21 +1561,23 @@ static int copy_func(void)
 // (finish_store()). A struct on the stack (a call's result) is stored
 // word by word, last first. o becomes the result: the object assigned
 // to, not an lvalue (for a K_DEREF, its address was kept with DUP).
+// One Operand, w, holds each word, source and then destination, so
+// that the frame (on cccomp's deepest chain) holds one, not two.
 void copy_struct(Operand *o, Operand *r, int start)
 {
-  Operand d, v;
+  Operand w;
   int n = type_size(o->type), k, cost = 0, mid, fn;
 
   if (r->kind == K_VALUE && o->kind != K_DEREF) {
     // Its words are on the stack: store them, last word first.
     for (k = struct_words(o->type) - 1; k >= 0; k--) {
-      struct_word(&d, o, 2 * k);
-      if (d.kind == K_VAR) {
-        store_var(&d);
+      struct_word(&w, o, 2 * k);
+      if (w.kind == K_VAR) {
+        store_var(&w);
         put_op(IR_DROP);
       } else {
-        push_address(&d);
-        put_op(STORE_OP(d.type, d.quals));
+        push_address(&w);
+        put_op(STORE_OP(w.type, w.quals));
       }
     }
     o->assigned = 1;
@@ -1588,15 +1590,17 @@ void copy_struct(Operand *o, Operand *r, int start)
       cost += access_cost(o, k) + access_cost(r, k);
     if (cost <= addr_cost(o) + addr_cost(r) + (n < 16 ? 1 : 2) + 3) {
       for (k = 0; k < n; k += 2) {
-        struct_word(&v, r, k);
-        struct_word(&d, o, k);
-        rvalue(&v);
-        if (d.kind == K_VAR) {
-          store_var(&d);
+        // Neither is a K_DEREF, so struct_word() emits nothing: the
+        // source word is pushed first, then w becomes the destination.
+        struct_word(&w, r, k);
+        rvalue(&w);
+        struct_word(&w, o, k);
+        if (w.kind == K_VAR) {
+          store_var(&w);
           put_op(IR_DROP);
         } else {
-          push_address(&d);
-          put_op(STORE_OP(d.type, d.quals));
+          push_address(&w);
+          put_op(STORE_OP(w.type, w.quals));
         }
       }
       o->assigned = 1;
