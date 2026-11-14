@@ -37,7 +37,7 @@ XREF_FLAGS = -Wall -Wextra -Werror -funsigned-char -fwrapv -O2
 COMMON = src/diag.c src/bio.c
 PP     = src/ppname.c src/pplex.c src/ppmac.c src/ppif.c src/ppout.c src/pp.c
 NAM    = src/nam.c
-FRONT  = src/tokin.c src/name.c src/type.c src/parse.c src/pexpr.c \
+PARSER = src/tokin.c src/name.c src/type.c src/parse.c src/pexpr.c \
          src/pstmt.c src/ptop.c src/irout.c
 BACK   = src/irin.c src/irloop.c src/lower.c src/peep.c src/emit.c src/helper.c
 LINK   = src/link.c
@@ -51,10 +51,10 @@ SMALL_PROGS := $(PROGS:%=%-small)
 # Each program's sources, in link order (the bootstrap's and
 # measure.py's too, below), and ccish's, the driver that runs all four.
 SRC_ccpp   = src/ccpp.c $(COMMON) $(PP)
-SRC_cccomp = src/cccomp.c $(COMMON) $(NAM) $(FRONT)
+SRC_cccomp = src/cccomp.c $(COMMON) $(NAM) $(PARSER)
 SRC_ccgen  = src/ccgen.c $(COMMON) $(NAM) $(BACK)
 SRC_ccrel  = src/ccrel.c $(COMMON) $(LINK)
-SRC_ccish  = src/main.c $(COMMON) $(PP) $(NAM) $(FRONT) $(BACK) $(LINK)
+SRC_ccish  = src/main.c $(COMMON) $(PP) $(NAM) $(PARSER) $(BACK) $(LINK)
 HEADERS := $(wildcard src/*.h)
 SOURCES := $(wildcard src/*.h src/*.c)
 # The library's headers: ccpp's default include directory, compiled in
