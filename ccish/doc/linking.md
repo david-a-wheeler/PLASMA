@@ -1,18 +1,24 @@
-# Linking decisions: cclink, -L, lib.map, and the __cmd_ names
+# Linking decisions: cclink, -L, lib.map, and the __cmd_ names (done)
+
+**This work is finished (2026-11-14), and this file is now its
+record:** read it for why ccish links as it does, not for what to do
+next. For what ccish does now, the code and doc/ccish-guide.md are
+the reference.
 
 The record of one collection of decisions, made in discussion
 2026-11-12 and revised after review 2026-11-13, about the final pass
-and how names mean things at the link. It's here, in one place, so a
-person or an agent can review them together: **approach.md's
-decision 46** points here, and `AGENTS.md` ("Where things are written
-down") lists this file. Each section gives the decision, the
-rationale, the options that lost, and what implementing it touches,
-with file and line references for checking (as of 2026-11-13; check
-them again, since they move). Section 8 is the list of verified facts
-the decisions rest on.
+and how names mean things at the link: **approach.md's decision 46**
+points here. Each section gives the decision, the rationale, the
+options that lost, and what implementing it touched. The file and
+line references, and words like "today", are as of when each part was
+written, before the change: since then src/ccrel.c is src/cclink.c,
+the CMDSYS names are `__cmd_puts` and so on, and the line numbers
+have moved. Section 8 is the list of verified facts the decisions
+rested on; section 9, the steps as done, with each one's measurements
+and what the plan got wrong.
 
-**Status (2026-11-14).** All seven steps of section 9 are done: the
-one exit (section 5.5), the option letters (section 2, with `-m` and
+**Status (2026-11-14): done.** All seven steps of section 9 are
+done: the one exit (section 5.5), the option letters (section 2, with `-m` and
 `-r` as proposed), the library search, `-L dir` (section 5), using
 `-L` everywhere, with tools/cclink deleted (section 9, step 4), the
 rename of ccrel to cclink (section 1), ccpp's CMDSYS ids out of its
@@ -21,7 +27,7 @@ ids, the `_` private names and the two link checks (sections 3, 3.1a,
 3.2 and 4, with the diagnostic of section 7, item 2: yes). Section 9,
 step 7, says what the plan got wrong.
 
-## 1. The final pass is renamed `ccrel` to `cclink`
+## 1. The final pass is renamed `ccrel` to `cclink` (done, 2026-11-14)
 
 **Decision.** The program, its source file, the Makefile targets,
 the tests and the docs: `ccrel` becomes `cclink`.
@@ -62,7 +68,7 @@ doc/measure.txt, doc/limits.md and AGENTS.md. Grep the whole tree
 has no mention today. approach.md's historical mentions stay;
 history isn't rewritten. Decision 46 records the rename.
 
-## 2. Options: no two in one program share a letter
+## 2. Options: no two in one program share a letter (done, 2026-11-13)
 
 **The rule (user, 2026-11-12, applied to every program 2026-11-13):
 no two options of one program may differ only in case.** The reason
@@ -98,7 +104,7 @@ rule); tools/listings.py (`ccgen -d`); tools/measure.py (it passes
 `-l` to the linker); the special scripts that pass `-l`
 (tests/special/cclink.sh); the guide's option text.
 
-## 3. CMDSYS functions are spelled `__cmd_` + the PLASMA name
+## 3. CMDSYS functions are spelled `__cmd_` + the PLASMA name (done, 2026-11-14)
 
 **Decision.** The 25 CMDSYS C spellings take the prefix `__cmd_`:
 `__cmd_puts`, `__cmd_memcpy`, `__cmd_heapalloc`, and so on. The
@@ -138,7 +144,7 @@ not the standard); `vm_` (the same hole); `sys_` (not reserved, and
 standard C already owns `sys_errlist`, `sys_nerr` and `system()`);
 bare `__` (the status quo).
 
-### 3.1 ccpp: the CMDSYS ids leave the name pool (fewer bytes, not more)
+### 3.1 ccpp: the CMDSYS ids leave the name pool (fewer bytes, not more; done, 2026-11-14)
 
 **The problem.** Done naively, the longer spellings cost ccpp, the
 program with the least room after cccomp (740 bytes to spare
@@ -203,7 +209,7 @@ compiling ccish's own sources (`make profile`: 572.8M against 595.6M),
 since every pool walk skips 25 entries. The token streams and name
 files are unchanged: every pp test's `.i` and `.nam` are the same.
 
-### 3.1a Spare CMDSYS ids, so a new one renumbers nothing
+### 3.1a Spare CMDSYS ids, so a new one renumbers nothing (done, 2026-11-14)
 
 **Decision (2026-11-13).** Ids 1 to `CMDSYS_IDS`, 40, are
 the CMDSYS block: the 25 in use (`NCMDSYS`) and 15 spare. `main`,
@@ -249,7 +255,7 @@ its name file by the stamp). Update src/fixed.h
 (`ID_MAIN` and the rest, and the new `CMDSYS_IDS`) and CCPP.md's
 fixed-id list (CCPP.md:269-278, 297-309).
 
-### 3.2 The rest of the rename
+### 3.2 The rest of the rename (done, 2026-11-14)
 
 - The linker's own references: the `use_cmdsys()` calls
   (`"__heapavail"`, `"__isult"`, `"__heapalloc"`, `"__memset"`,
@@ -293,7 +299,7 @@ fixed-id list (CCPP.md:269-278, 297-309).
     typo like `__cmd_strcp` at the right moment. Recommended
     (section 7).
 
-## 4. The C library's private names drop to one underscore
+## 4. The C library's private names drop to one underscore (done, 2026-11-14)
 
 **Decision.** `__start` to `_start`, `__path` to `_path`,
 `__filetype` to `_filetype`, `__exitcap` to `_exitcap`.
@@ -574,13 +580,13 @@ concedes `geteof` and `getmark` are untested `void *` fields
 `../src/inc` (the ccstat rule, `cmdsys.plh`), so the build precedent
 exists.
 
-## 7. Pending choices (the user's)
+## 7. The user's choices (made)
 
 1. The new letters for the driver's and ccgen's `-d` and `-i`:
-   proposed `-m` (machine ops) and `-r` (IR).
+   `-m` (machine ops) and `-r` (IR), as proposed (2026-11-13, step 2).
 2. The "not a CMDSYS function" diagnostic for an unknown `__cmd_`
-   name: recommended yes (a few lines, one message).
-3. Later, optional: the `.plh`-driven headers.
+   name: yes (2026-11-14, step 7; cclink's message 300).
+3. Later, optional, and not done: the `.plh`-driven headers.
 
 Decided in review (2026-11-13): rename the driver's case pairs too
 (section 2); `_start` is wanted for main with parameters (5.1); the
@@ -641,7 +647,7 @@ its name pool (3.1), with 15 spare CMDSYS ids after the 25 (3.1a).
 - **The fits:** ccpp 740 and cccomp 724 bytes to spare running; the
   linker about 13K (doc/measure.txt).
 
-## 9. Commit plan
+## 9. Commit plan (all seven steps done)
 
 Each commit: `make test` and `make bootstrap`; `make measure` after
 any size-affecting one, committing doc/measure.txt (and
@@ -724,11 +730,12 @@ leading-comma temp-file convention, AGENTS.md).
    pool peak, compiling ccish, rose 37 bytes to 7942 of 8207, since
    ptop.c now sees fixed.h's three new macros.
 
-## 10. For the implementer: how to work through steps 2 to 7
+## 10. For the implementer: how the steps were worked through (done)
 
-Read AGENTS.md first: its rules apply to every step. These are the
-ones that matter most here, and what each step must show before it's
-committed.
+All the steps are done, so nothing here is pending. It's kept as a
+checklist for work like this: what each step had to show before it
+was committed. Read AGENTS.md first: its rules applied to every step.
+These are the ones that mattered most here.
 
 **Before you start a step:**
 
