@@ -151,11 +151,6 @@ Each of these is in git history, with its measurements:
 
 ## Ideas not yet tried
 
-- `stop()`'s copy of a message's detail (diag.c, `MAX_PATH` bytes)
-  is the largest frame in every pass. It exists because `clean_up()`
-  may reuse `stream_name()`'s buffer; reporting before the partial output
-  is removed would make it unnecessary, but cccomp's source-name hook
-  (tokin.c) opens the name file through the same buffer.
 - The large frames on cccomp's worst chain (measure.txt's "the worst
   frame chain"; `tools/fsize.py -f`): when this was written,
   `parse_declaration`, `init_elem`, `copy_struct`, `fold_held` (two

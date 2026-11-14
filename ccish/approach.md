@@ -4100,6 +4100,19 @@ to date). Anything added meanwhile, such as issue 23, widens the gap.
   1,665 in cccomp, 567 to 463 in ccpp, and 538 to 434 in ccrel, with
   no change in code. Next on the chain: parse_expr() 148,
   copy_struct() 96 and parse_conditional() 92.
+  Done 2026-11-14 (decided in discussion, option C: rebuild the stream
+  name at print time): stop()'s copy of a detail is gone in the small
+  build. A stream's name is no longer passed prebuilt: error_dn() and
+  fatal_dn() carry its base name and suffix, and report() rebuilds
+  stream_name() after clean_up() has run and overwritten the buffer it
+  spells from. The full build still copies, since its message spelling
+  may also be spelled from a reused buffer. The cost is 35 bytes or so
+  of code and def table per program (the two functions and report's
+  two new parameters; 47 in cclink); the worst-case frame stack is 902
+  in cccomp, 271 in ccpp, 310 in ccgen and 386 in cclink. The invariant that a
+  plain detail (no rebuild) must not point at a reused buffer is
+  documented in diag.h; tests/special/smalldiag.sh checks a rebuilt
+  name.
 - **Fewer open files** (B6): each saves 1K of ProDOS buffer.
 - **Cold code out of memory**: diag.c (about 1.4K with its data and
   strings) runs only on an error, so it's a candidate for an overlay

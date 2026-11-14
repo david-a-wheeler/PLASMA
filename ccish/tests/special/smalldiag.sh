@@ -67,5 +67,24 @@ if [ -n "$small" ]; then
     echo "FAIL smalldiag: the small build warned:"
     printf '%s\n' "$small" | sed 's/^/    /'; bad=1
 fi
+
+# A stream's name in a detail is rebuilt after the files are closed and
+# removed (diag.c's stop_n), so it must be the right one: ccpp can't
+# create the token stream (the name is a directory), cccomp can't open
+# a missing one.
+printf 'int main(void) { return 0; }\n' >"$OUT/x.c"
+mkdir "$OUT/ci.i"
+got=$(cd "$OUT" && ../../../ccpp-small -o ci x.c 2>&1)
+if [ "$got" != "ccish: fatal 176: cannot create ci.i" ]; then
+    echo "FAIL smalldiag create: wanted 'ccish: fatal 176: cannot"
+    echo "    create ci.i', got:"
+    printf '%s\n' "$got" | sed 's/^/    /'; bad=1
+fi
+got=$(cd "$OUT" && ../../../cccomp-small co 2>&1)
+if [ "$got" != "ccish: fatal 171: cannot open co.i" ]; then
+    echo "FAIL smalldiag open: wanted 'ccish: fatal 171: cannot"
+    echo "    open co.i', got:"
+    printf '%s\n' "$got" | sed 's/^/    /'; bad=1
+fi
 [ $bad = 0 ] && rm -rf "$OUT"
 exit $bad

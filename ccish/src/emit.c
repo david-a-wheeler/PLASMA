@@ -112,7 +112,7 @@ static char label_placed[MAX_LABELS];
 static void open_out(const char *base, const char *suffix)
 {
   if (!bopen(&out, stream_name(base, suffix), 1))
-    fatal_d(176 /* "cannot create" */, stream_name(base, suffix));
+    fatal_dn(176 /* "cannot create" */, base, suffix);
 }
 
 // Create the stream file for output name base. No function is written
@@ -622,7 +622,7 @@ void emit_put(Mop *m)
 static void close_out(const char *suffix)
 {
   if (bclose(&out) != 0)
-    fatal_d(187 /* "error writing" */, stream_name(base_name, suffix));
+    fatal_dn(187 /* "error writing" */, base_name, suffix);
 }
 
 

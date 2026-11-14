@@ -39,6 +39,18 @@ void error_in0(int msg, int part);
 #define error_in(m, p, d)  error_in0(m, p)
 #define fatal(m, d)        fatal0(m)
 #endif
+// A stream's name (base and suffix) as a diagnostic's detail:
+// diag.c rebuilds it after clean_up() and the source hook have run,
+// so it needs no copy. In the small build, a plain detail (error_d,
+// fatal_d) is not copied either, and must still be right when
+// report() prints it, after clean_up() and the hook: so it must not
+// be spelled from a buffer they reuse. stream_name() is the usual
+// one (clean_up's remove_stream() reuses it in every pass): a
+// stream's name goes through error_dn and fatal_dn. The name file's
+// line buffer (nam_name(), nam_file()) is another: cccomp's hook
+// reads it.
+void error_dn(int msg, const char *base, const char *suffix);
+void fatal_dn(int msg, const char *base, const char *suffix);
 #ifdef CCISH_DIAG
 void warning(int msg, const char *detail);  // only cccomp's, in the
 void warning_in(int msg, int part, const char *detail); // full build

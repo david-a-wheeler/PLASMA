@@ -28,16 +28,16 @@ blank for a limit that isn't measured.
 | `MAX_EXP_BYTES` | 256 | 139 (emit.c) | bytes of the expansions and arguments being read, and of the arguments' own expansions (two buffers): room for macros longer than ccish's | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_ARG_SLOTS` | 32 | 4 (pexpr.c) | arguments of the calls being expanded | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_PP_PARAMS` | 16 |  | parameters of one macro | [src/ppmac.h](../src/ppmac.h) |
-| `MAX_PP_POOL` | 8207 | 7950 (ptop.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each: a byte of ccpp's heap each, so no larger than ccish's own use needs (ccpp has under 2K to spare on a 64K Apple II) | [src/ppname.c](../src/ppname.c) |
+| `MAX_PP_POOL` | 8207 | 7968 (ptop.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each: a byte of ccpp's heap each, so no larger than ccish's own use needs (ccpp has under 2K to spare on a 64K Apple II) | [src/ppname.c](../src/ppname.c) |
 
 ## One source file (cccomp)
 
 | Limit | Value | Used | Description | Defined in |
 |---|---|---|---|---|
 | `MAX_IDS` | 203 | 201 (irin.c) | enum constants and typedef names visible at once | [src/name.tab.h](../src/name.tab.h) |
-| `MAX_FUNCS` | 242 | 195 (pexpr.c) | functions declared, defined or called | [src/obj.h](../src/obj.h) |
+| `MAX_FUNCS` | 242 | 197 (pexpr.c) | functions declared, defined or called | [src/obj.h](../src/obj.h) |
 | `MAX_VARS` | 79 | 79 (link.c) | globals, plus the parameters and locals visible at once | [src/obj.h](../src/obj.h) |
-| `MAX_PARAM_TYPES` | 352 | 305 (pexpr.c) | parameter types of all declared functions | [src/parse.h](../src/parse.h) |
+| `MAX_PARAM_TYPES` | 352 | 311 (pexpr.c) | parameter types of all declared functions | [src/parse.h](../src/parse.h) |
 | `MAX_IMPORTS` | 16 |  | declarations with an asm label, or after #pragma plasma import | [src/ptop.c](../src/ptop.c) |
 | `MAX_DEPS` | 4 |  | modules named by #pragma plasma import | [src/ptop.h](../src/ptop.h) |
 | `MAX_TYPES` | 54 | 54 (link.c) | distinct types; at most 128, since char tables (fn_type[], param_types[]) hold unqualified types, and a host's char may be signed | [src/type.c](../src/type.c) |
@@ -62,12 +62,12 @@ blank for a limit that isn't measured.
 
 | Limit | Value | Used | Description | Defined in |
 |---|---|---|---|---|
-| `MAX_GSYMS` | 307 | 262 (linking cccomp) | names shared between objects: the first prime about 10% above what linking cccomp, with the library, needs | [src/link.c](../src/link.c) |
-| `MAX_GNAMES` | 3000 | 2598 (linking cccomp) | bytes of those names, with their NULs: about 10% above what linking cccomp needs | [src/link.c](../src/link.c) |
+| `MAX_GSYMS` | 307 | 264 (linking cccomp) | names shared between objects: the first prime about 10% above what linking cccomp, with the library, needs | [src/link.c](../src/link.c) |
+| `MAX_GNAMES` | 3000 | 2616 (linking cccomp) | bytes of those names, with their NULs: about 10% above what linking cccomp needs | [src/link.c](../src/link.c) |
 | `MAX_MOVED` | 32 |  | large globals moved to the heap in one module (OBJECT.md, "Zero-filled globals") | [src/link.c](../src/link.c) |
-| `MAX_DEFS` | 320 | 300 (linking cccomp) | functions in an XLOAD image's table (-x), helpers and init included: about 10% above what cccomp needs | [src/link.c](../src/link.c) |
+| `MAX_DEFS` | 320 | 302 (linking cccomp) | functions in an XLOAD image's table (-x), helpers and init included: about 10% above what cccomp needs | [src/link.c](../src/link.c) |
 | `MAX_MODS` | 8 |  | modules one link imports from | [src/link.c](../src/link.c) |
-| `LIB_NAMES` | 128 | 126 (linking ccpp) | bytes of the bases of the objects -L adds, each with its NUL: the peak (126) links cccomp | [src/link.c](../src/link.c) |
+| `LIB_NAMES` | 128 | 118 (linking ccpp) | bytes of the bases of the objects -L adds, each with its NUL: the peak (126) links cccomp | [src/link.c](../src/link.c) |
 | `MAX_OBJS` | 32 |  | objects in one link (ccish's own is MAX_LINK, main.c) | [src/link.h](../src/link.h) |
 
 ## Other limits

@@ -158,10 +158,13 @@ static void put_part(int part)
 // Print a diagnostic to stderr: where (the source file and line, if
 // there is one), its kind and message number, then the message's text,
 // the text of part (another message number, if not 0), and detail (if
-// not NULL): "x.c:2: error 41: lvalue required as left operand of
+// not NULL; or the stream name nbase and nsuf, rebuilt now, after the
+// hook above has run, which is the latest reuse of stream_name()'s
+// buffer): "x.c:2: error 41: lvalue required as left operand of
 // assignment". Without the message file, just the numbers:
 // "x.c:2: error 41 (194):".
-static void report(const char *kind, int msg, int part, const char *detail)
+static void report(const char *kind, int msg, int part, const char *detail,
+                   const char *nbase, const char *nsuf)
 {
   void (*hook)(void) = src_name_hook;
   fflush(stdout);
@@ -192,35 +195,53 @@ static void report(const char *kind, int msg, int part, const char *detail)
   if (detail) {
     put_err(" ");
     put_err(detail);
+  } else if (nbase) {
+    put_err(" ");
+    put_err(stream_name(nbase, nsuf));
   }
   put_err("\n");
 }
 
+static char stopping;       // a second stop, from inside clean_up()
+
 // Report a diagnostic of this kind, then remove partial output and
 // exit; an error inside clean_up() itself just reports and exits. The
 // files are closed first, so that printing (which opens the
-// message file) needs no more memory or files. detail is copied first:
-// it may be in a static buffer that clean_up() reuses (stream_name()'s,
-// when removing the stream files). The copy holds MAX_PATH, the longest
-// path ccish makes, and a ProDOS path with a prefix: only a longer host
-// path, given on the command line, is cut short. It's on the frame, not
-// static, since stop() runs once, usually at the deepest point of the
-// frame stack: a static copy would take the same memory always, and
-// the module file too (approach.md issue 24).
+// message file) needs no more memory or files. detail is not copied
+// (the small build): it must not be in a buffer clean_up() or the
+// source hook reuses (stream_name()'s), which is why a stream's name
+// is a detail through nbase and nsuf, rebuilt at the print (below).
+// The full build, whose messages take spellings from buffers the hook
+// reuses too, copies (approach.md issue 24).
 static void stop(const char *kind, int msg, int part, const char *detail)
 {
-  static char stopping;     // a second stop, from inside clean_up()
+#ifdef CCISH_DIAG
   char copy[MAX_PATH];
   if (detail) {
     strncpy(copy, detail, sizeof(copy) - 1);
     copy[sizeof(copy) - 1] = 0;
     detail = copy;
   }
+#endif
   if (!stopping) {
     stopping = 1;
     clean_up();
   }
-  report(kind, msg, part, detail);
+  report(kind, msg, part, detail, NULL, NULL);
+  exit(1);
+}
+
+// As stop(), for a detail that is a stream's name, base with suffix:
+// the name is rebuilt after clean_up() and the hook have run, so it
+// needs no copy (one was MAX_PATH in every pass's deepest frame).
+static void stop_n(const char *kind, int msg, const char *base,
+                   const char *suffix)
+{
+  if (!stopping) {
+    stopping = 1;
+    clean_up();
+  }
+  report(kind, msg, 0, NULL, base, suffix);
   exit(1);
 }
 
@@ -255,6 +276,13 @@ void error_d(int msg, const char *detail)
 }
 #endif
 
+// Report error msg, with the stream name of base and suffix as the
+// detail (diag.h): rebuilt at the print, so no copy (diag.c's stop_n).
+void error_dn(int msg, const char *base, const char *suffix)
+{
+  stop_n("error", msg, base, suffix);
+}
+
 // Report error msg, with no detail: error(msg, NULL), one argument
 // shorter at each of the many calls.
 void error0(int msg)
@@ -268,7 +296,7 @@ void error0(int msg)
 // about it (such as discarding const). Compiling goes on.
 void warning_in(int msg, int part, const char *detail)
 {
-  report("warning", msg, part, detail);
+  report("warning", msg, part, detail, NULL, NULL);
 }
 
 // Report warning msg, with detail.
@@ -293,6 +321,13 @@ void fatal_d(int msg, const char *detail)
   stop("fatal", msg, 0, detail);
 }
 #endif
+
+// Report problem msg, with the stream name of base and suffix as the
+// detail (diag.h): rebuilt at the print, so no copy (diag.c's stop_n).
+void fatal_dn(int msg, const char *base, const char *suffix)
+{
+  stop_n("fatal", msg, base, suffix);
+}
 
 // Report problem msg, with no detail: fatal(msg, NULL), one argument
 // shorter at each call.

@@ -94,7 +94,7 @@ void tok_open(const char *base)
   base_name = base;
   at_end = 0;
   if (!bopen(&in, stream_name(base, SUFFIX_I), 0))
-    fatal_d(171 /* "cannot open" */, stream_name(base, SUFFIX_I));
+    fatal_dn(171 /* "cannot open" */, base, SUFFIX_I);
   if (bgetc(&in) != 'C' || bgetc(&in) != 'T' || bgetc(&in) != 'K'
       || bgetc(&in) != TOK_VERSION)
     fatal(230 /* "not a token file from ccpp, or the wrong version:" */,
