@@ -471,7 +471,30 @@ def stack_report(funcs):
                            if has_loops else ""))
     for loop in sorted(unbounded, key=sorted):
         print("    unbounded recursion (no nest count; counted once"
-              " above): %s" % ", ".join(sorted(loop)))
+              " above): %s" % ", ".join(
+                  "%s %d" % (v, funcs[v]["frame"]) for v in sorted(loop)))
+    # The chain behind the frame bound: from the root's component, each
+    # step to the callee component with the most frame below it (ties
+    # by name), until none is left. A recursion group is one step, its
+    # bound as above.
+    t = longest(set(range(len(comps))), cedges,
+                lambda c: bound[c]["frame"])
+    print("    the worst frame chain, from %s, frame bytes:" % root)
+    c = comp_of[root]
+    while True:
+        names = sorted(comps[c])
+        if len(names) == 1:
+            label = names[0]
+        else:
+            label = "recursion: %s and %d more" % (names[0],
+                                                  len(names) - 1)
+        print("      %-44s %5d" % (label, bound[c]["frame"]))
+        below = [w for w in cedges.get(c, ()) if t[w] > 0]
+        if not below:
+            break
+        best = max(t[w] for w in below)
+        c = min((w for w in below if t[w] == best),
+                key=lambda w: sorted(comps[w])[0])
     big = sorted(funcs, key=lambda v: -funcs[v]["frame"])[:5]
     print("    largest frames: " + ", ".join(
         "%s %d" % (v, funcs[v]["frame"]) for v in big))

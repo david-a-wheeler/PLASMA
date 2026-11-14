@@ -93,9 +93,33 @@ ccpp: 9 files, and 19 library objects:
   shared names: 117 of 307 slots, 1138 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
     frame stack at least 395 bytes; 6502 stack at least 34 calls x 4 = 136 bytes
-    unbounded recursion (no nest count; counted once above): binary, cond, unary
-    unbounded recursion (no nest count; counted once above): call, expand_arg, pp_next
-    unbounded recursion (no nest count; counted once above): clean_up, fatal0, remove_stream, stop, stream_name
+    unbounded recursion (no nest count; counted once above): binary 16, cond 10, unary 4
+    unbounded recursion (no nest count; counted once above): call 30, expand_arg 4, pp_next 12
+    unbounded recursion (no nest count; counted once above): clean_up 0, fatal0 2, remove_stream 4, stop 136, stream_name 4
+    the worst frame chain, from (init), frame bytes:
+      (init)                                           0
+      _start                                          10
+      main                                            12
+      pp_file                                          6
+      directive                                       17
+      do_elif                                          4
+      pp_if_expr                                       2
+      recursion: binary and 2 more                    30
+      advance                                          2
+      recursion: call and 2 more                      46
+      collect                                         12
+      next_tok                                         6
+      pp_lex                                           0
+      lex_word                                        34
+      pp_word                                          6
+      pp_intern                                       12
+      add                                              6
+      recursion: clean_up and 4 more                 146
+      report                                          10
+      msg_text                                        18
+      fopen                                            8
+      _path                                            4
+      strlen                                           4
     largest frames: stop 136, do_define 42, lex_word 34, pp_spell_token 30, call 30
   static locals (bytes saved; per call, about 45 cycles saved with new opcodes):
     leaf functions: 35 of 145 framed functions, 255 frame accesses; saves 100 bytes with new opcodes, -282 with LAW/SAW
@@ -121,13 +145,39 @@ cccomp: 12 files, and 16 library objects:
   shared names: 262 of 307 slots, 2598 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
     frame stack at least 1193 bytes; 6502 stack at least 69 calls x 4 = 276 bytes
-    unbounded recursion (no nest count; counted once above): begin_function, compound_elem, parse_args, parse_assign, parse_base_type, parse_call, parse_conditional, parse_const, parse_declarator, parse_dim, parse_enum, parse_expr, parse_icall, parse_index, parse_logical, parse_members, parse_params, parse_postfix, parse_primary, parse_sizeof, parse_skipped, parse_steps, parse_struct, parse_suffixes, parse_type_name, parse_unary, start_store, struct_assign
-    unbounded recursion (no nest count; counted once above): clean_up, fatal0, remove_stream, stop, stream_name
-    unbounded recursion (no nest count; counted once above): holds_qual
-    unbounded recursion (no nest count; counted once above): init_flat, init_sub
-    unbounded recursion (no nest count; counted once above): loop_body, loop_rest, parse_block, parse_do, parse_for, parse_statement, parse_switch, parse_while
-    unbounded recursion (no nest count; counted once above): qualify
-    unbounded recursion (no nest count; counted once above): type_size
+    unbounded recursion (no nest count; counted once above): begin_function 4, compound_elem 16, parse_args 37, parse_assign 74, parse_base_type 10, parse_call 8, parse_conditional 47, parse_const 37, parse_declarator 14, parse_dim 2, parse_enum 6, parse_expr 61, parse_icall 10, parse_index 49, parse_logical 12, parse_members 12, parse_params 6, parse_postfix 4, parse_primary 12, parse_sizeof 6, parse_skipped 6, parse_steps 8, parse_struct 10, parse_suffixes 6, parse_type_name 4, parse_unary 6, start_store 39, struct_assign 39
+    unbounded recursion (no nest count; counted once above): clean_up 0, fatal0 2, remove_stream 4, stop 136, stream_name 4
+    unbounded recursion (no nest count; counted once above): holds_qual 8
+    unbounded recursion (no nest count; counted once above): init_flat 12, init_sub 6
+    unbounded recursion (no nest count; counted once above): loop_body 4, loop_rest 2, parse_block 6, parse_do 6, parse_for 12, parse_statement 6, parse_switch 43, parse_while 8
+    unbounded recursion (no nest count; counted once above): qualify 4
+    unbounded recursion (no nest count; counted once above): type_size 2
+    the worst frame chain, from (init), frame bytes:
+      (init)                                           0
+      _start                                          10
+      main                                            10
+      compile_file                                     4
+      parse_toplevel                                  18
+      recursion: loop_body and 7 more                 87
+      parse_declaration                               80
+      parse_local_init                                 6
+      parse_aggr_init                                  6
+      recursion: init_flat and 1 more                 18
+      init_elem                                       72
+      parse_scalar_init                               37
+      recursion: begin_function and 27 more          545
+      copy_struct                                     82
+      copy_func                                        4
+      declare_cmdsys                                  12
+      sig_type                                         2
+      pointer_to                                       2
+      find_type                                        8
+      recursion: clean_up and 4 more                 146
+      report                                          10
+      msg_text                                        18
+      fopen                                            8
+      _path                                            4
+      strlen                                           4
     largest frames: stop 136, copy_struct 82, parse_declaration 80, fold_held 78, parse_assign 74
   static locals (bytes saved; per call, about 45 cycles saved with new opcodes):
     leaf functions: 54 of 272 framed functions, 308 frame accesses; saves 154 bytes with new opcodes, -304 with LAW/SAW
@@ -153,7 +203,41 @@ ccgen: 10 files, and 17 library objects:
   shared names: 109 of 307 slots, 993 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
     frame stack at least 426 bytes; 6502 stack at least 42 calls x 4 = 168 bytes
-    unbounded recursion (no nest count; counted once above): clean_up, fatal0, remove_stream, remove_streams, stop, stream_name
+    unbounded recursion (no nest count; counted once above): clean_up 0, fatal0 2, remove_stream 4, remove_streams 2, stop 136, stream_name 4
+    the worst frame chain, from (init), frame bytes:
+      (init)                                           0
+      _start                                          10
+      main                                             6
+      gen_file                                        12
+      do_op                                            8
+      loop_take                                       10
+      loop_op                                         10
+      counted_loop                                    30
+      replay_body                                      8
+      ir_hold                                          8
+      run_match                                       10
+      run_do                                          36
+      lower_held                                       8
+      lower_free_swap                                  4
+      lower_op                                        16
+      lower_special                                    8
+      put_temp                                        12
+      peep_put                                         4
+      pass_oldest                                      2
+      emit_put                                         8
+      end_function                                     6
+      drop_frame                                       4
+      func_name                                        2
+      nam_name                                         2
+      line_at                                          4
+      read_line                                        6
+      nam_stale                                        0
+      recursion: clean_up and 5 more                 148
+      report                                          10
+      msg_text                                        18
+      fopen                                            8
+      _path                                            4
+      strlen                                           4
     largest frames: stop 136, run_do 36, dead_stores 34, counted_loop 30, between_rewrite 26
   static locals (bytes saved; per call, about 45 cycles saved with new opcodes):
     leaf functions: 55 of 191 framed functions, 525 frame accesses; saves 177 bytes with new opcodes, -531 with LAW/SAW
@@ -179,6 +263,24 @@ cclink: 4 files, and 19 library objects:
   shared names: 69 of 307 slots, 604 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
     frame stack 506 bytes; 6502 stack 19 calls x 4 = 76 bytes
+    the worst frame chain, from (init), frame bytes:
+      (init)                                           0
+      _start                                          10
+      main                                            10
+      link_module                                     14
+      find_library                                   144
+      read_summary                                    82
+      close_syms                                      48
+      use_cmdsys                                       6
+      gsym_add                                         4
+      add_gname                                        6
+      fatal0                                           2
+      stop                                           136
+      report                                          10
+      msg_text                                        18
+      fopen                                            8
+      _path                                            4
+      strlen                                           4
     largest frames: find_library 144, lib_check 140, stop 136, map_object 92, read_summary 82
   static locals (bytes saved; per call, about 45 cycles saved with new opcodes):
     leaf functions: 18 of 108 framed functions, 151 frame accesses; saves 40 bytes with new opcodes, -186 with LAW/SAW

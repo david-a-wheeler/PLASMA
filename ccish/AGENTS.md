@@ -240,9 +240,20 @@ files of the sessions so far; brought up to date 2026-11-12.)
   doc/measure.txt, checked in; `make test` refreshes it (and
   doc/limits.md) after a change, so commit it with the change. It
   writes `tools/out/PROGRAM` (the REL module), `PROGRAM.lst` (cclink's
-  listing of it), `PROGRAM.apple` (the image), and `PROGRAM.objs`,
-  the objects linked, the program's then the library's, which
-  measure.py writes from cclink's listing (the link is with -L).
+  listing of it), `PROGRAM.named.lst` (the same, with every static
+  function named: for tools/fsize.py), `PROGRAM.apple` (the image), and
+  `PROGRAM.objs`, the objects linked, the program's then the
+  library's, which measure.py writes from cclink's listing (the link
+  is with -L).
+- **Where the frame stack goes:** each program's report in
+  doc/measure.txt gives its worst-case frame stack (a lower bound),
+  each recursion group's functions with their frames, and "the worst
+  frame chain": the calls from `(init)` that make that bound, one
+  function or recursion group a line, with its frame bytes. To shrink
+  the frame stack, shrink what's on that chain (a recursion group
+  counts the sum of its functions' frames); `git diff doc/measure.txt`
+  after a change shows which lines moved. The report is
+  deterministic: the same tree gives the same file.
 - `python3 tools/listings.py` (or `make listings`; after `make`)
   writes tools/out/lst/NAME.lst for every source file of the programs
   and the library: each function's comment and C, then the machine ops
