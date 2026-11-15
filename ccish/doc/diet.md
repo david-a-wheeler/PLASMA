@@ -86,7 +86,10 @@ those is a place to save:
   `samples/`, `src/`, `lib/` and `xload/`, in the small build and the
   full build ("How to measure", step 6): three shrinks that fit
   ccish's own source each broke a sample or a test ("Approaches
-  checked that don't work").
+  checked that don't work"). make test catches such a shrink either
+  way: tests/special/small.sh compiles every test source and every
+  sample with both builds (rodfast with lores, as samples/Makefile
+  links them), so a limit violation in any of them fails the suite.
 
 ## Approaches that have worked
 
@@ -295,22 +298,14 @@ Every change, before it's committed:
    through both trees' passes, byte for byte, and the four programs
    linked both ways. If it names a difference, your change changed
    the generated code: find out why before going on.
-4. **Compile the samples.** `make test` doesn't (only the demo disk
-   does), and they carry the user programs' peaks the tests don't:
-   limit shrinks have passed all 583 tests while breaking
-   `samples/rodfast.c` (its `DRAW_ROWS` expands to 232 bytes, its
-   `main` is 1223 bytes of bytecode). Run the small passes over each
-   `samples/*.c` (ccpp-small, cccomp-small, ccgen-small, to a
-   comma-named scratch base); a failure names the limit the source's
-   peak is the floor of.
-5. **Kind B:** gencmp.sh will report differences; look at a few, and
+4. **Kind B:** gencmp.sh will report differences; look at a few, and
    be sure each is the improvement you meant. The gen tests
    (`tests/gen/*.exp`, the machine ops after the peepholes) change with
    the code: work each new expectation out by hand from the C and the
    rule you added, never by copying the compiler's output (AGENTS.md,
    "Testing"). Add a test for the new pattern, and one where it must
    not apply.
-6. **If a change touches what only runs on an Apple II** (lib/exit.c,
+5. **If a change touches what only runs on an Apple II** (lib/exit.c,
    XLOAD, an init function, CMDSYS calls), run the MAME check AGENTS.md
    describes, through tools/a2cmd only.
 
