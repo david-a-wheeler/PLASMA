@@ -31,9 +31,9 @@
 #include "pplex.h"
 #include "ppmac.h"
 
-#define MAX_MACROS   200    // limit pp: macros defined at once, include
-                            // guards too; well above ccish's own use, as
-                            // for MAX_MACRO_BYTES
+#define MAX_MACROS   176    // limit pp: macros defined at once, include
+                            // guards too: about 10% over ccish's own
+                            // peak (160, ptop.c)
 #define MAX_MACRO_BYTES 1500 // limit pp: bytes of their bodies, as tokens,
                              // where an identifier or number is 3 bytes:
                              // about 10% over ccish's own peak (1361); a
