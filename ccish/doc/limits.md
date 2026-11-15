@@ -35,7 +35,7 @@ blank for a limit that isn't measured.
 | Limit | Value | Used | Description | Defined in |
 |---|---|---|---|---|
 | `MAX_IDS` | 203 | 201 (irin.c) | enum constants and typedef names visible at once | [src/name.tab.h](../src/name.tab.h) |
-| `MAX_FUNCS` | 242 | 197 (pexpr.c) | functions declared, defined or called | [src/obj.h](../src/obj.h) |
+| `MAX_FUNCS` | 230 | 197 (pexpr.c) | functions declared, defined or called: about 10% over the full build's peak (209, pexpr.c's; the small build's is 197) | [src/obj.h](../src/obj.h) |
 | `MAX_VARS` | 79 | 79 (link.c) | globals, plus the parameters and locals visible at once | [src/obj.h](../src/obj.h) |
 | `MAX_PARAM_TYPES` | 352 | 310 (pexpr.c) | parameter types of all declared functions | [src/parse.h](../src/parse.h) |
 | `MAX_IMPORTS` | 16 |  | declarations with an asm label, or after #pragma plasma import | [src/ptop.c](../src/ptop.c) |

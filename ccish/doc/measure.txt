@@ -29,16 +29,16 @@ ccgen        157       0       43          2
 cclink       432       0       62        582
 ccpp         211       0       85          2
 diag         946     130      110        149
-emit        1770      82       26       3176
+emit        1770      82       26       3152
 helper       136     342       73          2
-irin        5806       0       38       2578
+irin        5806       0       38       2554
 irloop      5477       0        0       1180
 irout       1129       0       20        278
-link        9158      44      417      11668
+link        9158      44      417      11644
 lower       1445     384      689          0
 nam          518       0       12        138
 name         139       0        0       1220
-parse       4812      52      113       3160
+parse       4812      52      113       3076
 peep        5590       0        0         84
 pexpr       7980       0        0          4
 pp          2311       0      139       1414
@@ -88,7 +88,7 @@ ccpp's tables: the most one source needed, and the limit:
   groups open                     2 of      8  (bio)
 
 cccomp's tables: the most one source needed, and the limit:
-  functions                     197 of    242  (pexpr)
+  functions                     197 of    230  (pexpr)
   variables visible              79 of     79  (link)
   parameter types               310 of    352  (pexpr)
   enum constants, typedefs      201 of    203  (irin)
@@ -161,7 +161,7 @@ ccpp: 9 files, and 18 library objects:
 cccomp: 12 files, and 15 library objects:
   its own code 25992, data 246, strings 319: 26557 in all
   the library's code 724, data 73, strings 0: 797 in all (exit fopen fputs fread fwrite getc memcpy memset path remove start strcat strcpy strlen strrchr)
-  as a REL module: file 44212 bytes, all read into memory to load it;
+  as a REL module: file 44176 bytes, all read into memory to load it;
     12345 of them RLD and 129 ESD, freed after
   301 functions: 1511 bytes of the loader's def table, kept (init's entry too, and an end byte)
   shared names: 264 of 307 slots, 2616 of 3000 name bytes
@@ -204,16 +204,16 @@ cccomp: 12 files, and 15 library objects:
     leaf functions: 53 of 276 framed functions, 293 frame accesses; saves 152 bytes with new opcodes, -281 with LAW/SAW
     compiled stack (all non-recursive): 222 of 276 framed functions, 2337 frame accesses; saves 679 bytes with new opcodes, -2329 with LAW/SAW
     leaf region 8 bytes (largest leaf frame); compiled stack region 179 bytes
-  as an XLOAD image: file 31088 bytes; data 638, zero region 6461, code 26907,
+  as an XLOAD image: file 31088 bytes; data 638, zero region 6377, code 26907,
     302 functions (init too), fixups 2852 bytes
   on a 64K Apple II (41171 bytes free), through XLOAD:
-    def table 1510, data 638, zero region 6461, code 26907,
+    def table 1510, data 638, zero region 6377, code 26907,
     frame stack at least 871, FILEIO 1998,
     I/O buffers 1 x 1280 at most: 2 files open (NAME.i and NAME.ir)
-    running, needs 39665 of 41171: 1506 to spare
+    running, needs 39581 of 41171: 1590 to spare
     (a lower bound: the frame stack takes more with the unbounded recursion above)
-    loading, needs 38026 of 41171: 3145 to spare (XLOAD's second part in its zero region,
-    at 4451 to 8330 above the heap's bottom, the zero region 2148 to 8609; 512 for frames)
+    loading, needs 37942 of 41171: 3229 to spare (XLOAD's second part in its zero region,
+    at 4451 to 8330 above the heap's bottom, the zero region 2148 to 8525; 512 for frames)
 
 ccgen: 10 files, and 16 library objects:
   its own code 22221, data 938, strings 999: 24158 in all
@@ -264,16 +264,16 @@ ccgen: 10 files, and 16 library objects:
     leaf functions: 54 of 193 framed functions, 512 frame accesses; saves 175 bytes with new opcodes, -513 with LAW/SAW
     compiled stack (all non-recursive): 179 of 193 framed functions, 2735 frame accesses; saves 650 bytes with new opcodes, -2612 with LAW/SAW
     leaf region 14 bytes (largest leaf frame); compiled stack region 264 bytes
-  as an XLOAD image: file 27891 bytes; data 2010, zero region 7491, code 23228,
+  as an XLOAD image: file 27891 bytes; data 2010, zero region 7443, code 23228,
     209 functions (init too), fixups 2148 bytes
   on a 64K Apple II (41171 bytes free), through XLOAD:
-    def table 1045, data 2010, zero region 7491, code 23228,
+    def table 1045, data 2010, zero region 7443, code 23228,
     frame stack at least 310, FILEIO 1998,
     I/O buffers 2 x 1280 at most: 3 files open (NAME.ir, NAME.nam and the object)
-    running, needs 38642 of 41171: 2529 to spare
+    running, needs 38594 of 41171: 2577 to spare
     (a lower bound: the frame stack takes more with the unbounded recursion above)
-    loading, needs 36284 of 41171: 4887 to spare (XLOAD's second part in its zero region,
-    at 4451 to 8330 above the heap's bottom, the zero region 3055 to 10546; 512 for frames)
+    loading, needs 36236 of 41171: 4935 to spare (XLOAD's second part in its zero region,
+    at 4451 to 8330 above the heap's bottom, the zero region 3055 to 10498; 512 for frames)
 
 cclink: 4 files, and 18 library objects:
   its own code 10912, data 174, strings 597: 11683 in all
@@ -307,16 +307,16 @@ cclink: 4 files, and 18 library objects:
     leaf functions: 17 of 110 framed functions, 138 frame accesses; saves 38 bytes with new opcodes, -168 with LAW/SAW
     compiled stack (all non-recursive): 98 of 110 framed functions, 1478 frame accesses; saves 258 bytes with new opcodes, -1536 with LAW/SAW
     leaf region 8 bytes (largest leaf frame); compiled stack region 226 bytes
-  as an XLOAD image: file 14353 bytes; data 844, zero region 12581, code 11867,
+  as an XLOAD image: file 14353 bytes; data 844, zero region 12557, code 11867,
     115 functions (init too), fixups 1325 bytes
   on a 64K Apple II (41171 bytes free), through XLOAD:
-    def table 575, data 844, zero region 12581, code 11867,
+    def table 575, data 844, zero region 12557, code 11867,
     frame stack at least 282, FILEIO 1998,
     I/O buffers 1 x 1280 at most: 2 files open (an object and the module)
-    running, needs 29427 of 41171: 11744 to spare
+    running, needs 29403 of 41171: 11768 to spare
     (a lower bound: the frame stack takes more with the unbounded recursion above)
-    loading, needs 28377 of 41171: 12794 to spare (XLOAD's second part in its zero region,
-    at 4451 to 8330 above the heap's bottom, the zero region 1419 to 14000; 512 for frames)
+    loading, needs 28353 of 41171: 12818 to spare (XLOAD's second part in its zero region,
+    at 4451 to 8330 above the heap's bottom, the zero region 1419 to 13976; 512 for frames)
 
 Peaks: each limit, the most ccish's own source uses, and where:
   ENTRY_LABEL 78 pplex.c
@@ -350,9 +350,9 @@ Peaks: each limit, the most ccish's own source uses, and where:
 Disk space: Small build programs (XLOAD images) file sizes + XLOAD itself:
 Program Names Table  Data (Zero)   Code Fixups  (REL)   File Blocked
 ccpp       75   346  1414  15556  15082   1800  27412  18729   19456
-cccomp     75   604   638   6461  26907   2852  44212  31088   31744
-ccgen      75   418  2010   7491  23228   2148  37274  27891   28672
-cclink     75   230   844  12581  11867   1325  20781  14353   15360
+cccomp     75   604   638   6377  26907   2852  44176  31088   31744
+ccgen      75   418  2010   7443  23228   2148  37274  27891   28672
+cclink     75   230   844  12557  11867   1325  20781  14353   15360
 XLOAD                                                   5270    6144
 XLOAD2    107    44   512    941   2316    382          3373    4096
 Total                                                 100704  105472
@@ -374,9 +374,9 @@ And their fit on a 64K Apple II (41171 bytes free), through XLOAD:
 Program   Need  Spare  OK?   Need  Spare  OK?
 XLOAD     7891  33280  yes
 ccpp     35427   5744  yes  39026   2145  yes*
-cccomp   38026   3145  yes  39665   1506  yes*
-ccgen    36284   4887  yes  38642   2529  yes*
-cclink   28377  12794  yes  29427  11744  yes*
+cccomp   37942   3229  yes  39581   1590  yes*
+ccgen    36236   4935  yes  38594   2577  yes*
+cclink   28353  12818  yes  29403  11768  yes*
 XLOAD: PLASMA's loader reading XLOAD's whole file (RLD and ESD too) and FILEIO
 (1998). A program loading: FILEIO, the program (its def table, data, zero
 region and code), XLOAD's second part if it's above the program, and 512

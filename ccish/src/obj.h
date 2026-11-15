@@ -7,8 +7,10 @@
 #ifndef OBJ_H
 #define OBJ_H
 
-#define MAX_FUNCS    242    // limit file: functions declared, defined or
-                            // called
+#define MAX_FUNCS    230    // limit file: functions declared, defined or
+                            // called: about 10% over the full build's
+                            // peak (209, pexpr.c's; the small build's
+                            // is 197)
 #ifndef CCISH_BIG_LIMITS
 #define MAX_VARS     79     // limit file: globals, plus the parameters and
                             // locals visible at once
