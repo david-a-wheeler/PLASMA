@@ -82,3 +82,7 @@ their counters, so two runs at once would mix their counts.
   CCISH_SMALL` or a feature macro's `#else`.
 - Not the code ccish generates, nor the library: this is coverage of
   the compiler's C source, as the host compiles it.
+- Not the samples (samples/*.c). Only tests/special/small.sh compiles
+  them, and it checks only that the two builds agree, not that the
+  output is right, so a line it runs isn't tested; if special scripts
+  ever join a coverage set, leave small.sh out.
