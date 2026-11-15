@@ -1440,21 +1440,25 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
 // Parse the right side of *f() = e, where o is the K_DEREF, its
 // address's code starting at IR position start. Its value and the
 // store wait (K_STORE) until the parser sees whether the value is
-// used; see finish_store().
+// used; see finish_store(). e is parsed into o itself, whose object
+// type is kept in st: the frame, on cccomp's deepest chain, holds no
+// Operand of its own.
 static void start_store(Operand *o, int start)
 {
-  Operand r;
+  int st = o->type, q = o->quals; // the object's type and quals: o
+                                  // becomes e's
   int mid = ir_here();
-  parse_expr(PREC_ASSIGN, &r);
-  check_assign(o->type, &r, 197 /* "assignment" */, NULL);
-  rvalue(&r);
+  parse_expr(PREC_ASSIGN, o);
+  check_assign(st, o, 197 /* "assignment" */, NULL);
+  rvalue(o);
+  o->vmask = st == TY_CHAR && o->type != TY_CHAR && !o->is_bool;
+  o->type = st;
+  o->quals = q;
   o->kind = K_STORE;
   o->m0 = start;
   o->m1 = mid;
   o->mend = ir_here();
-  o->stype = o->type;
-  o->vmask = o->type == TY_CHAR && r.type != TY_CHAR && !r.is_bool;
-  o->is_bool = r.is_bool;
+  o->stype = st;
   o->assigned = 0;
 }
 
