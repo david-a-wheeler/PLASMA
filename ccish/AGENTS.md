@@ -50,6 +50,10 @@ files of the sessions so far; brought up to date 2026-11-12.)
 - `doc/diet.md`: instructions for making ccish's code smaller (and
   faster at no cost in size), for an agent to follow again and again:
   what has worked, what bites, and how to measure and test each gain.
+- `doc/testing.md`: instructions for improving the tests, for an
+  agent to follow again and again: finding weak areas with coverage,
+  choosing a test kind, checking that a test can fail, and what to do
+  when one does.
 - `doc/xload.md`: XLOAD and its image format, what's left to do, and
   the plan; `doc/streaming-options.md`: why XLOAD, and the options
   set aside.
