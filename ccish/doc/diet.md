@@ -119,6 +119,65 @@ Each of these is in git history, with its measurements:
   largest any of its blocks needs, so only moving the locals to
   another function takes them out of it entirely.
 
+## Approaches checked that don't work
+
+Tried, measured, and backed out. Don't try them again as stated; if
+you think a variant avoids the measured cost, say how, before you
+expect it to pay.
+
+- **A pointer instead of an Operand copy.** ccish compiles
+  `Operand r, x; r = x;` as one `__cmd_memcpy(&r, &x, 33)` call
+  (about 9 bytes of code), not 17 field moves, so deleting a copy
+  saves less than it looks like, while the pointer costs more to use
+  at every place the operand is read. Three tries, all backed out:
+  `fold_held()` (a pointer to the held operand instead of the local
+  copy `Operand r = *rp`, which its comment defends: "cheaper to
+  reach, and off the recursion's frames") grew 30 bytes of code,
+  `r` being read at every fold, and running spare went 1506 to 1476;
+  `parse_conditional()` (its constant-condition path: parse the taken
+  side directly into the destination operand, not a local, saving
+  `*o = b`) grew 10 (1506 to 1496); `parse_assign()` (a `Operand
+  *res` naming the
+  compound assignments' result instead of the two `r = x` copies)
+  shrank 3 bytes of code but added 2 of frame, in a function on
+  cccomp's worst chain, a wash. The frame local costs its size on
+  the worst chain even when only a rare path uses it; the memcpy
+  copy, in code, costs what it costs once.
+- **Writing straight to a global array instead of a local staging
+  array.** ccgen's `run_do()` builds up to three ops in a local
+  `int o[3][3]`, then copies them into the global `buf_*` arrays.
+  Writing the ops straight into `buf_*` saved 18 bytes of frame but
+  grew 26 of code: a store to a global array costs a few bytes more
+  than a store to a frame local, and `run_do()` does about a dozen
+  stores. Running spare 2529 to 2521; backed out. (The "walk with a
+  pointer" gain above is reads in a hot loop; for stores done once
+  per call, the local array is the cheaper home.)
+- **Sizing a limit to ccish's own peak.** A limit's peak must be
+  measured over everything ccish compiles: its own source, the tests
+  and the samples (doc/measure.txt's peaks are ccish's own source
+  only). Three shrinks in one session each broke one of the other
+  two: `MAX_EXP_BYTES` 256 to 154 (`samples/rodfast.c`'s `DRAW_ROWS`
+  expands to 232 bytes: "macro expansion too long"),
+  `MAX_ARG_SLOTS` 32 to 5 (`tests/run/pp_join.c`'s `SUM6` takes six
+  arguments), `MAX_FUNC_CODE` 1280 to 1120 (`rodfast.c`'s `main` is
+  1223 bytes of bytecode: "function too large"). Before shrinking,
+  run a stats pass over all of `tests/`, `samples/`, `src/`, `lib/`
+  and `xload/`, and over the full build too: its lint checks' peaks
+  are higher than the small build's (`pexpr.c`: 209 functions to
+  197, 329 parameter types to 310). One shrink was skipped on use,
+  not size: `MAX_LINE` 255 to 203 would have saved 52 bytes, but the
+  limit is on the user's source lines, which C11 asks to run to
+  4,000; 255 is already a deviation, and tightening it further for
+  52 bytes wasn't worth it.
+- **A big static buffer into a frame local.** ccpp's `put_string()`
+  keeps its 256-byte spelling buffer static: 256 bytes of zero
+  region, paid in every run, for `#param` stringification, which
+  nothing ccish compiles uses. Moving it into the frame is
+  impossible: ccish's own error 115, "local array doesn't fit in the
+  255-byte frame (make it static or global)". A local array of 256
+  bytes or more must stay static or global. "Remove buffers from the
+  deepest point" (above) has that 255-byte floor.
+
 ## Things that will bite you
 
 - **The tests can pass while the output changes.** Reusing the
@@ -153,8 +212,9 @@ Each of these is in git history, with its measurements:
 
 - The large frames on cccomp's worst chain (measure.txt's "the worst
   frame chain"; `tools/fsize.py -f`): when this was written,
-  `parse_declaration`, `init_elem`, `copy_struct`, `fold_held` (two
-  Operand copies) and `parse_assign`.
+  `parse_declaration`, `init_elem` and `copy_struct`. (`fold_held`'s
+  and `parse_assign`'s Operand copies were checked and don't pay: see
+  "Approaches checked that don't work".)
 - approach.md issue 24, "Putting cccomp on a diet", lists more.
 - For kind B: `tools/opstats.py -p cccomp` counts the commonest ops
   and runs of 2 to 4 ops in the passes' code: a run that's common and
