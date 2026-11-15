@@ -1,70 +1,84 @@
 # What the tests cover
 
-The gcov (statement and branch) coverage of the host's passes, from
-selected sets of the tests. The point is to find what no test covers,
-and add tests for it.
+The line and branch coverage of the host's passes, from a chosen set
+of the tests. The point is to find what no test covers, and add tests
+for it. You need gcc (gcov reads its data) and gcovr.
 
 ## Run
 
     make cov-xrun    the cross tests (tests/xrun): the oracle is a host
-                     compiler, and so the most reliable set to start
-                     from
+                     compiler, so this is the most reliable set to
+                     start from
     make cov-run     the run and gen tests: the expected outputs are
                      worked out by hand
-    make cov-all     every kind, including the bootstrap
+    make cov-all     every kind, the bootstrap included (about 25
+                     seconds with -j8)
     make coverage KINDS="xrun err"
-                     another set; the kinds are run img gen xrun err
-                     pp link boot, and the set's directory is named
-                     for them, the kinds sorted and joined with +
+                     any set of the kinds: run img gen xrun err pp
+                     link boot
 
-The report is printed, and kept, separately for each set, in
-tools/out/cov/<set>/report.txt; the sets never share results.
+`-j` works, and is safe (see below). Each set's results are kept
+apart, in tools/out/cov/SET, where SET is the kinds, sorted and joined
+with `+` (e.g. `err+xrun`; cov-xrun's is `xrun`):
 
-## What a report says
+- `report.txt`: printed at the end of the run too. Two gcovr tables:
+  each source's lines, how many ran and the line numbers that didn't;
+  then the same for branches. A branch is gcov's (a jump gcc emitted),
+  not a C `if`, so a line can have several.
+- `html/index.html`: the annotated sources, each line's count and
+  branches.
+- `coverage.json`: gcovr's data, for another report
+  (`gcovr -a tools/out/cov/SET/coverage.json ...`).
 
-- Each source file's, and the total's, statement and branch coverage
-  over the set's tests, merged over the passes the tests ran (a test
-  that runs only ccpp can't cover what's in cccomp).
-- The statements, and branches, no test of the set covers: the line,
-  and, for the branches, (n of m), how many of the line's branches a
-  test takes, so what a test would have to do. The branches are
-  gcov's, the jumps the compiler emitted, not the C's ifs, and they
-  are per source line, as gcov's data is.
-- The merged annotated sources, one per source, in the set's
-  annotated/: each line's executions, and the branches taken.
+## How it works
 
-## How it works, and what's stale when
+The coverage build is the Makefile's own test rules, run again with
+two variables changed: `PASSDIR`, where the passes are built
+(tools/out/cov/bin), and `OUT`, where the tests and what they need
+write (tools/out/cov/out). The passes there are built with gcc's
+`--coverage`. So the coverage targets run exactly the regular checks,
+with nothing to keep in step, and never touch the passes beside the
+source or tests/out. The test scripts get the two directories from
+the environment (`CCISH_BIN` and `CCISH_OUT`, which the Makefile
+exports; tests/lib.sh). A script run by hand uses the defaults, `.`
+and tests/out.
 
-The passes are built instrumented (-fprofile-arcs
--ftest-coverage) in tools/out/cov/build (tools/covbuild.sh), each
-program's sources in its own object directory, its .gcno beside each
-.o, and ccish.msg beside the programs, as diag looks for it beside
-them. A set's tests run against those passes with the regular
-suite's checks; the counters, the .gcda, are wiped before the run, as
-they accumulate across runs; and gcov's data, in the set's gcov/, is
-merged by tools/coverage.py into the report.
+A few expected results name an output path (the link tests' messages
+and listing directives say `tests/out/link/...`). tests/link_test.sh
+rewrites the paths under `$OUT` to read `tests/out/` before comparing
+(`canon_out`, tests/lib.sh), so the same expected files work wherever
+`OUT` is.
 
-A set is stale, and so its counters wiped, its tests re-run, and its
-report rebuilt, when the passes' sources, its test files, or anything
-its tests depend on changes. A stamp can't see a file leave its
-prerequisites, so the set's membership is also re-found into its
-tests.list every time, and its per-test files are removed then too,
-as a test's files would otherwise outlive the test.
+Every run is fresh. It first builds everything the tests need (the
+passes, the library, ccstat, XLOAD), then deletes the counters (the
+`.gcda` files, beside the passes), then removes the set's stamps and
+runs its tests, so the report counts exactly the set's tests, and not
+the building of the library. Then gcovr reads the counters, merging
+each source's counts over the programs it's compiled into (pexpr.c is
+in both ccish and cccomp, for instance), and keeps only src/.
 
-Run one set at a time: the passes share the counters, and two sets
-at once would mix their coverage. The set's tests are chained, each
-after its predecessors, so they run one at a time even with -j, as
-parallel .gcda writes can lose updates.
+Parallel runs are safe: gcc's runtime merges a program's counts into
+its `.gcda` under a file lock, so processes that finish together don't
+lose updates. I checked it both ways: 400 copies of a small
+`--coverage` program run at once gave exactly 400 runs' counts, and
+`make cov-all` with `-j8` and without `-j` gave the same total,
+225,660,744 line executions (2026-11-15).
 
-CC must be gcc, as gcov reads its data.
+Run one set at a time: all the sets share the instrumented passes and
+their counters, so two runs at once would mix their counts.
 
-## Notes
+## What it measures, and what it doesn't
 
-- The coverage is of the host's passes, all five, as the tests
-  exercise them: ccish (the driver, the small build), and ccpp,
-  cccomp, ccgen and cclink.
-- The small build has no text, no -E, no listings' text: ppout and
-  the text's parts are built only in the full build (CCISH_TEXT,
-  src/build.h), and so are not covered by the tests.
-- The xrun set is the place to start adding tests: its oracle is a
-  host compiler.
+- The full build, the passes the tests run: ccish (the driver), and
+  ccpp, cccomp, ccgen and cclink, built without `-DCCISH_SMALL`. So
+  the full build's own code, such as `CCISH_TEXT` (ccpp -E,
+  ppout.c), `CCISH_LISTING` and `CCISH_LINT`, is measured when a test
+  runs it.
+- Not the small build, the one that goes to the Apple II. Its
+  programs are built too (the tests' rules need them), but none of
+  the kinds above runs them; the special scripts that do aren't part
+  of a set. The small build's code is nearly a subset of the full
+  build's, so this matters only for the code under `#ifdef
+  CCISH_SMALL` or a feature macro's `#else`.
+- Not the code ccish generates, nor the library: this is coverage of
+  the compiler's C source, as the host compiles it.

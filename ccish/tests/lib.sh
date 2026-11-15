@@ -2,14 +2,25 @@
 # the source of truth for which tests run and when (a test's stamp depends
 # on its input and the passes); the scripts here only DO one test or check.
 set -u
-# The directory of the passes to run: . for the host's builds beside
-# the source, or another directory (tools/covbuild.sh's instrumented
-# passes for the coverage targets), as a script's second argument.
-CCISH_DIR=.
+# The directory of the passes to run, and the one the tests write in:
+# the Makefile's PASSDIR and OUT, which it exports as CCISH_BIN and
+# CCISH_OUT (the coverage targets set both: doc/coverage.md), or, for
+# a script run by hand, the defaults, . and tests/out. Both are
+# relative to the ccish directory, where the scripts run.
+CCISH_DIR=${CCISH_BIN:-.}
 CCISH=$CCISH_DIR/ccish
 PLVM=$(cd ../src && pwd)/plvm
 CCRUN=$(pwd)/tools/ccrun
-OUT=tests/out
+OUT=${CCISH_OUT:-tests/out}
+
+# Rewrite file $1 so that the paths under $OUT in it read as
+# tests/out/..., as the expected messages and listing directives write
+# them (they name the objects the test wrote), whatever OUT is.
+canon_out() {
+    [ "$OUT" = tests/out ] && return 0
+    sed "s|$(printf '%s' "$OUT" | sed 's/[.]/\\./g')/|tests/out/|g" "$1" \
+        >"$1.canon" && mv "$1.canon" "$1"
+}
 
 # Run module $2 from directory $1 under plvm, through tools/ccrun (with
 # a 10-second timeout), and print its output, stdout and stderr, with

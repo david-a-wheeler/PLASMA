@@ -6,7 +6,6 @@
 # that file and leave no module behind.
 . "$(dirname "$0")/lib.sh"
 name=$1
-CCISH_DIR=${2:-.}
 dir=tests/link/$name/
 mod=$(echo "$name" | tr 'A-Z' 'a-z')
 lerr=$OUT/link/$name.err
@@ -22,7 +21,7 @@ done
 if [ -f "$dir/expect-error" ]; then
     if "$CCISH_DIR/cclink" -o "$OUT/link/$mod" $objs 2>"$lerr"; then
         echo "FAIL $dir: linked, but should have failed"; exit 1
-    elif ! grep -qF -f "$dir/expect-error" "$lerr"; then
+    elif ! canon_out "$lerr" || ! grep -qF -f "$dir/expect-error" "$lerr"; then
         echo "FAIL $dir: wrong message (wanted, then got):"
         sed 's/^/    want: /' "$dir/expect-error"; sed 's/^/    got:  /' "$lerr"; exit 1
     elif [ -e "$OUT/link/$mod" ]; then
@@ -42,6 +41,7 @@ else
         echo "FAIL $dir: output differs (expected, then actual):"
         sed 's/^/    /' "$dir/expected"; echo "    ---"; sed 's/^/    /' "$OUT/link/$name.actual"; exit 1
     fi
+    canon_out "$OUT/link/$name.lst"
     for src in "$dir"*.c; do
         tests/check_listing.sh "$src" "$OUT/link/$name.lst" || exit 1
     done

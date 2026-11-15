@@ -4,7 +4,6 @@
 # "ssss"/"ss ss" placeholders.
 . "$(dirname "$0")/lib.sh"
 name=$1
-CCISH_DIR=${2:-.}
 mkdir -p "$OUT/pp"
 sum=$(nam_sum "tests/pp/$name.nam")
 lo=$(echo "$sum" | cut -c3-4 | tr 'A-F' 'a-f')

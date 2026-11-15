@@ -8,8 +8,6 @@
 # (and why) doesn't apply to an image, and passes.
 . "$(dirname "$0")/lib.sh"
 n=$1
-CCISH_DIR=${2:-.}
-CCISH=$CCISH_DIR/ccish
 d=$OUT/img
 src=tests/run/$n.c
 if grep -q '^// img-skip:' "$src"; then

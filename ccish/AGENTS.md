@@ -248,23 +248,17 @@ files of the sessions so far; brought up to date 2026-11-12.)
   `PROGRAM.objs`, the objects linked, the program's then the
   library's, which measure.py writes from cclink's listing (the link
   is with -L).
-- **Coverage: what the tests cover** (`doc/coverage.md`): `make
-  cov-xrun` (the cross tests, whose oracle is a host compiler: the
-  place to start adding tests), `make cov-run` (the run and gen
-  tests), `make cov-all` (every kind, the bootstrap included), or
-  `make coverage KINDS=...` for another set (the kinds: run img gen
-  xrun err pp link boot). The passes are built instrumented in
-  tools/out/cov/build, the set's tests run against them with the
-  regular checks, the counters wiped between sets, and gcov's data
-  merged into the set's report, tools/out/cov/<set>/report.txt,
-  separately per set: each source's and the total's statement and
-  branch coverage, the statements and branches no test covers (the
-  branches with how many of a line's branches a test takes), and the
-  merged annotated sources. A set re-runs, counters wiped, when the
-  passes or its tests change; its membership is re-found into its
-  tests.list, as a stamp can't see a file leave its prerequisites.
-  Run one set at a time (the passes share the counters); CC must be
-  gcc.
+- **Coverage: what the tests cover** (`doc/coverage.md`; needs gcc
+  and gcovr): `make cov-xrun` (the cross tests, whose oracle is a host
+  compiler: the place to start adding tests), `make cov-run` (the run
+  and gen tests), `make cov-all` (every kind, the bootstrap included),
+  or `make coverage KINDS=...` for another set (the kinds: run img gen
+  xrun err pp link boot). It's the Makefile's own test rules, run with
+  `PASSDIR` and `OUT` under tools/out/cov and the passes built with
+  `--coverage`, so it never touches tests/out; each run is fresh, and
+  `-j` is safe. The report, tools/out/cov/SET/report.txt, gives each
+  source's line and branch coverage and the lines no test covers;
+  html/index.html has the annotated sources. Run one set at a time.
 - **Where the frame stack goes:** each program's report in
   doc/measure.txt gives its worst-case frame stack (a lower bound),
   each recursion group's functions with their frames, and "the worst
