@@ -762,12 +762,14 @@ static int lib_base_linked(const char *base)
 // 2 the end of the file); 0 at the end of the file; -1 if the token is
 // over MAX_NAME characters, a broken map: stop. Whitespace between
 // tokens is skipped, CR or LF ending a line, blank lines skipped, as
-// read_list() does.
-static int map_tok(Bfile *map, char *buf, int *how)
+// read_list() does. Unbuffered (getc): the map is small (306 bytes for
+// the C library), and a Bfile's 128-byte buffer would be in this
+// function's frame, on cclink's worst chain.
+static int map_tok(FILE *map, char *buf, int *how)
 {
   int c, n;
   for (;;) {
-    c = bgetc(map);
+    c = getc(map);
     if (c == EOF) {
       *how = 2;
       return 0;
@@ -777,7 +779,7 @@ static int map_tok(Bfile *map, char *buf, int *how)
   }
   buf[n = 0] = (char)c;
   for (n = 1;;) {
-    c = bgetc(map);
+    c = getc(map);
     if (c == EOF || c == ' ' || c == '\n' || c == '\r') {
       *how = c == EOF ? 2 : c == ' ' ? 0 : 1;
       break;
@@ -836,7 +838,7 @@ static int map_line(const char *base, const char *name, int len)
 // line is judged when its first wanted name comes, with its base, and
 // its rest is skipped until the line ends (a judged line's names are
 // still wanted to the end of the pass). len, the bytes in use, goes on.
-static int map_pass(Bfile *map, int len)
+static int map_pass(FILE *map, int len)
 {
   char tok[MAX_NAME + 1], base[MAX_NAME + 1];
   int how, state = 0;             // 0 no line; 1 in one, not judged yet;
@@ -864,14 +866,16 @@ static int map_pass(Bfile *map, int len)
 }
 
 // The map's path must exist before any object is read: -L can't do
-// anything without it.
+// anything without it. A plain open and close (no Bfile: its buffer
+// would be in this function's frame, on cclink's worst chain).
 static void lib_check(void)
 {
-  Bfile map;
+  FILE *f;
   const char *p = lib_path("lib.map");
-  if (!bopen(&map, p, 0))
+  f = fopen(p, "rb");
+  if (!f)
     fatal_d(171 /* "cannot open" */, p);
-  bclose(&map);
+  fclose(f);
 }
 
 // Add the library's objects that define the names the link still wants,
@@ -880,15 +884,16 @@ static void lib_check(void)
 // pass's objects' summaries are read (section 5.3).
 static void find_library(void)
 {
-  Bfile map;                      // the map, one pass at a time
+  FILE *map;                      // the map, one pass at a time
   int first, i, len;
   len = 0;                        // lib_names's bytes in use
   for (;;) {
     first = nobjs;
-    if (!bopen(&map, lib_path("lib.map"), 0))
+    map = fopen(lib_path("lib.map"), "rb");
+    if (!map)
       fatal_d(171 /* "cannot open" */, lib_path("lib.map"));
-    len = map_pass(&map, len);
-    bclose(&map);
+    len = map_pass(map, len);
+    fclose(map);
     if (nobjs == first)
       return;
     for (i = first; i < nobjs; i++)
