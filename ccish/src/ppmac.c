@@ -39,12 +39,18 @@
                              // about 10% over ccish's own peak (1361); a
                              // byte of ccpp's heap each, and nothing of
                              // cccomp's
-#define MAX_EXPAND   16     // limit pp: macro expansions inside one another
+#define MAX_EXPAND   10     // limit pp: macro expansions inside one
+                            // another: C11 5.1.1.2's 10, and 150% over
+                            // ccish's own peak (4)
 #define MAX_EXP_BYTES 256   // limit pp: bytes of the expansions and arguments
                             // being read, and of the arguments' own
-                            // expansions (two buffers): room for macros
-                            // longer than ccish's
-#define MAX_ARG_SLOTS 32    // limit pp: arguments of the calls being expanded
+                            // expansions (two buffers): about 10% over the
+                            // peak (232, samples/rodfast.c's DRAW_ROWS;
+                            // ccish's own source needs 139)
+#define MAX_ARG_SLOTS 7     // limit pp: arguments of the calls being
+                            // expanded: about 10% over the peak (6, a
+                            // test's six-argument macro; ccish's own
+                            // source needs 4)
 
 int pp_from_lexer;
 

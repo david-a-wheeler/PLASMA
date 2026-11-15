@@ -24,9 +24,9 @@ blank for a limit that isn't measured.
 | `MAX_INCLUDE` | 3 | 2 (bio.c) | #include files open at once, beside the source: PLASMA's Apple II file library allows 4 open files, and ccpp has the source and NAME.i open | [src/pplex.h](../src/pplex.h) |
 | `MAX_MACROS` | 176 | 160 (ptop.c) | macros defined at once, include guards too: about 10% over ccish's own peak (160, ptop.c) | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_MACRO_BYTES` | 1500 | 1361 (pexpr.c) | bytes of their bodies, as tokens, where an identifier or number is 3 bytes: about 10% over ccish's own peak (1361); a byte of ccpp's heap each, and nothing of cccomp's | [src/ppmac.c](../src/ppmac.c) |
-| `MAX_EXPAND` | 16 | 4 (pexpr.c) | macro expansions inside one another | [src/ppmac.c](../src/ppmac.c) |
-| `MAX_EXP_BYTES` | 256 | 139 (emit.c) | bytes of the expansions and arguments being read, and of the arguments' own expansions (two buffers): room for macros longer than ccish's | [src/ppmac.c](../src/ppmac.c) |
-| `MAX_ARG_SLOTS` | 32 | 4 (pexpr.c) | arguments of the calls being expanded | [src/ppmac.c](../src/ppmac.c) |
+| `MAX_EXPAND` | 10 | 4 (pexpr.c) | macro expansions inside one another: C11 5.1.1.2's 10, and 150% over ccish's own peak (4) | [src/ppmac.c](../src/ppmac.c) |
+| `MAX_EXP_BYTES` | 256 | 139 (emit.c) | bytes of the expansions and arguments being read, and of the arguments' own expansions (two buffers): about 10% over the peak (232, samples/rodfast.c's DRAW_ROWS; ccish's own source needs 139) | [src/ppmac.c](../src/ppmac.c) |
+| `MAX_ARG_SLOTS` | 7 | 4 (pexpr.c) | arguments of the calls being expanded: about 10% over the peak (6, a test's six-argument macro; ccish's own source needs 4) | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_PP_PARAMS` | 16 |  | parameters of one macro | [src/ppmac.h](../src/ppmac.h) |
 | `MAX_PP_POOL` | 8207 | 7989 (ptop.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each: a byte of ccpp's heap each, so no larger than ccish's own use needs (ccpp has under 2K to spare on a 64K Apple II) | [src/ppname.c](../src/ppname.c) |
 
