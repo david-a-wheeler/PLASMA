@@ -81,7 +81,12 @@ those is a place to save:
   bytes a call; merging two small functions saves it.
 - **Zero region and data**: tables sized by the limits (doc/limits.md
   has each limit beside its measured peak; size a table about 10%
-  over its peak).
+  over its peak). Those peaks are ccish's own source only: before
+  shrinking a limit, measure the peak over all of `tests/`,
+  `samples/`, `src/`, `lib/` and `xload/`, in the small build and the
+  full build ("How to measure", step 6): three shrinks that fit
+  ccish's own source each broke a sample or a test ("Approaches
+  checked that don't work").
 
 ## Approaches that have worked
 
@@ -257,6 +262,23 @@ expect it to pay.
    the totals. `tools/opcount.py BASE` gives the ops each run test
    takes under the old and new compiler: for kind B, the speed of the
    code generated.
+6. **Limits, before you shrink one:** doc/limits.md's peaks are
+   ccish's own source only. measure.py's stats passes, which `make
+   test` builds in tools/out/big/, give one source's table use
+   (their table limits are raised where measure.py's BIG_LIMITS says,
+   so the true peak is reported, not the limit's error; the rest keep
+   the real limit, and a "too large" error says the peak is past it):
+   `tools/out/big/ccpp -o NAME src.c`, then
+   `tools/out/big/cccomp-stats -k NAME` and `tools/out/big/ccgen-stats
+   NAME` (the stats lines come on stderr). Take the most over all of
+   `tests/`, `samples/`, `src/`, `lib/` and `xload/`, and check the
+   full build too (`python3 tools/measure.py -full`): its lint
+   checks' peaks are higher (pexpr.c: 209 functions to the small
+   build's 197, 329 parameter types to 310). And if a measure.txt
+   line looks as if it shouldn't have moved, the XLOAD numbers are
+   the image headers themselves: tools/out/PROGRAM.apple, the
+   little-endian words at offsets 4, 6, 8 and 10 are its data, zero
+   region, code and functions.
 
 ## How to test
 
@@ -273,14 +295,22 @@ Every change, before it's committed:
    through both trees' passes, byte for byte, and the four programs
    linked both ways. If it names a difference, your change changed
    the generated code: find out why before going on.
-4. **Kind B:** gencmp.sh will report differences; look at a few, and
+4. **Compile the samples.** `make test` doesn't (only the demo disk
+   does), and they carry the user programs' peaks the tests don't:
+   limit shrinks have passed all 583 tests while breaking
+   `samples/rodfast.c` (its `DRAW_ROWS` expands to 232 bytes, its
+   `main` is 1223 bytes of bytecode). Run the small passes over each
+   `samples/*.c` (ccpp-small, cccomp-small, ccgen-small, to a
+   comma-named scratch base); a failure names the limit the source's
+   peak is the floor of.
+5. **Kind B:** gencmp.sh will report differences; look at a few, and
    be sure each is the improvement you meant. The gen tests
    (`tests/gen/*.exp`, the machine ops after the peepholes) change with
    the code: work each new expectation out by hand from the C and the
    rule you added, never by copying the compiler's output (AGENTS.md,
    "Testing"). Add a test for the new pattern, and one where it must
    not apply.
-5. **If a change touches what only runs on an Apple II** (lib/exit.c,
+6. **If a change touches what only runs on an Apple II** (lib/exit.c,
    XLOAD, an init function, CMDSYS calls), run the MAME check AGENTS.md
    describes, through tools/a2cmd only.
 
