@@ -5308,7 +5308,14 @@ issue. In summary:
     of the counted form (irloop.c counts one increment variable; a
     scratch check: for (i = 0; i < 3; i++) s++; is INCBRLE, while
     for (i = 0, j = 3; i < j; i++, j--) s++; is a plain back edge);
-    a possible later improvement.
+    a possible later improvement. (The commit, 9c1986f9, is titled
+    "ccomp: the comma operator": a typo for "cccomp:", noted here
+    because the commit is published and its history isn't
+    rewritten. Search the log for "comma operator" to find it.
+    Corrected 2026-11-15, in a review: xrun's xcomma had
+    (..., i + p) where run's comma has (..., i) + p, so it didn't
+    exercise the comma operand on the left of + p, the case whose
+    block binary() may move; it does now.)
 
 
 ## Milestones

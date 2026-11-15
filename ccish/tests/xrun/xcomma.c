@@ -88,7 +88,7 @@ int main(void)
   show(last(5));                         // 6
   x = add((n++, 3), 4);                  // n 5; two arguments
   show(x);                               // 7
-  x = *((void)(n > 4 && bump()), i + p); // n 6; i is 2: a[2]
+  x = *(((void)(n > 4 && bump()), i) + p);  // n 6; i is 2: a[2]
   show(x);                               // 30
   show(n);                               // 6
   putln();
