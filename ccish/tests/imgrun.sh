@@ -8,12 +8,14 @@
 # (and why) doesn't apply to an image, and passes.
 . "$(dirname "$0")/lib.sh"
 n=$1
+CCISH_DIR=${2:-.}
+CCISH=$CCISH_DIR/ccish
 d=$OUT/img
 src=tests/run/$n.c
 if grep -q '^// img-skip:' "$src"; then
     exit 0
 fi
-./ccish -x -o "$d/$n" "$src" 2>/dev/null || { echo "img $n: no image"; exit 1; }
+"$CCISH" -x -o "$d/$n" "$src" 2>/dev/null || { echo "img $n: no image"; exit 1; }
 (cd "$d" && "$CCRUN" -t 10 xload "$n" >"$n.raw" 2>&1)
 got=$?
 tr -d '\r' <"$d/$n.raw" | sed '/^LOOKUPSYM: /d' >"$d/$n.actual"

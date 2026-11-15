@@ -26,6 +26,10 @@
 PLVM=${BOOTSTRAP_VM:-$PLVM}
 CCSTAT=$(pwd)/$OUT/ccstat
 export PLVM CCSTAT
+# SEED, the directory of stage 1's passes: . for the host's builds,
+# or another (tools/covbuild.sh's instrumented passes for the coverage
+# targets), from the Makefile's SEED.
+SEED=${SEED:-.}
 top=$(pwd)
 BOOT=$top/$OUT/boot
 PROGS="ccpp cccomp ccgen cclink"
@@ -83,7 +87,7 @@ compile() {
             *) set -- "$out" ;;
             esac
             if [ "$how" = host ]; then
-                "$top/$pass" "$@"
+                "$top/$SEED/$pass" "$@"
             else
                 "$CCRUN" -t $TIMEOUT "v$pass" "$@"
             fi >>log 2>&1 || fail "stage $stage: $pass failed on $in (see $BOOT/$stage/log)"
@@ -118,7 +122,7 @@ for p in $PROGS; do
     objs=
     for s in $list; do objs="$objs $(basename "$s" .c)"; done
     printf '%s\n' $objs >"$p.objs"
-    "$top/cclink" -L lib -o "$p" "@$p.objs" \
+    "$top/$SEED/cclink" -L lib -o "$p" "@$p.objs" \
         >>log 2>&1 || fail "stage 1: linking $p failed (see $BOOT/1/log)"
 done
 end

@@ -2,7 +2,11 @@
 # the source of truth for which tests run and when (a test's stamp depends
 # on its input and the passes); the scripts here only DO one test or check.
 set -u
-CCISH=./ccish
+# The directory of the passes to run: . for the host's builds beside
+# the source, or another directory (tools/covbuild.sh's instrumented
+# passes for the coverage targets), as a script's second argument.
+CCISH_DIR=.
+CCISH=$CCISH_DIR/ccish
 PLVM=$(cd ../src && pwd)/plvm
 CCRUN=$(pwd)/tools/ccrun
 OUT=tests/out
@@ -27,13 +31,13 @@ run_module() {
 # "-small" for the small one, and $4 is an extra ccpp option ("-I inc"
 # for the cross tests, which include ptest.h).
 cc_obj() {
-    ./ccpp$1 ${4:-} -o "$2" "$3" && ./cccomp$1 "$2" && ./ccgen$1 "$2"
+    "$CCISH_DIR/ccpp"$1 ${4:-} -o "$2" "$3" && "$CCISH_DIR/cccomp"$1 "$2" && "$CCISH_DIR/ccgen"$1 "$2"
 }
 
 # Compile source $2 into the IR file of output name $1 ($1.ir) with
 # ccpp and cccomp.
 cc_ir() {
-    ./ccpp -o "$1" "$2" && ./cccomp "$1"
+    "$CCISH_DIR/ccpp" -o "$1" "$2" && "$CCISH_DIR/cccomp" "$1"
 }
 
 # The checksum of name file $1 (CCPP.md, "The checksum"): over the bytes

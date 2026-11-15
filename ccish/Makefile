@@ -9,6 +9,9 @@
 #   make limits regenerate doc/limits.md, the table of ccish's limits
 #   make measure regenerate doc/measure.txt, ccish's sizes and peaks
 #               measured on its own source, if stale, and print it
+#   make cov-xrun statement and branch coverage of the passes, from
+#               the cross tests (doc/coverage.md; cov-run and cov-all
+#               for other sets, coverage KINDS=... for any set)
 #   make demo-disk  samples/rods.po, a ProDOS disk of Rod's Colors three
 #               ways: PLASMA's rod.pla, and ccish's rod.c and rodfast.c
 #   make demo-run   boot PLASMA in an emulated 64K Apple IIe with that
@@ -323,6 +326,265 @@ $(OUT)/ALL.stamp: $(ALL_STAMPS)
 	@echo "passed: $(words $(ALL_STAMPS)) tests"
 	@touch $@
 
+# --- Coverage (gcov): what the tests exercise ------------------------
+# The statement and branch coverage of the host's passes, from
+# selected sets of the tests, for finding what no test covers and
+# adding tests for it (doc/coverage.md). The five passes are built
+# instrumented (-fprofile-arcs -ftest-coverage) in tools/out/cov/build
+# (tools/covbuild.sh); a set's tests run against them with the regular
+# suite's checks (the COV_KIND_ rules are the test rules' twins); the
+# counters, the .gcda, are wiped before a set's run, as they
+# accumulate across runs; and gcov's data (the set's gcov/) is merged
+# by tools/coverage.py into the set's report.txt: each source's and
+# the total's statement and branch coverage, and the statements and
+# branches no test covers, with the merged annotated sources in the
+# set's annotated/.
+#
+#   make cov-xrun   the cross tests (the oracle is a host compiler)
+#   make cov-run    the run and gen tests (the expected outputs are
+#                   worked out by hand)
+#   make cov-all    every kind, including the bootstrap
+#   make coverage KINDS="xrun err"   another set; the kinds are
+#                   run img gen xrun err pp link boot
+#
+# A set's report, and so its run, is stale when the passes' sources,
+# the set's test files, or anything the tests depend on changes; the
+# counters are wiped then too, so the report always covers exactly
+# the set's tests against the passes as they are (a stamp can't see a
+# file leave its prerequisites, so the set's membership is also
+# re-found into tests.list every time). Run one set at a time, not -j
+# over sets: the passes share the counters. CC must be gcc, as gcov
+# reads its data.
+
+COV       = tools/out/cov
+COV_BUILD = $(COV)/build/build.stamp
+COV_BIN   = $(COV)/build/bin
+COV_OBJ   = $(COV)/build/obj
+COV_FLAGS = -fprofile-arcs -ftest-coverage
+COV_PROGS := ccish ccpp cccomp ccgen cclink
+
+# The instrumented build: each program's sources in $(COV_OBJ)/<prog>,
+# its .gcno beside each .o, the program in $(COV_BIN), ccish.msg
+# beside it (diag looks for it beside the program).
+$(COV_BUILD): $(SOURCES) $(wildcard lib/include/*.h) ccish.msg tools/covbuild.sh
+	@mkdir -p $(COV_BIN)
+	@CC="$(CC)" CFLAGS="$(CFLAGS) $(COV_FLAGS)" \
+	 INC="$(abspath lib/include)" \
+	 BIN="$(abspath $(COV_BIN))" OBJ="$(abspath $(COV_OBJ))" \
+	 $(foreach p,$(COV_PROGS),SRC_$p="$(SRC_$p)") sh tools/covbuild.sh
+	@touch $@
+
+# The sets: the name and the kinds that make it up.
+COV_KINDS_xrun := xrun
+COV_KINDS_run  := run gen
+COV_KINDS_all  := run img gen xrun err pp link boot
+COV_SETS := xrun run all
+
+# The kinds a set may name, and `make coverage KINDS=...'s set: its
+# kinds sorted and joined with +.
+COV_KIND_LIST := run img gen xrun err pp link boot
+ifeq ($(KINDS),)
+else
+COV_SETNAME := $(shell printf '%s\n' $(sort $(KINDS)) | paste -sd + -)
+COV_KINDS_$(COV_SETNAME) := $(sort $(KINDS))
+COV_SETS += $(COV_SETNAME)
+endif
+
+# Per kind: the test inputs a wipe must wait for (COV_DEPS), the
+# directory the membership list looks in (COV_TESTDIRS, kind:directory
+# pairs, as a patsubst's replacement can't hold a $(VAR_%) ), and the
+# tests of the kind (COV_TESTS, for cov_kind_stamps's stamps).
+COV_DEPS_run  = $(wildcard tests/run/*)
+COV_DEPS_img  = $(wildcard tests/run/*)
+COV_DEPS_gen  = $(wildcard tests/gen/*)
+COV_DEPS_xrun = $(wildcard tests/xrun/*)
+COV_DEPS_err  = $(wildcard tests/errors/*)
+COV_DEPS_pp   = $(wildcard tests/pp/*)
+COV_DEPS_link = $(wildcard tests/link/*/*.c tests/link/*/expected \
+                 tests/link/*/expect-error tests/link/*/status)
+COV_DEPS_boot = tests/special/bootstrap.sh tests/lib.sh $(LIBSRC) ccish.msg
+COV_TESTDIRS := run:tests/run img:tests/run gen:tests/gen xrun:tests/xrun \
+                err:tests/errors pp:tests/pp link:tests/link boot:tests/special
+
+# The directory of kind $(1)'s tests, from COV_TESTDIRS.
+cov_testdir = $(word 2,$(subst :, ,$(filter $(1):%,$(COV_TESTDIRS))))
+COV_TESTS_run  = $(RUN)
+COV_TESTS_img  = $(RUN)
+COV_TESTS_gen  = $(GEN)
+COV_TESTS_xrun = $(XRUN)
+COV_TESTS_err  = $(ERR)
+COV_TESTS_pp   = $(PP_TESTS)
+
+# The cov stamps of the set $(2)'s tests of kind $(1), one per test.
+cov_kind_stamps = $(if $(filter boot,$(1)),$(COV)/$(2)/boot/bootstrap.stamp,\
+                 $(if $(filter link,$(1)),$(patsubst tests/link/%/,$(COV)/$(2)/link/%.stamp,$(sort $(dir $(LINK_TESTS)))),\
+                 $(if $(filter img,$(1)),$(patsubst tests/run/%.c,$(COV)/$(2)/img/%.stamp,$(RUN)),\
+                 $(patsubst $(call cov_testdir,$(1))/%.c,$(COV)/$(2)/$(1)/%.stamp,$(call COV_TESTS_$(1))))))
+
+# A kind that names no test is a typo (a pattern that matches nothing):
+# fail when the Makefile is read, not with a silently smaller set.
+$(foreach S,$(COV_SETS),$(foreach k,$(COV_KINDS_$(S)),$(if $(call cov_kind_stamps,$(k),$(S)),$(empty),$(error coverage: kind $(k) of set $(S) matches no tests))))
+
+# The set $(1)'s targets, its kinds $(2), the test inputs a wipe
+# must wait for $(3), and the set's test stamps $(4). The list is a
+# real file whose rule always runs (a stamp can't see a file leave
+# its prerequisites, but re-finding the set can): it rewrites the
+# file only when the membership changes, so its time, and so the
+# wipe, moves only then.
+define COV_SET
+.PHONY: cov-check-$(1)
+cov-check-$(1):
+$(COV)/$(1)/tests.list: cov-check-$(1)
+	@mkdir -p $(COV)/$(1)
+	@{ find $(sort $(foreach k,$(2),$(call cov_testdir,$(k)))) inc lib/include -type f; } \
+	  | sort -u >$(COV)/$(1)/tests.list.tmp
+	@if cmp -s $(COV)/$(1)/tests.list.tmp $(COV)/$(1)/tests.list; then \
+	    rm -f $(COV)/$(1)/tests.list.tmp; \
+	  else mv $(COV)/$(1)/tests.list.tmp $(COV)/$(1)/tests.list; fi
+
+$(COV)/$(1)/wipe.stamp: $(COV_BUILD) $(COV)/$(1)/tests.list $(PASSES) \
+                        $(wildcard inc/* lib/include/*.h) $(3)
+	@rm -f $(COV_OBJ)/*/*.gcda
+	@for k in $(2); do rm -rf $(COV)/$(1)/$$$$k; done
+	@touch $$@
+
+# The set's tests share the .gcda counters, and parallel writes can
+# lose updates, so the stamps are chained, each after its
+# predecessors, and run one at a time, even with -j.
+$(eval __COV_CHAIN := )
+$(foreach t,$(4),$(eval $(t): $(strip $(__COV_CHAIN)))$(eval __COV_CHAIN := $(strip $(__COV_CHAIN)) $(t)))
+
+$(COV)/$(1)/run.stamp: $(4)
+	@echo "cov $(1): $(words $(4)) tests ($(2))"
+	@touch $$@
+
+$(COV)/$(1)/report.txt: $(COV)/$(1)/run.stamp tools/coverage.py
+	@rm -rf $(COV)/$(1)/gcov $(COV)/$(1)/annotated; mkdir -p $(COV)/$(1)/gcov
+	@for p in $(COV_PROGS); do \
+	    ls $(COV_OBJ)/$$$$p/*.gcda >/dev/null 2>&1 || continue; \
+	    mkdir -p $(COV)/$(1)/gcov/$$$$p; \
+	    (cd $(COV)/$(1)/gcov/$$$$p && \
+	     gcov -b -j $(abspath $(COV_OBJ))/$$$$p/*.o >/dev/null) || exit 1; \
+	done
+	@python3 tools/coverage.py $(1) $(COV)/$(1) >$(COV)/$(1)/report.txt.tmp \
+	  && mv $(COV)/$(1)/report.txt.tmp $(COV)/$(1)/report.txt
+endef
+
+# The set's test rules: the test rules above with the instrumented
+# passes, in call argument 1's directory, and the set's directory,
+# call argument 2, in place of tests/out; the wipe stamp takes the
+# place of $(PASSES), as it covers it. The defines are expanded when
+# the Makefile is read, not when a recipe runs, so the rules' $@ and
+# $* are written doubled, with two dollars where a recipe line would
+# have one, and a third for the $? and $got the shell wants, as
+# make's own $ and $( ) references would otherwise eat them.
+COV_RUN_MODULE = (cd $$(dir $$@) && { $(CCRUN) -t 10 $$* 2>&1; echo $$$$? > $$*.status; } \
+                 | tr -d '\r' > $$*.actual)
+COV_CHECK_STATUS = want=$$$$(cat $2 2>/dev/null); want=$$$${want:-0}; \
+                   got=$$$$(cat $$(dir $$@)$$*.status); \
+                   [ "$$$$got" = "$$$$want" ] || \
+                   { echo "cov $1 $$*: exit status $$$$got, expected $$$$want"; exit 1; }
+
+define COV_KIND_run
+$(2)/run/%.stamp: tests/run/%.c tests/run/%.expected \
+                  $(wildcard tests/run/*.stderr.expected) \
+                  $(wildcard tests/run/*.status) \
+                  $(2)/wipe.stamp tests/check_listing.sh
+	@mkdir -p $$(dir $$@)
+	@$(1)/ccish -v -o $$(dir $$@)$$* tests/run/$$*.c \
+	  >$$(dir $$@)$$*.lst 2>$$(dir $$@)$$*.stderr
+	@$(COV_RUN_MODULE)
+	@diff -u tests/run/$$*.expected $$(dir $$@)$$*.actual
+	@$(call COV_CHECK_STATUS,run,tests/run/$$*.status)
+	@if [ -f tests/run/$$*.stderr.expected ]; then diff -u tests/run/$$*.stderr.expected $$(dir $$@)$$*.stderr; elif [ -s $$(dir $$@)$$*.stderr ]; then echo "cov run $$*: unexpected stderr"; cat $$(dir $$@)$$*.stderr; exit 1; fi
+	@tests/check_listing.sh tests/run/$$*.c $$(dir $$@)$$*.lst
+	@touch $$@
+endef
+
+define COV_KIND_img
+$(2)/img/%.stamp: tests/run/%.c tests/run/%.expected \
+                  $(wildcard tests/run/*.status) $(2)/wipe.stamp \
+                  $(OUT)/img/xload tests/imgrun.sh
+	@mkdir -p $$(dir $$@) && sh tests/imgrun.sh $$* $(1) && touch $$@
+endef
+
+define COV_KIND_gen
+$(2)/gen/%.stamp: tests/gen/%.c tests/gen/%.exp $(wildcard tests/gen/*.status) $(2)/wipe.stamp
+	@mkdir -p $$(dir $$@)
+	@$(1)/ccish -m -o $$(dir $$@)$$* tests/gen/$$*.c >$$@.actual 2>$$@.err
+	@test ! -s $$@.err || { echo "cov gen: unexpected messages"; cat $$@.err; exit 1; }
+	@diff -u tests/gen/$$*.exp $$@.actual
+	@$(COV_RUN_MODULE)
+	@$(call COV_CHECK_STATUS,gen,tests/gen/$$*.status)
+	@touch $$@
+endef
+
+define COV_KIND_xrun
+$(2)/xrun/%.stamp: tests/xrun/%.c tests/xrun/%.ref $(wildcard tests/xrun/*.lib) $(2)/wipe.stamp
+	@mkdir -p $$(dir $$@)
+	@$(1)/ccish -I inc -o $$(dir $$@)$$* tests/xrun/$$*.c \
+	 $$$$(for o in $$$$(cat tests/xrun/$$*.lib 2>/dev/null); do echo $(OUT)/lib/$$$$o; done) \
+	 2>$$(dir $$@)$$*.err
+	@test ! -s $$(dir $$@)$$*.err || { echo "cov xrun: unexpected messages"; cat $$(dir $$@)$$*.err; exit 1; }
+	@$(COV_RUN_MODULE)
+	@diff -u tests/xrun/$$*.ref $$(dir $$@)$$*.actual
+	@$(call COV_CHECK_STATUS,xrun,/dev/null)
+	@touch $$@
+endef
+
+define COV_KIND_err
+$(2)/err/%.stamp: tests/errors/%.c tests/errors/%.stderr.expected $(2)/wipe.stamp
+	@mkdir -p $$(dir $$@)
+	@! $(1)/ccish -o $$(dir $$@)$$* tests/errors/$$*.c 2>$$@.actual
+	@grep -qF -f tests/errors/$$*.stderr.expected $$@.actual
+	@touch $$@
+endef
+
+define COV_KIND_pp
+$(2)/pp/%.stamp: tests/pp/%.c tests/pp/%.nam tests/pp/%.tok $(2)/wipe.stamp tests/pp_test.sh tests/lib.sh
+	@mkdir -p $$(dir $$@) && tests/pp_test.sh $$* $(1) && touch $$@
+endef
+
+define COV_KIND_link
+$(2)/link/%.stamp: $(wildcard tests/link/*/*.c) $(LINK_TESTS) $(wildcard tests/link/*/status) $(2)/wipe.stamp tests/link_test.sh tests/lib.sh tests/check_listing.sh
+	@mkdir -p $$(dir $$@) && sh tests/link_test.sh $$* $(1) && touch $$@
+endef
+
+define COV_KIND_boot
+$(2)/boot/bootstrap.stamp: tests/special/bootstrap.sh tests/lib.sh \
+                           $(2)/wipe.stamp $(OUT)/lib/lib.map ccish.msg \
+                           $(wildcard lib/include/*.h)
+	@mkdir -p $$(dir $$@) && BOOTSTRAP_VM="$(BOOTSTRAP_VM)" SEED="$(1)" \
+	 $(foreach p,$(PROGS),BOOT_$p="$(SRC_$p)") BOOT_LIB="$(LIBSRC)" \
+	 sh tests/special/bootstrap.sh && touch $$@
+endef
+
+# Expand the sets: each one's targets and its test rules, per kind.
+$(foreach S,$(COV_SETS),$(eval $(call COV_SET,$(S),$(COV_KINDS_$(S)),\
+  $(sort $(foreach k,$(COV_KINDS_$(S)),$(COV_DEPS_$(k)))),\
+  $(sort $(foreach k,$(COV_KINDS_$(S)),$(call cov_kind_stamps,$(k),$(S)))))))
+$(foreach S,$(COV_SETS),$(foreach k,$(COV_KINDS_$(S)),$(eval $(call COV_KIND_$(k),$(COV_BIN),$(COV)/$(S)))))
+
+# The collections, each the set's report, printed.
+.PHONY: cov-xrun cov-run cov-all coverage
+cov-xrun: $(COV)/xrun/report.txt
+	@cat $<
+cov-run: $(COV)/run/report.txt
+	@cat $<
+cov-all: $(COV)/all/report.txt
+	@cat $<
+
+coverage:
+	@test -n "$(KINDS)" || { echo 'coverage: KINDS="kinds" (the kinds: $(COV_KIND_LIST))'; exit 2; }
+	@for k in $(KINDS); do \
+	    case " $(COV_KIND_LIST) " in \
+	    *" $$k "*) ;; \
+	    *) echo "coverage: no kind $$k (the kinds: $(COV_KIND_LIST))"; exit 2;; \
+	    esac; \
+	done
+	@$(MAKE) --no-print-directory $(COV)/$(COV_SETNAME)/report.txt
+	@cat $(COV)/$(COV_SETNAME)/report.txt
+
 # The cross tests' references: tests/xrun/NAME.ref is NAME.c's stdout
 # under XCC, LF only; NAME.flags (possibly empty) holds extra XCC flags
 # for that one test. Make regenerates a .ref when its .c, its .flags or
@@ -421,4 +683,5 @@ clean:
 	rm -f doc/measure.txt doc/limits.md
 
 .PHONY: all small test testbuild xref measure listings print-sources bootstrap xload apple apple-inputs \
-        full-test limits demo-disk demo-run profile common-ops clean
+        full-test limits demo-disk demo-run profile common-ops clean \
+        cov-xrun cov-run cov-all coverage
