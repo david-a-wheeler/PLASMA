@@ -57,7 +57,14 @@ be likely to change its result.
    passes against broken code checks nothing. Do this for every new
    test that targets compiler logic, and say in the commit message
    what you broke and that the test caught it.
-6. **Measure again** (`make -j8 cov-all`), and commit (below).
+6. **Commit it now** (below), before you start the next test. Then
+   go back to step 1 or 3.
+
+**Commit each test as soon as it passes and you've checked that it
+can fail; don't save tests up for one commit at the end.** The
+session can end at any moment (the user sometimes has to shut down),
+and anything uncommitted is lost. A finished, committed test is never
+lost; at worst, the one in progress is.
 
 ## When a test fails
 
@@ -149,16 +156,31 @@ byte matters on the Apple II (doc/diet.md).
 
 Follow AGENTS.md's commit rules: stage files by explicit path, never
 commit a file whose name starts with a comma, never push, and end the
-message with the `Assisted-by:` and `Signed-off-by:` lines. Make one
-commit per area. Each commit message says:
+message with the `Assisted-by:` and `Signed-off-by:` lines.
 
-- what the tests check, and why those cases;
-- for each test aimed at compiler logic, what you broke to check it
+**One commit per test**, as soon as it's done (a few closely related
+test files may share a commit, if you wrote them together). **A test
+that found a bug is committed with its fix, in one commit**, as soon
+as the fix passes: never commit a failing test, since `make test` must
+pass at every commit. If you stop to report a bug instead of fixing
+it, keep the failing test and its expected result in a directory
+whose name starts with a comma, outside tests/ (e.g. `,bugs/`, beside
+the Makefile), and name it in your report. Not in a tests/ directory,
+even with a comma name: the Makefile's wildcards (`tests/run/*.c` and
+the rest) would run it, and `make test` would fail. A comma name
+keeps git from taking it by accident.
+
+Each commit message says:
+
+- what the test checks, and why those cases;
+- for a test aimed at compiler logic, what you broke to check it
   could fail, and that it did;
-- the area's coverage before and after (its lines and branches, from
-  report.txt), as numbers;
 - that `make test` passes (and `make bootstrap`, if you changed the
-  compiler).
+  compiler);
+- the coverage of the area before and after (its lines and branches,
+  from report.txt), as numbers. `make -j8 cov-all` takes about 25
+  seconds, so measure for each commit when that's practical; if not,
+  give the numbers in the commit that finishes an area.
 
 ## What we've learned
 
