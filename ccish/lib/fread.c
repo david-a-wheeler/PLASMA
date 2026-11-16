@@ -6,5 +6,6 @@
  * were read. */
 size_t fread(void *p, size_t size, size_t n, FILE *f)
 {
-  return fileio.read((int)f, p, size * n) / size;
+  size_t k = fileio.read((int)f, p, size * n);
+  return size == 1 ? k : k / size;
 }

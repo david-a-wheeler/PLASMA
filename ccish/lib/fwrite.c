@@ -6,5 +6,6 @@
  * written. */
 size_t fwrite(const void *p, size_t size, size_t n, FILE *f)
 {
-  return fileio.write((int)f, (char *)p, size * n) / size;
+  size_t k = fileio.write((int)f, (char *)p, size * n);
+  return size == 1 ? k : k / size;
 }
