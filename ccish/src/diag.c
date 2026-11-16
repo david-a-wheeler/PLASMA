@@ -90,7 +90,7 @@ static void put_err(const char *s)
 int msg_text(int n, char *buf, int size)
 {
   FILE *f = fopen(msg_path, "r");
-  int c, num, len, found = 0;
+  int c, num, len;
   char one[2];                  // a character, for put_err() (fputs,
                                 // which every program links; putc may
                                 // not be)
@@ -117,14 +117,14 @@ int msg_text(int n, char *buf, int size)
           buf[len++] = (char)c;
       if (size)
         buf[len] = 0;
-      found = 1;
-      break;
+      fclose(f);
+      return 1;
     }
     while (c != EOF && c != '\n' && c != '\r')
       c = getc(f);                // the rest of the line
   }
   fclose(f);
-  return found;
+  return 0;
 }
 
 // n in decimal, in a static buffer that the next call reuses (so copy
