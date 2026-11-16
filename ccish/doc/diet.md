@@ -237,12 +237,20 @@ expect it to pay.
   done: a little free list could let a finished file's buffer be
   reused, and take one or two Bfiles, 64 or 128 bytes, out of ccpp's
   zero region.
-- ccpp's name pool (ppname.c) is a flat, append-only string, and
-  find() scans it from the start on every lookup: the profile puts
-  find at 29% of ccpp's ops, its entry_len loop 7% more, a couple of
-  hundred pool entries per call. A small hash
-  over the pool (fixed table, chains into the pool) would cut the
-  biggest single cost in ccpp: kind A speed.
+- ccpp's name pool (ppname.c): the 16-slot recent-names cache is
+  already a hash table (80 bytes, the name hash's low four bits, a
+  miss walks the pool). Measured in one profile run: it hits 42% of
+  the 47,499 internings; the misses walk a couple of hundred entries,
+  and find is 29% of ccpp's ops, entry_len and same 10% more. The
+  pool peaks at 7,202 of its 8,207 bytes in one file (pexpr.c),
+  around nine hundred entries: a jump table authoritative enough to
+  end the walk would be 1,024 to 2,048 slots of 2-byte offsets, 2 to
+  4K, most of ccpp's 2,538 spare, so it waits for more spare or a
+  speed need. The cheap parts: find() reads pool[i] twice per entry
+  (entry_len, then the file bit), a local byte costs nothing; and 16
+  direct-mapped slots thrash against nine hundred names, so two names
+  per slot (160 bytes, +80) should cut the miss rate. Measure each
+  with the profile before committing.
 - Observation, from the BLOCK 128-to-64 round: how many distinct
   types a compilation unit uses depends, by one or two, on the paths
   the name file records for its headers (the name table feeds the
