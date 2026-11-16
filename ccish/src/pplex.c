@@ -512,18 +512,21 @@ int pp_word(const char *word, int n)
   return TC_ID;
 }
 
-// Read an identifier or keyword, and return its code (pp_word()).
+// Read an identifier or keyword, and return its code (pp_word()). The
+// word is spelled in pt_text, the string bytes of the token being read:
+// an identifier's value is its id in pt_val, not its text, so pt_text is
+// scratch here, and nothing reads the lexer again while the word is used
+// (pp_word's pp_intern stops it on an error).
 static int lex_word(void)
 {
-  char word[MAX_NAME + 1];
   int n = 0;
   while (is_alpha(ch) || is_digit(ch)) {
     if (n < MAX_NAME)
-      word[n++] = (char)ch;
+      pt_text[n++] = (unsigned char)ch;
     getch();
   }
-  word[n] = 0;
-  return pp_word(word, n);
+  pt_text[n] = 0;
+  return pp_word((const char *)pt_text, n);
 }
 
 // The multi-character operators' spellings, in the order of their codes
