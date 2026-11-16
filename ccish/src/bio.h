@@ -3,7 +3,7 @@
 #ifndef BIO_H
 #define BIO_H
 
-#define BLOCK        128    // file I/O buffer size (ProDOS buffers
+#define BLOCK        64    // file I/O buffer size (ProDOS buffers
                             // each file's blocks itself)
 
 typedef struct {

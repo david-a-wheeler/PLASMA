@@ -34,10 +34,10 @@
 #include "type.tag.h"
 
 #ifndef CCISH_BIG_LIMITS
-#define MAX_TYPES    54     // limit file: distinct types; at most 128, since
+#define MAX_TYPES    61     // limit file: distinct types; at most 128, since
                             // char tables (fn_type[], param_types[]) hold
                             // unqualified types, and a host's char may be
-                            // signed
+                            // signed; 10% over the peak (55, link.c)
 #else
 #define MAX_TYPES    128    // the full build's: its own link.c needs 58
 #endif
