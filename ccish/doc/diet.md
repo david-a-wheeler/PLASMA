@@ -231,6 +231,23 @@ expect it to pay.
   could be shorter is a peephole pattern (peep.c) or a better choice
   in code generation. `make listings` writes each source file's C
   beside the machine ops ccgen writes for it.
+- ccpp's six Bfiles (the source and up to three includes, NAME.i and
+  NAME.nam) are all static, but at most four files are open at once
+  (measure.txt), and the name file is written after the source is
+  done: a little free list could let a finished file's buffer be
+  reused, and take one or two Bfiles, 64 or 128 bytes, out of ccpp's
+  zero region.
+- ccpp's name pool (ppname.c) is a flat, append-only string, and
+  find() scans it from the start on every lookup: the profile puts
+  find at 29% of ccpp's ops, its entry_len loop 7% more, a couple of
+  hundred pool entries per call. A small hash
+  over the pool (fixed table, chains into the pool) would cut the
+  biggest single cost in ccpp: kind A speed.
+- Observation, from the BLOCK 128-to-64 round: how many distinct
+  types a compilation unit uses depends, by one or two, on the paths
+  the name file records for its headers (the name table feeds the
+  type table's keys). The limit's 10% headroom covers it; just be
+  aware a longer or shorter build path can move a count by a little.
 
 ## How to measure
 
