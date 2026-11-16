@@ -128,7 +128,10 @@ def read_listing(program):
     ops, func = [], None
     with open(os.path.join(OUT, program + ".lst")) as f:
         for line in f:
-            m = re.match(r"^([A-Za-z_$@][\w$@]*):$", line)
+            # A label: the function's name, or "helper NAME" for a
+            # helper function (cclink's listing prints the two words)
+            m = re.match(r"^([A-Za-z_$@][\w$@]*(?: [A-Za-z_$@][\w$@]*)?):$",
+                         line)
             if m:
                 func = m.group(1)
                 continue
