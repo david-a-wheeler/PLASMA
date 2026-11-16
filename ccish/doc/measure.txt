@@ -115,7 +115,7 @@ ccpp: 9 files, and 18 library objects:
   172 functions: 866 bytes of the loader's def table, kept (init's entry too, and an end byte)
   shared names: 119 of 307 slots, 1156 of 3000 name bytes
   stack, worst case from (init) (recursion that counts nesting bounded by MAX_NEST, 32 trips):
-    frame stack at least 239 bytes; 6502 stack at least 35 calls x 4 = 140 bytes
+    frame stack at least 236 bytes; 6502 stack at least 35 calls x 4 = 140 bytes
     unbounded recursion (no nest count; counted once above): binary 16, cond 10, unary 4
     unbounded recursion (no nest count; counted once above): call 30, expand_arg 4, pp_next 12
     unbounded recursion (no nest count; counted once above): clean_up 0, fatal0 2, remove_stream 4, report 14, stop 8, stream_name 4
@@ -124,7 +124,7 @@ ccpp: 9 files, and 18 library objects:
       _start                                          10
       main                                            12
       pp_file                                          6
-      directive                                       17
+      directive                                       14
       do_elif                                          4
       pp_if_expr                                       2
       recursion: binary and 2 more                    30
@@ -142,18 +142,18 @@ ccpp: 9 files, and 18 library objects:
       fopen                                            8
       _path                                            4
       strlen                                           4
-    largest frames: do_define 42, pp_spell_token 30, call 30, msg_text 18, directive 17
+    largest frames: do_define 42, pp_spell_token 30, call 30, msg_text 18, paste 16
   static locals (bytes saved; per call, about 45 cycles saved with new opcodes):
     leaf functions: 34 of 147 framed functions, 242 frame accesses; saves 98 bytes with new opcodes, -264 with LAW/SAW
     compiled stack (all non-recursive): 128 of 147 framed functions, 1420 frame accesses; saves 478 bytes with new opcodes, -1320 with LAW/SAW
-    leaf region 12 bytes (largest leaf frame); compiled stack region 121 bytes
+    leaf region 12 bytes (largest leaf frame); compiled stack region 118 bytes
   as an XLOAD image: file 18735 bytes; data 1414, zero region 15556, code 15085,
     173 functions (init too), fixups 1803 bytes
   on a 64K Apple II (41171 bytes free), through XLOAD:
     def table 865, data 1414, zero region 15556, code 15085,
-    frame stack at least 239, FILEIO 1998,
+    frame stack at least 236, FILEIO 1998,
     I/O buffers 3 x 1280 at most: 4 files open (the source, 2 includes at most, and NAME.i)
-    running, needs 38997 of 41171: 2174 to spare
+    running, needs 38994 of 41171: 2177 to spare
     (a lower bound: the frame stack takes more with the unbounded recursion above)
     loading, needs 35430 of 41171: 5741 to spare (XLOAD's second part in its zero region,
     at 4451 to 8330 above the heap's bottom, the zero region 2279 to 17835; 512 for frames)
@@ -373,7 +373,7 @@ And their fit on a 64K Apple II (41171 bytes free), through XLOAD:
         ----- Loading ----- ----- Running -----
 Program   Need  Spare  OK?   Need  Spare  OK?
 XLOAD     7891  33280  yes
-ccpp     35430   5741  yes  38997   2174  yes*
+ccpp     35430   5741  yes  38994   2177  yes*
 cccomp   37942   3229  yes  39581   1590  yes*
 ccgen    36236   4935  yes  38594   2577  yes*
 cclink   28353  12818  yes  29403  11768  yes*

@@ -16,6 +16,7 @@ printf 'int main()\n{\n  return y;\n}\n' >"$OUT/a.c"
 printf 'int f(void);\nint g(void) { return zz; }\n' >"$OUT/h.h"
 printf '#include "h.h"\nint main()\n{\n  return 0;\n}\n' >"$OUT/b.c"
 printf '#frobnicate\nint main(void) { return 0; }\n' >"$OUT/c.c"
+printf '#includex "nope.h"\nint main(void) { return 0; }\n' >"$OUT/d.c"
 printf '_Static_assert(0, "kept here");\nint main(void) { return 0; }\n' >"$OUT/s.c"
 printf '#error stop here\nint main(void) { return 0; }\n' >"$OUT/e.c"
 
@@ -38,6 +39,16 @@ check() {
 check a "a.c:3: error 64: undeclared identifier" "'y'"
 check b "h.h:2: error 64: undeclared identifier" "'zz'"
 check c "c.c:1: error 234: unknown preprocessor directive:" "#frobnicate"
+
+# The small build holds only 8 characters of a directive's name (pp.c's
+# HASHED_CHARS), and a longer word is cut to 8, which no known name is:
+# #includex is not #include.
+small=$(cd "$OUT" && ../../../ccpp-small -o sd d.c 2>&1)
+if [ "$small" != "d.c:1: error 234: unknown preprocessor directive:" ]; then
+    echo "FAIL smalldiag d: wanted 'd.c:1: error 234: unknown preprocessor"
+    echo "    directive:', got:"
+    printf '%s\n' "$small" | sed 's/^/    /'; bad=1
+fi
 
 # $1 the source's tag, $2 the message, the same in both builds, its
 # detail kept.

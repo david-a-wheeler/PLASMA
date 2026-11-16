@@ -385,16 +385,28 @@ static void do_endif(void)
   nconds--;
 }
 
+// The most characters of a directive's name directive() stores, after
+// its '#': 11 in the full build, as always (its error 234 shows the
+// name); 8 in the small build's, whose error 234 shows no name. Every
+// known directive is at most 7 characters (include, ifndef), and a
+// word that is cut off is cut to 8, which no known name is, so a cut
+// word can never be read as a known one.
+#ifdef CCISH_DIAG
+#define HASHED_CHARS 11
+#else
+#define HASHED_CHARS 8
+#endif
+
 // Carry out a directive, after its '#'. In a group being skipped, only
 // the conditional ones count, and the rest of the line is passed over;
 // the null directive (a '#' alone) does nothing.
 static void directive(void)
 {
-  char hashed[13], *name = hashed + 1;
+  char hashed[HASHED_CHARS + 2], *name = hashed + 1;
   int n;
   pp_mode = PM_DIRECTIVE;
   hashed[0] = '#';
-  n = pp_lex_word(name, sizeof(hashed) - 1);
+  n = pp_lex_word(name, HASHED_CHARS + 1);
   if (n == 0) {
     if (taking() && pp_lex() != TC_NL)
       error0(234 /* "unknown preprocessor directive:" */);
