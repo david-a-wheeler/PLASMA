@@ -17,7 +17,9 @@ more efficient:
 
 1. **Size first.** Less memory while a pass runs on an Apple II
    (its code, data, zero region, def table and frame stack), and smaller
-   files on disk. **cccomp and ccpp matter most**, while
+   files on disk. **ccpp matters most** for now since it's really slow
+   and we can't improve that without 2K more memory free. cccomp is also
+   short of space, while
    ccgen and cclink have more room, but every byte saved anywhere helps.
 2. **Speed, when it costs no size.** The passes are already very slow on a
    1 MHz Apple II (ccpp, the slowest, most of all), so never
