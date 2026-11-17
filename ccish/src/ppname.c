@@ -80,13 +80,6 @@ static const char *const fixed[NFIXED - CMDSYS_IDS] = {
   "__asm__", "__plasma_import"
 };
 
-// The length of the entry at pool offset i, the length byte without
-// its file bit: an identifier's is its length, a file's its name's.
-static int entry_len(int i)
-{
-  return pool[i] & FILE_LEN;
-}
-
 // Are the n bytes at p spelled s (n chars)?
 static int same(const unsigned char *p, const char *s, int n)
 {
@@ -128,13 +121,16 @@ static int cmdsys_find(const char *s, int n)
 // Find the entry of kind kind (0 or ENT_FILE) spelled s (n chars):
 // return its number among the entries of that kind, from 1 for a file
 // and from CMDSYS_IDS + 1 for an identifier (its id), or 0 if there is
-// none; its offset goes in *at.
+// none; its offset goes in *at. The length byte is one local, not two
+// loads, so the walk is one less per entry.
 static int find(const char *s, int n, int kind, int *at)
 {
   int i = 0, k = kind ? 0 : CMDSYS_IDS, len;
+  unsigned char b;
   while (i < pool_used) {
-    len = entry_len(i);
-    if ((pool[i] & ENT_FILE) == kind) {
+    b = pool[i];
+    len = b & FILE_LEN;
+    if ((b & ENT_FILE) == kind) {
       k++;
       if (len == n && same(pool + i + 1, s, n)) {
         *at = i;
@@ -150,10 +146,12 @@ static int find(const char *s, int n, int kind, int *at)
 static int entry_at(int k, int kind)
 {
   int i = 0, j = 0;
+  unsigned char b;
   for (;;) {
-    if ((pool[i] & ENT_FILE) == kind && ++j == k)
+    b = pool[i];
+    if ((b & ENT_FILE) == kind && ++j == k)
       return i;
-    i += entry_len(i) + 1;
+    i += (b & FILE_LEN) + 1;
   }
 }
 
@@ -243,7 +241,7 @@ int pp_add_file(const char *path)
 // Copy the name of source file k into buf (MAX_PATH bytes).
 void pp_file_path(int k, char *buf)
 {
-  int i = entry_at(k, ENT_FILE), n = entry_len(i);
+  int i = entry_at(k, ENT_FILE), n = pool[i] & FILE_LEN;
   memcpy(buf, pool + i + 1, n);
   buf[n] = 0;
 }
@@ -324,6 +322,7 @@ static void put_hex(Bfile *f, int v)
 int pp_names_write(Bfile *f)
 {
   int pass, i, j, len, h = 0;
+  unsigned char b;
   const char *s;
   for (i = 1; i <= CMDSYS_IDS; i++) {
     for (s = pp_id_spelling(i); *s; s++)
@@ -332,8 +331,9 @@ int pp_names_write(Bfile *f)
   }
   for (pass = 0; pass <= ENT_FILE; pass += ENT_FILE)
     for (i = 0; i < pool_used; i += len + 1) {
-      len = entry_len(i);
-      if ((pool[i] & ENT_FILE) != pass)
+      b = pool[i];
+      len = b & FILE_LEN;
+      if ((b & ENT_FILE) != pass)
         continue;
       if (pass)
         put_sum(f, '@', &h);
