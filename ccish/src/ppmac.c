@@ -33,12 +33,11 @@
 
 #define MAX_MACROS   176    // limit pp: macros defined at once, include
                             // guards too: about 10% over ccish's own
-                            // peak (160, ptop.c)
+                            // peak (162, ptop.c)
 #define MAX_MACRO_BYTES 1500 // limit pp: bytes of their bodies, as tokens,
                              // where an identifier or number is 3 bytes:
-                             // about 10% over ccish's own peak (1361); a
-                             // byte of ccpp's heap each, and nothing of
-                             // cccomp's
+                             // over ccish's own peak (1402); a byte of
+                             // ccpp's heap each, and nothing of cccomp's
 #define MAX_EXPAND   10     // limit pp: macro expansions inside one
                             // another: C11 5.1.1.2's 10, and 150% over
                             // ccish's own peak (4)

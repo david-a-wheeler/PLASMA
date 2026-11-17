@@ -46,10 +46,12 @@ __LINE__
 defined
 __asm__
 __plasma_import
+true
+false
 a
 b
 f
 @tests/pp/line.c
 @other.c
 
-=3 0033 ssss
+=3 0035 ssss

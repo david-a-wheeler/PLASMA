@@ -560,9 +560,12 @@ static void scalar_init(int s, int type)
   begin_expr();
   parse_expr(PREC_ASSIGN, &e);
   check_assign(type, &e, 198 /* "initialization" */, NULL);
+  if (e.kind == K_CONST && UNQUAL(type) == TY_BOOL)
+    e.val = e.val != 0;    // C23: a bool is initialized to 1 or 0
   if (e.kind == K_CONST)
     set_known(s, e.val);
   rvalue(&e);
+  normalize_bool(&e, UNQUAL(type));
   e.kind = K_VAR;
   e.type = UNQUAL(type);
   e.quals = type & Q_ALL;     // a volatile x = e; stores volatile
@@ -1014,6 +1017,8 @@ static void parse_return(void)
     check_assign(fn_type[cur_fn], &o, 199 /* "return" */, NULL);
     if (fn_type[cur_fn] == TY_CHAR)
       to_char(&o);        // a char function returns 0 to 255
+    else if (fn_type[cur_fn] == TY_BOOL)
+      to_bool(&o);        // a bool function returns 0 or 1
     if (is_struct(fn_type[cur_fn]))
       push_struct_words(&o);  // returned as its words
     else

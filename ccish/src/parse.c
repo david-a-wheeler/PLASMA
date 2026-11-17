@@ -527,6 +527,8 @@ int parse_base_type(void)
   } else {
     if (tok == TC_VOID)
       t = TY_VOID;
+    else if (tok == TC_BOOL)
+      t = TY_BOOL;
     else if (tok != TC_ID || (t = typedef_type(tok_val)) < 0)
       error(33 /* "expected a type, not" */, tok_desc());
     next();
@@ -990,7 +992,8 @@ static void keep_copy(int is_char)
 // after a copy of the value, for a global that may move.
 void store_var(Operand *o)
 {
-  int c = o->type == TY_CHAR, form = acc_form(o->type, o->quals);
+  int c = o->type == TY_CHAR || o->type == TY_BOOL,
+      form = acc_form(o->type, o->quals);
   if (movable(o->global)) {
     keep_copy(c);
     push_var_addr(o->off, o->global);
@@ -1010,11 +1013,12 @@ int max_offset(int global)
 }
 
 // The form bits (IR_FORM, ir.h) of an access to a place of type t with
-// qualifiers quals: IR_ACC_BYTE for a char, IR_VOLATILE if volatile.
-// It relies on IR_ACC_BYTE being 1 and Q_VOLATILE IR_VOLATILE << 4.
+// qualifiers quals: IR_ACC_BYTE for a char or bool (the 1-byte types),
+// IR_VOLATILE if volatile. It relies on IR_ACC_BYTE being 1 and
+// Q_VOLATILE IR_VOLATILE << 4.
 int acc_form(int t, int quals)
 {
-  return (t == TY_CHAR) | ((quals & Q_VOLATILE) >> 4);
+  return (t == TY_CHAR || t == TY_BOOL) | ((quals & Q_VOLATILE) >> 4);
 }
 // acc_form()'s two tricks: a comparison's 1 is IR_ACC_BYTE, and
 // Q_VOLATILE (type.h) is IR_VOLATILE (ir.h) four bits up. Here, as the
@@ -1168,14 +1172,16 @@ void rvalue(Operand *o)
     break;
   case K_VAR:
     load_var(o->off, o->global, acc_form(o->type, o->quals));
-    o->is_bool = 0;
+    // A bool holds only 0 or 1 (every store normalizes), so its load
+    // is known:
+    o->is_bool = o->type == TY_BOOL;
     break;
   case K_ELEM:
     push_address(o);
     // fall through
   case K_DEREF:
     put_op(IR_FORM(IR_LOAD, acc_form(o->type, o->quals)));
-    o->is_bool = 0;
+    o->is_bool = o->type == TY_BOOL;
     break;
   case K_STORE:
     finish_store(o, 1);
@@ -1347,7 +1353,7 @@ void assign_to(Operand *o)
     return;
   }
   if (o->quals & Q_VOLATILE)
-    keep_copy(o->type == TY_CHAR);
+    keep_copy(o->type == TY_CHAR || o->type == TY_BOOL);
   push_address(o);
   put_op(STORE_OP(o->type, o->quals));
   if (o->quals & Q_VOLATILE)

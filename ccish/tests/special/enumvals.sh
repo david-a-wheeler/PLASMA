@@ -138,8 +138,10 @@ for f in src/*.c; do
         exf[nex] = "src/pplex.c"; exr[nex] = "return TC_KEYWORDS \\+ i|return TC_OPS \\+ i|TC_KEYWORDS \\+ NKEYWORDS|TC_OPS \\+ NOPS|keywords\\[code - TC_KEYWORDS\\]|ops\\[code - TC_OPS\\]"; nex++
         # The stream keyword codes, by offset in their block (CCPP.md).
         exf[nex] = "src/ppif.c"; exr[nex] = "TC_KEYWORDS \\+ NKEYWORDS"; nex++
-        # TK_PTR is assigned TY_UINT + 1 in the enum in type.c, asserted there.
-        exf[nex] = "src/type.c"; exr[nex] = "ntypes = TY_UINT \\+ 1"; nex++
+        # TK_PTR is assigned TY_BOOL + 4 in the enum in type.c, and
+        # ntypes counts the basic types, TY_BOOL + 1; both are asserted
+        # there and in type.h.
+        exf[nex] = "src/type.c"; exr[nex] = "ntypes = TY_BOOL \\+ 1"; nex++
         re1 = "(^|[^A-Za-z0-9_])(IR_|T_|TC_|OP_|TY_|TK_|MOP_|Q_|FIX_|SYM_|REL_|VL_|FN_|REC_|D_|ID_|HELP_)[A-Z][A-Z_0-9]*[ \t]*[-+*/]"
         re2 = "[-+*/][ \t]*(IR_|T_|TC_|OP_|TY_|TK_|MOP_|Q_|FIX_|SYM_|REL_|VL_|FN_|REC_|D_|ID_|HELP_)[A-Z][A-Z_0-9]"
         for (i = 1; i <= NR; i++) {

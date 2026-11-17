@@ -32,6 +32,15 @@ void check_assign(int to, Operand *o, int where, const char *detail);
 // pending; anything else ends up on the stack.
 void to_char(Operand *o);
 
+// Make o's value C's truth value: 1 if it is nonzero, else 0. A
+// constant stays pending; anything else ends up on the stack.
+void to_bool(Operand *o);
+
+// Convert the value *o, already on the stack, to a bool's value: 1 if
+// it is nonzero, else 0 (C23), when the object stored into, of type
+// st, is a bool. A value already known to be 0 or 1 needs no code.
+void normalize_bool(Operand *o, int st);
+
 // Copy the struct r into the place o (the how in pexpr.c's
 // copy_struct).
 void copy_struct(Operand *o, Operand *r, int start);

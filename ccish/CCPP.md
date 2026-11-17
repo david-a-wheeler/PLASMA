@@ -87,8 +87,11 @@ steps 4-6):
   may be defined again only with the same parameters and tokens.
   **`#undef name`** undefines one. A macro's name is an identifier, or
   one of the C keywords ccish doesn't support (`long`, say), which are
-  names here too; a keyword ccish supports can't be one. `__CCISH__` is
-  defined as 1.
+  names here too; a keyword ccish supports can't be one. `__CCISH__`
+  is defined as 1, and `true` and `false` as 1 and 0, for the `bool`
+  type (the guide's section 4.4): the three are defined before any
+  `-D` or `-U` option is read, so an option may still `-U` them (or
+  `-D` them again with the same tokens, no more).
 - A function-like macro's name followed by `(` is a call (the `(` may
   be on a later line); otherwise the name stays as it is. Each argument
   is fully macro-expanded by itself before it is substituted (C11
@@ -164,7 +167,7 @@ All words are 16-bit little-endian. The file is written once, in
 order, through a 512-byte block buffer (`src/bio.c`).
 
 **The header**: the 3 bytes `CTK`, then the format version, a byte:
-**8**. The source file's name is not here: it is file 1 in
+**9**. The source file's name is not here: it is file 1 in
 `NAME.nam`.
 
 **Then the tokens**, each a code byte, followed by its operands:
@@ -197,13 +200,14 @@ and one compare; a block's spare codes (blank here, UNUSED in the
 sources) are room for a new keyword of its kind, and are never
 written. `$80`-`$8F` are the type-name keywords: the int-type
 specifiers and the qualifiers, a block of 8; the tagged types, struct
-and union first; `void`. Then the storage classes, `typedef` and
-`constexpr`, and the switch labels; then the rest:
+and union first; `void`; and `bool` (C23's, `_Bool` written as it).
+Then the storage classes, `typedef` and `constexpr`, and the switch
+labels; then the rest:
 
 | | +0 | +1 | +2 | +3 | +4 | +5 | +6 | +7 |
 |---|---|---|---|---|---|---|---|---|
 | `$80` | `int` | `char` | `signed` | `unsigned` | `const` | `volatile` | | |
-| `$88` | `struct` | `union` | `enum` | | `void` | | | |
+| `$88` | `struct` | `union` | `enum` | | `void` | | | `bool` |
 | `$90` | `static` | `extern` | `register` | | `typedef` | `constexpr` | `case` | `default` |
 | `$98` | `return` | `if` | `else` | `while` | `do` | `for` | `break` | `continue` |
 | `$A0` | `sizeof` | `switch` | `goto` | `_Static_assert` | | | | |
@@ -227,7 +231,12 @@ changes the format version.
 `short` is a synonym for `int` (ccish has one word type, and the
 standard C distinction between the two is not worth implementing): the
 preprocessor writes it as the `int` token ($80), so no short token of
-its own exists, and the compiler never sees the word.
+its own exists, and the compiler never sees the word. `_Bool` is a
+synonym for `bool` the same way: the preprocessor writes it as the
+`bool` token ($8F), and the compiler never sees the spelling. And
+`true` and `false` are not tokens at all: they are predefined macros,
+`1` and `0` (above), expanded in ordinary text and in `#if` alike,
+as C99's `<stdbool.h>` has them.
 
 **Digraphs** (`<: :> <% %>`) are written as the tokens they stand for
 (`[ ] { }`). A character constant is a number (`$05`): its value is
@@ -266,22 +275,26 @@ identifier can't contain a newline, and nor can a ProDOS path, so
 nothing is escaped.
 
 ```
-__cmd_putc          id 1: the fixed ids, 1-33, in every file
+__cmd_putc          id 1: the fixed ids, 1-48, in every file
 __cmd_putln         id 2
 ...
 __cmd_isule         id 25
-main            id 26
-pstr            id 27
+?                 id 26: the 15 spares, 26-40
 ...
-defined         id 31
-__asm__         id 32
-__plasma_import id 33
-count           id 34: then every other name, in the order ccpp met it
+main              id 41
+pstr              id 42
+...
+defined           id 46
+__asm__           id 47
+__plasma_import   id 48
+true              id 49: the predefined macros, in every file
+false             id 50
+count             id 51: then every other name, in the order ccpp met it
 ...
 @t.c            file 1: the source
 @stdio.h        file 2, and so on, in the order first included
                 a blank line
-=2 0022 3F7C    the stamp: the format version, the id count, the checksum
+=3 0033 3F7C    the stamp: the format version, the id count, the checksum
 ```
 
 **Names.** Line *n* is the spelling of id *n*, from 1 (id 0 is "no
@@ -313,7 +326,11 @@ and `pstr` (42): every name C-ish gives a meaning of its own; then
 `__CCISH__` (43), `__FILE__` (44), `__LINE__` (45) and `defined` (46),
 which `ccpp` gives one; then `__asm__` (47) and `__plasma_import`
 (48), for imports from other modules. So `cccomp` and `ccpp` know them by number
-(`src/fixed.h`), with no spellings.
+(`src/fixed.h`), with no spellings. The predefined macros `true` and
+`false` are not fixed ids: ccpp interns them as the first pool names of
+every file, before the source's names, so every name file begins with
+them after the fixed ids (ids 49 and 50, unless a `-D` option names a
+macro first).
 
 **Files.** After the names, one line for each source file, starting
 with `@`: file *k* is the *k*-th of them, and file 1 is the source
@@ -326,7 +343,7 @@ checked when the file is read, so that an off-by-one or other damage
 (a lost or extra line, the stamp read as a name) is found rather than
 quietly giving the wrong names.
 
-**The stamp** is the last line: `=`, the format version (**2**, in
+**The stamp** is the last line: `=`, the format version (**3**, in
 decimal), a space, the id count (4 hex digits, upper case), a space,
 and the checksum (4 hex digits). Nothing follows its newline.
 
@@ -373,20 +390,21 @@ For `t.c` holding the one line `int main() { return 0; }`, `ccpp`
 writes `t.i`:
 
 ```
-43 54 4B 08    "CTK", version 8
+43 54 4B 09    "CTK", version 9
 80             int
-04 1A 00       an identifier: id 26, main
+04 29 00       an identifier: id 41, main
 28 29 7B       ( ) {
-89             return
+98             return
 05 00 00       the number 0
 3B 7D          ; }
 01             the next line
-00 1F 00 ss ss the end: 31 ids, and the checksum
+00 32 00 ss ss the end: 50 ids, and the checksum
 ```
 
-and `t.nam`: the 31 fixed names (`main` is one of them, so no other
-name is added), then `@t.c`, a blank line, and `=1 001F ssss`, where
-`ssss` is the checksum of the 32 lines before the blank line (`ss ss`
+and `t.nam`: the 48 fixed names (`main` is one of them), then
+`true` and `false` (the predefined macros, in every file; no other
+name is added), then `@t.c`, a blank line, and `=3 0032 ssss`, where
+`ssss` is the checksum of the 51 lines before the blank line (`ss ss`
 in `t.i`, low byte first).
 
 ## Limits
@@ -425,3 +443,15 @@ small (its macros are short), so that ordinary programs fit too.
 - **`NAME.nam` version 2** (2026-11-07, phase 4 of
   doc/bootstrap-test.md): two more fixed ids, `__asm__` (32) and
   `__plasma_import` (33), so every other id is 2 higher.
+- **`NAME.nam` version 3** (2026-11-14, doc/linking.md step 7): the
+  25 CMDSYS names take the `__cmd_` prefix, and 15 spare ids follow
+  them (26-40), so a function a later PLASMA adds renumbers nothing;
+  `main` and `pstr` move to 41 and 42, and the rest of the fixed ids
+  to 43-48 (`__asm__` and `__plasma_import` are 47 and 48 now).
+- **`NAME.i` version 9** (2026-11-17): `bool` is a supported keyword,
+  `$8F`, one of the type-name block's spares, and `_Bool` is written
+  as it. `true` and `false` carry no new token: they are predefined
+  macros, interned as the first pool names of every `NAME.nam` (ids 49
+  and 50, before the source's names and any `-D` options'). The bump
+  is because `$8F` was an UNUSED code (a damaged one) in version 8, and
+  the name files' two extra names put every other id 2 higher.

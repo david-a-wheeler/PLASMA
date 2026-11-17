@@ -46,6 +46,8 @@ __LINE__
 defined
 __asm__
 __plasma_import
+true
+false
 x
 a_name_that_is_longer_than_thir
 p
@@ -54,4 +56,4 @@ y
 z
 @tests/pp/tokens.c
 
-=3 0036 ssss
+=3 0038 ssss

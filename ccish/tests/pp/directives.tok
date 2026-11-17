@@ -1,40 +1,40 @@
 # Object-like macros, conditional groups, a joined line, the null
 # directive and #pragma (CCPP.md; approach.md, "ccpp design", step 4).
-# Lines 1-3 define N (id 49), S (50) and E (51), and write nothing.
-43 54 4b 08     # "CTK", version 8
+# Lines 1-3 define N (id 51), S (52) and E (53), and write nothing.
+43 54 4b 09     # "CTK", version 9
 01 01 01        # up to line 4: 3 lines, so next-line codes
 # line 4: int x = N;
 80
-04 34 00        # x: id 52
+04 36 00        # x: id 54
 3d
 05 2a 00        # N: 42
 3b
 01
 # line 5: S tag *p;  S is struct, so tag is a struct's tag
 88
-09 35 00 9a bf 5f 74    # tag: id 53; its hash is 49050 ($BF9A), 31^3 = 29791 ($745F)
+09 37 00 9a bf 5f 74    # tag: id 55; its hash is 49050 ($BF9A), 31^3 = 29791 ($745F)
 2a
-04 36 00        # p: id 54
+04 38 00        # p: id 56
 3b
 01 01           # line 6 is #ifdef N, which is defined
 # line 7: int y E;  E is empty
 80
-04 37 00        # y: id 55
+04 39 00        # y: id 57
 3b
 # lines 8-17 are skipped or directives; "don't lex this", "skipped" and
 # "no" are never split into tokens, so they get no ids
 02 12 00        # up to line 18: 11 lines, so a jump
 # lines 18-19, joined by the backslash: int z = 1;
 80
-04 38 00        # z: id 56
+04 3a 00        # z: id 58
 3d
 05 01 00
 3b
 # line 20 is a null directive, and line 21's #pragma is ignored: its
 # first word, "anything", is read as text and gets no id, but "here"
-# does (57)
+# does (59)
 02 16 00        # up to line 22: 4 lines, so a jump
-04 3a 00        # q: id 58
+04 3c 00        # q: id 60
 3b
 01              # the end is on line 23
-00 3a 00 ss ss  # the end: 58 ids, the checksum
+00 3c 00 ss ss  # the end: 60 ids, the checksum

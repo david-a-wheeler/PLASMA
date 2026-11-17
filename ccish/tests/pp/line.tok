@@ -1,14 +1,14 @@
 # #line, __LINE__ and __FILE__ (approach.md, "ccpp design", step 6).
-43 54 4b 08     # "CTK", version 8
-80 04 31 00 3b  # line 1: int a;  (a: id 49)
+43 54 4b 09     # "CTK", version 9
+80 04 33 00 3b  # line 1: int a;  (a: id 51)
 # line 2 makes the next line 50, of a file named other.c (file 2)
 03 02 32 00     # file 2, line 50
-80 04 32 00 3d 05 32 00 3b      # int b = 50;  (b: id 50)
+80 04 34 00 3d 05 32 00 3b      # int b = 50;  (b: id 52)
 01
-# line 51: char *f = "other.c";  (f: id 51); the string is held for
+# line 51: char *f = "other.c";  (f: id 53); the string is held for
 # the ';', on the same line
-81 2a 04 33 00 3d
+81 2a 04 35 00 3d
 08 07 6f 74 68 65 72 2e 63
 3b
 01              # the end is on line 52
-00 33 00 ss ss  # the end: 51 ids, the checksum
+00 35 00 ss ss  # the end: 53 ids, the checksum

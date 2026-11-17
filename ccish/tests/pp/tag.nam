@@ -46,6 +46,8 @@ __LINE__
 defined
 __asm__
 __plasma_import
+true
+false
 s
 p
 ab
@@ -53,4 +55,4 @@ u
 q
 @tests/pp/tag.c
 
-=3 0035 ssss
+=3 0037 ssss

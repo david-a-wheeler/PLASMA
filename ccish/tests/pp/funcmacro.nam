@@ -46,6 +46,8 @@ __LINE__
 defined
 __asm__
 __plasma_import
+true
+false
 F
 a
 b
@@ -61,4 +63,4 @@ x1
 y
 @tests/pp/funcmacro.c
 
-=3 003D ssss
+=3 003F ssss

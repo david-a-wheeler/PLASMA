@@ -274,7 +274,7 @@
 274 void
 275 relocations out of order for an XLOAD image
 276 a comma operator isn't allowed in a constant expression in C
-277 (spare)
+277 bool
 278 static
 279 extern
 280 register

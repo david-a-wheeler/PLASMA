@@ -2,8 +2,8 @@
 // plus qualifier bits (Q_CONST, Q_VOLATILE) above it, so a qualified
 // type needs no entry of its own (approach.md, "M5 design"). Equal
 // unqualified types share one entry. The first entries are the basic
-// types, at the fixed indexes TY_VOID, TY_CHAR, TY_INT and TY_UINT
-// (unsigned int). Pointer and array types are added as they are
+// types, at the fixed indexes TY_VOID, TY_CHAR, TY_INT, TY_UINT
+// (unsigned int) and TY_BOOL. Pointer and array types are added as they are
 // needed. A multi-dimensional array is an array of arrays: int m[3][4]
 // is an array of 3 arrays of 4 ints.
 //
@@ -37,7 +37,7 @@
 #define MAX_TYPES    61     // limit file: distinct types; at most 128, since
                             // char tables (fn_type[], param_types[]) hold
                             // unqualified types, and a host's char may be
-                            // signed; 10% over the peak (55, link.c)
+                            // signed; 10% over the peak (56, link.c)
 #else
 #define MAX_TYPES    128    // the full build's: its own link.c needs 58
 #endif
@@ -48,21 +48,23 @@ _Static_assert(MAX_TYPES <= TY_INDEX + 1,
                "MAX_TYPES: a type's index must fit in a handle's index bits");
 
 // The kinds of type, tkind[]'s values: a basic type's kind is its own
-// index (TY_VOID ... TY_UINT, type.h), and the other kinds follow. Only
-// type.c needs them, so they cost the other files no MAX_IDS entries.
-// The kinds whose values are pointers (is_pointer_value()) are a block
-// of 4, with a spare.
-enum { TK_PTR = TY_UINT + 1, TK_FUNC, TK_ARRAY, TK_STRUCT = TK_PTR + 4 };
+// index (TY_VOID ... TY_BOOL, type.h), and the other kinds follow.
+// A kind is never a basic type's, so TK_PTR is the first aligned
+// block of 4 above them. Only type.c needs them, so they cost the
+// other files no MAX_IDS entries. The kinds whose values are pointers
+// (is_pointer_value()) are a block of 4, with a spare.
+enum { TK_PTR = TY_BOOL + 4, TK_FUNC, TK_ARRAY, TK_STRUCT = TK_PTR + 4 };
 _Static_assert((int)TK_PTR > (int)TY_UINT && TK_STRUCT < 128
                && (TK_PTR & 3) == 0 && TK_ARRAY - TK_PTR < 4
                && TK_FUNC - TK_PTR < 4 && TK_STRUCT - TK_PTR >= 4,
                "a kind is also a basic type's, or doesn't fit in tkind[],"
                " or the pointer-valued kinds aren't an aligned block");
 
-static char tkind[MAX_TYPES] = {TY_VOID, TY_CHAR, TY_INT, TY_UINT};
+static char tkind[MAX_TYPES] = {TY_VOID, TY_CHAR, TY_INT, TY_UINT,
+                                TY_BOOL};
 static int tsub[MAX_TYPES];     // a handle, with qualifier bits
 static int tcount[MAX_TYPES];
-static int ntypes = TY_UINT + 1;    // the basic types, first
+static int ntypes = TY_BOOL + 1;    // the basic types, first
 
 int tg_name[MAX_TAGS];          // (type.tag.h)
 int tg_size[MAX_TAGS];
@@ -100,6 +102,7 @@ int type_size(int t)
 {
   switch (TYPE_KIND(t)) {
   case TY_CHAR:  return 1;
+  case TY_BOOL:  return 1;
   case TY_INT:   return 2;
   case TY_UINT:  return 2;
   case TK_PTR:   return 2;
@@ -193,10 +196,10 @@ int hash_byte(int h, int c)
 }
 
 // Type hash h with type t added, as a canonical string: k and V for
-// const and volatile, then i, u (unsigned int), c or v, * and the
-// target, [ with the
-// count and the element, ( and the return type, or s, the tag's name
-// and ';' (a struct is known by its name in every file).
+// const and volatile, then i, u (unsigned int), b, c or v, * and the
+// target, [ with the count and the element, ( and the return type, or
+// s, the tag's name and ';' (a struct is known by its name in every
+// file).
 int type_hash(int t, int h)
 {
   int tag;
@@ -209,6 +212,7 @@ int type_hash(int t, int h)
   case TY_CHAR: return hash_byte(h, 'c');
   case TY_INT:  return hash_byte(h, 'i');
   case TY_UINT: return hash_byte(h, 'u');
+  case TY_BOOL: return hash_byte(h, 'b');
   case TK_PTR:  return type_hash(type_sub(t), hash_byte(h, '*'));
   case TK_FUNC: return type_hash(type_sub(t), hash_byte(h, '('));
   case TK_ARRAY:

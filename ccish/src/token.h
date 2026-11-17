@@ -15,7 +15,7 @@
 
 #define SUFFIX_I     ".i"
 #define SUFFIX_NAM   ".nam"
-#define TOK_VERSION  8        // NAME.i's format, after its "CTK"
+#define TOK_VERSION  9        // NAME.i's format, after its "CTK"
 #define NAM_VERSION  3        // NAME.nam's, in its stamp line
 
 // The codes of NAME.i, one byte each. A one-character token ($20-$7E)
@@ -35,7 +35,8 @@
 // $00-$0F, the type-name keywords (TC_IS_TYPE_START): the int-type
 // specifiers (TC_IS_INT_TYPE), then the qualifiers (TC_IS_QUAL), the
 // two a block of 8 (TC_IS_INT_OR_QUAL); the tagged types
-// (TC_IS_TAGGED), struct and union first (TC_IS_STRUCT_UNION); void.
+// (TC_IS_TAGGED), struct and union first (TC_IS_STRUCT_UNION); void;
+// bool.
 // $10-$17: the storage classes (TC_IS_STORAGE), typedef and constexpr
 // (TC_IS_ID_DECL), case and default (TC_IS_CASE_LABEL).
 // $18-$27: the other keywords.
@@ -63,7 +64,8 @@ enum {
   TC_CONST, TC_VOLATILE,          // +$06-$07: UNUSED (TC_IS_QUAL's 4)
   TC_STRUCT = TC_INT + 0x08, TC_UNION, TC_ENUM,
                                   // +$0B: UNUSED (TC_IS_TAGGED's 4)
-  TC_VOID = TC_INT + 0x0C,        // +$0D-$0F: UNUSED (TC_IS_TYPE_START's)
+  TC_VOID = TC_INT + 0x0C,        // +$0D-$0E: UNUSED (TC_IS_TYPE_START's)
+  TC_BOOL = TC_INT + 0x0F,        // C23's bool (and _Bool, pplex.c)
   TC_STATIC = TC_INT + 0x10, TC_EXTERN, TC_REGISTER,
                                   // +$13: UNUSED (TC_IS_STORAGE's 4)
   TC_TYPEDEF = TC_INT + 0x14, TC_CONSTEXPR, TC_CASE, TC_DEFAULT,

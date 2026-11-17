@@ -46,6 +46,8 @@ __LINE__
 defined
 __asm__
 __plasma_import
+true
+false
 N
 S
 E
@@ -58,4 +60,4 @@ here
 q
 @tests/pp/directives.c
 
-=3 003A ssss
+=3 003C ssss

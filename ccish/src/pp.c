@@ -470,6 +470,14 @@ static void apply_options(void)
 #endif
   pp_lex_text("__CCISH__ 1");
   do_define();
+  // C23's true and false, as <stdbool.h> defines them (1 and 0): here
+  // pre-defined, so the header needn't be included for them (the guide
+  // calls this a quirk; lib/include/stdbool.h is a marker for code
+  // that includes it).
+  pp_lex_text("true 1");
+  do_define();
+  pp_lex_text("false 0");
+  do_define();
   for (i = 0; i < nopts; i++) {
     if (strlen(opt_text[i]) + 2 > MAX_LINE)
       error(233 /* "line too long (over 255 characters)" */, opt_text[i]);

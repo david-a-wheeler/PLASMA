@@ -46,10 +46,12 @@ __LINE__
 defined
 __asm__
 __plasma_import
+true
+false
 ONE
 b
 a
 @tests/pp/include.c
 @tests/pp/inc/one.h
 
-=3 0033 ssss
+=3 0035 ssss

@@ -156,6 +156,8 @@ static void parse_scalar_init(int type)
              205 /* "(an initializer here must be one)" */, NULL);
 #endif
   check_assign(type, &o, 198 /* "initialization" */, NULL);
+  if (o.kind == K_CONST && UNQUAL(type) == TY_BOOL)
+    o.val = o.val != 0;    // C23: a bool is initialized to 1 or 0
   init_known = o.kind == K_CONST;
   init_val = o.val;
   if (o.kind == K_FUNC) {
@@ -330,10 +332,13 @@ static void init_local_elem(int type, int off)
   begin_expr();
   parse_expr(PREC_ASSIGN, &e);
   check_assign(type, &e, 198 /* "initialization" */, NULL);
-  if (type == TY_CHAR && e.kind == K_CONST) {
+  if (e.kind == K_CONST && type == TY_BOOL)
+    e.val = e.val != 0;    // C23: a bool is initialized to 1 or 0
+  if ((type == TY_CHAR || type == TY_BOOL) && e.kind == K_CONST) {
     init_byte(off, e.val);
   } else {
     rvalue(&e);
+    normalize_bool(&e, type);
     e.kind = K_VAR;
     e.type = type;
     e.quals = init_vol;         // a volatile's store is volatile

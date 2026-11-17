@@ -26,15 +26,17 @@
 // files that use them.)
 
 // The basic types' indexes, the table's first entries: TY_UINT is
-// unsigned int. Each is its own kind, too (type.c's TK_* follow them).
-enum { TY_VOID, TY_CHAR, TY_INT, TY_UINT };
+// unsigned int, and TY_BOOL is C23's bool (1 byte, only 0 or 1).
+// Each is its own kind, too (type.c's TK_* follow them).
+enum { TY_VOID, TY_CHAR, TY_INT, TY_UINT, TY_BOOL };
 // Is the unqualified type t char, int or unsigned? (Every other type's
-// index is higher.)
+// index is higher: bool's is, too, and a bool isn't an int, as in C.
+// It promotes to one, parse.h's PROMOTED.)
 #define IS_INT_TYPE(t)  ((t) >= TY_CHAR && (t) <= TY_UINT)
 _Static_assert(TY_VOID == 0 && TY_CHAR == 1 && TY_UINT - TY_CHAR == 2
-               && TY_UINT == TY_INT + 1,
-               "the basic types aren't void, then char, int and unsigned"
-               " (IS_INT_TYPE; parse.h's PROMOTED), from 0");
+               && TY_UINT == TY_INT + 1 && TY_BOOL == TY_UINT + 1,
+               "the basic types aren't void, char, int, unsigned and"
+               " bool (IS_INT_TYPE; parse.h's PROMOTED), from 0");
 // A handle's qualifier bits, above its index bits: a handle is only
 // those, so taking the qualifiers off is masking the index, one AND.
 #define Q_CONST    0x100

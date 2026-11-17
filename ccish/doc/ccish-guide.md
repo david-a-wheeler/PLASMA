@@ -79,7 +79,7 @@ The working rule is:
   * `enum tag` isn't checked against a definition, so ccish accepts
     some wrong programs (a variable of an enum type never defined).
   * `struct W` and `union W` share one tag name space, so a name
-    can't be both (the standard C lets them coexist; section 4.11).
+    can't be both (the standard C lets them coexist; section 4.12).
 * **The small build, for the Apple II, doesn't fully conform to the
   C standard:** to fit in 64K it intentionally leaves out some
   compile-time checks the standard requires, so it accepts some
@@ -140,6 +140,9 @@ A few special quirks:
   `__cmd_puts("Hello");`. Omitting the `pstr()` will typically print
   garbage.
 * The `int` type is a signed 16-bit that always wraps.
+* `true` and `false` are predefined macros, `1` and `0`: no
+  `#include` is needed for them, but they are not identifiers
+  (section 4.4).
 
 ## 2. Using the compiler
 
@@ -474,15 +477,16 @@ rest are ignored. A keyword is not an identifier.
 The supported keywords are:
 
 ```
-break    const    continue default do     else     enum   extern
-for      goto     if       int    register return  sizeof   short
-static   struct   switch   typedef  union    unsigned void   volatile
-while    _Static_assert   constexpr
+bool     break    const    continue default do     else     enum
+extern   for      goto     if       int    register return   sizeof
+short    static   struct   switch   typedef  union    unsigned void
+volatile while    _Static_assert   constexpr
 ```
 
-plus `signed`, as in `signed int`, which is `int`, and `short`, a
-synonym for `int` (section 4.1). A `union` is a tagged type as `struct`
-is (section 4.11). Four more of C89's keywords are recognized so the
+plus `signed`, as in `signed int`, which is `int`, `short`, a
+synonym for `int` (section 4.1), and `_Bool`, a synonym for `bool`
+(section 4.4). A `union` is a tagged type as `struct` is
+(section 4.12). Four more of C89's keywords are recognized so the
 error is clear, but not supported (section 9.1): `auto`, `double`,
 `float` and `long`.
 
@@ -558,12 +562,13 @@ type is `char *` too.
 
 ## 4. Types and values
 
-The arithmetic types are `int` (16 bits), `char` (8 bits, unsigned)
-and `unsigned` (16 bits); `void` names the absence of a value.
-Pointers are 16 bits. The aggregates are `struct` (section 4.7) and
-`union` (section 4.11). `short` is a synonym for `int` (section 4.1);
-there is no `long`, no floating point, and no `signed char`
-(section 9.1).
+The arithmetic types are `int` (16 bits), `char` (8 bits, unsigned),
+`unsigned` (16 bits) and `bool` (1 byte, 0 or 1, section 4.4);
+`void` names the absence of a value.
+Pointers are 16 bits. The aggregates are `struct` (section 4.8) and
+`union` (section 4.12). `short` is a synonym for `int` (section 4.1),
+and `_Bool` is a synonym for `bool` (section 4.4); there is no
+`long`, no floating point, and no `signed char` (section 9.1).
 
 All values live in 16-bit words on a little-endian 6502. Where C
 leaves a choice to the implementation, ccish's choices are the ones
@@ -638,7 +643,36 @@ By a constant, `>>` (and `/` and `%` by a power of two) are done
 inline; otherwise they call small helper functions that the compiler
 adds to the module (one copy each, however many files use them).
 
-### 4.4 void
+### 4.4 bool
+
+`bool` is one byte that holds only 0 or 1, as in C23; `_Bool` is the
+same type, a synonym spelling, as `short` is for `int`. `sizeof(bool)`
+is 1, as `sizeof(char)` is.
+
+Storing a value into a `bool` keeps only whether it is zero: `b = 5`
+stores 1, and `b = 0` stores 0. That covers every way a value reaches
+one, as in C: a plain or compound assignment (`b = x`, `b += x`),
+`++b` and `b++` (the new value, 1 or 2, or -1, normalizes to 0 or 1),
+an argument passed to a `bool` parameter, the value a `bool` function
+returns, a cast to `bool`, and an initializer (section 5.6). Copying
+one `bool` into another stores the 0 or 1 as it is.
+
+In an expression a `bool` is promoted to `int` (its 0 or 1) first, as
+a `char` is (section 4.2), so `b + c` is the `int` 0, 1 or 2, and
+`b && c`, `b == c` and the like give `int` 0 or 1, as in C.
+
+`true` and `false` are predefined macros, `1` and `0` (section 8.4):
+no `#include` is needed for them, and they work in `#if`. They are
+macros, not C23's keywords, so `true` and `false` may not be
+identifiers (and `#undef true` is possible, if pointless). The values
+are the same either way; `#include <stdbool.h>` is accepted for
+programs that write it (section 11.2).
+
+A `bool` can be a local, a global, a parameter, a return, a struct
+member or an array element, with `const` or `volatile` on it. A
+`bool *` points at its one byte, as `char *` does.
+
+### 4.5 void
 
 `void` is the type of a function that returns no value, and of a
 pointer to unknown type. `void` can't be a variable's type. A `void`
@@ -647,7 +681,7 @@ Casting to `(void)` discards a value. `void *` converts to and from
 any object pointer type without a cast; pointer arithmetic on a
 `void *` is an error.
 
-### 4.5 Pointers
+### 4.6 Pointers
 
 Pointers are 16 bits, as every address on the target is.
 
@@ -670,9 +704,9 @@ Addresses at or above `$C000` are I/O, not memory (the speaker is
 with the VM's absolute ops: with
 `volatile char *const sp = (volatile char *)0xC030;`, `*sp = 65` is
 `SAB $C030 65`, and ccish never drops or reorders such accesses
-(`volatile`, section 4.10).
+(`volatile`, section 4.11).
 
-### 4.6 Arrays
+### 4.7 Arrays
 
 An array is declared `int a[10]`, `char *names[4]`, `int m[3][4]`,
 `struct pt pts[8]`, and so on. The size is a constant expression.
@@ -687,7 +721,7 @@ An array is declared `int a[10]`, `char *names[4]`, `int m[3][4]`,
 * An array parameter is a pointer, as in C: `int a[]` and `int a[10]`
   are `int *a`, and `int m[][4]` is a pointer to arrays of 4 ints.
 
-### 4.7 Structs
+### 4.8 Structs
 
 A struct groups members, laid out in order with no padding (the 6502
 has no alignment rules), in the same order and at the same offsets as
@@ -747,7 +781,7 @@ the struct's scalar members in order, with the same forms as an
 array's (section 5.6); a local may also be initialized from another
 struct (`struct pt b = a;`).
 
-### 4.8 enum
+### 4.9 enum
 
 ```c
 enum color { RED, GREEN, BLUE = 5 };
@@ -763,7 +797,7 @@ the constants are `int` constants, not a new kind of value.
 hides a variable of the same name declared outside it, and the other
 way around.
 
-### 4.9 typedef
+### 4.10 typedef
 
 ```c
 typedef struct node *NodeP;
@@ -777,7 +811,7 @@ array sizes and qualifiers. A typedef may name a function type
 (`fn_t g;`) or a pointer to one (`fn_t *p;`). Typedef names have
 block scope, as in C.
 
-### 4.10 const and volatile
+### 4.11 const and volatile
 
 Both qualifiers go before or after the type (`const char`,
 `char const`), and after a `*` (`char *const p` is a const pointer,
@@ -803,7 +837,7 @@ Both qualifiers go before or after the type (`const char`,
   it twice; a counted loop whose limit is volatile reads it each pass;
   and an assignment's value isn't read back from a volatile object.
   It is checked as part of the type. Its use is the I/O registers
-  (section 4.5), where `*sp` is still one `LAB`.
+  (section 4.6), where `*sp` is still one `LAB`.
 * What an access is, C leaves to the implementation. In ccish, a
   struct with any volatile member is passed and copied a word at a
   time with every word volatile, or by `memcpy` if it's large. A
@@ -835,7 +869,7 @@ Both qualifiers go before or after the type (`const char`,
   loop runs every pass. A volatile counter is slower, as each pass
   stores and loads it in memory, so time the delay with it.
 
-### 4.11 Unions
+### 4.12 Unions
 
 A union is a struct-like aggregate whose members all start at byte
 0, with the union's size the largest member's: the members overlap.
@@ -852,7 +886,7 @@ u.a;                           /* 0x1263, the high byte stands */
 A union is declared and used as a struct: `union tag { ... };`,
 `u.m`, `p->m`, `&u.m`, a pointer to it, an array of them, a member
 of a struct, and passing and returning by value (up to 8 bytes, as
-a struct, section 4.7). A union's tag has a struct's rules: it can
+a struct, section 4.8). A union's tag has a struct's rules: it can
 be declared first and defined later, it has block scope, and it is
 incomplete until its definition is seen. Struct and union tags share
 a name space, so a name can't be both (the standard C lets them
@@ -865,7 +899,7 @@ written gives the value the shared bytes hold; for this subset of
 members (ints and chars, little-endian) ccish and the host compiler
 agree on it.
 
-### 4.12 Declarators
+### 4.13 Declarators
 
 A declarator may use C's whole syntax, so a declaration a C compiler
 accepts, ccish accepts too:
@@ -954,7 +988,7 @@ A few specifics:
 
 * The return type can be any of these types but an array.
 * Parameters can be any type but `void`. An array parameter is a
-  pointer, as in C (section 4.6).
+  pointer, as in C (section 4.7).
 * `main` takes no parameters (`int main(void)`), or two (`int
   main(int argc, char **argv)`). With two, link the library's `start`
   object (section 11.2): cclink's init calls its `_start`, which splits
@@ -966,7 +1000,7 @@ A few specifics:
   status as `ERR:$xx`. plvm always exits 0; to get the status on the
   host, run the module with `tools/ccrun` (approach.md issue 22).
 * A struct parameter or return value must be at most 8 bytes
-  (section 4.7). Passing a struct needs a prototype.
+  (section 4.8). Passing a struct needs a prototype.
 * A function can call itself.
 * A function that is called, or whose address is taken, but not
   defined in any file linked into the module must be a CMDSYS
@@ -1128,7 +1162,7 @@ A program can't define its own function of a CMDSYS name: the
 linker reports "only CMDSYS may define a __cmd_ name" (C reserves
 `__` names to the implementation), so a call is always CMDSYS's. The
 compiler's own calls use these names too: a struct copy calls
-`__cmd_memcpy` (section 4.7).
+`__cmd_memcpy` (section 4.8).
 
 ### 5.4 Globals
 
@@ -1167,7 +1201,7 @@ be defined in another file linked with it (section 2.3), or it is an
 "undefined reference". One that is never used needn't be defined.
 `extern` on a function declaration changes nothing. An `extern` with
 an initializer isn't supported. `extern` in a block declares the
-global from there on, as at file scope (section 4.12); a local of the
+global from there on, as at file scope (section 4.13); a local of the
 same name in scope there is an error, since it would hide the global.
 `sizeof` an array of unknown size is an error.
 
@@ -1190,8 +1224,10 @@ same name in scope there is an error, since it would hide the global.
 Global and static-local initializers are computed at compile time and
 stored in the module, so they cost no code. The forms:
 
-* Integers and `char`s: any constant expression
-  (`int n = 3 * 4;`, `int size = sizeof(int[10]);`).
+* Integers, `char`s and `bool`s: any constant expression
+  (`int n = 3 * 4;`, `int size = sizeof(int[10]);`); a `bool`
+  initializer keeps only whether the value is zero, as a store does
+  (section 4.4).
 * Pointers: 0, or an address constant: a string literal or a global's
   (or `static` local's) address, with any constant indexes and
   members (`&m[1][2]`, `&s.y`, `&ps[1].x`), an array's name, casts to
@@ -1288,7 +1324,8 @@ object:
 
 * It has no address: `&SIZE` is an error ("lvalue required").
 * It must be a `char`, `int` or `unsigned` (with any qualifiers). A
-  `constexpr` pointer, array, struct or union is "not supported yet".
+  `constexpr` bool, pointer, array, struct or union is "not
+  supported yet".
 * Its value isn't checked to fit its type: C23 rejects
   `constexpr char C = 300;`, but ccish accepts it, and `C` is 300.
 * It may not have a storage class (`static constexpr`, which C23
@@ -1347,7 +1384,7 @@ becomes `unsigned` first (section 4.3).
 ### 6.2 Comparisons and logic
 
 * `< > <= >= == !=` compare signed for `int`s, unsigned for
-  `unsigned` values and for pointers (section 4.5).
+  `unsigned` values and for pointers (section 4.6).
 * `!` is logical negation; `&&` and `||` are logical and/or, and they
   evaluate only the operands C says they do: in `a && b`, `b` is
   evaluated only if `a` is nonzero; in `a || b`, `b` only if `a` is
@@ -1366,6 +1403,10 @@ becomes `unsigned` first (section 4.3).
 * `++` and `--`, prefix and postfix: `++i`, `i++`, `--i`, `i--`, on
   any lvalue (a `const` object is an error). The prefix form gives
   the new value, the postfix the old one, as in C.
+
+A store into a `bool` normalizes the value to 0 or 1 first, wherever
+it comes from (section 4.4): `b = 5` stores 1, `b += 1` on a true
+`b` stays 1, and `--b` on a false `b` becomes 1 (-1 is not 0).
 
 A store through a computed address (`*p++ = x`, `*f() = x`,
 `a[i + 1] = x`) needs the value before the address is disturbed; the
@@ -1398,6 +1439,7 @@ const char *s = (const char *)p;
 The direction matters:
 
 * integer to `char`: keep the low byte (section 4.2);
+* any integer to `bool`: 1 if nonzero, else 0 (section 4.4);
 * integer to pointer and pointer to integer: the address is re-typed
   (a cast is needed to mix integer and pointer at all, except the
   constant 0, which is a null pointer of any pointer type);
@@ -1415,7 +1457,7 @@ Operations on constants are computed at compile time with these same
 rules (16-bit wrap, truncating division, and so on), so `-(1 << 4)`
 and the constant parts of `2 * x + 3 * 4` need no run-time work.
 Reading a `const` with a constant initializer folds too
-(section 4.10).
+(section 4.11).
 
 Code that a constant makes unreachable is not compiled at all: the
 right side of `0 && f()`, the body of `if (0)` or `while (0)`, the
@@ -1479,7 +1521,7 @@ A block is a `{ ... }` of declarations and statements. Blocks nest.
 A name declared in a block (a local, an enum constant, a typedef, a
 struct tag) is visible from its declaration to the end of the block,
 and an inner block may shadow an outer name of the same kind
-(sections 4.8, 4.9, 5.2).
+(sections 4.9, 4.10, 5.2).
 
 ### 7.3 if and else
 
@@ -1700,9 +1742,12 @@ true here.
 generated sources report their real origin.
 
 The predefined macros are `__LINE__` (the current line's number),
-`__FILE__` (the current file's name, as a string) and `__CCISH__`
-(1). `-D name[=text]` and `-U name` (section 2.1) define and undefine
-macros before the first line.
+`__FILE__` (the current file's name, as a string), `__CCISH__` (1),
+`true` (1) and `false` (0), for the `bool` type (section 4.4). As
+macros, `true` and `false` work in `#if` too, and `#undef` or
+`#define` may touch them, as in C99's `<stdbool.h>`. `-D name[=text]`
+and `-U name` (section 2.1) define and undefine macros before the
+first line, after the predefined ones.
 
 `#pragma plasma import MODULE` names a PLASMA module to import from
 (section 11.1); any other `#pragma` is ignored. A `#` alone does
@@ -2139,6 +2184,7 @@ $ ./ccish -o copy copy.c $L/start $L/fopen $L/path $L/fread $L/fwrite $L/strlen
 | `<string.h>` | `strlen`, `strcmp`, `strcpy`, `strcat`, `strncpy`, `strncat`, `strchr`, `strrchr`, `memcpy`, `memmove`, `memset` |
 | `<stdio.h>` | `fopen`, `fclose`, `getc`, `putc`, `fputs`, `fread`, `fwrite`, `remove`, and `fflush` (a macro), `stdin`, `stdout`, `stderr`, `EOF` |
 | `<stdlib.h>` | `EXIT_SUCCESS`, `EXIT_FAILURE`, and `exit` (declared, but not defined yet) |
+| `<stdbool.h>` | empty: `bool` is a keyword, and `true` and `false` are predefined macros, without it (section 4.4) |
 | `<stddef.h>` | `size_t` (`unsigned`), `ptrdiff_t`, `NULL` |
 | `<assert.h>` | `assert`, which is always `((void)0)`, as the standard's is with `NDEBUG` defined: no code, and its argument isn't evaluated. Your program's host build (gcc or clang) checks it. |
 | `<plasma.h>` | `cmdsys`, CMDSYS's table (section 11.1); not standard C |
@@ -2334,7 +2380,7 @@ same.
 * **Small structs by value, big ones by pointer.** A struct of up to
   8 bytes moves as a word or two; bigger, every copy is a `__cmd_memcpy`
   call, and passing or returning one by value isn't allowed
-  (section 4.7).
+  (section 4.8).
 * **Pointers compare with `==` and `!=`.** An ordering comparison of
   pointers adds a sign-bit flip (`CW $8000 XOR`) to each side
   (section 12.4); equality adds nothing.
@@ -2514,7 +2560,7 @@ code relies on, so a compiler checks it instead of a reader.
   sizes, case labels and `_Static_assert`s, and it takes no storage:
   using it compiles exactly as using its value does. Prefer it to a
   `const` variable, which isn't a constant expression in C (section
-  4.10), and to a `#define` constant, which has no type and no scope.
+  4.11), and to a `#define` constant, which has no type and no scope.
 * **`_Static_assert` for facts about constants** (section 5.7). It's
   checked when the program is compiled, by ccish and by any other C
   compiler, every time, and it emits nothing. Use it next to what

@@ -473,7 +473,7 @@ static const char *const keywords[] = {
   // supported: in the order of TC_INT ... (token.h, CCPP.md), with
   // spare at each UNUSED code
   "int", "char", "signed", "unsigned", "const", "volatile", spare, spare,
-  "struct", "union", "enum", spare, "void", spare, spare, spare,
+  "struct", "union", "enum", spare, "void", spare, spare, "bool",
   "static", "extern", "register", spare, "typedef", "constexpr", "case",
   "default",
   "return", "if", "else", "while", "do", "for", "break", "continue",
@@ -493,12 +493,17 @@ _Static_assert(sizeof(keywords) / sizeof(keywords[0]) == NKEYWORDS + 4 + 1,
 // `short` is a synonym for `int`: ccish has one word type, and the
 // standard C distinction between the two is not worth implementing in
 // the memory ccish runs in, so the word gets int's code, and the
-// compiler never sees a short.
+// compiler never sees a short. C23's bool has two spellings, `bool`
+// and `_Bool`; the second is a synonym for the first, as short's is
+// for int's: the word gets bool's code, and the compiler never sees
+// a _Bool.
 int pp_word(const char *word, int n)
 {
   int i;
   if (!strcmp(word, "short"))
     return TC_INT;
+  if (!strcmp(word, "_Bool"))
+    return TC_BOOL;
   for (i = 0; keywords[i]; i++)
     if (!strcmp(keywords[i], word)) {
       if (i < NKEYWORDS)

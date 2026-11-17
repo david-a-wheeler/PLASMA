@@ -46,6 +46,8 @@ __LINE__
 defined
 __asm__
 __plasma_import
+true
+false
 @tests/pp/example.c
 
-=3 0030 ssss
+=3 0032 ssss

@@ -130,21 +130,23 @@ void check_assign(int to, Operand *o, int where,
 #endif
 
 // Make o's value C's truth value: 1 if it is nonzero, else 0. A
-// constant stays pending; anything else ends up on the stack.
-static void to_bool(Operand *o)
+// constant stays pending; anything else ends up on the stack. As a
+// cast or a bool function's return value, it is a bool.
+void to_bool(Operand *o)
 {
   if (o->kind == K_CONST) {
     o->val = o->val != 0;
-    o->type = TY_INT;
+    o->is_bool = 1;
+    o->type = TY_BOOL;
     return;
   }
   rvalue(o);
   if (!o->is_bool) {
     put_op(IR_CONST);
     put_op(IR_NE);
-    o->is_bool = 1;
   }
-  o->type = TY_INT;
+  o->is_bool = 1;
+  o->type = TY_BOOL;
 }
 
 // Convert o to char, as C does for a cast or a char function's return
@@ -178,6 +180,8 @@ static void cast(Operand *o, int type)
     o->kind = K_VOID;
   } else if (type == TY_CHAR) {
     to_char(o);
+  } else if (type == TY_BOOL) {
+    to_bool(o);
   } else if (is_pointer(type) && (addr_const(o) || o->kind == K_FUNC)) {
     ;                           // still an address constant
   } else if (o->kind != K_CONST) {
@@ -384,6 +388,10 @@ static int parse_args(int f)
         push_struct_words(&a);
       } else {
         rvalue(&a);
+        // A bool parameter receives the normalized value (C23 converts
+        // any scalar to bool): f(5) passes 1.
+        if (f >= 0 && fn_ptypes[f] >= 0 && nargs < nparams_of(f))
+          normalize_bool(&a, param_types[fn_ptypes[f] + nargs]);
       }
       nargs++;
       if (tok != ',')
@@ -681,8 +689,12 @@ static int start_incdec(Operand *o)
 
 // ++x / --x: x = x + 1, and the value is the new x. A macro, not a
 // function: it has one caller, on the recursive expression chain.
+// For a bool x, the new value (1 or 2, or -1 for --) is normalized
+// to 0 or 1 before the store, as C23 requires.
 #define pre_incdec(o, ir_op) do { put(IR_CONST, start_incdec(o), -1); \
-  put_op(ir_op); assign_to(o); (o)->is_bool = 0; } while (0)
+  put_op(ir_op); \
+  if ((o)->type == TY_BOOL) { put_op(IR_CONST); put_op(IR_NE); } \
+  assign_to(o); (o)->is_bool = 0; } while (0)
 
 // x++ / x--: the value is the old x. Keep a copy of it below the
 // update; when the value is unused, the peephole stage removes the
@@ -693,6 +705,8 @@ static void post_incdec(Operand *o, int ir_op)
   put_op(IR_DUP);
   put(IR_CONST, step, -1);
   put_op(ir_op);
+  if (o->type == TY_BOOL)        /* as pre_incdec: the new value is */
+    { put_op(IR_CONST); put_op(IR_NE); }   /* normalized before the store */
   assign_to(o);
   discard(o);                     // the new value
   o->kind = K_VALUE;
@@ -821,7 +835,8 @@ static void parse_index(Operand *o)
       make_elem(o, o->off, o->global, is_array(t));
     o->idx = r.off;
     o->idx_global = r.global;
-    o->idx_char = r.type == TY_CHAR;
+    o->idx_char = r.type == TY_CHAR || r.type == TY_BOOL;  // a bool
+                                                          // index: 0 or 1
     o->scale = size;
   }
   set_object(o, type_sub(t));
@@ -1128,8 +1143,12 @@ static void parse_logical(Operand *o, int prec)
     }
     // 1 && x and 0 || x are x, as 1 or 0 (or as a condition).
     parse_expr(prec + 1, o);
-    if (o->kind != K_JUMP)
+    if (o->kind != K_JUMP) {
       to_bool(o);
+      o->type = TY_INT;   // && and || give an int, as their other
+                          // forms do (to_bool's TY_BOOL is for a cast
+                          // or a bool return)
+    }
     o->nonice |= end;
     return;
   }
@@ -1437,6 +1456,18 @@ static void binary(Operand *o, Operand *r, int op, int lstart, int mid)
   o->is_bool = is_compare(op);
 }
 
+// Put the normalized value (0 or 1) for a store into a bool object o,
+// which holds st's type: C23 gives a bool a nonzero value as 1. The
+// value is on the stack; one already known to be 0 or 1 needs no code.
+void normalize_bool(Operand *o, int st)
+{
+  if (st == TY_BOOL && !o->is_bool) {
+    put_op(IR_CONST);
+    put_op(IR_NE);
+    o->is_bool = 1;
+  }
+}
+
 // Parse the right side of *f() = e, where o is the K_DEREF, its
 // address's code starting at IR position start. Its value and the
 // store wait (K_STORE) until the parser sees whether the value is
@@ -1451,6 +1482,7 @@ static void start_store(Operand *o, int start)
   parse_expr(PREC_ASSIGN, o);
   check_assign(st, o, 197 /* "assignment" */, NULL);
   rvalue(o);
+  normalize_bool(o, st);
   o->vmask = st == TY_CHAR && o->type != TY_CHAR && !o->is_bool;
   o->type = st;
   o->quals = q;
@@ -1694,6 +1726,7 @@ static void parse_assign(Operand *o, int ir_op, int m0, int h0)
   }
   check_assign(o->type, &r, 197 /* "assignment" */, NULL);
   rvalue(&r);
+  normalize_bool(&r, o->type);
   assign_to(o);
   o->is_bool = ir_op < 0 && r.is_bool && o->kind == K_VALUE;
 }
