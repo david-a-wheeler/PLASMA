@@ -32,11 +32,16 @@
                                 // identifier's is its length (at most
                                 // MAX_NAME), a file's its name's length
 
-#define PP_CACHE  16    // slots in the recent-names cache: a power of
-                        // 2, for PP_SLOT's mask; it is a speedup, not a
-                        // limit: a miss walks the pool as before
+#define PP_CACHE  16    // slots in the recent-names cache, PP_WAY
+                        // names each: powers of 2, for the masks; it
+                        // is a speedup, not a limit: a miss walks the
+                        // pool as before
+#define PP_WAY    2     // names per slot, so that two names thrashing
+                        // one slot keep both (the cache, below)
 _Static_assert((PP_CACHE & (PP_CACHE - 1)) == 0,
                "PP_CACHE isn't a power of 2");
+_Static_assert((PP_WAY & (PP_WAY - 1)) == 0,
+               "PP_WAY isn't a power of 2");
 #define PP_SLOT(n) ((n) & (PP_CACHE - 1))
 
 int pp_macro_flag;
@@ -45,16 +50,18 @@ static unsigned char pool[MAX_PP_POOL];
 static int pool_used;
 static int nids;                // identifiers in the pool
 // The recent-names cache (approach.md, "ccpp's name lookup"), 16
-// slots indexed by the name hash's low four bits: a name interned
-// just now is reused close by in
-// C sources, and a hit saves find()'s walk of the pool. Slot k keeps
-// the id and pool offset of the name whose hash maps to it, and its
-// length plus 1, 0 being an empty slot: the pool is never changed,
-// so a slot needs no invalidating, and a hit is checked against the
-// pool's spelling, so it can never be wrong; a miss walks as before.
-static int cache_id[PP_CACHE];
-static int cache_off[PP_CACHE];
-static unsigned char cache_len[PP_CACHE];
+// slots of two names each, indexed by the name hash's low four bits:
+// a name interned just now is reused close by in C sources, and a
+// hit saves find()'s walk of the pool. A slot's two names take the
+// hash's next bit, so two names sharing a slot's low four bits keep
+// one in each way, instead of evicting each other. Each way keeps
+// the id and pool offset of its name, and its length plus 1, 0 being
+// an empty way: the pool is never changed, so a way needs no
+// invalidating, and a hit is checked against the pool's spelling, so
+// it can never be wrong; a miss walks as before.
+static int cache_id[PP_CACHE * PP_WAY];
+static int cache_off[PP_CACHE * PP_WAY];
+static unsigned char cache_len[PP_CACHE * PP_WAY];
 
 // The names every file has (CCPP.md, "The fixed ids"). First, ids 1
 // to NCMDSYS, the CMDSYS functions in cmdsys_sigs[]'s order (parse.c):
@@ -194,11 +201,15 @@ static int name_hash(const char *s, int n)
 // the recent-names cache (above); the pool's walk is the miss.
 int pp_intern(const char *s, int n)
 {
-  int k, at, id = cmdsys_find(s, n), fresh = 0;
+  int k, at, h, id = cmdsys_find(s, n), fresh = 0;
   if (!id) {
-    k = PP_SLOT(name_hash(s, n));
+    h = name_hash(s, n);
+    k = PP_SLOT(h) * PP_WAY;
     if (cache_len[k] == n + 1 && same(pool + cache_off[k] + 1, s, n))
       id = cache_id[k];
+    else if (cache_len[k + 1] == n + 1
+             && same(pool + cache_off[k + 1] + 1, s, n))
+      id = cache_id[k + 1];
     else {
       id = find(s, n, 0, &at);
       if (!id) {
@@ -207,6 +218,7 @@ int pp_intern(const char *s, int n)
         fresh = 1;
         add(s, n, 0);
       }
+      k += (h >> 4) & (PP_WAY - 1);
       cache_id[k] = id;
       cache_off[k] = at;
       cache_len[k] = (unsigned char)(n + 1);
