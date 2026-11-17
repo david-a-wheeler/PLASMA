@@ -237,20 +237,19 @@ expect it to pay.
   done: a little free list could let a finished file's buffer be
   reused, and take one or two Bfiles, 64 or 128 bytes, out of ccpp's
   zero region.
-- ccpp's name pool (ppname.c): the 16-slot recent-names cache is
-  already a hash table (80 bytes, the name hash's low four bits, a
-  miss walks the pool). Measured in one profile run: it hits 42% of
-  the 47,499 internings; the misses walk a couple of hundred entries,
-  and find is 29% of ccpp's ops, entry_len and same 10% more. The
-  pool peaks at 7,202 of its 8,207 bytes in one file (pexpr.c),
-  around nine hundred entries: a jump table authoritative enough to
-  end the walk would be 1,024 to 2,048 slots of 2-byte offsets, 2 to
-  4K, most of ccpp's 2,538 spare, so it waits for more spare or a
-  speed need. The cheap parts: find() reads pool[i] twice per entry
-  (entry_len, then the file bit), a local byte costs nothing; and 16
-  direct-mapped slots thrash against nine hundred names, so two names
-  per slot (160 bytes, +80) should cut the miss rate. Measure each
-  with the profile before committing.
+- ccpp's name pool (ppname.c): the recent-names cache is a hash
+  table, 16 slots of two names each (160 bytes, the name hash's low
+  five bits; a miss walks the pool). The cheap cuts are done
+  (f7997f7b, 22470bdb): the length byte is read once per entry
+  (entry_len dropped), and two names per slot, so a thrashing pair
+  keeps both: together 60.6 million ops, 10.4% of ccpp's run, for
+  55 bytes of code and 132 of the spare. find is still the biggest
+  single cost, 29% of ccpp's ops, 151 million, 23,608 walks of a
+  couple of hundred entries each: the pool peaks at 7,202 of its
+  8,207 bytes in one file (pexpr.c), around nine hundred entries, so
+  a jump table authoritative enough to end the walk would be 1,024
+  to 2,048 slots of 2-byte offsets, 2 to 4K, most of ccpp's spare;
+  it waits for more spare or a speed need.
 - Observation, from the BLOCK 128-to-64 round: how many distinct
   types a compilation unit uses depends, by one or two, on the paths
   the name file records for its headers (the name table feeds the
