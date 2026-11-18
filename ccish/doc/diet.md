@@ -278,7 +278,22 @@ expect it to pay.
   together, -13.9%; ccpp's spare, 2,343 to 1,581, 762 bytes. The
   earlier pool cuts (f7997f7b, 22470bdb) stand: the length byte is
   read once per entry, and two names per slot, so a thrashing pair
-  keeps both.
+  keeps both. What didn't pay: the slot table (2 to 4K, and the
+  bitmap does 90% of its job in 128 bytes); inlining same() in
+  find (the compiler loses the counted-loop shape, 26 to 39 ops an
+  entry against 23 to 25, measured in the listing); register int j
+  in same() (byte-identical code: the loop is already the
+  compiler's counted form). Next, from this round's profile: the
+  cache's 128th slot pair waits for spare (585,369 entries for
+  640 bytes, 900 entries a byte); pp_mac_find, 44,591,862 ops, 10.4%
+  of ccpp now, a macro-table walk per intern, is the next name
+  lookup to attack (a per-id macro flag, set and cleared by the
+  define and undef directives, would skip it for the ids that name
+  no macro); and pp_word's strcmp chain, 41,087,478 ops, 9.5%: each
+  word that is no keyword pays up to 46 strcmps (short and _Bool
+  prechecked, then the 44 of keywords[]) until the NULL: a first
+  char and length prefilter, or the keywords' own small table, would
+  cut it.
 - Observation, from the BLOCK 128-to-64 round: how many distinct
   types a compilation unit uses depends, by one or two, on the paths
   the name file records for its headers (the name table feeds the
