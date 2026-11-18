@@ -264,7 +264,15 @@ expect it to pay.
   pp_add_file skip the walk and add at once; a set bit may be a
   collision's, and the walk goes on. A file's bit is set too.
   -48 million ops, 9% of ccpp, for 137 bytes of code, 128 of zero
-  and 2 of frame (the frame stack is 236 to 238).
+  and 2 of frame (the frame stack is 236 to 238). And the cache's
+  slots, 16 to 64 (800 bytes of zero, +480): 64 slots of two names
+  each, the old names' cache misses' walks drop from 3,330,216
+  entries to 1,693,974 (-44 million ops, 9%), with the returns
+  diminishing past 64 (128 slots would save a further 585,369
+  entries for 640 more bytes; it waits for spare). Together the
+  three cuts (this round): find, 153,415,063 to 64,887,082 ops,
+  -58%; ccpp, -93,546,606, -17.8%; ccpp's spare, 2,343 to 1,590,
+  753 bytes, for 13.5% of the whole run's ops.
 - Observation, from the BLOCK 128-to-64 round: how many distinct
   types a compilation unit uses depends, by one or two, on the paths
   the name file records for its headers (the name table feeds the

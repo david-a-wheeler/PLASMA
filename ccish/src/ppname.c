@@ -32,7 +32,7 @@
                                 // identifier's is its length (at most
                                 // MAX_NAME), a file's its name's length
 
-#define PP_CACHE  16    // slots in the recent-names cache, PP_WAY
+#define PP_CACHE  64    // slots in the recent-names cache, PP_WAY
                         // names each: powers of 2, for the masks; it
                         // is a speedup, not a limit: a miss walks the
                         // pool as before
@@ -50,16 +50,20 @@ static unsigned char pool[MAX_PP_POOL];
 static int pool_used;
 static int nids;                // identifiers in the pool
 static int nfile;               // file names in the pool
-// The recent-names cache (approach.md, "ccpp's name lookup"), 16
-// slots of two names each, indexed by the name hash's low four bits:
+// The recent-names cache (approach.md, "ccpp's name lookup"), 64
+// slots of two names each, indexed by the name hash's low six bits:
 // a name interned just now is reused close by in C sources, and a
 // hit saves find()'s walk of the pool. A slot's two names take the
-// hash's next bit, so two names sharing a slot's low four bits keep
+// hash's next bit, so two names sharing a slot's low six bits keep
 // one in each way, instead of evicting each other. Each way keeps
 // the id and pool offset of its name, and its length plus 1, 0 being
 // an empty way: the pool is never changed, so a way needs no
 // invalidating, and a hit is checked against the pool's spelling, so
-// it can never be wrong; a miss walks as before.
+// it can never be wrong; a miss walks as before. Measured, the slot
+// count buys hits with diminishing returns (29 files, find's
+// counters, the entries old names' walks cover: 16 slots, 3,330,216;
+// 32, 2,407,448; 64, 1,693,974; 128, 1,108,605), so 64, half of 128's
+// cost, is the last step that pays: 1,636,242 entries for 480 bytes
 static int cache_id[PP_CACHE * PP_WAY];
 static int cache_off[PP_CACHE * PP_WAY];
 static unsigned char cache_len[PP_CACHE * PP_WAY];
@@ -233,7 +237,7 @@ int pp_intern(const char *s, int n)
         pp_bits[(h & (PP_BITS - 1)) >> 3]
           |= (unsigned char)(1 << (h & 7));
       }
-      k += (h >> 4) & (PP_WAY - 1);
+      k += (h >> 6) & (PP_WAY - 1);
       cache_id[k] = id;
       cache_off[k] = at;
       cache_len[k] = (unsigned char)(n + 1);
