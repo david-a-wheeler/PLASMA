@@ -294,6 +294,50 @@ expect it to pay.
   prechecked, then the 44 of keywords[]) until the NULL: a first
   char and length prefilter, or the keywords' own small table, would
   cut it.
+- ccpp's word and macro looksups (this round, e22c6e4a and
+  2f7c7b1c): the find round's two next ideas, both taken.
+  1. A word's keyword check by first char and length: kwt, the 36
+     words that are a keyword, or short's and _Bool's synonyms,
+     three bytes a word (first char, length, place in keywords[]),
+     sorted by first char, then length, and kwstart, a byte a first
+     char, the first word of its group: a word walks its group only
+     (at most six, the s's), comparing lengths, and strcmps a
+     (first char, length) tie, at most once; a word whose first char
+     starts no keyword is an identifier at the check. keywords[]
+     stays, for the spellings pp_spell_token() and the error use.
+     ccpp's strcmp, 41,087,478 ops (9.5%), is 2,247,879 (0.6%), and
+     pp_word's 30,985,152 (7.2%) is 3,434,731 (0.9%): 66,110,894
+     ops, 15.4%, for 135 bytes of data and 110 of code.
+  2. A name's macro bit: mac_bits, 1,024 bits (128 bytes), one per
+     id under 1,024, set by #define for its id and cleared by
+     #undef, so a clear bit proves the id names no macro, and
+     pp_mac_flag() needn't walk the table; a set bit, or an id with
+     no bit, 1,024 or over, walks, as before. The same proof as
+     pp_bits's, on the macro table's side: #define and #undef are
+     the bit's only writers, and an id's bit is its own (no id under
+     1,024 shares one). pp_mac_find, 44,601,894 ops (12.2%), is
+     7,863,362 (2.4%): 58,152 of 77,845 looks, 74.7%, end at the
+     bit. 35,268,179 ops, 9.7%, for 128 of zero and 131 of code.
+  The round's result: ccpp, 430,381,437 to 329,002,364 ops,
+  101,379,073 fewer (23.6%); the passes together, 596,387,897 to
+  495,008,824 (17.0%); cccomp's and ccgen's ops, and every frame
+  stack, the same; ccpp's spare, 1,581 to 1,077, the 504 bytes.
+  What didn't pay: the macro table's sorted order (the ids binary
+  searched, 0 bytes of zero for about 70 of code) was set aside for
+  the bit: the bit saves more (a clear bit, 10 ops, against the
+  search's some hundred) and moves nothing, while sorting moves
+  each entry's body with it at every #define (some two thousand
+  across the 29 files the profile compiles). Next, from this round's profile: the I/O path is now ccpp's
+  top (read_line 46,318,912, 14.1%, with bgetc's 40,502,372 and
+  getch's 29,805,336 its readers, and skip_blank's 15,052,287); a
+  bigger BIO buffer (64 to 256 bytes) would cut its refills
+  fourfold, about 3M ops, for 576 bytes of zero, 5,000 ops a byte
+  against the 200,000 these two cuts bought, so it waits; find, now
+  18.9% (62,212,889), keeps the 128th slot pair parked (585,369
+  entries for 640 bytes is 60% of the spare now); and with ccpp
+  down, cccomp (82,918,387) and ccgen (83,088,073) are each a sixth
+  of the pipeline's 495,008,824, a speed round on either the other
+  half of bearable.
 - Observation, from the BLOCK 128-to-64 round: how many distinct
   types a compilation unit uses depends, by one or two, on the paths
   the name file records for its headers (the name table feeds the
