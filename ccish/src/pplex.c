@@ -487,6 +487,28 @@ static const char *const keywords[] = {
 _Static_assert(sizeof(keywords) / sizeof(keywords[0]) == NKEYWORDS + 4 + 1,
                "keywords[] doesn't have NKEYWORDS supported keywords");
 
+// The 36 words that are a keyword, or a keyword's synonym: first
+// char, length, and place in keywords[] (44 and 45 are short's and
+// _Bool's, the synonyms), sorted by first char, then length. pp_word
+// walks only the words that share its first char (at most six, the
+// s's), comparing lengths, and strcmps a (first char, length) tie:
+// the 46 strcmps a word took in keywords[] are gone.
+static const unsigned char kwt[36 * 3] = {
+  'a', 4, 40, 'b', 4, 15, 'b', 5, 30, 'c', 4, 1, 'c', 4, 22, 'c', 5, 4,
+  'c', 8, 31, 'c', 9, 21, 'd', 2, 28, 'd', 6, 41, 'd', 7, 23, 'e', 4, 10,
+  'e', 4, 26, 'e', 6, 17, 'f', 3, 29, 'f', 5, 42, 'g', 4, 34, 'i', 2, 25,
+  'i', 3, 0, 'l', 4, 43, 'r', 6, 24, 'r', 8, 18, 's', 5, 44, 's', 6, 2,
+  's', 6, 8, 's', 6, 16, 's', 6, 32, 's', 6, 33, 't', 7, 20, 'u', 5, 9,
+  'u', 8, 3, 'v', 4, 12, 'v', 8, 5, 'w', 5, 27, '_', 5, 45, '_', 14, 35
+};
+_Static_assert(sizeof(kwt) / 3 == 36, "kwt's 36 words");
+// kwt's first word, by first char: a to z at 0 to 25, _ at 26; a char
+// with no keywords there, the next char that has some.
+static const unsigned char kwstart[27] = {
+  0, 1, 3, 8, 11, 14, 16, 17, 17, 19, 19, 19, 20, 20, 20, 20, 20, 20, 22,
+  28, 29, 31, 33, 34, 34, 34, 34
+};
+
 // The code of the word (an identifier or keyword) of n characters at
 // word, NUL-terminated: a supported keyword's, or TC_ID or TC_KEYWORD
 // with its id in pt_val (and in pt_macro whether it names a macro).
@@ -499,19 +521,31 @@ _Static_assert(sizeof(keywords) / sizeof(keywords[0]) == NKEYWORDS + 4 + 1,
 // a _Bool.
 int pp_word(const char *word, int n)
 {
-  int i;
-  if (!strcmp(word, "short"))
-    return TC_INT;
-  if (!strcmp(word, "_Bool"))
-    return TC_BOOL;
-  for (i = 0; keywords[i]; i++)
-    if (!strcmp(keywords[i], word)) {
-      if (i < NKEYWORDS)
-        return TC_KEYWORDS + i;
-      pt_val = pp_intern(word, n);
-      pt_macro = pp_macro_flag;
-      return TC_KEYWORD;
+  const unsigned char *e, *end = kwt + 3 * 36;
+  int c = word[0], i;
+  if (c >= 'a' && c <= 'z')
+    e = kwt + 3 * kwstart[c - 'a'];
+  else if (c == '_')
+    e = kwt + 3 * kwstart[26];
+  else
+    e = end;                    // no keyword starts with c
+  for (; e < end && e[0] == c; e += 3) {
+    if (e[1] != n)
+      continue;
+    i = e[2];
+    if (i >= 44) {              // short's and _Bool's, the synonyms
+      if (strcmp(word, i == 44 ? "short" : "_Bool"))
+        continue;
+      return i == 44 ? TC_INT : TC_BOOL;
     }
+    if (strcmp(word, keywords[i]))
+      continue;
+    if (i < NKEYWORDS)
+      return TC_KEYWORDS + i;
+    pt_val = pp_intern(word, n);
+    pt_macro = pp_macro_flag;
+    return TC_KEYWORD;
+  }
   pt_val = pp_intern(word, n);
   pt_macro = pp_macro_flag;
   return TC_ID;
