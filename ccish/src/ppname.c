@@ -49,6 +49,7 @@ int pp_macro_flag;
 static unsigned char pool[MAX_PP_POOL];
 static int pool_used;
 static int nids;                // identifiers in the pool
+static int nfile;               // file names in the pool
 // The recent-names cache (approach.md, "ccpp's name lookup"), 16
 // slots of two names each, indexed by the name hash's low four bits:
 // a name interned just now is reused close by in C sources, and a
@@ -178,6 +179,7 @@ void pp_names_init(void)
   int i;
   pool_used = 0;
   nids = CMDSYS_IDS;
+  nfile = 0;
   for (i = 0; i < NFIXED - CMDSYS_IDS; i++)
     pp_intern(fixed[i], (int)strlen(fixed[i]));
 }
@@ -237,7 +239,10 @@ int pp_is_macro(int id)
   return pp_mac_find(id) >= 0;
 }
 
-// The number of source file path, adding it if it is new.
+// The number of source file path, adding it if it is new. A new file's
+// number is the pool's file count plus 1 (find's k, for that kind), so
+// the add needs no second find to learn it (approach.md, "ccpp's name
+// lookup").
 int pp_add_file(const char *path)
 {
   int n = (int)strlen(path), at, k;
@@ -247,7 +252,7 @@ int pp_add_file(const char *path)
   if (k)
     return k;
   add(path, n, ENT_FILE);
-  return find(path, n, ENT_FILE, &at);
+  return ++nfile;
 }
 
 // Copy the name of source file k into buf (MAX_PATH bytes).

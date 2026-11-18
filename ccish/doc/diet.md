@@ -249,7 +249,14 @@ expect it to pay.
   8,207 bytes in one file (pexpr.c), around nine hundred entries, so
   a jump table authoritative enough to end the walk would be 1,024
   to 2,048 slots of 2-byte offsets, 2 to 4K, most of ccpp's spare;
-  it waits for more spare or a speed need.
+  it waits for more spare or a speed need. Measured (find's own
+  counters, 29 files): of the 6.0 million entries walked, 2.5 million
+  are new names' failed finds and 3.3 million are old names' cache
+  misses (the cache holds 32 of a file's ~700 names, so most
+  re-references walk); the walks average a couple of hundred entries
+  because the pool grows through the file. A new file's second find
+  (its number, after the add) is gone now: nfile, the pool's file
+  count, is the number (-1.2 million ops, 2 bytes of zero).
 - Observation, from the BLOCK 128-to-64 round: how many distinct
   types a compilation unit uses depends, by one or two, on the paths
   the name file records for its headers (the name table feeds the
