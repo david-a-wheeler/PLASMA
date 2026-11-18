@@ -256,7 +256,15 @@ expect it to pay.
   re-references walk); the walks average a couple of hundred entries
   because the pool grows through the file. A new file's second find
   (its number, after the add) is gone now: nfile, the pool's file
-  count, is the number (-1.2 million ops, 2 bytes of zero).
+  count, is the number (-1.2 million ops, 2 bytes of zero). The
+  failed finds themselves are skipped by a 1,024-bit set (pp_bits,
+  128 bytes), one bit per name hash's low ten bits: a name whose bit
+  is clear is definitely new (the bit is set when the name is added,
+  and nothing unsets it until the pool resets), so pp_intern and
+  pp_add_file skip the walk and add at once; a set bit may be a
+  collision's, and the walk goes on. A file's bit is set too.
+  -48 million ops, 9% of ccpp, for 137 bytes of code, 128 of zero
+  and 2 of frame (the frame stack is 236 to 238).
 - Observation, from the BLOCK 128-to-64 round: how many distinct
   types a compilation unit uses depends, by one or two, on the paths
   the name file records for its headers (the name table feeds the

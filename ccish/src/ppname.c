@@ -63,6 +63,14 @@ static int nfile;               // file names in the pool
 static int cache_id[PP_CACHE * PP_WAY];
 static int cache_off[PP_CACHE * PP_WAY];
 static unsigned char cache_len[PP_CACHE * PP_WAY];
+// The "definitely new" set, PP_BITS bits, indexed by the name hash's
+// low ten bits: a name whose bit is clear is not in the pool (its bit
+// is set when it is added, and no other name unsets it), so its
+// failed find, a walk of the whole pool, can be skipped; a set bit
+// may be another name's (a hash's collision), and the walk goes on.
+// A file name's bit is set too, so the file's find skips as well.
+#define PP_BITS  1024
+static unsigned char pp_bits[PP_BITS / 8];
 
 // The names every file has (CCPP.md, "The fixed ids"). First, ids 1
 // to NCMDSYS, the CMDSYS functions in cmdsys_sigs[]'s order (parse.c):
@@ -180,6 +188,8 @@ void pp_names_init(void)
   pool_used = 0;
   nids = CMDSYS_IDS;
   nfile = 0;
+  for (i = 0; i < PP_BITS / 8; i++)
+    pp_bits[i] = 0;
   for (i = 0; i < NFIXED - CMDSYS_IDS; i++)
     pp_intern(fixed[i], (int)strlen(fixed[i]));
 }
@@ -213,12 +223,15 @@ int pp_intern(const char *s, int n)
              && same(pool + cache_off[k + 1] + 1, s, n))
       id = cache_id[k + 1];
     else {
-      id = find(s, n, 0, &at);
+      id = pp_bits[(h & (PP_BITS - 1)) >> 3]
+           & (unsigned char)(1 << (h & 7)) ? find(s, n, 0, &at) : 0;
       if (!id) {
         at = pool_used;
         id = ++nids;
         fresh = 1;
         add(s, n, 0);
+        pp_bits[(h & (PP_BITS - 1)) >> 3]
+          |= (unsigned char)(1 << (h & 7));
       }
       k += (h >> 4) & (PP_WAY - 1);
       cache_id[k] = id;
@@ -245,13 +258,16 @@ int pp_is_macro(int id)
 // lookup").
 int pp_add_file(const char *path)
 {
-  int n = (int)strlen(path), at, k;
+  int n = (int)strlen(path), at, k, h = name_hash(path, n);
   if (n > FILE_LEN)
     fatal0(1 /* "output name too long" */);
-  k = find(path, n, ENT_FILE, &at);
-  if (k)
-    return k;
+  if (pp_bits[(h & (PP_BITS - 1)) >> 3] & (unsigned char)(1 << (h & 7))) {
+    k = find(path, n, ENT_FILE, &at);
+    if (k)
+      return k;
+  }
   add(path, n, ENT_FILE);
+  pp_bits[(h & (PP_BITS - 1)) >> 3] |= (unsigned char)(1 << (h & 7));
   return ++nfile;
 }
 
