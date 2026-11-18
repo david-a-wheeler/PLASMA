@@ -141,23 +141,26 @@ static int cmdsys_find(const char *s, int n)
 // Find the entry of kind kind (0 or ENT_FILE) spelled s (n chars):
 // return its number among the entries of that kind, from 1 for a file
 // and from CMDSYS_IDS + 1 for an identifier (its id), or 0 if there is
-// none; its offset goes in *at. The length byte is one local, not two
-// loads, so the walk is one less per entry.
+// none; its offset goes in *at. The walk keeps the entry's address,
+// not its offset, in p: the pool's base is loaded once, not per
+// entry, and the end, pool + pool_used, is one local, not a reload
+// and compare per entry.
 static int find(const char *s, int n, int kind, int *at)
 {
-  int i = 0, k = kind ? 0 : CMDSYS_IDS, len;
+  const unsigned char *p = pool, *end = pool + pool_used;
+  int k = kind ? 0 : CMDSYS_IDS, len;
   unsigned char b;
-  while (i < pool_used) {
-    b = pool[i];
+  while (p < end) {
+    b = *p;
     len = b & FILE_LEN;
     if ((b & ENT_FILE) == kind) {
       k++;
-      if (len == n && same(pool + i + 1, s, n)) {
-        *at = i;
+      if (len == n && same(p + 1, s, n)) {
+        *at = (int)(p - pool);
         return k;
       }
     }
-    i += len + 1;
+    p += len + 1;
   }
   return 0;
 }

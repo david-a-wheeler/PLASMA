@@ -237,42 +237,48 @@ expect it to pay.
   done: a little free list could let a finished file's buffer be
   reused, and take one or two Bfiles, 64 or 128 bytes, out of ccpp's
   zero region.
-- ccpp's name pool (ppname.c): the recent-names cache is a hash
-  table, 16 slots of two names each (160 bytes, the name hash's low
-  five bits; a miss walks the pool). The cheap cuts are done
-  (f7997f7b, 22470bdb): the length byte is read once per entry
-  (entry_len dropped), and two names per slot, so a thrashing pair
-  keeps both: together 60.6 million ops, 10.4% of ccpp's run, for
-  55 bytes of code and 132 of the spare. find is still the biggest
-  single cost, 29% of ccpp's ops, 151 million, 23,608 walks of a
-  couple of hundred entries each: the pool peaks at 7,202 of its
-  8,207 bytes in one file (pexpr.c), around nine hundred entries, so
-  a jump table authoritative enough to end the walk would be 1,024
-  to 2,048 slots of 2-byte offsets, 2 to 4K, most of ccpp's spare;
-  it waits for more spare or a speed need. Measured (find's own
-  counters, 29 files): of the 6.0 million entries walked, 2.5 million
-  are new names' failed finds and 3.3 million are old names' cache
-  misses (the cache holds 32 of a file's ~700 names, so most
-  re-references walk); the walks average a couple of hundred entries
-  because the pool grows through the file. A new file's second find
-  (its number, after the add) is gone now: nfile, the pool's file
-  count, is the number (-1.2 million ops, 2 bytes of zero). The
-  failed finds themselves are skipped by a 1,024-bit set (pp_bits,
-  128 bytes), one bit per name hash's low ten bits: a name whose bit
-  is clear is definitely new (the bit is set when the name is added,
-  and nothing unsets it until the pool resets), so pp_intern and
-  pp_add_file skip the walk and add at once; a set bit may be a
-  collision's, and the walk goes on. A file's bit is set too.
-  -48 million ops, 9% of ccpp, for 137 bytes of code, 128 of zero
-  and 2 of frame (the frame stack is 236 to 238). And the cache's
-  slots, 16 to 64 (800 bytes of zero, +480): 64 slots of two names
-  each, the old names' cache misses' walks drop from 3,330,216
-  entries to 1,693,974 (-44 million ops, 9%), with the returns
-  diminishing past 64 (128 slots would save a further 585,369
-  entries for 640 more bytes; it waits for spare). Together the
-  three cuts (this round): find, 153,415,063 to 64,887,082 ops,
-  -58%; ccpp, -93,546,606, -17.8%; ccpp's spare, 2,343 to 1,590,
-  753 bytes, for 13.5% of the whole run's ops.
+- ccpp's name pool (ppname.c): find's walk was 29% of ccpp's ops
+  at the round's start (153,415,063, bool era). Measured first
+  (find's own counters, 29 files): of the 6.0 million entries
+  walked, 2.5 million are new names' failed finds and 3.3 million
+  are old names' cache misses; the walks average a couple of hundred
+  entries because the pool grows through the file, 7,202 of its
+  8,207 bytes in one file (pexpr.c), around nine hundred entries.
+  A jump table authoritative enough to end the walk would be 1,024
+  to 2,048 slots of 2-byte offsets, 2 to 4K, most of ccpp's spare,
+  so the cuts attack the walks' kinds instead, in four:
+  1. A new file's second find (its number, after the add) is gone:
+     nfile, the pool's file count, is the number (2 bytes of zero).
+  2. A 1,024-bit set (pp_bits, 128 bytes), one bit per name hash's
+     low ten bits: a name whose bit is clear is definitely new (the
+     bit is set when the name is added, and nothing unsets it until
+     the pool resets), so pp_intern and pp_add_file skip the failed
+     walk and add at once; a set bit may be a collision's, and the
+     walk goes on. File names' bits too. 137 bytes of code, 128 of
+     zero, 2 of frame (the frame stack is 236 to 238).
+  3. The recent-names cache (a hit is checked against the pool's
+     spelling, so it can never be wrong; a miss walks as before):
+     64 slots of two names each, 800 bytes, the name hash's low six
+     bits, the way of the next. Measured, the slot count buys hits
+     with diminishing returns (the entries old names' walks cover,
+     29 files: 16 slots, 3,330,216; 32, 2,407,448; 64, 1,693,974;
+     128, 1,108,605), so 64, half of 128's cost, is the last step
+     that pays; 128 waits for spare.
+  4. The walk keeps the entry's address, p, and end, pool +
+     pool_used, in locals: the pool's base and pool_used are loaded
+     once per find, not per entry (same()'s address and *at, p -
+     pool, are in hand), -2 ops a entry; 9 bytes of code, the frame
+     stack unchanged. An inlined same() was tried and is worse: the
+     compiler re-tests the invariants per char and loses the
+     counted-loop shape (26 to 39 ops an entry against 23 to 25);
+     the call costs 8 of same's 22 ops, but its char loop, 10, is
+     already tight, and register locals buy nothing in the VM.
+  The round's result: find, 153,415,063 to 62,154,846 ops, -60%;
+  ccpp, 526,637,698 to 430,381,437, -96,256,261, -18.3%; the passes
+  together, -13.9%; ccpp's spare, 2,343 to 1,581, 762 bytes. The
+  earlier pool cuts (f7997f7b, 22470bdb) stand: the length byte is
+  read once per entry, and two names per slot, so a thrashing pair
+  keeps both.
 - Observation, from the BLOCK 128-to-64 round: how many distinct
   types a compilation unit uses depends, by one or two, on the paths
   the name file records for its headers (the name table feeds the
