@@ -9,6 +9,7 @@ extern int pp_from_lexer;           // pp_next()'s token is the lexer's
 
 void pp_mac_init(void);
 int  pp_mac_find(int id);           // the macro named id, or -1
+int  pp_mac_flag(int id);           // does id name a macro?
 void pp_def_begin(int np, const int *params, int va);  // a body: its
 void pp_def_token(int code, int val, const unsigned char *s, int n);
 void pp_def_end(int id);            // tokens, then its name

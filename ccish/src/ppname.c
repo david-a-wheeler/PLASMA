@@ -246,17 +246,19 @@ int pp_intern(const char *s, int n)
       cache_len[k] = (unsigned char)(n + 1);
     }
   }
-  pp_macro_flag = !fresh && pp_mac_find(id) >= 0;
+  pp_macro_flag = !fresh && pp_mac_flag(id);
   return id;
 }
 
 // Does identifier id name a macro? The macro table (ppmac.c) holds
-// exactly the defined macros, pp_undef() removing its entry, so it is
-// the flag's authority: 386 ops a call measured, where the pool's walk
-// took about 5,500 (approach.md, "ccpp's name lookup").
+// exactly the defined macros, pp_undef() removing its entry, and its
+// bits (set by #define, cleared by #undef) prove the no's without the
+// table's walk: 573 ops a call measured (doc/diet.md, the find round),
+// where the pool's walk took about 5,500 (approach.md, "ccpp's name
+// lookup").
 int pp_is_macro(int id)
 {
-  return pp_mac_find(id) >= 0;
+  return pp_mac_flag(id);
 }
 
 // The number of source file path, adding it if it is new. A new file's

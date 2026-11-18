@@ -134,12 +134,22 @@ int pp_mac_peak(int k)
 #define NOTE()
 #endif
 
+// Each name's macro bit: #define sets it for its id, and #undef
+// clears it, so a clear bit proves the id names no macro, and
+// pp_mac_flag() needn't ask the table. An id with no bit (MAC_BITS or
+// over) always asks the table.
+#define MAC_BITS 1024
+static unsigned char mac_bits[MAC_BITS / 8];
+
 // Forget every macro and expansion (for each source file).
 void pp_mac_init(void)
 {
+  int i;
   body_used = nmacs = 0;
   stop = sfloor = nin = otop = nslots = 0;
   pend_code = -1;
+  for (i = 0; i < MAC_BITS / 8; i++)
+    mac_bits[i] = 0;
 }
 
 // The macro named id, or -1.
@@ -150,6 +160,16 @@ int pp_mac_find(int id)
     if (mac_id[m] == id)
       return m;
   return -1;
+}
+
+// Does id name a macro: by its bit, where it has one, and the table
+// after; the bit is set by #define and cleared by #undef, so a clear
+// bit proves no.
+int pp_mac_flag(int id)
+{
+  if (id < MAC_BITS && !(mac_bits[id >> 3] & (unsigned char)(1 << (id & 7))))
+    return 0;
+  return pp_mac_find(id) >= 0;
 }
 
 // Expansion's buffers are full: stop.
@@ -309,6 +329,8 @@ void pp_def_end(int id)
   mac_va[nmacs] = (char)def_va;
   mac_on[nmacs] = 0;
   nmacs++;
+  if (id < MAC_BITS)
+    mac_bits[id >> 3] |= (unsigned char)(1 << (id & 7));
   NOTE();
 }
 
@@ -331,6 +353,8 @@ void pp_undef(int id)
     mac_va[i] = mac_va[i + 1];
     mac_on[i] = mac_on[i + 1];
   }
+  if (id < MAC_BITS)
+    mac_bits[id >> 3] &= (unsigned char)~(1 << (id & 7));
   nmacs--;
 }
 
