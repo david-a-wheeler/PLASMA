@@ -85,7 +85,7 @@ The working rule is:
   compile-time checks the standard requires, so it accepts some
   invalid programs (section 2.7). This never affects a correct
   program, which compiles to exactly the same code in both builds.
-  The full build, on the host, makes every check.
+  The full build, on the host, makes every required check.
 
 ### 1.2 Self-hosting on the Apple II
 
