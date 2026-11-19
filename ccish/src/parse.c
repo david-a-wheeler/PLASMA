@@ -1099,12 +1099,12 @@ void make_elem(Operand *o, int off, int global, int base_arr)
   o->kind = K_ELEM;
   o->off = off;
   o->global = global;
-  o->base_arr = base_arr;
-  o->idx = -1;
-  o->idx_global = 0;
-  o->idx_char = 0;
-  o->scale = 0;
-  o->disp = 0;
+  o->u.elem.base_arr = base_arr;
+  o->u.elem.idx = -1;
+  o->u.elem.idx_global = 0;
+  o->u.elem.idx_char = 0;
+  o->u.elem.scale = 0;
+  o->u.elem.disp = 0;
   o->is_bool = 0;
   o->assigned = 0;
 }
@@ -1116,22 +1116,22 @@ void make_elem(Operand *o, int off, int global, int base_arr)
 // scaled.
 void push_address(Operand *o)
 {
-  int d = o->disp;
-  if (o->base_arr && o->off + d >= 0
+  int d = o->u.elem.disp;
+  if (o->u.elem.base_arr && o->off + d >= 0
       && o->off + d <= max_offset(o->global)) {
     push_var_addr(o->off + d, o->global);
     d = 0;
-  } else if (o->base_arr) {
+  } else if (o->u.elem.base_arr) {
     push_var_addr(o->off, o->global);
   } else {
     load_var(o->off, o->global, 0);
   }
-  if (o->idx >= 0) {
-    load_var(o->idx, o->idx_global, IR_CHAR_FORM(0, o->idx_char != 0));
-    if (o->idx_char == 2)
+  if (o->u.elem.idx >= 0) {
+    load_var(o->u.elem.idx, o->u.elem.idx_global, IR_CHAR_FORM(0, o->u.elem.idx_char != 0));
+    if (o->u.elem.idx_char == 2)
       sign_extend();
-    if (o->scale != 1) {
-      put(IR_CONST, o->scale, -1);
+    if (o->u.elem.scale != 1) {
+      put(IR_CONST, o->u.elem.scale, -1);
       put_op(IR_MUL);   // a word index becomes IDXW
     }
     put_op(IR_ADD);
@@ -1306,18 +1306,18 @@ void swap_blocks(int start, int mid, int fixed)
 // with it.
 void finish_store(Operand *o, int keep)
 {
-  if (ir_here() != o->mend || nheld != 0)
+  if (ir_here() != o->u.store.mend || nheld != 0)
     fatal0(39 /* "internal error: code after a pending store" */);
   if (keep)
     put_op(IR_DUP);
-  swap_blocks(o->m0, o->m1, 0);
-  put_op(STORE_OP(o->stype, o->quals));
-  if (keep && o->vmask) {
+  swap_blocks(o->u.store.m0, o->u.store.m1, 0);
+  put_op(STORE_OP(o->u.store.stype, o->quals));
+  if (keep && o->u.store.vmask) {
     // The value stored was the low byte, as a byte object's value is
     // the byte (a char's) or the byte sign-extended (a signed char's).
     put(IR_CONST, 0xFF, -1);
     put_op(IR_AND);
-    if (o->stype == TY_SCHAR)
+    if (o->u.store.stype == TY_SCHAR)
       sign_extend();
   }
   o->kind = keep ? K_VALUE : K_VOID;

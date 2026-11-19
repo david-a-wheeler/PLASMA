@@ -28,7 +28,7 @@ blank for a limit that isn't measured.
 | `MAX_EXP_BYTES` | 256 | 139 (emit.c) | bytes of the expansions and arguments being read, and of the arguments' own expansions (two buffers): about 10% over the peak (232, samples/rodfast.c's DRAW_ROWS; ccish's own source needs 139) | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_ARG_SLOTS` | 7 | 4 (pexpr.c) | arguments of the calls being expanded: about 10% over the peak (6, a test's six-argument macro; ccish's own source needs 4) | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_PP_PARAMS` | 16 |  | parameters of one macro | [src/ppmac.h](../src/ppmac.h) |
-| `MAX_PP_POOL` | 8207 | 8082 (ptop.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each: a byte of ccpp's heap each, so no larger than ccish's own use needs (ccpp has under 2K to spare on a 64K Apple II) | [src/ppname.c](../src/ppname.c) |
+| `MAX_PP_POOL` | 8207 | 8093 (ptop.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each: a byte of ccpp's heap each, so no larger than ccish's own use needs (ccpp has under 2K to spare on a 64K Apple II) | [src/ppname.c](../src/ppname.c) |
 
 ## One source file (cccomp)
 
@@ -41,8 +41,8 @@ blank for a limit that isn't measured.
 | `MAX_IMPORTS` | 16 |  | declarations with an asm label, or after #pragma plasma import | [src/ptop.c](../src/ptop.c) |
 | `MAX_DEPS` | 4 |  | modules named by #pragma plasma import | [src/ptop.h](../src/ptop.h) |
 | `MAX_TYPES` | 61 | 56 (link.c) | distinct types; at most 128, since char tables (fn_type[], param_types[]) hold unqualified types, and a host's char may be signed; 10% over the peak (56, link.c) | [src/type.c](../src/type.c) |
-| `MAX_TAGS` | 6 | 4 (link.c) | struct and union tags, counting those in blocks that have ended | [src/type.tag.h](../src/type.tag.h) |
-| `MAX_MEMBERS` | 32 | 27 (irout.c) | struct and union members, in all of them | [src/type.tag.h](../src/type.tag.h) |
+| `MAX_TAGS` | 8 | 6 (irout.c) | struct and union tags, counting those in blocks that have ended (parse.h's Operand union is four: the struct, the union, and its two members' structs) | [src/type.tag.h](../src/type.tag.h) |
+| `MAX_MEMBERS` | 32 | 30 (irout.c) | struct and union members, in all of them | [src/type.tag.h](../src/type.tag.h) |
 
 ## One function
 

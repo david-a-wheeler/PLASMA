@@ -588,7 +588,7 @@ static void parse_primary(Operand *o)
     // takes no data space, unless it is in a global's initializer.
     o->kind = K_ADDR;
     o->global = G_STR;
-    o->off = o->disp = suppress && !want_addr
+    o->off = o->u.elem.disp = suppress && !want_addr
                        ? 0 : data_string(tok_text, tok_len);
     o->val = o->off + tok_len + 1;
     o->type = pointer_to(TY_CHAR);
@@ -789,7 +789,7 @@ static int pending_base(Operand *o, int var)
   if (o->kind == K_VAR)         // not a volatile pointer: read it now
     return is_array(o->type)
            || (is_pointer(o->type) && !(o->quals & Q_VOLATILE));
-  return o->kind == K_ELEM && is_array(o->type) && !(var && o->idx >= 0);
+  return o->kind == K_ELEM && is_array(o->type) && !(var && o->u.elem.idx >= 0);
 }
 
 // Parse "[index]" after o: o becomes the element o[index], which C
@@ -847,18 +847,18 @@ static void parse_index(Operand *o)
     } else {
       if (o->kind == K_VAR)
         make_elem(o, o->off, o->global, is_array(t));
-      o->disp = wrap16((unsigned)o->disp + (unsigned)d);
+      o->u.elem.disp = wrap16((unsigned)o->u.elem.disp + (unsigned)d);
     }
   } else {
     if (o->kind == K_VAR)
       make_elem(o, o->off, o->global, is_array(t));
-    o->idx = r.off;
-    o->idx_global = r.global;
+    o->u.elem.idx = r.off;
+    o->u.elem.idx_global = r.global;
     // A bool index is 0 or 1, so it is a byte; a signed char's is
     // promoted (idx_char 2, push_address sign-extends it).
-    o->idx_char = r.type == TY_SCHAR ? 2
+    o->u.elem.idx_char = r.type == TY_SCHAR ? 2
               : r.type == TY_CHAR || r.type == TY_BOOL;
-    o->scale = size;
+    o->u.elem.scale = size;
   }
   set_object(o, type_sub(t));
 }
@@ -908,10 +908,10 @@ static void offset_place(Operand *o, int off)
     o->off += off;
   } else if (o->kind == K_VAR) {
     make_elem(o, o->off, o->global, 1);
-    o->disp = off;
+    o->u.elem.disp = off;
     o->assigned = assigned;
   } else if (o->kind == K_ELEM) {
-    o->disp = wrap16((unsigned)o->disp + (unsigned)off);
+    o->u.elem.disp = wrap16((unsigned)o->u.elem.disp + (unsigned)off);
   } else if (off != 0) {          // K_DEREF: the address is on the stack
     put(IR_CONST, off, -1);
     put_op(IR_ADD);
@@ -1512,14 +1512,14 @@ static void start_store(Operand *o, int start)
   // The kept value is the object's value: its byte (a char's) or its
   // byte sign-extended (a signed char's). A value of the object's own
   // type, or a 1 or 0, is so already.
-  o->vmask = IS_BYTE_TYPE(st) && o->type != st && !o->is_bool;
+  o->u.store.vmask = IS_BYTE_TYPE(st) && o->type != st && !o->is_bool;
   o->type = st;
   o->quals = q;
   o->kind = K_STORE;
-  o->m0 = start;
-  o->m1 = mid;
-  o->mend = ir_here();
-  o->stype = st;
+  o->u.store.m0 = start;
+  o->u.store.m1 = mid;
+  o->u.store.mend = ir_here();
+  o->u.store.stype = st;
   o->assigned = 0;
 }
 
@@ -1572,9 +1572,9 @@ static void compound_elem(Operand *x, Operand *r, int op)
 static int addr_cost(Operand *o)
 {
   int c = o->global ? 3 : 2;
-  if (o->kind == K_ELEM && o->idx >= 0)
-    c += (o->idx_global ? 3 : 2) + (o->scale != 1 ? 2 : 0) + 1;
-  if (o->kind == K_ELEM && o->disp != 0 && !o->base_arr)
+  if (o->kind == K_ELEM && o->u.elem.idx >= 0)
+    c += (o->u.elem.idx_global ? 3 : 2) + (o->u.elem.scale != 1 ? 2 : 0) + 1;
+  if (o->kind == K_ELEM && o->u.elem.disp != 0 && !o->u.elem.base_arr)
     c += 2;
   return c;
 }
@@ -1720,7 +1720,7 @@ static void parse_assign(Operand *o, int ir_op, int m0, int h0)
     start_store(o, code_start(m0, h0));
     return;
   }
-  if (ir_op >= 0 && o->kind == K_ELEM && o->idx >= 0) {
+  if (ir_op >= 0 && o->kind == K_ELEM && o->u.elem.idx >= 0) {
     // x op= e loads x, then stores into it after e. Saving an
     // indexed element's address (spill()) is 1 byte smaller than
     // computing it twice, and stays right if e changes the index

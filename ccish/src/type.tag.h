@@ -5,8 +5,10 @@
 #ifndef TYPE_TAG_H
 #define TYPE_TAG_H
 
-#define MAX_TAGS     6      // limit file: struct and union tags, counting
-                            // those in blocks that have ended
+#define MAX_TAGS     8      // limit file: struct and union tags, counting
+                            // those in blocks that have ended (parse.h's
+                            // Operand union is four: the struct, the union,
+                            // and its two members' structs)
 #define MAX_MEMBERS  32     // limit file: struct and union members, in all of
                             // them
 

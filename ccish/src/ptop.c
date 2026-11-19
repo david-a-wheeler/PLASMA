@@ -178,7 +178,7 @@ static void parse_scalar_init(int type)
   // object (C11 6.5.6p8), or within the data or zero area written so
   // far (one past the end is allowed, as in C).
   if (o.global == G_STR) {
-    if (o.off < o.disp || o.off > o.val)
+    if (o.off < o.u.elem.disp || o.off > o.val)
       error0(155 /* "initializer address is out of range" */);
     data_addr(REL_STR, o.off, 0);
   } else if (o.global >= 2) {

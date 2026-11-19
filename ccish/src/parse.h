@@ -125,6 +125,10 @@ _Static_assert(K_VALUE >= 0 && K_VOID >= 0 && K_CONST >= 0 && K_VAR >= 0
 // An operand, as the parser holds it. Its small fields (the kind and
 // the flags) are char: an Operand is in the frame of nearly every
 // level of the expression parser's recursion, and in its struct copies.
+// The kind's fields share one union: an operand is one kind at a time,
+// and the kinds' fields are never both live (K_STORE's are set by
+// start_store after the operand has left its earlier kinds, and
+// K_ELEM's are dead by the rvalue that ends them).
 typedef struct {
   char kind;      // K_*: what the operand is
   int type;       // its C type, unqualified. A char's value on the
@@ -150,24 +154,28 @@ typedef struct {
                   // the object (K_VAR: only a struct's), so not an
                   // lvalue. Its value, if needed, is read back from
                   // the object.
-  // K_ELEM only:
-  char base_arr;  // the base is the address of the array at off, not
-                  // the pointer in the variable at off
-  int idx;        // offset of the index variable, or -1
-  int idx_global; // the index variable is a global
-  char idx_char;  // the index variable's width: 0 a word, 1 a byte
-                  // (a char or bool), 2 a signed char (promoted)
-  int scale;      // bytes per step of the index
-  int disp;       // a constant number of bytes added
-  // K_STORE only. The address's code is from IR position m0 to m1,
-  // and the value's from m1 to mend. is_bool says whether the value
-  // is 1 or 0.
-  int m0, m1, mend;
-  int stype;      // the type of the object stored into
-  char vmask;     // the kept value needs to be turned into the
-                  // object's value (an int or a char stored into a
-                  // char: ANDI 255; into a signed char, which is also
-                  // sign-extended)
+  union {
+    struct {     // K_ELEM (K_ADDR too, whose string's length is disp):
+      char base_arr;  // the base is the address of the array at off,
+                      // not the pointer in the variable at off
+      int idx;        // offset of the index variable, or -1
+      int idx_global; // the index variable is a global
+      char idx_char;  // the index variable's width: 0 a word, 1 a byte
+                      // (a char or bool), 2 a signed char (promoted)
+      int scale;      // bytes per step of the index
+      int disp;       // a constant number of bytes added
+    } elem;       // 10 bytes
+    struct {     // K_STORE. The address's code is from IR position m0
+                 // to m1, and the value's from m1 to mend. is_bool
+                 // says whether the value is 1 or 0.
+      int m0, m1, mend;
+      int stype;      // the type of the object stored into
+      char vmask;     // the kept value needs to be turned into the
+                      // object's value (an int or a char stored into a
+                      // char: ANDI 255; into a signed char, which is
+                      // also sign-extended)
+    } store;      // 9 bytes
+  } u;           // one kind's fields at a time: the union, 10 bytes
 } Operand;
 
 // Operand.nonice's bits: why a constant isn't an integer constant
