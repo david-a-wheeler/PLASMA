@@ -127,18 +127,32 @@ Each of these is in git history, with its measurements:
   traffic, and on the Apple II ProDOS buffers each file's 1K blocks
   itself, so a smaller BLOCK costs only more, not smaller, FILEIO
   calls (a6da214a: 512 to 128, 2369633d: 128 to 64, this round: 64 to
-  32, a Bfile 74 to 42). Every pass's buffers shrink: ccpp has six,
-  ccgen three, cccomp and cclink two, 192, 96, 64 and 64 bytes of
-  zero region gone (running spare up by them: ccpp 1077 to 1269,
-  cccomp 951 to 1015, ccgen 2746 to 2842, cclink 11873 to 11937), for
-  +0.4%, +0.36% and +0.52% of the passes' ops (make profile), the
-  same trade the 128-to-64 cut took at +0.12% to +0.27%. Watch the
-  REL modules: a zero-filled array under BSS_MIN (256) lives in the
-  file instead of the heap, so an array crossing that boundary as it
-  shrinks grows the REL file (ccpp's files[] did: +91) while the
-  XLOAD image, the one that runs on the Apple, is unchanged.
-  A buffer this small is where the trade turns: the next halving
-  buys 208 bytes in ccpp for about double the refills.
+  32, a Bfile 74 to 42). Every pass's buffers shrink: ccpp has six
+  (five after the name file's was lent, below), ccgen three, cccomp
+  and cclink two, 192, 96, 64 and 64 bytes of zero region gone
+  (running spare up by them: ccpp 1077 to 1269, cccomp 951 to 1015,
+  ccgen 2746 to 2842, cclink 11873 to 11937), for +0.4%, +0.36% and
+  +0.52% of the passes' ops (make profile), the same trade the
+  128-to-64 cut took at +0.12% to +0.27%. Watch the REL modules: a
+  zero-filled array under BSS_MIN (256) lives in the file instead of
+  the heap, so an array crossing that boundary as it shrinks grows
+  the REL file (ccpp's files[] did: +91) while the XLOAD image, the
+  one that runs on the Apple, is unchanged. A buffer this small is
+  where the trade turns: the next halving (to 16) buys 80 bytes in
+  ccpp and 128 in all four passes for double the refills.
+- **Lend a finished buffer to the next file.** ccpp's static Bfiles
+  are never all open at once: the name file NAME.nam is written after
+  the source and its includes are closed, so pp_out_finish() writes it
+  into the source's Bfile, closed and lent by pp.c, instead of
+  ppout.c's own (a pointer to the lent Bfile, 2 bytes of zero, for
+  the 42): ccpp's zero region -40, code +11, running 39902 to 39873
+  (1269 to 1298 to spare), loading 36330 to 36301 (4841 to 4870). The
+  four files[] slots themselves can't be cut (the source and three
+  includes, four files, are open at the peak, FILEIO's MAX_IOBUFS).
+  Keep the prototype's parameter unnamed (a spelled one enters every
+  includer's name pool) and measure ccgen: see the name-pool
+  watch-out below (for this: ccpp +0.11%, cccomp +0.06%, ccgen
+  +0.02%, the passes' own sources being a little larger).
 - **Sub-blocks share frame space.** Locals declared in a block are
   freed when it ends, and a later block reuses their slots (pstmt.c's
   `parse_block()`). But a function's frame is fixed at its ENTER, the
@@ -233,6 +247,22 @@ expect it to pay.
 - **Don't trade speed away.** A change on a hot path (`make profile`
   shows which functions run most, such as ccpp's identifier lookup)
   needs a profile showing it isn't slower.
+- **A new name in a pool can cost ccgen a re-read of NAME.nam.**
+  NAME.nam lists a file's names in the order ccpp first spells them,
+  and ccgen's nam.c reads it forward only (bio can't seek): a name
+  looked up before the last one read reopens the file and reads it
+  from the top, and ccgen makes several passes over the file, so a
+  few extra names are paid a few times. A name new to a file lands
+  where it is first spelled, and can be costly if the .ir's
+  references step backward over it: pp_out_finish's Bfile parameter,
+  spelled at the definition (late) and read before earlier-spelled
+  statics in the body, cost +152,848 ops on that one file's profile
+  (13%) for +23 bytes of .ir and .nam; the parameter unnamed in the
+  header and the early-spelled names read first, +5,588. An #include
+  added to a header costs its names to every includer (bio.h through
+  ppout.h put 15 names into ccpp.c's pool: +26,313 ops there). Any
+  change that adds a name or an include, even one that changes no
+  code at the call site, needs a profile.
 
 ## Ideas not yet tried
 
@@ -247,12 +277,6 @@ expect it to pay.
   could be shorter is a peephole pattern (peep.c) or a better choice
   in code generation. `make listings` writes each source file's C
   beside the machine ops ccgen writes for it.
-- ccpp's six Bfiles (the source and up to three includes, NAME.i and
-  NAME.nam) are all static, but at most four files are open at once
-  (measure.txt), and the name file is written after the source is
-  done: a little free list could let a finished file's buffer be
-  reused, and take one or two Bfiles, 42 bytes each now (BLOCK 32),
-  out of ccpp's zero region.
 - ccpp's name pool (ppname.c): find's walk was 29% of ccpp's ops
   at the round's start (153,415,063, bool era). Measured first
   (find's own counters, 29 files): of the 6.0 million entries

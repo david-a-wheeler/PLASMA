@@ -4,7 +4,8 @@
 // to date just before each token is written: next-line codes for up to 3
 // lines, a line's number for more (after a skipped group, say), and a
 // file's number and line on a change of file. At the end, the name file,
-// NAME.nam, and the stamp both files carry.
+// NAME.nam, written into the Bfile the caller has closed and lent
+// (the source's, pp.c's files[0]), and the stamp both files carry.
 //
 // With -E (pp_opt_text, in the full build only: CCISH_TEXT), the tokens
 // are written as text to the standard output instead, as gcc -E writes
@@ -26,7 +27,9 @@
 #include "pp.h"
 
 static Bfile out;
-static Bfile nam;
+static Bfile *nam;              // the name file's Bfile, lent by
+                                // pp_out_finish's caller (the source's),
+                                // or NULL
 static const char *base_name;
 static unsigned char str[MAX_STR];  // the string being joined
 static int str_len;
@@ -201,9 +204,10 @@ void pp_out(int code, int val, const unsigned char *s, int n)
     bputw(&out, val);
 }
 
-// End the token stream: write NAME.nam, then the end code and the
-// stamp (the id count and NAME.nam's checksum), and close both.
-void pp_out_finish(void)
+// End the token stream: write NAME.nam, into the lent Bfile, then the
+// end code and the stamp (the id count and NAME.nam's checksum), and
+// close both.
+void pp_out_finish(Bfile *nb)
 {
   int sum;
   sync();
@@ -215,10 +219,11 @@ void pp_out_finish(void)
     return;
   }
 #endif
-  if (!bopen(&nam, stream_name(base_name, SUFFIX_NAM), 1))
+  nam = nb;
+  if (!bopen(nam, stream_name(base_name, SUFFIX_NAM), 1))
     fatal_dn(176 /* "cannot create" */, base_name, SUFFIX_NAM);
-  sum = pp_names_write(&nam);
-  if (bclose(&nam) != 0)
+  sum = pp_names_write(nam);
+  if (bclose(nam) != 0)
     fatal_dn(187 /* "error writing" */, base_name, SUFFIX_NAM);
   bputc(&out, TC_END);
   bputw(&out, pp_nids());
@@ -230,6 +235,7 @@ void pp_out_finish(void)
 // After an error: close the output files, so that they can be removed.
 void pp_out_abort(void)
 {
-  bclose(&nam);
+  if (nam)
+    bclose(nam);    // pp.c's pp_abort closes it as the source's Bfile
   bclose(&out);
 }

@@ -576,7 +576,10 @@ void pp_file(const char *src, const char *base)
       error0(17 /* "unexpected character in source" */);
     pp_out(c, pt_val, pt_text, pt_len);
   }
-  pp_out_finish();
+  // The source and its includes are all closed, so the source's Bfile
+  // is lent for NAME.nam: one less 42-byte buffer in ccpp's zero
+  // region.
+  pp_out_finish(&files[0]);
   src_line = 0;
 #ifdef CCISH_STATS
   report_stats();
