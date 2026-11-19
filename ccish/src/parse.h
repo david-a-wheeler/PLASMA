@@ -127,9 +127,11 @@ _Static_assert(K_VALUE >= 0 && K_VOID >= 0 && K_CONST >= 0 && K_VAR >= 0
 // level of the expression parser's recursion, and in its struct copies.
 typedef struct {
   char kind;      // K_*: what the operand is
-  int type;       // its C type, unqualified. A char value on the stack
-                  // is always 0 to 255, so it needs no conversion to
-                  // char.
+  int type;       // its C type, unqualified. A char's value on the
+                  // stack is its byte (0 to 255); a signed char's is
+                  // its byte sign-extended (its int value), as C's
+                  // promotion gives it: both need no conversion to a
+                  // byte (a byte store keeps the low byte).
   int quals;      // a place: its object's qualifiers (Q_CONST,
                   // Q_VOLATILE), which type leaves out
   char nonice;    // K_CONST: not an integer constant expression in C
@@ -153,7 +155,8 @@ typedef struct {
                   // the pointer in the variable at off
   int idx;        // offset of the index variable, or -1
   int idx_global; // the index variable is a global
-  char idx_char;  // the index variable is a char
+  char idx_char;  // the index variable's width: 0 a word, 1 a byte
+                  // (a char or bool), 2 a signed char (promoted)
   int scale;      // bytes per step of the index
   int disp;       // a constant number of bytes added
   // K_STORE only. The address's code is from IR position m0 to m1,
@@ -161,8 +164,10 @@ typedef struct {
   // is 1 or 0.
   int m0, m1, mend;
   int stype;      // the type of the object stored into
-  char vmask;     // the value needs ANDI 255 to be what was stored
-                  // (an int stored into a char)
+  char vmask;     // the kept value needs to be turned into the
+                  // object's value (an int or a char stored into a
+                  // char: ANDI 255; into a signed char, which is also
+                  // sign-extended)
 } Operand;
 
 // Operand.nonice's bits: why a constant isn't an integer constant
@@ -335,10 +340,17 @@ int  addr_op(Operand *o, int *a, int *f);
 // operand: unsigned int stays so, the others become int; TY_UINT is
 // TY_INT + 1 (type.h), so it's TY_INT plus IS_UNS's 0 or 1.
 #define PROMOTED(t)  (TY_INT + IS_UNS(t))
+// The int value of a signed char's value v, as a compile-time
+// constant: the conventional sign extension of its low byte,
+// ((v & 0xFF) ^ 0x80) - 0x80. Its & 0xFF is for a v that may be
+// wider than a byte; at every use v is a byte or already extended,
+// where it is the same without.
+#define SEXT8(v)  (wrap16((unsigned)((v) & 0xFF) ^ 0x80) - 0x80)
 // The IR op that stores a value of type t, with qualifiers quals, at an
 // address (a char's a byte; a volatile's the volatile form).
 #define STORE_OP(t, quals)  IR_FORM(IR_STORE, acc_form(t, quals))
 int  arith_type(int a, int b);
+void sign_extend(void);           // (x ^ 0x80) - 0x80, for a byte on top
 void make_elem(Operand *o, int off, int global, int base_arr);
 void push_address(Operand *o);
 int  new_temp(void);

@@ -224,7 +224,6 @@
 224 too many modules imported
 225 too many run-time swaps in
 226 conflicting or repeated type specifier:
-227 'signed char' is not supported yet
 228 address of register variable requested
 229 helper functions differ between objects (compiled by different ccgens?):
 230 not a token file from ccpp, or the wrong version:

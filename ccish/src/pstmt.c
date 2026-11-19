@@ -457,7 +457,8 @@ int parse_enum(void)
 // type name = value, ...; shares it: each name is a named constant, as
 // an enum constant is, with no storage, whose kind is its type
 // (name.h). So, unlike C, a constexpr has no address, and must be a
-// char, int or unsigned; its value isn't checked to fit the type.
+// char, an int, an unsigned or a signed char; a byte's value is kept
+// as its low byte, as a const variable's is.
 void parse_typedef(void)
 {
   int name, base, t, i, kw = tok, kind = ID_TYPEDEF;
@@ -477,6 +478,10 @@ void parse_typedef(void)
       t = parse_const(347 /* "a constexpr's value must be an integer"
                              " constant" */,
                       348 /* "(a constexpr's value must be one)" */);
+      if (kind == TY_SCHAR)
+        t = SEXT8(t);            // kept as its int value, as a const's
+      else if (kind == TY_CHAR)
+        t &= 0xFF;               // kept as the byte, as a const's value
     } else if (is_array(t) && type_count(t) == 0) {
       error0(87 /* "array size missing" */);
     }
@@ -523,14 +528,17 @@ static void init_struct_copy(int s)
 // Record that the variable s has the known value v, if reading it may
 // give v at compile time: it is a const scalar (an int, char or
 // pointer, not an array or struct) and not volatile. A char keeps the
-// low byte, as stored.
+// low byte, as stored; a signed char its byte sign-extended, as its
+// value is.
 void set_known(int s, int v)
 {
+  int t;
   if ((var_type[s] & Q_ALL) != Q_CONST || is_array(var_type[s])
       || is_struct(var_type[s]))
     return;
   var_flags[s] |= V_KNOWN;
-  var_val[s] = UNQUAL(var_type[s]) == TY_CHAR ? v & 0xFF : v;
+  t = UNQUAL(var_type[s]);
+  var_val[s] = t == TY_SCHAR ? SEXT8(v) : t == TY_CHAR ? v & 0xFF : v;
 }
 
 // Add a static local with an initializer (parse.c's push_var()): in
@@ -1015,8 +1023,9 @@ static void parse_return(void)
     begin_expr();
     parse_expr(PREC_COMMA, &o);
     check_assign(fn_type[cur_fn], &o, 199 /* "return" */, NULL);
-    if (fn_type[cur_fn] == TY_CHAR)
-      to_char(&o);        // a char function returns 0 to 255
+    if (fn_type[cur_fn] == TY_CHAR || fn_type[cur_fn] == TY_SCHAR)
+      to_char(&o, fn_type[cur_fn]);   // a byte function returns its byte
+                                      // (a signed char's, sign-extended)
     else if (fn_type[cur_fn] == TY_BOOL)
       to_bool(&o);        // a bool function returns 0 or 1
     if (is_struct(fn_type[cur_fn]))

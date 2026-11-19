@@ -110,8 +110,8 @@ Each of these is in git history, with its measurements:
   struct that's copied often, or sits in many frames (1d0c47bb:
   Operand's seven, 46 bytes to 39; also shorter struct copies, so
   smaller and faster). Check every assignment's range first: ccish's
-  `char` is unsigned, it has no `signed char`, and a value of 256
-  would become 0.
+  `char` is unsigned (a `signed char`, where the byte is signed, is
+  a different type), and a value of 256 would become 0.
 - **Remove buffers from the deepest point.** An error stops a pass
   from wherever it is, so the error path's frames sit on top of the
   deepest chain in every pass (0bb0d411: report() wrote a message
@@ -198,7 +198,7 @@ expect it to pay.
 - **Estimates are often wrong**, sometimes by twice. Measure every
   change; report the real figure, and say plainly when it missed.
 - **ccish compiles itself,** so the passes' source must be in the C
-  ccish supports: no `signed char`, no `long`, no floating point. Its
+  ccish supports: no `long`, no floating point. Its
   library has no `memcmp` or `strncmp`. A host build that compiles is
   not enough: make test also has measure.py compile the source with
   ccish, and fails if it can't.

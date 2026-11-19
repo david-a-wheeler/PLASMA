@@ -22,25 +22,25 @@ blank for a limit that isn't measured.
 | `MAX_PP_OPTS` | 16 |  | -D and -U options | [src/pp.c](../src/pp.c) |
 | `MAX_LINE` | 255 | 197 (pexpr.c) | characters in one source line, after joining the lines that end in a backslash: ccpp's buffer | [src/pplex.h](../src/pplex.h) |
 | `MAX_INCLUDE` | 3 | 2 (bio.c) | #include files open at once, beside the source: PLASMA's Apple II file library allows 4 open files, and ccpp has the source and NAME.i open | [src/pplex.h](../src/pplex.h) |
-| `MAX_MACROS` | 176 | 162 (ptop.c) | macros defined at once, include guards too: about 10% over ccish's own peak (162, ptop.c) | [src/ppmac.c](../src/ppmac.c) |
-| `MAX_MACRO_BYTES` | 1500 | 1402 (pexpr.c) | bytes of their bodies, as tokens, where an identifier or number is 3 bytes: over ccish's own peak (1402); a byte of ccpp's heap each, and nothing of cccomp's | [src/ppmac.c](../src/ppmac.c) |
+| `MAX_MACROS` | 176 | 164 (ptop.c) | macros defined at once, include guards too: about 10% over ccish's own peak (162, ptop.c) | [src/ppmac.c](../src/ppmac.c) |
+| `MAX_MACRO_BYTES` | 1500 | 1458 (pexpr.c) | bytes of their bodies, as tokens, where an identifier or number is 3 bytes: over ccish's own peak (1402); a byte of ccpp's heap each, and nothing of cccomp's | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_EXPAND` | 10 | 4 (pexpr.c) | macro expansions inside one another: C11 5.1.1.2's 10, and 150% over ccish's own peak (4) | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_EXP_BYTES` | 256 | 139 (emit.c) | bytes of the expansions and arguments being read, and of the arguments' own expansions (two buffers): about 10% over the peak (232, samples/rodfast.c's DRAW_ROWS; ccish's own source needs 139) | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_ARG_SLOTS` | 7 | 4 (pexpr.c) | arguments of the calls being expanded: about 10% over the peak (6, a test's six-argument macro; ccish's own source needs 4) | [src/ppmac.c](../src/ppmac.c) |
 | `MAX_PP_PARAMS` | 16 |  | parameters of one macro | [src/ppmac.h](../src/ppmac.h) |
-| `MAX_PP_POOL` | 8207 | 8042 (ptop.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each: a byte of ccpp's heap each, so no larger than ccish's own use needs (ccpp has under 2K to spare on a 64K Apple II) | [src/ppname.c](../src/ppname.c) |
+| `MAX_PP_POOL` | 8207 | 8082 (ptop.c) | bytes of ccpp's names (macros' too) and file names, with a length byte each: a byte of ccpp's heap each, so no larger than ccish's own use needs (ccpp has under 2K to spare on a 64K Apple II) | [src/ppname.c](../src/ppname.c) |
 
 ## One source file (cccomp)
 
 | Limit | Value | Used | Description | Defined in |
 |---|---|---|---|---|
 | `MAX_IDS` | 203 | 201 (irin.c) | enum constants and typedef names visible at once | [src/name.tab.h](../src/name.tab.h) |
-| `MAX_FUNCS` | 230 | 198 (pexpr.c) | functions declared, defined or called: about 10% over the full build's peak (209, pexpr.c's; the small build's is 197) | [src/obj.h](../src/obj.h) |
+| `MAX_FUNCS` | 230 | 199 (pexpr.c) | functions declared, defined or called: about 10% over the full build's peak (209, pexpr.c's; the small build's is 197) | [src/obj.h](../src/obj.h) |
 | `MAX_VARS` | 79 | 79 (link.c) | globals, plus the parameters and locals visible at once | [src/obj.h](../src/obj.h) |
-| `MAX_PARAM_TYPES` | 352 | 312 (pexpr.c) | parameter types of all declared functions | [src/parse.h](../src/parse.h) |
+| `MAX_PARAM_TYPES` | 352 | 313 (pexpr.c) | parameter types of all declared functions | [src/parse.h](../src/parse.h) |
 | `MAX_IMPORTS` | 16 |  | declarations with an asm label, or after #pragma plasma import | [src/ptop.c](../src/ptop.c) |
 | `MAX_DEPS` | 4 |  | modules named by #pragma plasma import | [src/ptop.h](../src/ptop.h) |
-| `MAX_TYPES` | 61 | 56 (link.c) | distinct types; at most 128, since char tables (fn_type[], param_types[]) hold unqualified types, and a host's char may be signed; 10% over the peak (56, link.c) | [src/type.c](../src/type.c) |
+| `MAX_TYPES` | 61 | 57 (link.c) | distinct types; at most 128, since char tables (fn_type[], param_types[]) hold unqualified types, and a host's char may be signed; 10% over the peak (56, link.c) | [src/type.c](../src/type.c) |
 | `MAX_TAGS` | 6 | 4 (link.c) | struct and union tags, counting those in blocks that have ended | [src/type.tag.h](../src/type.tag.h) |
 | `MAX_MEMBERS` | 32 | 27 (irout.c) | struct and union members, in all of them | [src/type.tag.h](../src/type.tag.h) |
 
@@ -62,10 +62,10 @@ blank for a limit that isn't measured.
 
 | Limit | Value | Used | Description | Defined in |
 |---|---|---|---|---|
-| `MAX_GSYMS` | 307 | 266 (linking cccomp) | names shared between objects: the first prime about 10% above what linking cccomp, with the library, needs | [src/link.c](../src/link.c) |
-| `MAX_GNAMES` | 3000 | 2639 (linking cccomp) | bytes of those names, with their NULs: about 10% above what linking cccomp needs | [src/link.c](../src/link.c) |
+| `MAX_GSYMS` | 307 | 267 (linking cccomp) | names shared between objects: the first prime about 10% above what linking cccomp, with the library, needs | [src/link.c](../src/link.c) |
+| `MAX_GNAMES` | 3000 | 2651 (linking cccomp) | bytes of those names, with their NULs: about 10% above what linking cccomp needs | [src/link.c](../src/link.c) |
 | `MAX_MOVED` | 32 |  | large globals moved to the heap in one module (OBJECT.md, "Zero-filled globals") | [src/link.c](../src/link.c) |
-| `MAX_DEFS` | 320 | 303 (linking cccomp) | functions in an XLOAD image's table (-x), helpers and init included: about 10% above what cccomp needs | [src/link.c](../src/link.c) |
+| `MAX_DEFS` | 320 | 304 (linking cccomp) | functions in an XLOAD image's table (-x), helpers and init included: about 10% above what cccomp needs | [src/link.c](../src/link.c) |
 | `MAX_MODS` | 8 |  | modules one link imports from | [src/link.c](../src/link.c) |
 | `LIB_NAMES` | 128 | 118 (linking ccpp) | bytes of the bases of the objects -L adds, each with its NUL: the peak (126) links cccomp | [src/link.c](../src/link.c) |
 | `MAX_OBJS` | 32 |  | objects in one link (ccish's own is MAX_LINK, main.c) | [src/link.h](../src/link.h) |

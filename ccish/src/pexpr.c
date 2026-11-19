@@ -149,27 +149,43 @@ void to_bool(Operand *o)
   o->type = TY_BOOL;
 }
 
-// Convert o to char, as C does for a cast or a char function's return
-// value: keep the low byte. A constant stays pending; anything else
-// ends up on the stack. A char, or a 1 or 0, needs no code.
-void to_char(Operand *o)
+// Convert o to a byte of type t (char or signed char), as C does for a
+// cast or a byte function's return value. A char's value is its byte
+// (0 to 255); a signed char's is its byte sign-extended (its int
+// value). A constant stays pending; anything else ends up on the
+// stack, where a char's value is a byte, a signed char's a promoted
+// int, and a 1 or 0 is itself.
+void to_char(Operand *o, int t)
 {
   if (o->kind == K_CONST) {
-    o->val &= 0xFF;
+    // A signed char's value is its byte sign-extended (SEXT8, which
+    // masks a wider constant and is a no-op on one already so); a
+    // char's is its byte.
+    o->val = t == TY_SCHAR ? SEXT8(o->val) : o->val & 0xFF;
   } else {
     rvalue(o);
-    if (o->type != TY_CHAR && !o->is_bool) {
-      put(IR_CONST, 0xFF, -1);
-      put_op(IR_AND);
+    if (t == TY_CHAR) {
+      if (o->type != TY_CHAR && !o->is_bool)
+        { put(IR_CONST, 0xFF, -1); put_op(IR_AND); }  // a promoted
+                                                      // signed char's or
+                                                      // a wide value's
+    } else if (o->type != TY_SCHAR && !o->is_bool) {
+      if (o->type != TY_CHAR)
+        { put(IR_CONST, 0xFF, -1); put_op(IR_AND); }  // a wide value's
+      // byte; a char's is already one
+      sign_extend();
     }
   }
-  o->type = TY_CHAR;
+  o->type = t;
 }
 
 // Apply the cast (type) to o. A cast's result is never an lvalue, so
 // the type's own qualifiers don't matter ((const int)x is an int). To
-// void, the value is discarded. Between integers and pointers, the
-// value is unchanged (both are 16 bits).
+// void, the value is discarded. To a byte, to_char() makes it the
+// byte (a char's) or the byte sign-extended (a signed char's). To an
+// int or a pointer, a signed char's value is already its int value
+// (rvalue()'s, or a constant's); otherwise the value is unchanged
+// (both are 16 bits).
 static void cast(Operand *o, int type)
 {
   type = UNQUAL(type);
@@ -178,8 +194,8 @@ static void cast(Operand *o, int type)
   if (type == TY_VOID) {
     discard(o);
     o->kind = K_VOID;
-  } else if (type == TY_CHAR) {
-    to_char(o);
+  } else if (type == TY_CHAR || type == TY_SCHAR) {
+    to_char(o, type);
   } else if (type == TY_BOOL) {
     to_bool(o);
   } else if (is_pointer(type) && (addr_const(o) || o->kind == K_FUNC)) {
@@ -675,8 +691,10 @@ static void parse_primary(Operand *o)
 }
 
 // Check that lvalue o can be the operand of ++ or --, and get it ready:
-// push its value, leaving o itself ready to be stored into. Returns
-// the amount to add: the element size for a pointer, else 1.
+// push its value (a signed char's promoted: sign-extended, by rvalue,
+// so that the add is on the int value), leaving o itself ready to be
+// stored into. Returns the amount to add: the element size for a
+// pointer, else 1.
 static int start_incdec(Operand *o)
 {
   Operand v;
@@ -698,13 +716,14 @@ static int start_incdec(Operand *o)
 
 // x++ / x--: the value is the old x. Keep a copy of it below the
 // update; when the value is unused, the peephole stage removes the
-// copy.
-static void post_incdec(Operand *o, int ir_op)
+// copy. A signed char's copy was sign-extended for the add, as its
+// value is.
+static void post_incdec(Operand *o, int int_op)
 {
   int step = start_incdec(o);
   put_op(IR_DUP);
   put(IR_CONST, step, -1);
-  put_op(ir_op);
+  put_op(int_op);
   if (o->type == TY_BOOL)        /* as pre_incdec: the new value is */
     { put_op(IR_CONST); put_op(IR_NE); }   /* normalized before the store */
   assign_to(o);
@@ -835,8 +854,10 @@ static void parse_index(Operand *o)
       make_elem(o, o->off, o->global, is_array(t));
     o->idx = r.off;
     o->idx_global = r.global;
-    o->idx_char = r.type == TY_CHAR || r.type == TY_BOOL;  // a bool
-                                                          // index: 0 or 1
+    // A bool index is 0 or 1, so it is a byte; a signed char's is
+    // promoted (idx_char 2, push_address sign-extends it).
+    o->idx_char = r.type == TY_SCHAR ? 2
+              : r.type == TY_CHAR || r.type == TY_BOOL;
     o->scale = size;
   }
   set_object(o, type_sub(t));
@@ -973,6 +994,9 @@ static void parse_unary(Operand *o)
             : t == '+' ? "'+'" : "'~'");
 #endif
     if (o->kind == K_CONST) {
+      // A signed char's constant is its int value already (the places
+      // that make one sign-extend it); the op works on that. ! needs
+      // no value, only whether it is 0.
       if (t == '-')
         o->val = wrap16(0u - (unsigned)o->val);
       else if (t == '~')
@@ -995,7 +1019,8 @@ static void parse_unary(Operand *o)
       return;
     }
     rvalue(o);
-    // A char operand is promoted; ! gives an int.
+    // A char or signed char operand is promoted (a signed char's
+    // value, sign-extended, by rvalue); ! gives an int.
     o->type = t == '!' ? TY_INT : PROMOTED(o->type);
     if (t == '-')
       put_op(IR_NEG);
@@ -1308,7 +1333,8 @@ static const char *op_name(int op)
 #endif
 
 // Push integer operand i scaled by the size of what pointer type p
-// points to, for p + i or p - i.
+// points to, for p + i or p - i. A signed char index is its int
+// value, as rvalue() and a constant's give it.
 static void push_scaled(Operand *i, int p)
 {
   int n = elem_size(p);
@@ -1483,7 +1509,10 @@ static void start_store(Operand *o, int start)
   check_assign(st, o, 197 /* "assignment" */, NULL);
   rvalue(o);
   normalize_bool(o, st);
-  o->vmask = st == TY_CHAR && o->type != TY_CHAR && !o->is_bool;
+  // The kept value is the object's value: its byte (a char's) or its
+  // byte sign-extended (a signed char's). A value of the object's own
+  // type, or a 1 or 0, is so already.
+  o->vmask = IS_BYTE_TYPE(st) && o->type != st && !o->is_bool;
   o->type = st;
   o->quals = q;
   o->kind = K_STORE;

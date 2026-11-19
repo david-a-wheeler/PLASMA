@@ -46,10 +46,14 @@
 // ordinary expression, parsed with code off, which must end as a
 // constant or an address constant.
 //
-// Each operand carries its C type (see type.c). char is unsigned, and a
-// char value on the stack is always 0 to 255: loads use LLB, and stores
-// into a char keep only the low byte. So a value needs converting to
-// char (ANDI 255) only for a cast or a char function's return value.
+// Each operand carries its C type (see type.c). char is unsigned, and
+// a char or signed char value on the stack is always 0 to 255: loads
+// use LLB, and stores into a byte keep only the low byte. So a value
+// needs converting to a byte (ANDI 255) only for a cast or a byte
+// function's return value. A signed char's value is its byte's bits;
+// when it is promoted to int, as every use of it in an expression is,
+// it is sign-extended ((x ^ 0x80) - 0x80, two ops: the value is a
+// byte, so no AND 0xFF is needed).
 //
 // Control flow uses labels, numbered per function; stage 4 resolves
 // them with fixup chains. Code that a constant makes impossible to
@@ -498,9 +502,8 @@ int parse_base_type(void)
     t = parse_enum();
   } else if (TC_IS_INT_TYPE(tok)) {
     // int, char, signed and unsigned, in any order, with any qualifiers
-    // among them (unsigned const int): unsigned int, int, or char.
-    // unsigned char is plain char, which is unsigned; signed char isn't
-    // supported yet.
+    // among them (unsigned const int): unsigned int, signed char, int
+    // or char. unsigned char is plain char, which is unsigned.
     while (TC_IS_INT_OR_QUAL(tok)) {
       if (TC_IS_QUAL(tok)) {
         q |= parse_quals();
@@ -518,9 +521,7 @@ int parse_base_type(void)
       next();
     }
     if (base == TC_CHAR) {
-      if (sign == TC_SIGNED)
-        error0(227 /* "'signed char' is not supported yet" */);
-      t = TY_CHAR;
+      t = sign == TC_SIGNED ? TY_SCHAR : TY_CHAR;
     } else if (sign == TC_UNSIGNED) {
       t = TY_UINT;
     }
@@ -976,7 +977,7 @@ static void load_var(int off, int global, int form)
 }
 
 // Before a store through an address, keep a copy of the value below
-// it: for a char, its low byte, the value C gives an assignment to one
+// it: for a byte, its low byte, the value C gives an assignment to one
 // (as DLB keeps it).
 static void keep_copy(int is_char)
 {
@@ -987,12 +988,26 @@ static void keep_copy(int is_char)
   put_op(IR_DUP);
 }
 
+// Sign-extend the byte value on top of the stack (0 to 255) to an int:
+// a signed char's promotion to int, ((x ^ 0x80) - 0x80). The value is
+// a byte (every producer of a signed char's value leaves 0 to 255), so
+// no AND 0xFF is needed: XORing 0x80 and subtracting it moves the
+// negative bytes, 0x80 to 0xFF, to 0xFF80 to 0xFFFF, and leaves the
+// rest as they are.
+void sign_extend(void)
+{
+  put(IR_CONST, 0x80, -1);
+  put_op(IR_XOR);
+  put(IR_CONST, 0x80, -1);
+  put_op(IR_SUB);
+}
+
 // Store the top value into the variable o (a K_VAR), keeping the stored
-// value (for a char, its low byte) on the stack: through its address,
+// value (for a byte, its low byte) on the stack: through its address,
 // after a copy of the value, for a global that may move.
 void store_var(Operand *o)
 {
-  int c = o->type == TY_CHAR || o->type == TY_BOOL,
+  int c = IS_BYTE_TYPE(o->type),
       form = acc_form(o->type, o->quals);
   if (movable(o->global)) {
     keep_copy(c);
@@ -1013,12 +1028,12 @@ int max_offset(int global)
 }
 
 // The form bits (IR_FORM, ir.h) of an access to a place of type t with
-// qualifiers quals: IR_ACC_BYTE for a char or bool (the 1-byte types),
-// IR_VOLATILE if volatile. It relies on IR_ACC_BYTE being 1 and
-// Q_VOLATILE IR_VOLATILE << 4.
+// qualifiers quals: IR_ACC_BYTE for the 1-byte types (char, signed
+// char, bool), IR_VOLATILE if volatile. It relies on IR_ACC_BYTE being
+// 1 and Q_VOLATILE IR_VOLATILE << 4.
 int acc_form(int t, int quals)
 {
-  return (t == TY_CHAR || t == TY_BOOL) | ((quals & Q_VOLATILE) >> 4);
+  return IS_BYTE_TYPE(t) | ((quals & Q_VOLATILE) >> 4);
 }
 // acc_form()'s two tricks: a comparison's 1 is IR_ACC_BYTE, and
 // Q_VOLATILE (type.h) is IR_VOLATILE (ir.h) four bits up. Here, as the
@@ -1096,7 +1111,9 @@ void make_elem(Operand *o, int off, int global, int base_arr)
 
 // Push the address of the K_ELEM o: its base, plus the index times the
 // scale, plus the displacement. For an array, the displacement is part
-// of the LLA or LA offset when the result is a valid offset.
+// of the LLA or LA offset when the result is a valid offset. A signed
+// char index is promoted to its int value (sign-extended) before it is
+// scaled.
 void push_address(Operand *o)
 {
   int d = o->disp;
@@ -1110,7 +1127,9 @@ void push_address(Operand *o)
     load_var(o->off, o->global, 0);
   }
   if (o->idx >= 0) {
-    load_var(o->idx, o->idx_global, IR_CHAR_FORM(0, o->idx_char));
+    load_var(o->idx, o->idx_global, IR_CHAR_FORM(0, o->idx_char != 0));
+    if (o->idx_char == 2)
+      sign_extend();
     if (o->scale != 1) {
       put(IR_CONST, o->scale, -1);
       put_op(IR_MUL);   // a word index becomes IDXW
@@ -1175,6 +1194,9 @@ void rvalue(Operand *o)
     // A bool holds only 0 or 1 (every store normalizes), so its load
     // is known:
     o->is_bool = o->type == TY_BOOL;
+    if (o->type == TY_SCHAR)
+      sign_extend();        // the byte load's 0 to 255, promoted to its
+                            // int value (sign-extended)
     break;
   case K_ELEM:
     push_address(o);
@@ -1182,6 +1204,8 @@ void rvalue(Operand *o)
   case K_DEREF:
     put_op(IR_FORM(IR_LOAD, acc_form(o->type, o->quals)));
     o->is_bool = o->type == TY_BOOL;
+    if (o->type == TY_SCHAR)   // as a K_VAR's byte load
+      sign_extend();
     break;
   case K_STORE:
     finish_store(o, 1);
@@ -1276,9 +1300,10 @@ void swap_blocks(int start, int mid, int fixed)
 
 // Emit the store that the K_STORE operand o waits for: the value's code
 // moves ahead of the address's (swap_blocks()), giving "e addr SW". If
-// keep is set, the value (the stored value: its low byte, for a char)
-// stays on the stack: a DUP ends the value's block, so that the copy
-// goes below the address with it.
+// keep is set, the value (the stored value: the object's value, as a
+// char's byte or a signed char's promoted int) stays on the stack: a
+// DUP ends the value's block, so that the copy goes below the address
+// with it.
 void finish_store(Operand *o, int keep)
 {
   if (ir_here() != o->mend || nheld != 0)
@@ -1288,8 +1313,12 @@ void finish_store(Operand *o, int keep)
   swap_blocks(o->m0, o->m1, 0);
   put_op(STORE_OP(o->stype, o->quals));
   if (keep && o->vmask) {
+    // The value stored was the low byte, as a byte object's value is
+    // the byte (a char's) or the byte sign-extended (a signed char's).
     put(IR_CONST, 0xFF, -1);
     put_op(IR_AND);
+    if (o->stype == TY_SCHAR)
+      sign_extend();
   }
   o->kind = keep ? K_VALUE : K_VOID;
 }
@@ -1344,22 +1373,26 @@ void need_lvalue(Operand *o, int what)
 // reached through an address, it is read back from the object only if
 // needed, unless the object is volatile, whose store must not be
 // followed by a read C didn't ask for: then a copy of the value is kept
-// below the address (for a char, its low byte).
+// below the address (for a char, its low byte). A byte store keeps the
+// stored byte, so a signed char's kept value is promoted: sign-
+// extended to its int value.
 void assign_to(Operand *o)
 {
   if (o->kind == K_VAR) {
     store_var(o);
     o->kind = K_VALUE;
-    return;
+  } else {
+    if (o->quals & Q_VOLATILE)
+      keep_copy(IS_BYTE_TYPE(o->type));
+    push_address(o);
+    put_op(STORE_OP(o->type, o->quals));
+    if (o->quals & Q_VOLATILE)
+      o->kind = K_VALUE;
+    else
+      o->assigned = 1;
   }
-  if (o->quals & Q_VOLATILE)
-    keep_copy(o->type == TY_CHAR || o->type == TY_BOOL);
-  push_address(o);
-  put_op(STORE_OP(o->type, o->quals));
-  if (o->quals & Q_VOLATILE)
-    o->kind = K_VALUE;
-  else
-    o->assigned = 1;
+  if (o->kind == K_VALUE && o->type == TY_SCHAR)
+    sign_extend();
 }
 
 // The number of words a struct of type t takes on the stack.

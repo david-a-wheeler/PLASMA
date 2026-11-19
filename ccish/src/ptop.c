@@ -334,7 +334,7 @@ static void init_local_elem(int type, int off)
   check_assign(type, &e, 198 /* "initialization" */, NULL);
   if (e.kind == K_CONST && type == TY_BOOL)
     e.val = e.val != 0;    // C23: a bool is initialized to 1 or 0
-  if ((type == TY_CHAR || type == TY_BOOL) && e.kind == K_CONST) {
+  if (IS_BYTE_TYPE(type) && e.kind == K_CONST) {
     init_byte(off, e.val);
   } else {
     rvalue(&e);
@@ -438,7 +438,9 @@ static void init_sub(int t, int off)
 static void init_flat(int t, int off)
 {
   int n, i, m, tag;
-  if (is_array(t) && UNQUAL(type_sub(t)) == TY_CHAR && tok == TC_STR) {
+  if (is_array(t)
+      && (UNQUAL(type_sub(t)) == TY_CHAR || UNQUAL(type_sub(t)) == TY_SCHAR)
+      && tok == TC_STR) {
     n = type_count(t);
     i = init_string(n, off);
     init_zero(n - i, off + i);
@@ -476,7 +478,9 @@ static int parse_aggr_init(int type, int name)
 
   init_name = name;
   init_end = 0;
-  if (is_array(type) && UNQUAL(type_sub(type)) == TY_CHAR
+  if (is_array(type)
+      && (UNQUAL(type_sub(type)) == TY_CHAR
+          || UNQUAL(type_sub(type)) == TY_SCHAR)
       && tok == TC_STR) {
     init_end = init_string(type_count(type), 0);
   } else {

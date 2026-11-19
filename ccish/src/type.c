@@ -3,8 +3,8 @@
 // type needs no entry of its own (approach.md, "M5 design"). Equal
 // unqualified types share one entry. The first entries are the basic
 // types, at the fixed indexes TY_VOID, TY_CHAR, TY_INT, TY_UINT
-// (unsigned int) and TY_BOOL. Pointer and array types are added as they are
-// needed. A multi-dimensional array is an array of arrays: int m[3][4]
+// (unsigned int), TY_SCHAR (signed char) and TY_BOOL. Pointer and
+// array types are added as they are needed. A multi-dimensional array is an array of arrays: int m[3][4]
 // is an array of 3 arrays of 4 ints.
 //
 // The table is three parallel arrays, one per field, all MAX_TYPES
@@ -53,15 +53,15 @@ _Static_assert(MAX_TYPES <= TY_INDEX + 1,
 // block of 4 above them. Only type.c needs them, so they cost the
 // other files no MAX_IDS entries. The kinds whose values are pointers
 // (is_pointer_value()) are a block of 4, with a spare.
-enum { TK_PTR = TY_BOOL + 4, TK_FUNC, TK_ARRAY, TK_STRUCT = TK_PTR + 4 };
-_Static_assert((int)TK_PTR > (int)TY_UINT && TK_STRUCT < 128
+enum { TK_PTR = TY_SCHAR + 4, TK_FUNC, TK_ARRAY, TK_STRUCT = TK_PTR + 4 };
+_Static_assert((int)TK_PTR > (int)TY_SCHAR && TK_STRUCT < 128
                && (TK_PTR & 3) == 0 && TK_ARRAY - TK_PTR < 4
                && TK_FUNC - TK_PTR < 4 && TK_STRUCT - TK_PTR >= 4,
                "a kind is also a basic type's, or doesn't fit in tkind[],"
                " or the pointer-valued kinds aren't an aligned block");
 
 static char tkind[MAX_TYPES] = {TY_VOID, TY_CHAR, TY_INT, TY_UINT,
-                                TY_BOOL};
+                                TY_SCHAR, TY_BOOL};
 static int tsub[MAX_TYPES];     // a handle, with qualifier bits
 static int tcount[MAX_TYPES];
 static int ntypes = TY_BOOL + 1;    // the basic types, first
@@ -102,6 +102,7 @@ int type_size(int t)
 {
   switch (TYPE_KIND(t)) {
   case TY_CHAR:  return 1;
+  case TY_SCHAR: return 1;
   case TY_BOOL:  return 1;
   case TY_INT:   return 2;
   case TY_UINT:  return 2;
@@ -196,10 +197,10 @@ int hash_byte(int h, int c)
 }
 
 // Type hash h with type t added, as a canonical string: k and V for
-// const and volatile, then i, u (unsigned int), b, c or v, * and the
-// target, [ with the count and the element, ( and the return type, or
-// s, the tag's name and ';' (a struct is known by its name in every
-// file).
+// const and volatile, then i, u (unsigned int), S (signed char), b,
+// c or v, * and the target, [ with the count and the element, ( and
+// the return type, or s, the tag's name and ';' (a struct is known by
+// its name in every file).
 int type_hash(int t, int h)
 {
   int tag;
@@ -208,11 +209,12 @@ int type_hash(int t, int h)
   if (t & Q_VOLATILE)
     h = hash_byte(h, 'V');
   switch (TYPE_KIND(t)) {
-  case TY_VOID: return hash_byte(h, 'v');
-  case TY_CHAR: return hash_byte(h, 'c');
-  case TY_INT:  return hash_byte(h, 'i');
-  case TY_UINT: return hash_byte(h, 'u');
-  case TY_BOOL: return hash_byte(h, 'b');
+  case TY_VOID:  return hash_byte(h, 'v');
+  case TY_CHAR:  return hash_byte(h, 'c');
+  case TY_INT:   return hash_byte(h, 'i');
+  case TY_UINT:  return hash_byte(h, 'u');
+  case TY_SCHAR: return hash_byte(h, 'S');
+  case TY_BOOL:  return hash_byte(h, 'b');
   case TK_PTR:  return type_hash(type_sub(t), hash_byte(h, '*'));
   case TK_FUNC: return type_hash(type_sub(t), hash_byte(h, '('));
   case TK_ARRAY:

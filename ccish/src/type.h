@@ -26,17 +26,29 @@
 // files that use them.)
 
 // The basic types' indexes, the table's first entries: TY_UINT is
-// unsigned int, and TY_BOOL is C23's bool (1 byte, only 0 or 1).
-// Each is its own kind, too (type.c's TK_* follow them).
-enum { TY_VOID, TY_CHAR, TY_INT, TY_UINT, TY_BOOL };
-// Is the unqualified type t char, int or unsigned? (Every other type's
-// index is higher: bool's is, too, and a bool isn't an int, as in C.
-// It promotes to one, parse.h's PROMOTED.)
-#define IS_INT_TYPE(t)  ((t) >= TY_CHAR && (t) <= TY_UINT)
+// unsigned int, TY_SCHAR is signed char, and TY_BOOL is C23's bool
+// (1 byte, only 0 or 1). Each is its own kind, too (type.c's TK_*
+// follow them).
+enum { TY_VOID, TY_CHAR, TY_INT, TY_UINT, TY_SCHAR, TY_BOOL };
+// Is the unqualified type t a char, an int, an unsigned or a signed
+// char? (Every other type's index is higher: bool's is, too, and a
+// bool isn't an int, as in C. It promotes to one, parse.h's PROMOTED.)
+#define IS_INT_TYPE(t)  ((t) >= TY_CHAR && (t) <= TY_SCHAR)
+// Is the unqualified type t one of the 1-byte integer types (a char,
+// a signed char, a bool)? Its object is one byte, and its value on the
+// stack is 0 to 255 (a signed char's bit pattern, sign-extended when
+// it is promoted to int).
+#define IS_BYTE_TYPE(t)  ((t) == TY_CHAR || (t) == TY_SCHAR || (t) == TY_BOOL)
 _Static_assert(TY_VOID == 0 && TY_CHAR == 1 && TY_UINT - TY_CHAR == 2
-               && TY_UINT == TY_INT + 1 && TY_BOOL == TY_UINT + 1,
-               "the basic types aren't void, char, int, unsigned and"
-               " bool (IS_INT_TYPE; parse.h's PROMOTED), from 0");
+               && TY_UINT == TY_INT + 1 && TY_SCHAR == TY_UINT + 1
+               && TY_BOOL == TY_SCHAR + 1,
+               "the basic types aren't void, char, int, unsigned, signed"
+               " char and bool (IS_INT_TYPE; parse.h's PROMOTED), from 0");
+_Static_assert(IS_BYTE_TYPE(TY_CHAR) && IS_BYTE_TYPE(TY_SCHAR)
+               && IS_BYTE_TYPE(TY_BOOL) && !IS_BYTE_TYPE(TY_VOID)
+               && !IS_BYTE_TYPE(TY_INT) && !IS_BYTE_TYPE(TY_UINT),
+               "IS_BYTE_TYPE: the 1-byte types are the char, the signed"
+               " char and the bool");
 // A handle's qualifier bits, above its index bits: a handle is only
 // those, so taking the qualifiers off is masking the index, one AND.
 #define Q_CONST    0x100

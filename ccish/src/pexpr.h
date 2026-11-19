@@ -28,9 +28,10 @@ void check_assign(int to, Operand *o, int where, const char *detail);
 #define check_assign(to, o, where, detail)
 #endif
 
-// Convert the value *o to char: keep the low byte. A constant stays
-// pending; anything else ends up on the stack.
-void to_char(Operand *o);
+// Convert the value *o to a byte of type t (char or signed char):
+// keep the low byte. A constant stays pending; anything else ends up
+// on the stack.
+void to_char(Operand *o, int t);
 
 // Make o's value C's truth value: 1 if it is nonzero, else 0. A
 // constant stays pending; anything else ends up on the stack.

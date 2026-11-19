@@ -563,12 +563,12 @@ type is `char *` too.
 ## 4. Types and values
 
 The arithmetic types are `int` (16 bits), `char` (8 bits, unsigned),
-`unsigned` (16 bits) and `bool` (1 byte, 0 or 1, section 4.4);
-`void` names the absence of a value.
+`signed char` (8 bits, signed), `unsigned` (16 bits) and `bool`
+(1 byte, 0 or 1, section 4.4); `void` names the absence of a value.
 Pointers are 16 bits. The aggregates are `struct` (section 4.8) and
 `union` (section 4.12). `short` is a synonym for `int` (section 4.1),
 and `_Bool` is a synonym for `bool` (section 4.4); there is no
-`long`, no floating point, and no `signed char` (section 9.1).
+`long` and no floating point (section 9.2).
 
 All values live in 16-bit words on a little-endian 6502. Where C
 leaves a choice to the implementation, ccish's choices are the ones
@@ -610,21 +610,30 @@ Comparisons of `int`s are signed. `!`, `&&`, `||` and the relational
 and equality operators give 1 or 0, as in C (PLASMA's own
 comparisons give `$FFFF` for true; the compiler normalizes).
 
-### 4.2 char: 8 bits, unsigned
+### 4.2 char and signed char: 8 bits
 
 `char` is one byte, unsigned, 0 to 255. `unsigned char` is the same
 type; ccish doesn't tell the two apart, so `unsigned char *` and
-`char *` mix freely. `signed char` is not supported yet.
+`char *` mix freely.
 
-A value becomes a `char` by keeping its low byte when it is stored
-into a `char`, passed as a `char` parameter, returned from a `char`
-function, or cast to `char`. In expressions, a `char` is promoted to
-`int` first, as in C, so `char c = 200; c + 100` is the `int` 300,
-and storing it back keeps 44.
+`signed char` is one byte, signed, -128 to 127. Its stored byte is
+the low byte of whatever was assigned, as a `char`'s is; its value
+in an expression is that byte sign-extended to `int`, as C's integer
+promotion gives it, so `signed char c = 200; c + 100` is the `int`
+44 (its value is -56), and storing the result back keeps 44's byte.
+
+A value becomes a `char` or a `signed char` by keeping its low byte
+when it is stored into one, passed as one's parameter, returned from
+a function of one, or cast to one. In expressions, a `char` is
+promoted to `int` first, as in C (its byte is the `int`), so
+`char c = 200; c + 100` is the `int` 300, and storing it back keeps
+44; a `signed char` is promoted the same way, sign-extended.
 
 Byte loads (`LB`, `LLB`, `LAB` in the VM) zero-extend, so an unsigned
-`char` costs nothing, which is why the choice was made (approach.md,
-issue 7). A signed `char` would need sign extension on every load.
+`char` costs nothing, which is why it is unsigned (approach.md,
+issue 7). A `signed char`'s promotion costs two ops where its byte is
+loaded or kept (`XOR` and `SUB` of 128, no mask: the value is a
+byte), in its loads, in a kept store's value, and in an index's.
 
 ### 4.3 unsigned
 
@@ -1762,12 +1771,8 @@ directive is an error.
   undefined reference when the module is linked (section 11.2).
 * The rest of the C library: `printf` (which needs varargs), `malloc`,
   and the other headers (section 11.2 lists what there is).
-* A struct-valued `?:` (`s = k ? a : b;`): use an `if`.
-* `signed char`.
-
-Each gives a "not supported yet" error, except `exit` and the missing
-library functions (undeclared, or undefined when linked), and the
-struct `?:` ("a struct can't be used as a value here").
+* A struct-valued `?:` (`s = k ? a : b;`): use an `if`; it gives
+  "a struct can't be used as a value here".
 
 ### 9.2 Out of scope
 
