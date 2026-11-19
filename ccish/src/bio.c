@@ -2,7 +2,7 @@
 // through a BLOCK-byte buffer, so that on an Apple II a system call
 // moves many bytes and not one (approach.md 18.1); ProDOS's own 1K
 // buffer for the file reads and writes the disk in whole blocks, so
-// BLOCK is small (128), for memory. On the host it sits on top of
+// BLOCK is small (32), for memory. On the host it sits on top of
 // stdio. cclink's bgetw() and bskip() are in link.c, its only user.
 #include <stdio.h>
 #include <string.h>

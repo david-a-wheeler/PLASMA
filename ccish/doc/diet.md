@@ -123,6 +123,22 @@ Each of these is in git history, with its measurements:
 - **One exit, one copy of shared code.** A function with three
   returns that each repeat the same updates shrinks with one exit
   (676473b2's `pp_intern()`).
+- **Shrink the I/O buffer.** bio.c's Bfile holds BLOCK bytes of file
+  traffic, and on the Apple II ProDOS buffers each file's 1K blocks
+  itself, so a smaller BLOCK costs only more, not smaller, FILEIO
+  calls (a6da214a: 512 to 128, 2369633d: 128 to 64, this round: 64 to
+  32, a Bfile 74 to 42). Every pass's buffers shrink: ccpp has six,
+  ccgen three, cccomp and cclink two, 192, 96, 64 and 64 bytes of
+  zero region gone (running spare up by them: ccpp 1077 to 1269,
+  cccomp 951 to 1015, ccgen 2746 to 2842, cclink 11873 to 11937), for
+  +0.4%, +0.36% and +0.52% of the passes' ops (make profile), the
+  same trade the 128-to-64 cut took at +0.12% to +0.27%. Watch the
+  REL modules: a zero-filled array under BSS_MIN (256) lives in the
+  file instead of the heap, so an array crossing that boundary as it
+  shrinks grows the REL file (ccpp's files[] did: +91) while the
+  XLOAD image, the one that runs on the Apple, is unchanged.
+  A buffer this small is where the trade turns: the next halving
+  buys 208 bytes in ccpp for about double the refills.
 - **Sub-blocks share frame space.** Locals declared in a block are
   freed when it ends, and a later block reuses their slots (pstmt.c's
   `parse_block()`). But a function's frame is fixed at its ENTER, the
@@ -235,8 +251,8 @@ expect it to pay.
   NAME.nam) are all static, but at most four files are open at once
   (measure.txt), and the name file is written after the source is
   done: a little free list could let a finished file's buffer be
-  reused, and take one or two Bfiles, 64 or 128 bytes, out of ccpp's
-  zero region.
+  reused, and take one or two Bfiles, 42 bytes each now (BLOCK 32),
+  out of ccpp's zero region.
 - ccpp's name pool (ppname.c): find's walk was 29% of ccpp's ops
   at the round's start (153,415,063, bool era). Measured first
   (find's own counters, 29 files): of the 6.0 million entries
@@ -330,8 +346,8 @@ expect it to pay.
   across the 29 files the profile compiles). Next, from this round's profile: the I/O path is now ccpp's
   top (read_line 46,318,912, 14.1%, with bgetc's 40,502,372 and
   getch's 29,805,336 its readers, and skip_blank's 15,052,287); a
-  bigger BIO buffer (64 to 256 bytes) would cut its refills
-  fourfold, about 3M ops, for 576 bytes of zero, 5,000 ops a byte
+  bigger BIO buffer (32 to 256 bytes) would cut its refills
+  eightfold, about 3M ops, for 768 bytes of zero, 4,000 ops a byte
   against the 200,000 these two cuts bought, so it waits; find, now
   18.9% (62,212,889), keeps the 128th slot pair parked (585,369
   entries for 640 bytes is 60% of the spare now); and with ccpp

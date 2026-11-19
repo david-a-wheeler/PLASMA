@@ -40,7 +40,7 @@ blank for a limit that isn't measured.
 | `MAX_PARAM_TYPES` | 352 | 313 (pexpr.c) | parameter types of all declared functions | [src/parse.h](../src/parse.h) |
 | `MAX_IMPORTS` | 16 |  | declarations with an asm label, or after #pragma plasma import | [src/ptop.c](../src/ptop.c) |
 | `MAX_DEPS` | 4 |  | modules named by #pragma plasma import | [src/ptop.h](../src/ptop.h) |
-| `MAX_TYPES` | 61 | 57 (link.c) | distinct types; at most 128, since char tables (fn_type[], param_types[]) hold unqualified types, and a host's char may be signed; 10% over the peak (56, link.c) | [src/type.c](../src/type.c) |
+| `MAX_TYPES` | 61 | 56 (link.c) | distinct types; at most 128, since char tables (fn_type[], param_types[]) hold unqualified types, and a host's char may be signed; 10% over the peak (56, link.c) | [src/type.c](../src/type.c) |
 | `MAX_TAGS` | 6 | 4 (link.c) | struct and union tags, counting those in blocks that have ended | [src/type.tag.h](../src/type.tag.h) |
 | `MAX_MEMBERS` | 32 | 27 (irout.c) | struct and union members, in all of them | [src/type.tag.h](../src/type.tag.h) |
 
