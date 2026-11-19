@@ -1,7 +1,7 @@
 # ccish: a C-ish compiler for the PLASMA VM
 
 `ccish` compiles a subset/superset of C into PLASMA to run on 6502-based systems.
-It heavily optimizes its results and is self-hosting.
+It heavily optimizes its results and is self-hosting on a 64K Apple II.
 
 CCish is dedicated to the memory of Bob Pew.
 It was developed with the assistance of AI, so if that bothers you, don't use it.
@@ -33,16 +33,22 @@ from within loops, compile-time order swapping, and so on.
 It does this through parser constant folding, IR window optimization,
 and a VM peephole optimizer that implements many optimization patterns.
 Its results are nowhere near as fast as assembly, but it will generally be
-much smaller and "fast enough" for many tasks.
+*much* smaller and "fast enough" for many tasks.
+
+The ccish compiler does *not* generate an abstract syntax tree (AST)
+internally, a common approach that is more difficult on limited-memory systems.
+It instead generates an IR and then from that VM codes.
+In some sense this is a demonstration that generating an IR and VM codes directly,
+in a single forward pass, can produce reasonably good results.
 
 ccish compiles itself, and `make bootstrap` checks that it reproduces
 itself byte for byte under plvm. Programs it compiles run on an
 emulated 64K Apple IIe (see `samples/`), and so does the compiler
 itself: its four passes, built as images (`-x`) and run through XLOAD,
 ccish's own second-stage loader ([doc/xload.md](doc/xload.md)), compile
-a program on an emulated 64K or 128K Apple IIe. (Its heart, a
-front-end parser named `cccomp`, is too big for PLASMA's own loader
-there.)
+a program on an emulated 64K or 128K Apple IIe. Its heart, a
+front-end parser named `cccomp`, is too big for PLASMA's own loader, so we
+resolve that by implementing our own.
 
 ## Using it
 
