@@ -158,6 +158,21 @@ Each of these is in git history, with its measurements:
   `parse_block()`). But a function's frame is fixed at its ENTER, the
   largest any of its blocks needs, so only moving the locals to
   another function takes them out of it entirely.
+- **Union the fields of exclusive states.** An Operand held the
+  fields all kinds share, plus its kind's: K_ELEM's 10 bytes and
+  K_STORE's 9, never both live (an operand is one kind at a time;
+  K_STORE's are set by start_store after the operand has left its
+  earlier kinds, K_ELEM's are dead by the rvalue that ends them), so
+  the two groups share one union, o->u.elem and o->u.store (ea3b21cb):
+  an Operand, 33 to 24 bytes, is in the frame of nearly every level
+  of the expression parser's recursion, so the worst frame chain is
+  869 to 770 and cccomp's running spare 1015 to 1094, the code the
+  same. Check that no path reads one group's fields while the other
+  kind holds (K_ADDR reuses elem's disp for a string's length);
+  watch the tables: the union's three tags per parse.h file (the
+  struct, the union, its members' two structs) put the tag peak at
+  MAX_TAGS, so the limit rose 6 to 8, +20 of zero, as 2369633d's
+  MAX_TYPES 61.
 
 ## Approaches checked that don't work
 
@@ -209,6 +224,20 @@ expect it to pay.
   limit is on the user's source lines, which C11 asks to run to
   4,000; 255 is already a deviation, and tightening it further for
   52 bytes wasn't worth it.
+- **Bit-packing the Operand's flag fields.** bool is not the lever:
+  ccish's bool is a byte, as a char is (76b0a68e), and nonice is a
+  2-bit mask, not a boolean. The chars are already one byte each,
+  tightly packed, so merging nonice (2 bits), is_bool (1) and
+  assigned (1) into a byte saves 2 of the 24-byte Operand, about 18
+  of frame on the worst chain, while each of the 62 accesses (is_bool
+  33, assigned 17, nonice 12) becomes a read-modify-write instead of a
+  byte load or store: the code's growth, at the hot compare, logical
+  and store paths, is worth more than the frame's saving (kind, 123
+  accesses, is the hottest field of all and must stay unpacked), and
+  it slows cccomp where the diet forbids it. The cold K_ELEM flags
+  (base_arr, idx_char: 4 accesses each) merged into the elem arm's
+  byte were measured (a 23-byte Operand) and are the same trade, 11
+  of frame against 8 sites of bit code. Not taken.
 - **A big static buffer into a frame local.** ccpp's `put_string()`
   keeps its 256-byte spelling buffer static: 256 bytes of zero
   region, paid in every run, for `#param` stringification, which
@@ -267,10 +296,14 @@ expect it to pay.
 ## Ideas not yet tried
 
 - The large frames on cccomp's worst chain (measure.txt's "the worst
-  frame chain"; `tools/fsize.py -f`): when this was written,
-  `parse_declaration`, `init_elem` and `copy_struct`. (`fold_held`'s
-  and `parse_assign`'s Operand copies were checked and don't pay: see
-  "Approaches checked that don't work".)
+  frame chain"; `tools/fsize.py -f`): after the Operand union
+  (ea3b21cb), the largest are `parse_assign` (56: two Operands),
+  `init_struct_copy` (54, two Operands, off the worst chain),
+  `parse_expr` (50), `parse_index` (40) and `copy_struct` (40); the
+  chain itself is 770, its "begin_function and 27 more" group 442.
+  (`fold_held`'s and `parse_assign`'s Operand copies, and the flag
+  bit-packing, were checked and don't pay: see "Approaches checked
+  that don't work".)
 - approach.md issue 24, "Putting cccomp on a diet", lists more.
 - For kind B: `tools/opstats.py -p cccomp` counts the commonest ops
   and runs of 2 to 4 ops in the passes' code: a run that's common and
